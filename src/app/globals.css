@@ -1,3 +1,90 @@
+/* src/pages/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
-@tailwind utilitie
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 354 83% 57%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 240 3.8% 46.1%;
+
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 240 5.9% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 354 83% 57%;
+
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Roboto', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #bbb;
+  }
+}
+
+@layer components {
+  .wally-gradient {
+    @apply bg-gradient-to-r from-wally-dark to-wally;
+  }
+
+  .wally-shadow {
+    @apply shadow-md shadow-wally-300/20;
+  }
+
+  .placeholder-border {
+    @apply border-2 border-dashed border-gray-200 rounded-lg;
+  }
+
+  .canvas-placeholder {
+    @apply placeholder-border bg-gray-50/50 flex items-center justify-center;
+  }
+
+  .document-overlay {
+    @apply absolute border-2 border-wally rounded-md opacity-60 transition-all;
+  }
+}
