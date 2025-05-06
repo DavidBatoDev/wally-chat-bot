@@ -119,24 +119,26 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
       </div>
       
       <div className="flex-1 overflow-y-auto p-4 bg-white">
-        {chatMessages.map((msg, index) => (
-          <ChatMessage
-            key={index}
-            message={msg.message}
-            isUser={msg.isUser}
-            timestamp={msg.timestamp}
-            actions={msg.actions}
-          />
-        ))}
-        {isLoading && (
-          <div className="flex items-center mt-2">
-            <div className="w-2 h-2 bg-gray-500 rounded-full mr-1 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-2 h-2 bg-gray-500 rounded-full mr-1 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-          </div>
-        )}
-        {/* Invisible div at the end of messages to scroll to */}
-        <div ref={messagesEndRef} />
+        <div className="max-w-3xl mx-auto">
+          {chatMessages.map((msg, index) => (
+            <ChatMessage
+              key={index}
+              message={msg.message}
+              isUser={msg.isUser}
+              timestamp={msg.timestamp}
+              actions={msg.actions}
+            />
+          ))}
+          {isLoading && (
+            <div className="flex items-center mt-2">
+              <div className="w-2 h-2 bg-gray-500 rounded-full mr-1 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-2 h-2 bg-gray-500 rounded-full mr-1 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          )}
+          {/* Invisible div at the end of messages to scroll to */}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
       
       <ChatInput onSendMessage={handleSendMessage} />
