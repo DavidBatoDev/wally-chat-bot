@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ChatMessage, { ChatMessageProps } from './ChatMessage';
 import ChatInput from './ChatInput';
 import { useGenAI } from '@/hooks/useGenAI';
@@ -11,6 +11,17 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
   const { messages: genAIMessages, isLoading, sendMessage: sendGenAIMessage } = useGenAI();
   const [documentActive, setDocumentActive] = useState(false);
   const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to bottom function
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Scroll to bottom whenever messages change
+  useEffect(() => {
+    scrollToBottom();
+  }, [genAIMessages]);
 
   // Convert GenAI messages to ChatMessage UI props
   const chatMessages: ChatMessageProps[] = genAIMessages.map(msg => ({
@@ -124,6 +135,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
             <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
         )}
+        {/* Invisible div at the end of messages to scroll to */}
+        <div ref={messagesEndRef} />
       </div>
       
       <ChatInput onSendMessage={handleSendMessage} />
