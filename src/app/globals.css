@@ -87,4 +87,16 @@
   .document-overlay {
     @apply absolute border-2 border-wally rounded-md opacity-60 transition-all;
   }
+  
+  .typing-cursor {
+    display: inline-block;
+    width: 2px;
+    animation: blink 0.7s infinite;
+  }
+}
+
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 1; }
 }
