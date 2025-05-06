@@ -1,7 +1,7 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ChatMessage, { ChatMessageProps } from './ChatMessage';
 import ChatInput from './ChatInput';
+import { getGeminiService } from '@/lib/services/gemini-service';
 
 interface ChatContainerProps {
   onDocumentStateChange?: (isActive: boolean) => void;
@@ -18,8 +18,9 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
   
   const [documentActive, setDocumentActive] = useState(false);
   const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSendMessage = (message: string) => {
+  const handleSendMessage = async (message: string) => {
     // Add user message
     const userMessage: ChatMessageProps = {
       message,
@@ -28,14 +29,13 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
     };
     
     setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
     
-    // Simulate bot response
-    setTimeout(() => {
-      let botResponse: ChatMessageProps;
-      
-      // Example logic to simulate document interaction prompt
+    try {
+      // Check if message is related to document upload
       if (message.toLowerCase().includes('document') || message.toLowerCase().includes('upload')) {
-        botResponse = {
+        // Special handling for document requests
+        const botResponse: ChatMessageProps = {
           message: "I see you want to work with a document. Please upload one using the button below, and I'll help you process it.",
           isUser: false,
           timestamp: "Just now",
@@ -47,16 +47,34 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
             }
           ]
         };
+        setMessages(prev => [...prev, botResponse]);
       } else {
-        botResponse = {
-          message: "How can I help you with your documents today?",
+        // Get response from Gemini API
+        const geminiService = getGeminiService();
+        const response = await geminiService.sendMessage(message);
+        
+        const botResponse: ChatMessageProps = {
+          message: response,
           isUser: false,
           timestamp: "Just now"
         };
+        
+        setMessages(prev => [...prev, botResponse]);
       }
+    } catch (error) {
+      console.error('Error sending message to Gemini:', error);
       
-      setMessages(prev => [...prev, botResponse]);
-    }, 1000);
+      // Error handling
+      const errorResponse: ChatMessageProps = {
+        message: "I'm sorry, I encountered an error processing your request. Please try again later.",
+        isUser: false,
+        timestamp: "Just now"
+      };
+      
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleUploadClick = () => {
@@ -118,6 +136,13 @@ const ChatContainer: React.FC<ChatContainerProps> = ({ onDocumentStateChange }) 
             actions={msg.actions}
           />
         ))}
+        {isLoading && (
+          <div className="flex items-center mt-2">
+            <div className="w-2 h-2 bg-gray-500 rounded-full mr-1 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-gray-500 rounded-full mr-1 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        )}
       </div>
       
       <ChatInput onSendMessage={handleSendMessage} />
