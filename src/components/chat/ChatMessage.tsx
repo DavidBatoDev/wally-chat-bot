@@ -46,7 +46,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isUser, timestamp, a
 
   return (
     <div className={`flex mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`flex items-start max-w-[80%] ${isUser ? 'flex-row' : 'flex-row'}`}>
+      <div className={`flex items-start max-w-[80%] ${isUser ? 'flex-row' : 'flex-row max-w-[100%] '}`}>
         {!isUser && (
           <div className="w-8 h-8 rounded-full wally-gradient flex items-center justify-center text-white font-bold mr-2 flex-shrink-0">
             W
