@@ -22,7 +22,7 @@ export default function LoginForm() {
 
       if (error) throw error;
       toast.success("Logged in successfully!");
-      router.push("/dashboard");
+      router.push("/");
     } catch (error) {
       const errorMessage =
         error instanceof Error

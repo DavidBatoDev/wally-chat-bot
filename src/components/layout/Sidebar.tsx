@@ -1,13 +1,15 @@
-
-import React from 'react';
-import { MessageSquare, History, Settings } from 'lucide-react';
+import React from "react";
+import { MessageSquare, History, Settings } from "lucide-react";
+import { useAuthStore } from "@/lib/store/auth";
 
 const Sidebar = () => {
+  const { user } = useAuthStore();
+
   // Navigation items for sidebar
   const navItems = [
-    { icon: MessageSquare, label: 'Chat', active: true },
-    { icon: History, label: 'History', active: false },
-    { icon: Settings, label: 'Settings', active: false },
+    { icon: MessageSquare, label: "Chat", active: true },
+    ...(user ? [{ icon: History, label: "History", active: false }] : []),
+    { icon: Settings, label: "Settings", active: false },
   ];
 
   return (
@@ -17,8 +19,8 @@ const Sidebar = () => {
           key={index}
           className={`flex flex-col items-center justify-center w-12 h-12 mb-6 rounded-xl transition-all ${
             item.active
-              ? 'bg-wally-50 text-wally'
-              : 'text-gray-500 hover:text-wally hover:bg-wally-50'
+              ? "bg-wally-50 text-wally"
+              : "text-gray-500 hover:text-wally hover:bg-wally-50"
           }`}
         >
           <item.icon size={20} />

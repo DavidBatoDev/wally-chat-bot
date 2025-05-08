@@ -61,7 +61,7 @@ export function useAuth() {
         .eq("id", user?.id);
 
       toast.success("Signed in successfully");
-      router.push("/dashboard");
+      router.push("/");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to sign in");
     } finally {
