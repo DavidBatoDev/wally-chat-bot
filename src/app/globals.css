@@ -1,5 +1,5 @@
 /* src/pages/index.css */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -41,10 +41,10 @@
   * {
     @apply border-border;
   }
-  
+
   body {
     @apply bg-background text-foreground;
-    font-family: 'Roboto', sans-serif;
+    font-family: "Roboto", sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -87,7 +87,7 @@
   .document-overlay {
     @apply absolute border-2 border-wally rounded-md opacity-60 transition-all;
   }
-  
+
   .typing-cursor {
     display: inline-block;
     width: 2px;
@@ -96,7 +96,167 @@
 }
 
 @keyframes blink {
-  0% { opacity: 1; }
-  50% { opacity: 0; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes scan {
+  0% {
+    clip-path: inset(0 0 95% 0);
+    background: rgba(0, 204, 128, 0.2);
+  }
+  25% {
+    clip-path: inset(0 0 75% 0);
+    background: rgba(0, 204, 128, 0.2);
+  }
+  50% {
+    clip-path: inset(0 0 50% 0);
+    background: rgba(0, 204, 128, 0.2);
+  }
+  75% {
+    clip-path: inset(0 0 25% 0);
+    background: rgba(0, 204, 128, 0.2);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    background: rgba(0, 204, 128, 0.1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-in-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.5s ease-in-out forwards;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-scan {
+  animation: scan 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Tailwind doesn't support animation-delay directly, so we add this utility */
+[animation-delay="1000ms"] {
+  animation-delay: 1000ms;
+}
+
+[animation-delay="2000ms"] {
+  animation-delay: 2000ms;
+}
+
+[animation-delay="3000ms"] {
+  animation-delay: 3000ms;
+}
+
+/* Set animation-fill-mode to forwards to maintain the final state */
+[animation-fill-mode="forwards"] {
+  animation-fill-mode: forwards;
+}
+
+/* Add these to your Tailwind color theme */
+:root {
+  --color-wally: #ff4757;
+  --color-wally-dark: #e03444;
+  --color-wally-light: #ff6b78;
+  --color-wally-50: #fff1f2;
+  --color-wally-100: #ffe4e6;
+}
+
+.bg-wally {
+  background-color: var(--color-wally);
+}
+
+.bg-wally-dark {
+  background-color: var(--color-wally-dark);
+}
+
+.bg-wally-light {
+  background-color: var(--color-wally-light);
+}
+
+.bg-wally-50 {
+  background-color: var(--color-wally-50);
+}
+
+.bg-wally-100 {
+  background-color: var(--color-wally-100);
+}
+
+.text-wally {
+  color: var(--color-wally);
+}
+
+.text-wally-dark {
+  color: var(--color-wally-dark);
+}
+
+.text-wally-light {
+  color: var(--color-wally-light);
+}
+
+.text-wally-50 {
+  color: var(--color-wally-50);
+}
+
+.text-wally-100 {
+  color: var(--color-wally-100);
+}
+
+.focus\:ring-wally:focus {
+  --tw-ring-color: var(--color-wally);
+}
+
+.focus\:border-wally:focus {
+  border-color: var(--color-wally);
+}
+
+.hover\:bg-wally-dark:hover {
+  background-color: var(--color-wally-dark);
+}
+
+.hover\:text-wally-dark:hover {
+  color: var(--color-wally-dark);
+}
+
+.group:hover .group-hover\:text-wally-50 {
+  color: var(--color-wally-50);
 }

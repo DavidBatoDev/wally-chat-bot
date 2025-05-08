@@ -98,7 +98,11 @@ module.exports = {
 			animation: {
 				"accordion-down": 'accordion-down 0.2s ease-out',
 				"accordion-up": 'accordion-up 0.2s ease-out',
-				"pulse-light": 'pulse-light 1.5s ease-in-out infinite'
+				"pulse-light": 'pulse-light 1.5s ease-in-out infinite',
+				'fade-in': 'fadeIn 0.5s ease-in-out forwards',
+				'fade-out': 'fadeOut 0.5s ease-in-out forwards',
+				'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+				'scan': 'scan 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
 			}
 		}
 	},
