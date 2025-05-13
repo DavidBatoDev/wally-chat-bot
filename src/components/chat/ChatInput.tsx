@@ -1,47 +1,72 @@
-import React, { useState } from "react";
+// src/components/chat/ChatInput.tsx
+import React, { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Send } from "lucide-react";
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (text: string) => void;
   disabled?: boolean;
+  placeholder?: string;
 }
 
 const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
   disabled = false,
+  placeholder = "Type your message...",
 }) => {
   const [message, setMessage] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Auto-resize the textarea
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
+  }, [message]);
+
+  // Send message function
+  const handleSend = () => {
     if (message.trim() && !disabled) {
       onSendMessage(message);
       setMessage("");
     }
   };
 
+  // Handle keypress events (Enter to send, Shift+Enter for new line)
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
   return (
-    <div className="border-t border-gray-100 p-4 bg-white">
-      <div className="max-w-3xl mx-auto">
-        <form onSubmit={handleSubmit} className="flex items-center">
-          <div className="relative w-full">
-            <input
-              type="text"
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              className="w-full border border-gray-200 rounded-full py-3 px-4 pr-12 outline-none focus:ring-2 focus:ring-wally-200 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              placeholder="Can you translate my document?"
-              disabled={disabled}
-            />
-            <button
-              type="submit"
-              className="absolute right-1.5 top-1/2 transform -translate-y-1/2 bg-wally text-white p-2 rounded-full hover:bg-wally-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!message.trim() || disabled}
-            >
-              <Send size={18} />
-            </button>
-          </div>
-        </form>
+    <div className="p-4 border-t border-gray-100 bg-white">
+      <div className="max-w-3xl mx-auto flex gap-2">
+        <Textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyPress}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="resize-none min-h-[40px] max-h-[150px] flex-1"
+          rows={1}
+        />
+        <Button
+          onClick={handleSend}
+          disabled={!message.trim() || disabled}
+          size="icon"
+          className="h-10 w-10"
+        >
+          <Send size={16} />
+        </Button>
+      </div>
+      <div className="text-xs text-center text-gray-400 mt-1">
+        Press Enter to send, Shift+Enter for new line
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import * as Accordion from "@radix-ui/react-accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import dayjs from "dayjs";
+import { ChatMessage as ChatMessageType } from "@/lib/genai/types";
 
 interface ChatContainerProps {
   onDocumentStateChange?: (isActive: boolean) => void;
@@ -18,7 +19,18 @@ interface ChatContainerProps {
 const ChatContainer: React.FC<ChatContainerProps> = ({
   onDocumentStateChange,
 }) => {
-  const { messages, isLoading, sendMessage } = useGenAI();
+  const [messages, setMessages] = useState<ChatMessageType[]>([]);
+  const { loading: isLoading, error, sendMessage } = useGenAI({
+    onComplete: (response) => {
+      if (response && response.length > 0) {
+        setMessages((prev) => [...prev, ...response]);
+      }
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to send message");
+    }
+  });
+  
   const { user } = useAuthStore();
 
   const [isUploading, setIsUploading] = useState(false);
@@ -38,8 +50,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       setIsUploading(true);
       const fileData = await uploadFile(file, user.id);
 
-      // Send a file message to inform the LLM about the upload
-      await sendMessage({
+      // Add the file message to local state
+      const fileMessage: ChatMessageType = {
         role: "user",
         kind: "file",
         content: "",
@@ -49,14 +61,22 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
           mime_type: file.type,
           size_bytes: file.size,
         }),
-      });
+      };
+      setMessages((prev) => [...prev, fileMessage]);
 
-      // Let the LLM know a document has been uploaded
-      await sendMessage({
+      // Send the file message to inform the LLM about the upload
+      await sendMessage([...messages, fileMessage]);
+
+      // Create a text message about the upload
+      const textMessage: ChatMessageType = {
         role: "user",
         kind: "text",
         content: `I've uploaded a document named "${file.name}". Can you help me with it?`,
-      });
+      };
+      setMessages((prev) => [...prev, textMessage]);
+
+      // Send to LLM
+      await sendMessage([...messages, fileMessage, textMessage]);
 
       toast.success("Uploaded " + file.name);
 
@@ -78,17 +98,23 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       return;
     }
 
-    // For other actions, send to backend
-    await sendMessage({
+    // Create action message
+    const actionMessage: ChatMessageType = {
       role: "user",
       kind: "action",
       content: "",
       body: JSON.stringify({ action }),
-    });
+    };
+    
+    // Add to local state
+    setMessages((prev) => [...prev, actionMessage]);
+    
+    // Send to backend
+    await sendMessage([...messages, actionMessage]);
   };
 
   const handleInputSubmit = async (values: Record<string, string>) => {
-    await sendMessage({
+    const inputMessage: ChatMessageType = {
       role: "user",
       kind: "action",
       content: "",
@@ -96,7 +122,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
         action: "submit_inputs",
         values,
       }),
-    });
+    };
+    
+    setMessages((prev) => [...prev, inputMessage]);
+    await sendMessage([...messages, inputMessage]);
   };
 
   const openFileCard = (fileId: string, versionId: string) => {
@@ -119,57 +148,75 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
     const common = {
       isUser: m.role === "user",
-      timestamp: m.metadata?.timestamp
-        ? dayjs(+m.metadata.timestamp).format("HH:mm")
-        : dayjs().format("HH:mm"),
+      timestamp,
     };
 
     switch (m.kind) {
       case "file_card": {
-        const j = JSON.parse(m.body || "{}");
-        return {
-          ...common,
-          kind: "file_card" as const,
-          fileCard: {
-            fileId: j.file_id,
-            versionId: j.version_id,
-            rev: j.rev,
-            title: j.title,
-            thumbUrl: j.thumb_url,
-          },
-          onOpenFileCard: openFileCard,
-        };
+        try {
+          const j = JSON.parse(m.body || "{}");
+          return {
+            ...common,
+            kind: "file_card" as const,
+            fileCard: {
+              fileId: j.file_id,
+              versionId: j.version_id,
+              rev: j.rev,
+              title: j.title,
+              thumbUrl: j.thumb_url,
+            },
+            onOpenFileCard: openFileCard,
+          };
+        } catch (e) {
+          console.error("Failed to parse file card", e);
+          return { ...common, kind: "text" as const, text: "Invalid file card" };
+        }
       }
       case "buttons": {
-        const j = JSON.parse(m.body || "{}");
-        return {
-          ...common,
-          kind: "buttons" as const,
-          prompt: j.prompt,
-          buttons: j.buttons,
-          onButton: handleButtonAction,
-        };
+        try {
+          const j = JSON.parse(m.body || "{}");
+          return {
+            ...common,
+            kind: "buttons" as const,
+            prompt: j.prompt,
+            buttons: j.buttons,
+            onButton: handleButtonAction,
+          };
+        } catch (e) {
+          console.error("Failed to parse buttons", e);
+          return { ...common, kind: "text" as const, text: "Invalid buttons" };
+        }
       }
       case "inputs": {
-        const j = JSON.parse(m.body || "{}");
-        return {
-          ...common,
-          kind: "inputs" as const,
-          prompt: j.prompt,
-          inputs: j.inputs,
-          onInputs: handleInputSubmit,
-        };
+        try {
+          const j = JSON.parse(m.body || "{}");
+          return {
+            ...common,
+            kind: "inputs" as const,
+            prompt: j.prompt,
+            inputs: j.inputs,
+            onInputs: handleInputSubmit,
+          };
+        } catch (e) {
+          console.error("Failed to parse inputs", e);
+          return { ...common, kind: "text" as const, text: "Invalid input form" };
+        }
       }
       case "file": {
-        const j = JSON.parse(m.body || "{}");
-        return {
-          ...common,
-          kind: "file" as const,
-          file: {
-            fileId: j.file_id,
-            displayName: j.display_name || "File",
-          },
-        };
+        try {
+          const j = JSON.parse(m.body || "{}");
+          return {
+            ...common,
+            kind: "file" as const,
+            file: {
+              fileId: j.file_id,
+              displayName: j.display_name || "File",
+            },
+          };
+        } catch (e) {
+          console.error("Failed to parse file", e);
+          return { ...common, kind: "text" as const, text: "Invalid file" };
+        }
       }
       default:
         return {
@@ -192,8 +239,34 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
   /* ─── send user text from input ───────────────────────── */
   const handleSendMessage = async (text: string) => {
-    await sendMessage({ role: "user", kind: "text", content: text });
+    if (!text.trim()) return;
+    
+    const userMessage: ChatMessageType = {
+      role: "user", 
+      kind: "text", 
+      content: text,
+      metadata: { timestamp: Date.now() }
+    };
+    
+    // Add to local state first for immediate UI update
+    setMessages((prev) => [...prev, userMessage]);
+    
+    // Send all messages including this new one
+    await sendMessage([...messages, userMessage]);
   };
+
+  /* ─── Initial message if empty ─────────────────────────── */
+  useEffect(() => {
+    if (messages.length === 0) {
+      // Add welcome message
+      setMessages([{
+        role: "model",
+        kind: "text",
+        content: "Hi! I'm Wally, your document assistant. How can I help you today? You can upload a document to get started.",
+        metadata: { timestamp: Date.now() }
+      }]);
+    }
+  }, []);
 
   /* ─── render ──────────────────────────────────────────── */
   return (
@@ -228,7 +301,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       </div>
 
       {/* User input */}
-      <ChatInput onSendMessage={handleSendMessage} />
+      <ChatInput onSendMessage={handleSendMessage} disabled={isLoading} />
 
       {/* Accordion upload (unchanged) */}
       <Accordion.Root
