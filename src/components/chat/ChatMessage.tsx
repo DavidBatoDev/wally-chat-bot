@@ -1,204 +1,95 @@
 // src/components/chat/ChatMessage.tsx
-import React, { useState } from "react";
-import { User, Bot, File } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
+import React from "react";
+import { User, Bot, CheckCheck, Check, AlertCircle } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
+import { MessageStatus } from "./ChatContainer";
 
 /* ------------------------------------------------------------------ */
-/* Type for any chat row                                              */
+/* Type for chat messages                                             */
 export interface ChatMessageProps {
-  kind: "text" | "file_card" | "buttons" | "inputs" | "file";
   isUser: boolean;
   timestamp: string;
-
-  /** TEXT  */
   text?: string;
-
-  /** FILE CARD */
-  fileCard?: {
-    fileId: string;
-    versionId: string;
-    rev: number;
-    title: string;
-    thumbUrl?: string;
-  };
-  onOpenFileCard?: (fileId: string, versionId: string) => void;
-
-  /** BUTTONS  */
-  prompt?: string;
-  buttons?: { label: string; action: string }[];
-  onButton?: (action: string) => void;
-
-  /** INPUTS */
-  inputs?: { key: string; label: string; type?: string }[];
-  onInputs?: (values: Record<string, string>) => void;
-
-  /** FILE bubble (raw attachment) */
-  file?: { fileId: string; displayName?: string };
-
-  /** Special Drop-zone you were already passing for first-turn */
-  dropzone?: React.ReactNode;
+  status?: MessageStatus;
 }
 
 /* ------------------------------------------------------------------ */
-/* Sub-components                                                      */
+/* Status Indicator component                                         */
+const StatusIndicator: React.FC<{ status?: MessageStatus }> = ({ status }) => {
+  if (!status || status === "delivered") {
+    return <CheckCheck size={14} className="text-gray-400" />;
+  } else if (status === "sent") {
+    return <Check size={14} className="text-gray-400" />;
+  } else if (status === "sending") {
+    return <div className="w-3 h-3 rounded-full bg-gray-300 animate-pulse" />;
+  } else if (status === "error") {
+    return <AlertCircle size={14} className="text-red-500" />;
+  }
+  return null;
+};
 
+/* ------------------------------------------------------------------ */
+/* Bubble component                                                   */
 const Bubble: React.FC<{
   children: React.ReactNode;
   isUser: boolean;
 }> = ({ children, isUser }) => (
   <div
-    className={`rounded-lg px-4 py-2 ${
+    className={`rounded-2xl px-4 py-3 ${
       isUser
-        ? "bg-wally text-white rounded-tr-none"
-        : " text-gray-800 rounded-tl-none"
+        ? "bg-wally text-white rounded-tr-none shadow-md"
+        : "bg-white text-gray-800 rounded-tl-none shadow-sm border border-gray-100"
     }`}
   >
     {children}
   </div>
 );
 
-const TextMessage: React.FC<ChatMessageProps> = ({ text, isUser }) => (
-  <Bubble isUser={isUser}>{text}</Bubble>
-);
-
-const ButtonsMessage: React.FC<ChatMessageProps> = ({
-  prompt,
-  buttons = [],
-  onButton,
-  isUser,
-}) => (
-  <Bubble isUser={isUser}>
-    <p className="mb-2">{prompt}</p>
-    <div className="flex flex-wrap gap-2">
-      {buttons.map((b) => (
-        <Button
-          key={b.action}
-          size="sm"
-          onClick={() => onButton?.(b.action)}
-          className="whitespace-nowrap"
-        >
-          {b.label}
-        </Button>
-      ))}
-    </div>
-  </Bubble>
-);
-
-const InputsMessage: React.FC<ChatMessageProps> = ({
-  prompt,
-  inputs = [],
-  onInputs,
-  isUser,
-}) => {
-  const [values, setValues] = useState<Record<string, string>>({});
-  const submit = () => onInputs?.(values);
-
-  return (
-    <Bubble isUser={isUser}>
-      <p className="mb-2">{prompt}</p>
-      {inputs.map((inp) => (
-        <input
-          key={inp.key}
-          type={inp.type ?? "text"}
-          placeholder={inp.label}
-          className="w-full border p-1 mb-2 text-sm"
-          onChange={(e) =>
-            setValues((v) => ({ ...v, [inp.key]: e.target.value }))
-          }
-        />
-      ))}
-      <Button size="sm" onClick={submit}>
-        Submit
-      </Button>
-    </Bubble>
-  );
-};
-
-const FileCardMessage: React.FC<ChatMessageProps> = ({
-  fileCard,
-  onOpenFileCard,
-}) => {
-  if (!fileCard) return null;
-  return (
-    <Card
-      className="cursor-pointer w-60"
-      onClick={() => onOpenFileCard?.(fileCard.fileId, fileCard.versionId)}
-    >
-      <CardHeader className="flex flex-row items-center gap-2">
-        <File size={16} />{" "}
-        <CardTitle className="text-sm">{fileCard.title}</CardTitle>
-      </CardHeader>
-      {fileCard.thumbUrl && (
-        <img src={fileCard.thumbUrl} className="w-full h-28 object-cover" />
-      )}
-      <CardContent className="text-xs text-gray-500">
-        Revision {fileCard.rev}
-      </CardContent>
-    </Card>
-  );
-};
-
 /* ------------------------------------------------------------------ */
-/* Main switch                                                         */
-
+/* Main component                                                     */
 const ChatMessage: React.FC<ChatMessageProps> = (props) => {
-  const { isUser, timestamp, dropzone } = props;
+  const { isUser, timestamp, text, status } = props;
 
-  // Avatar bubble
+  // Avatar component
   const Avatar = (
     <div
-      className={`flex-shrink-0 hidden w-8 h-8 rounded-full items-center justify-center ${
-        isUser ? "bg-wally text-white" : "bg-gray-100 text-gray-600"
+      className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+        isUser ? "bg-wally text-white shadow-md" : "bg-gray-100 text-gray-600"
       }`}
     >
       {isUser ? <User size={16} /> : <Bot size={16} />}
     </div>
   );
 
-  // Choose renderer
-  let body: React.ReactNode;
-  switch (props.kind) {
-    case "text":
-      body = <TextMessage {...props} />;
-      break;
-    case "buttons":
-      body = <ButtonsMessage {...props} />;
-      break;
-    case "inputs":
-      body = <InputsMessage {...props} />;
-      break;
-    case "file_card":
-      body = <FileCardMessage {...props} />;
-      break;
-    case "file":
-      body = (
-        <Bubble isUser={isUser}>
-          <File size={16} className="inline mr-1" />
-          {props.file?.displayName ?? "Attachment"}
-        </Bubble>
-      );
-      break;
-    default:
-      body = <Bubble isUser={isUser}>Unsupported message</Bubble>;
-  }
-
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
+    <div 
+      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}
+      data-status={status}
+    >
       <div
         className={`flex ${
           isUser ? "flex-row-reverse" : "flex-row"
-        } items-start max-w-[80%]`}
+        } items-start max-w-[85%] md:max-w-[75%] gap-2`}
       >
         {Avatar}
         <div
           className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
         >
-          {body}
-          {dropzone && <div className="mt-2 w-full max-w-md">{dropzone}</div>}
-          <span className="text-xs text-gray-500 mt-1" suppressHydrationWarning>
-            {timestamp}
-          </span>
+          <Bubble isUser={isUser}>
+            {text && (
+              <div className="prose prose-sm max-w-none">
+                <ReactMarkdown>
+                  {text}
+                </ReactMarkdown>
+              </div>
+            )}
+          </Bubble>
+          
+          <div className="flex items-center space-x-1 mt-1 text-xs text-gray-400">
+            <span suppressHydrationWarning>{timestamp}</span>
+            {isUser && <StatusIndicator status={status} />}
+          </div>
         </div>
       </div>
     </div>
