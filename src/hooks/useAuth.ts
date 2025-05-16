@@ -1,161 +1,104 @@
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
-import { useAuthStore } from "@/lib/store/auth";
-import { toast } from "sonner";
+// lib/hooks/useAuth.ts
+import { useState, useEffect } from 'react';
+import { useAuthStore } from '@/lib/store/AuthStore';
+import { User, Session } from '@supabase/supabase-js';
 
-export interface Profile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  username: string | null;
-  bio: string | null;
-  website: string | null;
-  company: string | null;
-  role: string;
-  is_verified: boolean;
-  last_sign_in: string | null;
-  created_at: string;
-  updated_at: string;
+interface UseAuthReturn {
+  // Auth state
+  user: User | null;
+  session: Session | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  error: string | null;
+  
+  // Auth methods
+  login: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  resetError: () => void;
+  getAuthToken: () => string | null;
 }
 
-export function useAuth() {
-  const router = useRouter();
-  const { user, setUser, isLoading, setLoading } = useAuthStore();
+/**
+ * Custom hook that provides authentication functionality
+ * @param {Object} options - Configuration options
+ * @param {string} options.redirectTo - Path to redirect to after login (if provided)
+ * @param {string} options.redirectIfFound - Redirect if the user is already logged in (for login/signup pages)
+ * @returns {UseAuthReturn} Authentication state and methods
+ */
+export const useAuth = (options?: { 
+  redirectTo?: string; 
+  redirectIfFound?: boolean;
+}): UseAuthReturn => {
+  // Get auth state from the store with explicit typing
+  const user = useAuthStore((state) => state.user);
+  const session = useAuthStore((state) => state.session);
+  const storeIsLoading = useAuthStore((state) => state.isLoading);
+  const error = useAuthStore((state) => state.error);
+  
+  // Get auth actions from the store
+  const login = useAuthStore((state) => state.login);
+  const signUp = useAuthStore((state) => state.signUp);
+  const logout = useAuthStore((state) => state.logout);
+  const resetError = useAuthStore((state) => state.resetError);
+  const refreshSession = useAuthStore((state) => state.refreshSession);
+  const getAuthToken = useAuthStore((state) => state.getAuthToken);
 
+  // Local loading state to handle initial load
+  const [isInitializing, setIsInitializing] = useState(true);
+  const isLoading = storeIsLoading || isInitializing;
+  
+  // Derived authentication state
+  const isAuthenticated = !!user && !!session;
+
+  // Server-side rendering safe check
+  const [isMounted, setIsMounted] = useState(false);
+  
+  // Handle client-side only operations and session refresh
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => {
-      subscription.unsubscribe();
+    // Skip on server-side
+    if (typeof window === 'undefined') return;
+    
+    setIsMounted(true);
+    
+    const initAuth = async () => {
+      await refreshSession();
+      setIsInitializing(false);
+      
+      // Handle redirects after authentication is initialized
+      if (options?.redirectTo && isAuthenticated) {
+        window.location.href = options.redirectTo;
+      } else if (options?.redirectIfFound && isAuthenticated) {
+        window.location.href = '/';
+      }
     };
-  }, [setUser, setLoading]);
+    
+    initAuth();
+  }, []); // Empty dependency array - only run once on mount
 
-  const signIn = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      // Update last_sign_in in profiles
-      await supabase
-        .from("profiles")
-        .update({ last_sign_in: new Date().toISOString() })
-        .eq("id", user?.id);
-
-      toast.success("Signed in successfully");
-      router.push("/");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to sign in");
-    } finally {
-      setLoading(false);
+  // Handle changes in authentication state after initialization
+  useEffect(() => {
+    if (!isMounted || isInitializing || typeof window === 'undefined') return;
+    
+    if (options?.redirectTo && isAuthenticated) {
+      window.location.href = options.redirectTo;
+    } else if (options?.redirectIfFound && isAuthenticated) {
+      window.location.href = '/';
     }
-  };
-
-  const signUp = async (email: string, password: string, fullName?: string) => {
-    try {
-      setLoading(true);
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
-
-      if (error) throw error;
-
-      toast.success("Check your email for the confirmation link");
-      router.push("/auth/login");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to sign up");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      setLoading(true);
-      const { error } = await supabase.auth.signOut();
-
-      if (error) throw error;
-
-      toast.success("Signed out successfully");
-      router.push("/auth/login");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to sign out"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateProfile = async (updates: Partial<Profile>) => {
-    try {
-      setLoading(true);
-      const { error } = await supabase
-        .from("profiles")
-        .update(updates)
-        .eq("id", user?.id);
-
-      if (error) throw error;
-
-      toast.success("Profile updated successfully");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update profile"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getProfile = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user?.id)
-        .single();
-
-      if (error) throw error;
-      return data as Profile;
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to get profile"
-      );
-      return null;
-    }
-  };
+  }, [isAuthenticated, isMounted, isInitializing, options]);
 
   return {
     user,
+    session,
     isLoading,
-    signIn,
+    isAuthenticated,
+    error,
+    login,
     signUp,
-    signOut,
-    updateProfile,
-    getProfile,
+    logout,
+    resetError,
+    getAuthToken
   };
-}
+};
+
+export default useAuth;

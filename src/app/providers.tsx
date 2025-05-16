@@ -5,14 +5,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { useAuthStore } from "@/lib/store/auth";
+import { useAuthStore } from "@/lib/store/AuthStore";
 
 function AuthSync() {
-  const syncAuth = useAuthStore((state) => state.syncAuth);
+  // const syncAuth = useAuthStore((state) => state.syncAuth);
 
-  useEffect(() => {
-    syncAuth();
-  }, [syncAuth]);
+  // useEffect(() => {
+  //   syncAuth();
+  // }, [syncAuth]);
 
   return null;
 }
