@@ -1,3 +1,4 @@
+// client/src/app/auth/callback/route.ts
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -5,6 +6,7 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const redirectTo = requestUrl.searchParams.get("redirectTo") || "/";
 
   if (code) {
     const cookieStore = await cookies();
@@ -25,9 +27,11 @@ export async function GET(request: Request) {
         },
       }
     );
+    
+    // Exchange the code for a session
     await supabase.auth.exchangeCodeForSession(code);
   }
 
   // URL to redirect to after sign in process completes
-  return NextResponse.redirect(new URL("/", request.url));
+  return NextResponse.redirect(new URL(redirectTo, request.url));
 }

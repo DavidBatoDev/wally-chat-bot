@@ -1,4 +1,4 @@
-// src/components/chat/ChatMessage.tsx
+// client/src/components/chat/ChatMessage.tsx
 "use client";
 import React from "react";
 import { User, Bot, CheckCheck, Check, AlertCircle } from "lucide-react";
@@ -78,7 +78,7 @@ const ChatMessage: React.FC<ChatMessageProps> = (props) => {
         >
           <Bubble isUser={isUser}>
             {text && (
-              <div className="prose prose-sm max-w-none">
+              <div className={`prose prose-sm max-w-none ${isUser ? "text-white" : "text-gray-800"}`}>
                 <ReactMarkdown>
                   {text}
                 </ReactMarkdown>

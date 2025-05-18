@@ -2,6 +2,7 @@
 // Diagnostic-focused API interceptor that logs errors but doesn't redirect
 import axios from 'axios';
 import { useAuthStore } from '@/lib/store/AuthStore';
+import { clearAuthTokens } from '@/utils/clearAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -59,10 +60,18 @@ api.interceptors.response.use(
     // Handle auth errors but DON'T redirect yet - just log for diagnosis
     if (error.response?.status === 401) {
       console.error('🔑 Authentication error (401): Token might be invalid or expired');
+      clearAuthTokens();
+      // redirect to login page if needed
+      window.location.href = '/auth/login';
+
+
     }
     
     if (error.response?.status === 403) {
       console.error('🚫 Permission error (403): User may not have sufficient permissions');
+      clearAuthTokens();
+      // redirect to login page if needed
+      window.location.href = '/auth/login';
     }
     
     // Forward the error for component-level handling

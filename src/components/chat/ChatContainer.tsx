@@ -1,4 +1,4 @@
-// src/components/chat/ChatContainer.tsx
+// client/src/components/chat/ChatContainer.tsx
 "use client";
 import React, { useRef, useEffect, useState } from "react";
 import ChatMessage from "./ChatMessage";
@@ -35,22 +35,7 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   const displayMessages =
     messages.length > 0
       ? messages
-      : [
-          {
-            id: "1",
-            isUser: false,
-            text: "Hello! I'm your AI assistant. How can I help you today?",
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: "delivered" as MessageStatus,
-          },
-          { 
-            id: "2", 
-            isUser: true, 
-            text: "Hi there!", 
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: "delivered" as MessageStatus,
-          },
-        ];
+      : [];
 
   // Scroll to bottom when messages change
   useEffect(() => {
