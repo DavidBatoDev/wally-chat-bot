@@ -3,15 +3,28 @@
 import React from "react";
 import { User, Bot, CheckCheck, Check, AlertCircle } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
+import { Button } from "@/components/ui/button";
 import { MessageStatus } from "./ChatContainer";
 
 /* ------------------------------------------------------------------ */
-/* Type for chat messages                                             */
+/* Types for chat messages                                            */
 export interface ChatMessageProps {
   isUser: boolean;
   timestamp: string;
   text?: string;
   status?: MessageStatus;
+  kind?: string;
+  body?: any; // For structured content like buttons
+  onButtonClick?: (action: string, actionType: string, parameters: any, toolName?: string, toolParameters?: any) => void;
+}
+
+interface ButtonAction {
+  text: string;
+  action: string;
+  action_type: string;
+  parameters: any;
+  tool_name?: string;
+  tool_parameters?: any;
 }
 
 /* ------------------------------------------------------------------ */
@@ -46,10 +59,46 @@ const Bubble: React.FC<{
   </div>
 );
 
+
+
+/* ------------------------------------------------------------------ */
+/* Buttons Message Component                                          */
+const ButtonsMessage: React.FC<{
+  prompt: string;
+  buttons: ButtonAction[];
+  onButtonClick: (action: string, actionType: string, parameters: any, toolName?: string, toolParameters?: any) => void;
+}> = ({ prompt, buttons, onButtonClick }) => {
+  return (
+    <div className="flex flex-col space-y-3">
+      <p className="text-gray-800 mb-2">{prompt}</p>
+      <div className="flex flex-wrap gap-2">
+        {buttons.map((button, index) => (
+          <Button
+            key={index}
+            variant="outline"
+            className="text-sm border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+            onClick={() => onButtonClick(
+              button.action,
+              button.action_type,
+              button.parameters,
+              button.tool_name,
+              button.tool_parameters
+            )}
+          >
+            {button.text}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 /* ------------------------------------------------------------------ */
 /* Main component                                                     */
 const ChatMessage: React.FC<ChatMessageProps> = (props) => {
-  const { isUser, timestamp, text, status } = props;
+  const { isUser, timestamp, text, status, kind, body, onButtonClick } = props;
+
+  console.log("ChatMessage props:", props);
 
   // Avatar component
   const Avatar = (
@@ -61,6 +110,19 @@ const ChatMessage: React.FC<ChatMessageProps> = (props) => {
       {isUser ? <User size={16} /> : <Bot size={16} />}
     </div>
   );
+
+  // Parse the button content from JSON string if it's a string
+  let buttonContent = null;
+  if (kind === "buttons" && body) {
+    const parsedBody = typeof body === 'string' ? JSON.parse(body) : body;
+    buttonContent = (
+      <ButtonsMessage 
+        prompt={parsedBody.prompt} 
+        buttons={parsedBody.buttons} 
+        onButtonClick={onButtonClick || (() => {})} 
+      />
+    );
+  }
 
   return (
     <div 
@@ -77,13 +139,15 @@ const ChatMessage: React.FC<ChatMessageProps> = (props) => {
           className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
         >
           <Bubble isUser={isUser}>
-            {text && (
+            {kind === "buttons" ? (
+              buttonContent
+            ) : text ? (
               <div className={`prose prose-sm max-w-none ${isUser ? "text-white" : "text-gray-800"}`}>
                 <ReactMarkdown>
                   {text}
                 </ReactMarkdown>
               </div>
-            )}
+            ) : null}
           </Bubble>
           
           <div className="flex items-center space-x-1 mt-1 text-xs text-gray-400">
