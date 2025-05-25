@@ -54,7 +54,7 @@ export default function UserProfile() {
       
       try {
         console.log('Attempting to fetch user profile...');
-        const response = await api.get('/api/user/me');
+        const response = await api.get('/api/user/users/me');
         console.log('User profile response:', response);
         setUser(response.data);
         setError(null);

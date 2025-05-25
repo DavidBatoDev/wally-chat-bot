@@ -4,22 +4,12 @@ import React, { useRef, useEffect, useState } from "react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import { Loader2 } from "lucide-react";
+import { ParsedMessage } from "@/hooks/useChat";
 
 export type MessageStatus = "sending" | "sent" | "error" | "delivered";
 
-export interface Message {
-  id: string;
-  isUser: boolean;
-  text?: string;
-  timestamp: string;
-  status?: MessageStatus;
-  kind?: string;
-  body?: any;
-  sender?: string;
-}
-
 interface ChatContainerProps {
-  messages?: Array<Message>;
+  messages?: ParsedMessage[]; // Now using ParsedMessage from the hook
   onSendMessage?: (text: string) => void;
   onActionClick?: (action: string, values: any) => void;
   loading?: boolean;
@@ -35,15 +25,15 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [documentActive, setDocumentActive] = useState(false);
- 
-  // Sample static messages if none are provided
-  const displayMessages = messages.length > 0 ? messages : [];
-  
+
+  // Messages are already parsed by the hook, so we can use them directly
+  const displayMessages = messages;
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayMessages]);
-  
+
   // Toggle document panel
   const toggleDocumentState = () => {
     const newState = !documentActive;
@@ -51,29 +41,20 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     onDocumentStateChange(newState);
   };
 
-  // Handle button clicks
-  const handleButtonClick = (
-    action: string, 
-    actionType: string, 
-    parameters: any, 
-    toolName?: string, 
-    toolParameters?: any
-  ) => {
-    const values: any = { 
-      action_type: actionType, 
-      parameters 
-    };
-    
-    // For tool-type buttons, add tool information
-    if (actionType === "tool" && toolName) {
-      values.tool_name = toolName;
-      values.tool_parameters = toolParameters || {};
-    }
-    
+  // Handle button clicks - simplified
+  const handleButtonClick = (action: string, values: Record<string, any> = {}) => {
     console.log("Button clicked:", action, values);
     onActionClick(action, values);
   };
-  
+
+  // Convert backend message timestamp to display format
+  const formatTimestamp = (created_at: string): string => {
+    return new Date(created_at).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Chat header for document toggle */}
@@ -90,22 +71,20 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
           {documentActive ? "Hide Document" : "Show Document"}
         </button>
       </div>
-     
+      
       {/* Messages container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
         {displayMessages.map((msg) => (
           <ChatMessage
             key={msg.id}
-            isUser={msg.isUser || (msg.sender === "user")}
-            text={msg.text}
-            timestamp={msg.timestamp}
-            status={msg.status}
+            isUser={msg.sender === "user"}
+            timestamp={formatTimestamp(msg.created_at)}
             kind={msg.kind}
-            body={msg.body}
+            body={msg.body} // This is now already parsed JSON
             onButtonClick={handleButtonClick}
           />
         ))}
-       
+        
         {loading && (
           <div className="flex justify-start mb-4">
             <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 animate-pulse">
@@ -114,10 +93,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
             </div>
           </div>
         )}
-       
+        
         <div ref={messagesEndRef} />
       </div>
-     
+      
       {/* Chat input */}
       <ChatInput
         onSendMessage={onSendMessage}

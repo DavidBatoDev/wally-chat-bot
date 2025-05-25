@@ -31,6 +31,8 @@ export default function ChatPage() {
     conversationId
   });
 
+  console.log("ChatPage backend messages:", messages);
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!user) {
@@ -84,9 +86,7 @@ export default function ChatPage() {
   const handleActionClick = (action: string, values: any) => {
     console.log("Action triggered:", action, values);
     // Send the action to the backend via our hook
-    if (sendAction) {
-      sendAction(action, values);
-    }
+    sendAction(action, values);
   };
 
   // If we're loading initially
