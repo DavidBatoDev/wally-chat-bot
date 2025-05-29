@@ -1,7 +1,7 @@
-// lib/hooks/useAuth.ts
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/store/AuthStore';
 import { User, Session } from '@supabase/supabase-js';
+import { useRouter } from 'next/router'; 
 
 interface UseAuthReturn {
   // Auth state
@@ -10,32 +10,35 @@ interface UseAuthReturn {
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
-  
+ 
   // Auth methods
   login: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetError: () => void;
   getAuthToken: () => string | null;
+  refreshSession: () => Promise<void>; // Added to match AuthStore
 }
 
 /**
  * Custom hook that provides authentication functionality
  * @param {Object} options - Configuration options
  * @param {string} options.redirectTo - Path to redirect to after login (if provided)
- * @param {string} options.redirectIfFound - Redirect if the user is already logged in (for login/signup pages)
+ * @param {boolean} options.redirectIfFound - Redirect if the user is already logged in (for login/signup pages)
  * @returns {UseAuthReturn} Authentication state and methods
  */
-export const useAuth = (options?: { 
-  redirectTo?: string; 
+export const useAuth = (options?: {
+  redirectTo?: string;
   redirectIfFound?: boolean;
 }): UseAuthReturn => {
-  // Get auth state from the store with explicit typing
+  const router = typeof window !== 'undefined' ? useRouter() : null;
+  
+  // Get auth state from the store
   const user = useAuthStore((state) => state.user);
   const session = useAuthStore((state) => state.session);
   const storeIsLoading = useAuthStore((state) => state.isLoading);
   const error = useAuthStore((state) => state.error);
-  
+ 
   // Get auth actions from the store
   const login = useAuthStore((state) => state.login);
   const signUp = useAuthStore((state) => state.signUp);
@@ -43,49 +46,42 @@ export const useAuth = (options?: {
   const resetError = useAuthStore((state) => state.resetError);
   const refreshSession = useAuthStore((state) => state.refreshSession);
   const getAuthToken = useAuthStore((state) => state.getAuthToken);
-
+  
   // Local loading state to handle initial load
   const [isInitializing, setIsInitializing] = useState(true);
   const isLoading = storeIsLoading || isInitializing;
-  
+ 
   // Derived authentication state
   const isAuthenticated = !!user && !!session;
-
-  // Server-side rendering safe check
-  const [isMounted, setIsMounted] = useState(false);
-  
+ 
   // Handle client-side only operations and session refresh
   useEffect(() => {
     // Skip on server-side
     if (typeof window === 'undefined') return;
-    
-    setIsMounted(true);
-    
+   
     const initAuth = async () => {
-      await refreshSession();
-      setIsInitializing(false);
-      
-      // Handle redirects after authentication is initialized
-      if (options?.redirectTo && isAuthenticated) {
-        window.location.href = options.redirectTo;
-      } else if (options?.redirectIfFound && isAuthenticated) {
-        window.location.href = '/';
+      try {
+        await refreshSession();
+      } catch (error) {
+        console.error('Failed to refresh session:', error);
+      } finally {
+        setIsInitializing(false);
       }
     };
-    
+   
     initAuth();
   }, []); // Empty dependency array - only run once on mount
-
-  // Handle changes in authentication state after initialization
+  
+  // Handle redirects based on authentication state
   useEffect(() => {
-    if (!isMounted || isInitializing || typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || isInitializing || !router) return;
     
     if (options?.redirectTo && isAuthenticated) {
-      window.location.href = options.redirectTo;
+      router.push(options.redirectTo);
     } else if (options?.redirectIfFound && isAuthenticated) {
-      window.location.href = '/';
+      router.push('/');
     }
-  }, [isAuthenticated, isMounted, isInitializing, options]);
+  }, [isAuthenticated, isInitializing, options, router]);
 
   return {
     user,
@@ -97,7 +93,8 @@ export const useAuth = (options?: {
     signUp,
     logout,
     resetError,
-    getAuthToken
+    getAuthToken,
+    refreshSession // Expose refreshSession from the store
   };
 };
 
