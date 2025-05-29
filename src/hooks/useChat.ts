@@ -146,15 +146,6 @@ export default function useChat({
     );
   };
 
-  // Replace temporary message with actual backend message
-  const replaceTemporaryMessage = (tempId: string, actualMessage: ParsedMessage) => {
-    setMessages(prevMessages => 
-      prevMessages.map(msg => 
-        msg.tempId === tempId ? actualMessage : msg
-      )
-    );
-  };
-
   // Handle file upload - add the file message to chat immediately
   const handleFileUploaded = useCallback((fileMessage: any) => {
     console.log('Adding uploaded file message to chat:', fileMessage);
