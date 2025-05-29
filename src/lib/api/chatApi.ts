@@ -35,10 +35,22 @@ export interface BackendMessage {
   id: string;
   conversation_id: string;
   sender: 'user' | 'assistant';
-  kind: 'text' | 'action' | 'buttons' | 'inputs' | 'file_card';
+  kind: 'text' | 'action' | 'buttons' | 'file_card' | 'file_upload';
   body: string; // Raw JSON string from backend
   created_at: string;
 }
+
+// add in chatApi.ts (or a separate types file)
+export interface SendActionMessageResponse {
+  success: boolean;
+  user_action_message: BackendMessage;   // name mirrors backend payload
+  assistant_message: BackendMessage;
+  response: any;
+  workflow_status: string;
+  steps_completed: number;
+  user_confirmation_pending?: boolean;
+}
+
 
 // API functions for conversations
 export const chatApi = {
@@ -82,7 +94,7 @@ export const chatApi = {
   // Delete (archive) a conversation
   deleteConversation: async (conversationId: string): Promise<boolean> => {
     try {
-      const response = await api.delete<{ success: boolean }>(`/api/conversations/conversations/${conversationId}`);
+      const response = await api.delete<{ success: boolean }>(`/api/conversations/${conversationId}`);
       return response.data.success;
     } catch (error) {
       console.error('Error deleting conversation:', error);
@@ -139,22 +151,36 @@ export const chatApi = {
     values: Record<string, any> = {}
   ): Promise<{ userMessage: BackendMessage; assistantMessage: BackendMessage }> => {
     try {
-      const response = await api.post<SendTextMessageResponse>('/api/messages/action', {
+      const response = await api.post<SendActionMessageResponse>('/api/messages/action', {
         conversation_id: conversationId,
         action,
         values,
       });
 
-      const { user_message, assistant_message } = response.data;
+      const { user_action_message, assistant_message } = response.data;
 
       return { 
-        userMessage: user_message, 
+        userMessage: user_action_message, 
         assistantMessage: assistant_message 
       };
     } catch (error) {
       console.error('Error sending action message:', error);
       throw error;
     }
+  },
+
+  // Helper method to handle button clicks - this makes it easy to use from components
+  handleButtonClick: async (
+    conversationId: string,
+    buttonAction: string,
+    buttonLabel: string,
+    buttonValue?: string
+  ): Promise<{ userMessage: BackendMessage; assistantMessage: BackendMessage }> => {
+    return chatApi.sendActionMessage(conversationId, buttonAction, {
+      label: buttonLabel,
+      value: buttonValue || buttonLabel.toLowerCase().replace(/\s+/g, '_'),
+      text: buttonLabel
+    });
   }
 };
 

@@ -7,24 +7,38 @@ interface UseChatProps {
   initialMessages?: BackendMessage[];
 }
 
+export type MessageStatus = "sending" | "sent" | "error";
+
 // Parsed message type that components will consume
 export interface ParsedMessage {
   id: string;
   conversation_id: string;
   sender: 'user' | 'assistant';
-  kind: 'text' | 'action' | 'buttons' | 'inputs' | 'file_card';
+  kind: 'text' | 'action' | 'buttons' | 'file_card' | 'file_upload' | 'upload_button' | 'file';
   body: any; // This will be the parsed JSON object
   created_at: string;
+  status?: MessageStatus; // Add status field
+  tempId?: string; // For tracking optimistic updates
+}
+
+// Document state interface
+export interface DocumentState {
+  isOpen: boolean;
+  fileData: any | null;
 }
 
 interface UseChatReturn {
   messages: ParsedMessage[];
+  documentState: DocumentState;
   loading: boolean;
   error: string | null;
   sendMessage: (text: string) => Promise<void>;
   sendAction: (action: string, values?: Record<string, any>) => Promise<void>;
   createNewConversation: () => Promise<string>;
   activeConversationId?: string;
+  handleFileUploaded: (fileMessage: any) => void;
+  onViewFile: (fileData: any) => void;
+  clearViewFile: () => void;
 }
 
 export default function useChat({ 
@@ -32,9 +46,16 @@ export default function useChat({
   initialMessages = []
 }: UseChatProps = {}): UseChatReturn {
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
+  const [documentState, setDocumentState] = useState<DocumentState>({
+    isOpen: false,
+    fileData: null
+  });
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(initialConversationId);
+
+  // Generate temporary ID for optimistic updates
+  const generateTempId = () => `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   // Parse a single backend message into our component-friendly format
   const parseMessage = (backendMessage: BackendMessage): ParsedMessage => {
@@ -51,7 +72,8 @@ export default function useChat({
 
     return {
       ...backendMessage,
-      body: parsedBody
+      body: parsedBody,
+      status: 'sent' // Backend messages are always considered sent
     };
   };
 
@@ -113,6 +135,45 @@ export default function useChat({
     }
   };
 
+  // Update message status by tempId or id
+  const updateMessageStatus = (messageId: string, status: MessageStatus, tempId?: string) => {
+    setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        (msg.id === messageId || msg.tempId === tempId) 
+          ? { ...msg, status }
+          : msg
+      )
+    );
+  };
+
+  // Replace temporary message with actual backend message
+  const replaceTemporaryMessage = (tempId: string, actualMessage: ParsedMessage) => {
+    setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        msg.tempId === tempId ? actualMessage : msg
+      )
+    );
+  };
+
+  // Handle file upload - add the file message to chat immediately
+  const handleFileUploaded = useCallback((fileMessage: any) => {
+    console.log('Adding uploaded file message to chat:', fileMessage);
+    
+    // Convert the file message to our ParsedMessage format
+    const parsedFileMessage: ParsedMessage = {
+      id: fileMessage.id,
+      conversation_id: fileMessage.conversation_id,
+      sender: fileMessage.sender,
+      kind: fileMessage.kind,
+      body: fileMessage.body,
+      created_at: fileMessage.created_at,
+      status: fileMessage.status || 'sent'
+    };
+    
+    // Add the file message to the end of the messages array
+    setMessages(prevMessages => [...prevMessages, parsedFileMessage]);
+  }, []);
+
   // Send a text message
   const sendMessage = async (text: string): Promise<void> => {
     if (!text.trim()) return;
@@ -128,6 +189,21 @@ export default function useChat({
       }
     }
 
+    // Create optimistic user message
+    const tempId = generateTempId();
+    const optimisticUserMessage: ParsedMessage = {
+      id: tempId, // Temporary ID
+      tempId: tempId,
+      conversation_id: conversationId,
+      sender: 'user',
+      kind: 'text',
+      body: { text },
+      created_at: new Date().toISOString(),
+      status: 'sending'
+    };
+
+    // Add optimistic message immediately
+    setMessages(prevMessages => [...prevMessages, optimisticUserMessage]);
     setLoading(true);
     setError(null);
 
@@ -138,14 +214,22 @@ export default function useChat({
         text
       );
 
-      // Parse both messages and add them to state
+      // Parse both messages
       const parsedUserMessage = parseMessage(userMessage);
       const parsedAssistantMessage = parseMessage(assistantMessage);
       
-      setMessages(prevMessages => [...prevMessages, parsedUserMessage, parsedAssistantMessage]);
+      // Replace the optimistic message with the actual one and add assistant message
+      setMessages(prevMessages => {
+        const filteredMessages = prevMessages.filter(msg => msg.tempId !== tempId);
+        return [...filteredMessages, parsedUserMessage, parsedAssistantMessage];
+      });
+
     } catch (err) {
       console.error('Failed to send message:', err);
       setError('Failed to send message. Please try again.');
+      
+      // Update the optimistic message status to error
+      updateMessageStatus('', 'error', tempId);
     } finally {
       setLoading(false);
     }
@@ -158,6 +242,21 @@ export default function useChat({
       return;
     }
 
+    // Create optimistic user action message
+    const tempId = generateTempId();
+    const optimisticActionMessage: ParsedMessage = {
+      id: tempId,
+      tempId: tempId,
+      conversation_id: activeConversationId,
+      sender: 'user',
+      kind: 'action',
+      body: { action, values },
+      created_at: new Date().toISOString(),
+      status: 'sending'
+    };
+
+    // Add optimistic message immediately
+    setMessages(prevMessages => [...prevMessages, optimisticActionMessage]);
     setLoading(true);
     setError(null);
 
@@ -169,26 +268,57 @@ export default function useChat({
         values
       );
 
-      // Parse both messages and add them to state
+      // Parse both messages
       const parsedUserMessage = parseMessage(userMessage);
       const parsedAssistantMessage = parseMessage(assistantMessage);
       
-      setMessages(prevMessages => [...prevMessages, parsedUserMessage, parsedAssistantMessage]);
+      // Replace the optimistic message with the actual one and add assistant message
+      setMessages(prevMessages => {
+        const filteredMessages = prevMessages.filter(msg => msg.tempId !== tempId);
+        return [...filteredMessages, parsedUserMessage, parsedAssistantMessage];
+      });
+
     } catch (err) {
       console.error('Failed to send action:', err);
       setError('Failed to send action. Please try again.');
+      
+      // Update the optimistic message status to error
+      updateMessageStatus('', 'error', tempId);
     } finally {
       setLoading(false);
     }
   };
 
+  // Handle viewing files in document canvas
+  const onViewFile = useCallback((fileData: any) => {
+    console.log('onViewFile called with:', fileData);
+    
+    setDocumentState({
+      isOpen: true,
+      fileData: fileData
+    });
+  }, []);
+
+  // Clear document view
+  const clearViewFile = useCallback(() => {
+    console.log('Clearing document view');
+    setDocumentState({
+      isOpen: false,
+      fileData: null
+    });
+  }, []);
+
   return {
     messages,
+    documentState,
+    activeConversationId,
     loading,
     error,
     sendMessage,
     sendAction,
     createNewConversation,
-    activeConversationId,
+    handleFileUploaded,
+    onViewFile,
+    clearViewFile
   };
 }

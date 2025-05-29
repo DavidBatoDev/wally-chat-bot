@@ -6,25 +6,26 @@ import ChatInput from "./ChatInput";
 import { Loader2 } from "lucide-react";
 import { ParsedMessage } from "@/hooks/useChat";
 
-export type MessageStatus = "sending" | "sent" | "error" | "delivered";
+export type MessageStatus = "sending" | "sent" | "error";
 
 interface ChatContainerProps {
-  messages?: ParsedMessage[]; // Now using ParsedMessage from the hook
+  messages?: ParsedMessage[];
   onSendMessage?: (text: string) => void;
   onActionClick?: (action: string, values: any) => void;
+  onFileUploaded?: (fileMessage: any) => void; 
+  onViewFile?: (message: any) => void;
   loading?: boolean;
-  onDocumentStateChange?: (isActive: boolean) => void;
 }
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
   messages = [],
   onSendMessage = () => {},
   onActionClick = () => {},
+  onViewFile = () => {}, 
+  onFileUploaded = () => {},
   loading = false,
-  onDocumentStateChange = () => {},
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [documentActive, setDocumentActive] = useState(false);
 
   // Messages are already parsed by the hook, so we can use them directly
   const displayMessages = messages;
@@ -33,13 +34,6 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayMessages]);
-
-  // Toggle document panel
-  const toggleDocumentState = () => {
-    const newState = !documentActive;
-    setDocumentActive(newState);
-    onDocumentStateChange(newState);
-  };
 
   // Handle button clicks - simplified
   const handleButtonClick = (action: string, values: Record<string, any> = {}) => {
@@ -60,31 +54,25 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* Chat header for document toggle */}
       <div className="flex items-center justify-between p-3 border-b border-gray-100">
         <h2 className="text-lg font-medium">Chat</h2>
-        <button
-          onClick={toggleDocumentState}
-          className={`px-3 py-1 rounded-md text-sm ${
-            documentActive
-              ? "bg-wally text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          {documentActive ? "Hide Document" : "Show Document"}
-        </button>
       </div>
-      
+     
       {/* Messages container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
         {displayMessages.map((msg) => (
           <ChatMessage
-            key={msg.id}
+            key={msg.tempId || msg.id} 
+            conversationId={msg.conversation_id}
             isUser={msg.sender === "user"}
             timestamp={formatTimestamp(msg.created_at)}
+            status={msg.status} 
             kind={msg.kind}
-            body={msg.body} // This is now already parsed JSON
+            body={msg.body} 
             onButtonClick={handleButtonClick}
+            onFileUploaded={onFileUploaded}
+            onViewFile={onViewFile} 
           />
         ))}
-        
+       
         {loading && (
           <div className="flex justify-start mb-4">
             <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 animate-pulse">
@@ -93,10 +81,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
             </div>
           </div>
         )}
-        
+       
         <div ref={messagesEndRef} />
       </div>
-      
+     
       {/* Chat input */}
       <ChatInput
         onSendMessage={onSendMessage}

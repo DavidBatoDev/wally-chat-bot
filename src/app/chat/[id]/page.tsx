@@ -9,12 +9,12 @@ import useChat from "@/hooks/useChat";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Plus, Menu, X } from "lucide-react";
 import { useAuthStore } from "@/lib/store/AuthStore";
+import DocumentCanvas from "@/components/chat/DocumentCanvas";
 
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuthStore();
-  const [showDocument, setShowDocument] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const conversationId = params?.id as string;
 
@@ -23,15 +23,17 @@ export default function ChatPage() {
     messages,
     loading,
     error,
+    documentState,
     sendMessage,
     sendAction,
     activeConversationId,
-    createNewConversation
+    createNewConversation,
+    handleFileUploaded,
+    onViewFile,
+    clearViewFile
   } = useChat({
     conversationId
   });
-
-  console.log("ChatPage backend messages:", messages);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -70,11 +72,6 @@ export default function ChatPage() {
     } catch (error) {
       console.error("Failed to create new conversation:", error);
     }
-  };
-
-  // Handle document visibility toggle
-  const handleDocumentToggle = (isActive: boolean) => {
-    setShowDocument(isActive);
   };
 
   // Toggle sidebar visibility
@@ -176,26 +173,25 @@ export default function ChatPage() {
         {/* Main content wrapper */}
         <div className="flex-1 flex overflow-hidden">
           {/* Chat container */}
-          <div className={`${showDocument ? "w-1/2" : "w-full"} flex flex-col`}>
+          <div className={`${documentState.isOpen ? "w-1/2" : "w-full"} flex flex-col`}>
             <div className="flex-1 overflow-hidden">
               <ChatContainer
                 messages={messages}
                 onSendMessage={sendMessage}
                 onActionClick={handleActionClick}
                 loading={loading}
-                onDocumentStateChange={handleDocumentToggle}
+                onFileUploaded={handleFileUploaded}
+                onViewFile={onViewFile}
               />
             </div>
           </div>
 
-          {/* Document panel (empty for now) */}
-          {showDocument && (
-            <div className="w-1/2 border-l border-gray-200 p-4 overflow-auto">
-              <h2 className="text-lg font-medium mb-4">Document View</h2>
-              <div className="bg-gray-100 rounded-lg p-4 h-[80%] flex items-center justify-center">
-                <p className="text-gray-500">Document content will be displayed here.</p>
-              </div>
-            </div>
+          {/* Document panel */}
+          {documentState.isOpen && (
+            <DocumentCanvas 
+              fileData={documentState.fileData}
+              onClose={clearViewFile}
+            />
           )}
         </div>
       </div>

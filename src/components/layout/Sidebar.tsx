@@ -1,6 +1,6 @@
 import React from "react";
 import { MessageSquare, History, Settings } from "lucide-react";
-import { useAuthStore } from "@/lib/store/auth";
+import { useAuthStore } from "@/lib/store/AuthStore";
 
 const Sidebar = () => {
   const { user } = useAuthStore();
