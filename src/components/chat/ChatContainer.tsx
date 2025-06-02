@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
-import { Loader2 } from "lucide-react";
+import { Loader2, Wifi, WifiOff } from "lucide-react";
 import { ParsedMessage } from "@/hooks/useChat";
 
 export type MessageStatus = "sending" | "sent" | "error";
@@ -12,21 +12,23 @@ interface ChatContainerProps {
   messages?: ParsedMessage[];
   onSendMessage?: (text: string) => void;
   onActionClick?: (action: string, values: any) => void;
-  onFileUploaded?: (fileMessage: any) => void; 
+  onFileUploaded?: (fileMessage: any) => void;
   onViewFile?: (message: any) => void;
   loading?: boolean;
+  isConnected?: boolean;
 }
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
   messages = [],
   onSendMessage = () => {},
   onActionClick = () => {},
-  onViewFile = () => {}, 
+  onViewFile = () => {},
   onFileUploaded = () => {},
   loading = false,
+  isConnected = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
+  
   // Messages are already parsed by the hook, so we can use them directly
   const displayMessages = messages;
 
@@ -51,25 +53,40 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Chat header for document toggle */}
+      {/* Chat header with real-time status */}
       <div className="flex items-center justify-between p-3 border-b border-gray-100">
         <h2 className="text-lg font-medium">Chat</h2>
+        
+        {/* Real-time connection status */}
+        <div className="flex items-center space-x-2">
+          {isConnected ? (
+            <div className="flex items-center space-x-1 text-green-600">
+              <Wifi className="h-4 w-4" />
+              <span className="text-xs font-medium">Live</span>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-1 text-gray-400">
+              <WifiOff className="h-4 w-4" />
+              <span className="text-xs font-medium">Connecting...</span>
+            </div>
+          )}
+        </div>
       </div>
      
       {/* Messages container */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
         {displayMessages.map((msg) => (
           <ChatMessage
-            key={msg.tempId || msg.id} 
+            key={msg.tempId || msg.id}
             conversationId={msg.conversation_id}
             isUser={msg.sender === "user"}
             timestamp={formatTimestamp(msg.created_at)}
-            status={msg.status} 
+            status={msg.status}
             kind={msg.kind}
-            body={msg.body} 
+            body={msg.body}
             onButtonClick={handleButtonClick}
             onFileUploaded={onFileUploaded}
-            onViewFile={onViewFile} 
+            onViewFile={onViewFile}
           />
         ))}
        

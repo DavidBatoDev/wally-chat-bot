@@ -30,7 +30,8 @@ export default function ChatPage() {
     createNewConversation,
     handleFileUploaded,
     onViewFile,
-    clearViewFile
+    clearViewFile,
+    isConnected
   } = useChat({
     conversationId
   });
@@ -182,6 +183,7 @@ export default function ChatPage() {
                 loading={loading}
                 onFileUploaded={handleFileUploaded}
                 onViewFile={onViewFile}
+                isConnected={isConnected}
               />
             </div>
           </div>

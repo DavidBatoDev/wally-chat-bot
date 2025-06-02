@@ -22,6 +22,16 @@ export interface SendTextMessageResponse {
   tool_result?: any;
 }
 
+export interface SendActionMessageResponse {
+  success: boolean;
+  user_action_message: BackendMessage;   // name mirrors backend payload
+  assistant_message: BackendMessage;
+  response: any;
+  workflow_status: string;
+  steps_completed: number;
+  user_confirmation_pending?: boolean;
+}
+
 export interface Conversation {
   id: string;
   profile_id: string;
@@ -35,22 +45,39 @@ export interface BackendMessage {
   id: string;
   conversation_id: string;
   sender: 'user' | 'assistant';
-  kind: 'text' | 'action' | 'buttons' | 'file_card' | 'file_upload';
+  kind: 'text' | 'action' | 'buttons' | 'file_card' | 'file_upload' | 'upload_button' | 'file';
   body: string; // Raw JSON string from backend
   created_at: string;
 }
 
-// add in chatApi.ts (or a separate types file)
-export interface SendActionMessageResponse {
-  success: boolean;
-  user_action_message: BackendMessage;   // name mirrors backend payload
-  assistant_message: BackendMessage;
-  response: any;
-  workflow_status: string;
-  steps_completed: number;
-  user_confirmation_pending?: boolean;
+// Enhanced error handling for API calls
+class ChatApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public originalError?: any
+  ) {
+    super(message);
+    this.name = 'ChatApiError';
+  }
 }
 
+const handleApiError = (error: any, context: string) => {
+  console.error(`Error in ${context}:`, error);
+  
+  if (error.response) {
+    // The request was made and the server responded with a status code
+    const statusCode = error.response.status;
+    const message = error.response.data?.message || error.response.data?.error || `${context} failed`;
+    throw new ChatApiError(message, statusCode, error);
+  } else if (error.request) {
+    // The request was made but no response was received
+    throw new ChatApiError(`Network error during ${context}`, undefined, error);
+  } else {
+    // Something happened in setting up the request
+    throw new ChatApiError(`Request setup error during ${context}`, undefined, error);
+  }
+};
 
 // API functions for conversations
 export const chatApi = {
@@ -60,10 +87,15 @@ export const chatApi = {
       const response = await api.post<{ success: boolean; conversation_id: string }>('/api/conversations/', {
         title,
       });
+      
+      if (!response.data.success) {
+        throw new Error('Failed to create conversation');
+      }
+      
       return response.data.conversation_id;
     } catch (error) {
-      console.error('Error creating conversation:', error);
-      throw error;
+      handleApiError(error, 'creating conversation');
+      throw error; // This will never be reached due to handleApiError throwing
     }
   },
 
@@ -73,9 +105,14 @@ export const chatApi = {
       const response = await api.get<{ success: boolean; conversations: Conversation[] }>(
         `/api/conversations/?limit=${limit}&offset=${offset}`
       );
+      
+      if (!response.data.success) {
+        throw new Error('Failed to list conversations');
+      }
+      
       return response.data.conversations;
     } catch (error) {
-      console.error('Error listing conversations:', error);
+      handleApiError(error, 'listing conversations');
       throw error;
     }
   },
@@ -84,9 +121,14 @@ export const chatApi = {
   getConversation: async (conversationId: string): Promise<ConversationResponse> => {
     try {
       const response = await api.get<ConversationResponse>(`/api/conversations/${conversationId}`);
+      
+      if (!response.data.success) {
+        throw new Error('Failed to get conversation');
+      }
+      
       return response.data;
     } catch (error) {
-      console.error('Error getting conversation:', error);
+      handleApiError(error, 'getting conversation');
       throw error;
     }
   },
@@ -97,7 +139,7 @@ export const chatApi = {
       const response = await api.delete<{ success: boolean }>(`/api/conversations/${conversationId}`);
       return response.data.success;
     } catch (error) {
-      console.error('Error deleting conversation:', error);
+      handleApiError(error, 'deleting conversation');
       throw error;
     }
   },
@@ -113,43 +155,50 @@ export const chatApi = {
         `/api/messages/${conversationId}?limit=${limit}&offset=${offset}`
       );
       
+      if (!response.data.success) {
+        throw new Error('Failed to get messages');
+      }
+      
       // Return raw messages - parsing will be done in the hook
       return response.data.messages;
     } catch (error) {
-      console.error('Error getting messages:', error);
+      handleApiError(error, 'getting messages');
       throw error;
     }
   },
 
   // Send a text message to the conversation
+  // Note: With real-time updates, we don't need to return the messages since they'll come via Supabase
   sendTextMessage: async (
     conversationId: string,
     message: string
-  ): Promise<{ userMessage: BackendMessage; assistantMessage: BackendMessage }> => {
+  ): Promise<void> => {
     try {
       const response = await api.post<SendTextMessageResponse>('/api/messages/text', {
         conversation_id: conversationId,
         body: message,
       });
 
-      const { user_message, assistant_message } = response.data;
+      if (!response.data.success) {
+        throw new Error('Failed to send text message');
+      }
 
-      return { 
-        userMessage: user_message, 
-        assistantMessage: assistant_message 
-      };
+      // With real-time updates, we don't need to return the messages
+      // They will be received via the Supabase subscription
+      console.log('Text message sent successfully, waiting for real-time updates');
     } catch (error) {
-      console.error('Error sending text message:', error);
+      handleApiError(error, 'sending text message');
       throw error;
     }
   },
 
   // Send an action message (response to buttons or inputs)
+  // Note: With real-time updates, we don't need to return the messages since they'll come via Supabase
   sendActionMessage: async (
     conversationId: string,
     action: string,
     values: Record<string, any> = {}
-  ): Promise<{ userMessage: BackendMessage; assistantMessage: BackendMessage }> => {
+  ): Promise<void> => {
     try {
       const response = await api.post<SendActionMessageResponse>('/api/messages/action', {
         conversation_id: conversationId,
@@ -157,31 +206,82 @@ export const chatApi = {
         values,
       });
 
-      const { user_action_message, assistant_message } = response.data;
+      if (!response.data.success) {
+        throw new Error('Failed to send action message');
+      }
 
-      return { 
-        userMessage: user_action_message, 
-        assistantMessage: assistant_message 
-      };
+      // With real-time updates, we don't need to return the messages
+      // They will be received via the Supabase subscription
+      console.log('Action message sent successfully, waiting for real-time updates');
     } catch (error) {
-      console.error('Error sending action message:', error);
+      handleApiError(error, 'sending action message');
       throw error;
     }
   },
 
-  // Helper method to handle button clicks - this makes it easy to use from components
+  // Helper method to handle button clicks - simplified for real-time architecture
   handleButtonClick: async (
     conversationId: string,
     buttonAction: string,
     buttonLabel: string,
     buttonValue?: string
-  ): Promise<{ userMessage: BackendMessage; assistantMessage: BackendMessage }> => {
+  ): Promise<void> => {
     return chatApi.sendActionMessage(conversationId, buttonAction, {
       label: buttonLabel,
       value: buttonValue || buttonLabel.toLowerCase().replace(/\s+/g, '_'),
       text: buttonLabel
     });
+  },
+
+  // Utility method to check if the API is reachable
+  healthCheck: async (): Promise<boolean> => {
+    try {
+      const response = await api.get('/api/health');
+      return response.status === 200;
+    } catch (error) {
+      console.warn('API health check failed:', error);
+      return false;
+    }
+  },
+
+  // Utility method for file uploads (if needed)
+  uploadFile: async (
+    conversationId: string,
+    file: File,
+    onUploadProgress?: (progress: number) => void
+  ): Promise<BackendMessage> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('conversation_id', conversationId);
+
+      const response = await api.post<{ success: boolean; message: BackendMessage }>(
+        '/api/files/upload',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          onUploadProgress: (progressEvent) => {
+            if (onUploadProgress && progressEvent.total) {
+              const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              onUploadProgress(progress);
+            }
+          },
+        }
+      );
+
+      if (!response.data.success) {
+        throw new Error('File upload failed');
+      }
+
+      return response.data.message;
+    } catch (error) {
+      handleApiError(error, 'uploading file');
+      throw error;
+    }
   }
 };
 
 export default chatApi;
+export { ChatApiError };
