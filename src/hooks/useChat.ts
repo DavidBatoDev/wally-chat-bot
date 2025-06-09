@@ -270,23 +270,33 @@ export default function useChat({
     );
   };
 
-  // Handle file upload - add the file message to chat immediately
-  const handleFileUploaded = useCallback((fileMessage: any) => {
-    console.log('Adding uploaded file message to chat:', fileMessage);
+  // Handle file upload - Don't add message manually since real-time will handle it
+  const handleFileUploaded = useCallback((fileResponse: any) => {
+    console.log('File uploaded successfully:', fileResponse);
     
-    // Convert the file message to our ParsedMessage format
-    const parsedFileMessage: ParsedMessage = {
-      id: fileMessage.id,
-      conversation_id: fileMessage.conversation_id,
-      sender: fileMessage.sender,
-      kind: fileMessage.kind,
-      body: fileMessage.body,
-      created_at: fileMessage.created_at,
-      status: fileMessage.status || 'sent'
-    };
+    // The backend creates a message in the database when a file is uploaded,
+    // and our Supabase real-time subscription will automatically pick up
+    // that new message and add it to the state. No need to manually add it here.
     
-    // Add the file message to the end of the messages array
-    setMessages(prevMessages => [...prevMessages, parsedFileMessage]);
+    // Optionally, you can handle any UI feedback or error handling here
+    // For example, you might want to show a success toast:
+    // toast.success('File uploaded successfully');
+    
+    // Or handle any specific file data if needed for your document viewer:
+    if (fileResponse.message?.body) {
+      try {
+        const fileData = typeof fileResponse.message.body === 'string' 
+          ? JSON.parse(fileResponse.message.body)
+          : fileResponse.message.body;
+        
+        // You could auto-open the file viewer if desired:
+        onViewFile(fileData);
+        
+        console.log('File data available for viewing:', fileData);
+      } catch (err) {
+        console.warn('Could not parse file message body:', err);
+      }
+    }
   }, []);
 
   // Send a text message (optimistic updates + real-time will handle the response)

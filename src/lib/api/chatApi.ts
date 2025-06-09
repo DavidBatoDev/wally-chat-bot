@@ -256,7 +256,7 @@ export const chatApi = {
       formData.append('conversation_id', conversationId);
 
       const response = await api.post<{ success: boolean; message: BackendMessage }>(
-        '/api/files/upload',
+        '/api/uploads/file',
         formData,
         {
           headers: {
