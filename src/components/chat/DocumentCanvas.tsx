@@ -1,15 +1,7 @@
 // client/src/components/chat/DocumentCanvas.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { X, HelpCircle, Save, Loader2, FileText, Image, File } from 'lucide-react';
+import { X, Loader2, FileText, Image, File, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import api from '@/lib/api';
 
 // Add PDF.js types
@@ -25,111 +17,131 @@ interface DocumentCanvasProps {
   conversationId: string;
 }
 
+interface TemplateMappingFont {
+  name: string;
+  size: number;
+  color: string;
+}
+
+interface TemplateMappingPosition {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+interface TemplateMappingBboxCenter {
+  x: number;
+  y: number;
+}
+
+interface TemplateMapping {
+  label: string;
+  font: TemplateMappingFont;
+  position: TemplateMappingPosition;
+  bbox_center: TemplateMappingBboxCenter;
+  alignment: string;
+  page_number: number;
+}
+
 interface WorkflowData {
   file_id: string;
   base_file_public_url?: string;
   template_id: string;
   template_file_public_url?: string;
-  template_required_fields?: Record<string, string>;
-  extracted_fields_from_raw_ocr?: Record<string, string>;
-  filled_fields?: Record<string, string>;
-  translated_fields?: Record<string, string>;
+  origin_template_mappings?: Record<string, TemplateMapping>;
 }
 
-interface FieldRowProps {
-  label: string;
-  name: string;
-  description?: string;
-  filledValue: string;
-  translatedValue: string;
-  onFilledChange: (value: string) => void;
-  onTranslatedChange: (value: string) => void;
-}
+type ViewType = 'original' | 'template';
 
-type ViewType = 'forms' | 'original' | 'template';
+// Template Mapping Overlay Component
+const TemplateMappingOverlay: React.FC<{
+  mappings: Record<string, TemplateMapping>;
+  pageNum: number;
+  scale: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  visible: boolean;
+}> = ({ mappings, pageNum, scale, canvasWidth, canvasHeight, visible }) => {
+  const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
 
-const FieldRow: React.FC<FieldRowProps> = ({
-  label,
-  name,
-  description,
-  filledValue,
-  translatedValue,
-  onFilledChange,
-  onTranslatedChange
-}) => {
-  // Check if values end with [UNEDITED]
-  const isFilledUnedited = filledValue.endsWith('[UNEDITED]');
-  const isTranslatedUnedited = translatedValue.endsWith('[UNEDITED]');
+  if (!visible || !mappings) return null;
+
+  // Filter mappings for current page
+  const currentPageMappings = Object.entries(mappings).filter(
+    ([_, mapping]) => mapping.page_number === pageNum
+  );
+
+  if (currentPageMappings.length === 0) return null;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
-      {/* Field Label with Tooltip */}
-      <div className="flex items-center space-x-2 mb-3">
-        <Label htmlFor={`filled_${name}`} className="text-base font-medium text-gray-800">
-          {label}
-        </Label>
-        {description && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <HelpCircle 
-                size={16} 
-                className="text-gray-400 hover:text-gray-600 cursor-help transition-colors"
-              />
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="max-w-xs text-sm">{description}</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
+    <div 
+      className="absolute inset-0 pointer-events-none"
+      style={{
+        width: canvasWidth,
+        height: canvasHeight,
+      }}
+    >
+      {currentPageMappings.map(([key, mapping]) => {
+        // Convert coordinates assuming position values start at top-left
+        const x = mapping.position.x0 * scale;
+        const y = mapping.position.y0 * scale;
+        const width = (mapping.position.x1 - mapping.position.x0) * scale;
+        const height = (mapping.position.y1 - mapping.position.y0) * scale;
 
-      {/* Filled Field Input */}
-      <div className="mb-3">
-        <Label 
-          htmlFor={`filled_${name}`} 
-          className="text-sm text-gray-600 mb-2 block font-medium"
-        >
-          Filled Field
-        </Label>
-        <Input
-          id={`filled_${name}`}
-          value={filledValue}
-          onChange={(e) => onFilledChange(e.target.value)}
-          placeholder={`Enter ${label.toLowerCase()}...`}
-          className={`w-full text-sm transition-colors duration-200 focus:border-red-500 focus:ring-2 focus:ring-blue-200 hover:border-gray-400 ${
-            isFilledUnedited ? 'text-red-500' : ''
-          }`}
-          aria-label={`Filled field for ${label}`}
-        />
-      </div>
+        const isHovered = hoveredMapping === key;
 
-      {/* Translated Field Input */}
-      <div>
-        <Label 
-          htmlFor={`translated_${name}`} 
-          className="text-sm text-gray-600 mb-2 block font-medium"
-        >
-          Translated Field
-        </Label>
-        <Input
-          id={`translated_${name}`}
-          value={translatedValue}
-          onChange={(e) => onTranslatedChange(e.target.value)}
-          placeholder={`Enter translated ${label.toLowerCase()}...`}
-          className={`w-full text-sm transition-colors duration-200 focus:border-red-500 focus:ring-2 focus:ring-blue-200 hover:border-gray-400 ${
-            isTranslatedUnedited ? 'text-red-500' : ''
-          }`}
-          aria-label={`Translated field for ${label}`}
-        />
-      </div>
+        return (
+          <div
+            key={key}
+            className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
+            style={{
+              left: x,
+              top: y,
+              width: Math.max(width, 4), // Minimum width for visibility
+              height: Math.max(height, 4), // Minimum height for visibility
+              border: `2px solid ${isHovered ? '#ef4444' : '#3b82f6'}`,
+              backgroundColor: isHovered ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+              borderRadius: '2px',
+              zIndex: isHovered ? 20 : 10,
+            }}
+            onMouseEnter={() => setHoveredMapping(key)}
+            onMouseLeave={() => setHoveredMapping(null)}
+            title={`${key}: ${mapping.label}`}
+          >
+            {/* Label tooltip */}
+            {isHovered && (
+              <div
+                className="absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-30"
+                style={{
+                  top: height + 4,
+                  left: 0,
+                  maxWidth: '200px',
+                }}
+              >
+                <div className="font-semibold">{key}</div>
+                <div className="text-gray-300">{mapping.label}</div>
+                <div className="text-gray-400 text-xs">
+                  Font: {mapping.font.name}, Size: {mapping.font.size}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
 
-// PDF Viewer Component
-// Updated PDFViewer Component with Fixed Zoom
-const PDFViewer: React.FC<{ url: string }> = ({ url }) => {
+// PDF Viewer Component with Template Overlay Support
+// Fixed PDF Viewer Component with proper horizontal scrolling
+const PDFViewer: React.FC<{ 
+  url: string; 
+  templateMappings?: Record<string, TemplateMapping>;
+  showMappings?: boolean;
+}> = ({ url, templateMappings, showMappings = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +150,7 @@ const PDFViewer: React.FC<{ url: string }> = ({ url }) => {
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [scale, setScale] = useState(1.2);
   const [isRendering, setIsRendering] = useState(false);
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
 
   // Cleanup function
   const cleanup = () => {
@@ -264,6 +277,9 @@ const PDFViewer: React.FC<{ url: string }> = ({ url }) => {
       canvas.height = viewport.height;
       canvas.width = viewport.width;
       
+      // Update canvas dimensions state for overlay positioning
+      setCanvasDimensions({ width: viewport.width, height: viewport.height });
+      
       // Clear canvas with white background
       context.fillStyle = '#ffffff';
       context.fillRect(0, 0, canvas.width, canvas.height);
@@ -344,7 +360,7 @@ const PDFViewer: React.FC<{ url: string }> = ({ url }) => {
     <div className="flex flex-col h-full bg-gray-50">
       {/* PDF Controls */}
       {numPages > 0 && (
-        <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-2">
             <Button
               size="sm"
@@ -400,8 +416,8 @@ const PDFViewer: React.FC<{ url: string }> = ({ url }) => {
         </div>
       )}
 
-      {/* PDF Canvas */}
-      <div className="flex-1 overflow-auto p-4">
+      {/* PDF Canvas Container - FIXED: Proper scrolling container */}
+      <div className="flex-1 overflow-auto bg-gray-100 p-4">
         {loading && (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
@@ -410,17 +426,45 @@ const PDFViewer: React.FC<{ url: string }> = ({ url }) => {
             </span>
           </div>
         )}
-        <div className="flex justify-center">
+        
+        {/* FIXED: Removed flex justify-center and added proper container */}
+        <div 
+          ref={containerRef}
+          className="relative"
+          style={{ 
+            width: canvasDimensions.width || 'auto',
+            height: canvasDimensions.height || 'auto',
+            // FIXED: Ensure minimum width when zoomed
+            minWidth: canvasDimensions.width || 'auto',
+            // FIXED: Center the canvas when it's smaller than container
+            margin: canvasDimensions.width < (containerRef.current?.parentElement?.clientWidth || 0) ? '0 auto' : '0'
+          }}
+        >
           <canvas
             ref={canvasRef}
             className={`border border-gray-300 shadow-lg transition-opacity duration-200 ${
               loading ? 'hidden' : 'block'
             }`}
             style={{ 
-              maxWidth: '100%',
-              height: 'auto'
+              // FIXED: Remove width constraints that prevent horizontal scrolling
+              display: loading ? 'none' : 'block',
+              // FIXED: Ensure canvas takes its natural size
+              width: canvasDimensions.width || 'auto',
+              height: canvasDimensions.height || 'auto'
             }}
           />
+          
+          {/* Template Mappings Overlay */}
+          {templateMappings && (
+            <TemplateMappingOverlay
+              mappings={templateMappings}
+              pageNum={pageNum}
+              scale={scale}
+              canvasWidth={canvasDimensions.width}
+              canvasHeight={canvasDimensions.height}
+              visible={showMappings && !loading}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -467,7 +511,12 @@ const ImageViewer: React.FC<{ url: string }> = ({ url }) => {
 };
 
 // File Viewer Component
-const FileViewer: React.FC<{ url: string; filename?: string }> = ({ url, filename }) => {
+const FileViewer: React.FC<{ 
+  url: string; 
+  filename?: string; 
+  templateMappings?: Record<string, TemplateMapping>;
+  showMappings?: boolean;
+}> = ({ url, filename, templateMappings, showMappings = false }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
       // Handle URLs with query parameters by extracting the pathname
@@ -507,7 +556,13 @@ const FileViewer: React.FC<{ url: string; filename?: string }> = ({ url, filenam
   const fileType = getFileType(url);
 
   if (fileType === 'pdf') {
-    return <PDFViewer url={url} />;
+    return (
+      <PDFViewer 
+        url={url} 
+        templateMappings={templateMappings}
+        showMappings={showMappings}
+      />
+    );
   }
 
   if (fileType === 'image') {
@@ -547,15 +602,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  // View state - default to 'original' since we removed forms
+  const [currentView, setCurrentView] = useState<ViewType>('original');
   
-  // View state
-  const [currentView, setCurrentView] = useState<ViewType>('forms');
-  
-  // Local state for form inputs
-  const [filledFields, setFilledFields] = useState<Record<string, string>>({});
-  const [translatedFields, setTranslatedFields] = useState<Record<string, string>>({});
+  // Template mappings overlay state
+  const [showMappings, setShowMappings] = useState<boolean>(true);
 
   // Fetch workflow data directly from database
   const fetchWorkflowData = async () => {
@@ -575,24 +626,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       console.log('DocumentCanvas: Workflow fetch result:', {
         conversationId,
         hasWorkflow: response.data.has_workflow,
-        hasData: !!response.data.workflow_data
+        hasData: response.data.workflow_data,
+        hasMappings: response.data.workflow_data?.origin_template_mappings
       });
       
       setHasWorkflow(response.data.has_workflow);
       setWorkflowData(response.data.workflow_data);
-      
-      // Update form fields with fresh data
-      if (response.data.workflow_data?.filled_fields) {
-        setFilledFields(response.data.workflow_data.filled_fields);
-      } else {
-        setFilledFields({});
-      }
-      
-      if (response.data.workflow_data?.translated_fields) {
-        setTranslatedFields(response.data.workflow_data.translated_fields);
-      } else {
-        setTranslatedFields({});
-      }
       
     } catch (err: any) {
       console.error('DocumentCanvas: Error fetching workflow:', err);
@@ -602,8 +641,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         setHasWorkflow(false);
         setWorkflowData(null);
         setError(null); // Clear error for 404
-        setFilledFields({});
-        setTranslatedFields({});
         return;
       }
       
@@ -630,89 +667,40 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setWorkflowData(null);
       setHasWorkflow(false);
       setError(null);
-      setFilledFields({});
-      setTranslatedFields({});
-      setSaveError(null);
-      setCurrentView('forms');
+      setCurrentView('original');
+      setShowMappings(true);
     }
   }, [isOpen]);
 
-  const handleSave = async () => {
-    console.log("DocumentCanvas: Save clicked");
-    setSaving(true);
-    setSaveError(null);
-    
-    try {
-      const response = await api.patch(`/api/workflow/${conversationId}/fields`, {
-        filled_fields: filledFields,
-        translated_fields: translatedFields
-      });
-      
-      if (response.data.success) {
-        console.log('DocumentCanvas: Fields saved successfully:', response.data);
-        // Refresh workflow data to get the latest state from database
-        await fetchWorkflowData();
-        // Optionally show a success message
-      } else {
-        throw new Error(response.data.message || 'Failed to save fields');
-      }
-      
-    } catch (err: any) {
-      console.error('DocumentCanvas: Error saving fields:', err);
-      setSaveError(err.response?.data?.message || 'Failed to save fields');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleShowForms = () => {
-    console.log("DocumentCanvas: Show Forms clicked");
-    setCurrentView('forms');
-    setSaveError(null);
-  };
-
-  const handleShowBaseFile = async () => {
+  const handleShowBaseFile = () => {
     console.log("DocumentCanvas: Show Base File clicked");
     setCurrentView('original');
-    setSaveError(null);
-    
-    // Re-fetch from database to get the original values
-    await fetchWorkflowData();
   };
 
-  const handleShowFilledTemplate = () => {
+  const handleShowTemplate = () => {
     console.log("DocumentCanvas: Template clicked");
     setCurrentView('template');
   };
 
-  const handleFilledFieldChange = (key: string, value: string) => {
-    setFilledFields(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  const handleTranslatedFieldChange = (key: string, value: string) => {
-    setTranslatedFields(prev => ({
-      ...prev,
-      [key]: value
-    }));
+  const toggleMappings = () => {
+    setShowMappings(!showMappings);
   };
 
   if (!isOpen) return null;
 
-  const requiredFields = workflowData?.template_required_fields || {};
-  const fieldKeys = Object.keys(requiredFields);
-  const displayError = error || saveError;
-
   // Get view title
   const getViewTitle = () => {
     switch (currentView) {
-      case 'forms': return 'Document Fields';
       case 'original': return 'Original File';
       case 'template': return 'Template';
-      default: return 'Document Fields';
+      default: return 'Original File';
     }
+  };
+
+  // Count mappings for current view
+  const getMappingsCount = () => {
+    if (!workflowData?.origin_template_mappings) return 0;
+    return Object.keys(workflowData.origin_template_mappings).length;
   };
 
   // Render content based on current view
@@ -726,11 +714,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       );
     }
 
-    if (displayError) {
+    if (error) {
       return (
         <div className="text-center text-red-500 p-4 bg-red-50 rounded-lg border border-red-200">
           <p className="font-medium">Error</p>
-          <p className="text-sm mt-1">{displayError}</p>
+          <p className="text-sm mt-1">{error}</p>
         </div>
       );
     }
@@ -748,7 +736,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     if (currentView === 'original' && workflowData?.base_file_public_url) {
       return (
         <div className="h-full">
-          <FileViewer url={workflowData.base_file_public_url} filename="Original File" />
+          <FileViewer 
+            url={workflowData.base_file_public_url} 
+            filename="Original File" 
+          />
         </div>
       );
     }
@@ -756,47 +747,20 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     if (currentView === 'template' && workflowData?.template_file_public_url) {
       return (
         <div className="h-full">
-          <FileViewer url={workflowData.template_file_public_url} filename="Template" />
+          <FileViewer 
+            url={workflowData.template_file_public_url} 
+            filename="Template"
+            templateMappings={workflowData.origin_template_mappings}
+            showMappings={showMappings}
+          />
         </div>
-      );
-    }
-
-    // Show forms view
-    if (currentView === 'forms') {
-      if (fieldKeys.length === 0) {
-        return (
-          <div className="text-center text-gray-500 p-8 bg-white rounded-lg border border-gray-200">
-            <p className="font-medium">No template fields</p>
-            <p className="text-sm mt-1">No template fields found for this workflow</p>
-          </div>
-        );
-      }
-
-      return (
-        <TooltipProvider>
-          {/* Responsive Grid Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 auto-rows-max">
-            {fieldKeys.map((key) => (
-              <FieldRow
-                key={key}
-                label={key}
-                name={key}
-                description={requiredFields[key]}
-                filledValue={filledFields[key] || ''}
-                translatedValue={translatedFields[key] || ''}
-                onFilledChange={(value) => handleFilledFieldChange(key, value)}
-                onTranslatedChange={(value) => handleTranslatedFieldChange(key, value)}
-              />
-            ))}
-          </div>
-        </TooltipProvider>
       );
     }
 
     return (
       <div className="text-center text-gray-500 p-8 bg-white rounded-lg border border-gray-200">
-        <p className="font-medium">View not available</p>
-        <p className="text-sm mt-1">The requested view is not available</p>
+        <p className="font-medium">File not available</p>
+        <p className="text-sm mt-1">The requested file is not available</p>
       </div>
     );
   };
@@ -817,21 +781,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       </div>
 
       {/* Action Buttons */}
-      {!loading && !displayError && hasWorkflow && (
+      {!loading && !error && hasWorkflow && (
         <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
           <div className="flex space-x-3">
-            <Button
-              onClick={handleShowForms}
-              variant={currentView === 'forms' ? 'default' : 'outline'}
-              className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-                currentView === 'forms' 
-                  ? 'bg-red-500 text-white hover:bg-red-600' 
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              Show Forms
-            </Button>
-            
             <Button
               onClick={handleShowBaseFile}
               variant={currentView === 'original' ? 'default' : 'outline'}
@@ -842,11 +794,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
             >
-              Show Original File
+              Original File
             </Button>
             
             <Button
-              onClick={handleShowFilledTemplate}
+              onClick={handleShowTemplate}
               variant={currentView === 'template' ? 'default' : 'outline'}
               disabled={!workflowData?.template_file_public_url}
               className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
@@ -858,44 +810,30 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
               Template
             </Button>
           </div>
-          <div>
-            {currentView === 'forms' && fieldKeys.length > 0 && (
+          
+          {/* Template Mappings Toggle */}
+          {currentView === 'template' && workflowData?.origin_template_mappings && (
+            <div className="flex items-center space-x-2">
               <Button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-4 py-2 rounded-md shadow-sm bg-red-500 hover:bg-red-700 text-white font-medium transition-colors duration-200"
+                onClick={toggleMappings}
+                variant="outline"
+                size="sm"
+                className="flex items-center space-x-2"
               >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </>
-                )}
+                {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
+                <span>
+                  {showMappings ? 'Hide' : 'Show'} Mappings ({getMappingsCount()})
+                </span>
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Content */}
-      <div className={`flex-1 overflow-hidden ${currentView === 'forms' ? 'overflow-y-auto p-4' : ''}`}>
+      <div className="flex-1 overflow-hidden">
         {renderContent()}
       </div>
-
-      {/* Error Display */}
-      {saveError && (
-        <div className="p-4 border-t border-gray-200 bg-red-50">
-          <div className="text-red-700 text-sm">
-            <p className="font-medium">Save Error</p>
-            <p>{saveError}</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
