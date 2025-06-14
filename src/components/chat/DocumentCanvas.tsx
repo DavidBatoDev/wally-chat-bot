@@ -1,6 +1,6 @@
 // client/src/components/chat/DocumentCanvas.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Loader2, FileText, Image, File, Eye, EyeOff } from 'lucide-react';
+import { X, Loader2, FileText, Image, File, Eye, EyeOff, Check, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import api from '@/lib/api';
 
@@ -44,26 +44,100 @@ interface TemplateMapping {
   page_number: number;
 }
 
+interface WorkflowField {
+  value: string;
+  value_status: 'ocr' | 'pending' | 'manual';
+  translated_value: string | null;
+  translated_status: 'pending' | 'completed';
+}
+
 interface WorkflowData {
   file_id: string;
   base_file_public_url?: string;
   template_id: string;
   template_file_public_url?: string;
   origin_template_mappings?: Record<string, TemplateMapping>;
+  fields?: Record<string, WorkflowField>;
 }
 
 type ViewType = 'original' | 'template';
 
-// Template Mapping Overlay Component
+// Editable Input Component
+const EditableInput: React.FC<{
+  value: string;
+  onSave: (newValue: string) => void;
+  onCancel: () => void;
+  placeholder?: string;
+  className?: string;
+}> = ({ value, onSave, onCancel, placeholder, className }) => {
+  const [inputValue, setInputValue] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, []);
+
+  const handleSave = () => {
+    onSave(inputValue);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      onCancel();
+    }
+  };
+
+  return (
+    <div className={`absolute z-50 bg-white rounded-lg shadow-lg border border-gray-300 p-2 ${className}`}>
+      <div className="flex items-center space-x-2">
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[120px]"
+        />
+        <Button
+          size="sm"
+          onClick={handleSave}
+          className="h-7 w-7 p-0 bg-green-500 hover:bg-green-600 text-white"
+        >
+          <Check size={14} />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onCancel}
+          className="h-7 w-7 p-0"
+        >
+          <X size={14} />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// Template Mapping Overlay Component with Editable Fields
 const TemplateMappingOverlay: React.FC<{
   mappings: Record<string, TemplateMapping>;
+  fields: Record<string, WorkflowField>;
   pageNum: number;
   scale: number;
   canvasWidth: number;
   canvasHeight: number;
   visible: boolean;
-}> = ({ mappings, pageNum, scale, canvasWidth, canvasHeight, visible }) => {
+  onFieldUpdate: (fieldKey: string, newValue: string) => void;
+}> = ({ mappings, fields, pageNum, scale, canvasWidth, canvasHeight, visible, onFieldUpdate }) => {
   const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editInputPosition, setEditInputPosition] = useState<{ x: number; y: number } | null>(null);
 
   if (!visible || !mappings) return null;
 
@@ -74,72 +148,244 @@ const TemplateMappingOverlay: React.FC<{
 
   if (currentPageMappings.length === 0) return null;
 
+  // Handle clicking outside to close popup
+  const handleOverlayClick = (event: React.MouseEvent) => {
+    // Only close if clicking on the overlay itself, not on a mapping
+    if (event.target === event.currentTarget && editingField) {
+      setEditingField(null);
+      setEditInputPosition(null);
+    }
+  };
+
+  const handleFieldClick = (fieldKey: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    
+    // If already editing this field, don't reopen
+    if (editingField === fieldKey) {
+      return;
+    }
+    
+    // Close any existing popup first
+    if (editingField) {
+      setEditingField(null);
+      setEditInputPosition(null);
+      return;
+    }
+    
+    // Get the bounding box element's position and size
+    const target = event.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    const overlayContainer = target.parentElement;
+    
+    if (overlayContainer) {
+      const containerRect = overlayContainer.getBoundingClientRect();
+      
+      // Position relative to the overlay container
+      setEditInputPosition({
+        x: rect.left - containerRect.left,
+        y: rect.bottom - containerRect.top + 4
+      });
+    } else {
+      // Fallback: position below the bounding box
+      setEditInputPosition({
+        x: target.offsetLeft,
+        y: target.offsetTop + target.offsetHeight + 4
+      });
+    }
+    
+    setEditingField(fieldKey);
+  };
+
+  const handleFieldSave = (fieldKey: string, newValue: string) => {
+    onFieldUpdate(fieldKey, newValue);
+    setEditingField(null);
+    setEditInputPosition(null);
+  };
+
+  const handleEditCancel = () => {
+    setEditingField(null);
+    setEditInputPosition(null);
+  };
+
   return (
-    <div 
-      className="absolute inset-0 pointer-events-none"
-      style={{
-        width: canvasWidth,
-        height: canvasHeight,
-      }}
-    >
-      {currentPageMappings.map(([key, mapping]) => {
-        // Convert coordinates assuming position values start at top-left
-        const x = mapping.position.x0 * scale;
-        const y = mapping.position.y0 * scale;
-        const width = (mapping.position.x1 - mapping.position.x0) * scale;
-        const height = (mapping.position.y1 - mapping.position.y0) * scale;
+    <>
+      {/* Main overlay */}
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          width: canvasWidth,
+          height: canvasHeight,
+        }}
+      >
+        {currentPageMappings.map(([key, mapping]) => {
+          // Convert coordinates assuming position values start at top-left
+          const x = mapping.position.x0 * scale;
+          const y = mapping.position.y0 * scale;
+          const width = (mapping.position.x1 - mapping.position.x0) * scale;
+          const height = (mapping.position.y1 - mapping.position.y0) * scale;
 
-        const isHovered = hoveredMapping === key;
+          const isHovered = hoveredMapping === key;
+          const isEditing = editingField === key;
+          const fieldValue = fields[key]?.value || '';
+          const hasValue = fieldValue.trim().length > 0;
 
-        return (
-          <div
-            key={key}
-            className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
-            style={{
-              left: x,
-              top: y,
-              width: Math.max(width, 4), // Minimum width for visibility
-              height: Math.max(height, 4), // Minimum height for visibility
-              border: `2px solid ${isHovered ? '#ef4444' : '#3b82f6'}`,
-              backgroundColor: isHovered ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.1)',
-              borderRadius: '2px',
-              zIndex: isHovered ? 20 : 10,
-            }}
-            onMouseEnter={() => setHoveredMapping(key)}
-            onMouseLeave={() => setHoveredMapping(null)}
-            title={`${key}: ${mapping.label}`}
-          >
-            {/* Label tooltip */}
-            {isHovered && (
-              <div
-                className="absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-30"
-                style={{
-                  top: height + 4,
-                  left: 0,
-                  maxWidth: '200px',
-                }}
-              >
-                <div className="font-semibold">{key}</div>
-                <div className="text-gray-300">{mapping.label}</div>
-                <div className="text-gray-400 text-xs">
-                  Font: {mapping.font.name}, Size: {mapping.font.size}
+          return (
+            <div
+              key={key}
+              className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
+              style={{
+                left: x,
+                top: y,
+                width: Math.max(width, 4),
+                height: Math.max(height, 4),
+                border: `2px solid ${isEditing ? '#10b981' : isHovered ? '#ef4444' : hasValue ? '#3b82f6' : '#9ca3af'}`,
+                backgroundColor: isEditing 
+                  ? 'rgba(16, 185, 129, 0.2)' 
+                  : isHovered 
+                  ? 'rgba(239, 68, 68, 0.2)' 
+                  : hasValue 
+                  ? 'rgba(59, 130, 246, 0.1)' 
+                  : 'rgba(156, 163, 175, 0.1)',
+                borderRadius: '2px',
+                zIndex: isEditing ? 30 : isHovered ? 20 : 10,
+              }}
+              onMouseEnter={() => !editingField && setHoveredMapping(key)}
+              onMouseLeave={() => !editingField && setHoveredMapping(null)}
+              onClick={(e) => handleFieldClick(key, e)}
+              title={`${key}: ${mapping.label}${fieldValue ? ` - "${fieldValue}"` : ''}`}
+            >
+              {/* Field Value Display */}
+              {hasValue && !isEditing && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-800 bg-white bg-opacity-80 rounded"
+                  style={{
+                    fontSize: Math.max(8, Math.min(12, height * 0.6)),
+                    padding: '1px 2px',
+                  }}
+                >
+                  <span className="truncate max-w-full">
+                    {fieldValue}
+                  </span>
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Edit Icon */}
+              {(isHovered || hasValue) && !isEditing && (
+                <div
+                  className="absolute -top-2 -right-2 bg-blue-500 text-white rounded-full p-1 shadow-sm"
+                  style={{ width: '16px', height: '16px' }}
+                >
+                  <Edit3 size={8} />
+                </div>
+              )}
+
+              {/* Label tooltip */}
+              {isHovered && !isEditing && (
+                <div
+                  className="absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-40"
+                  style={{
+                    top: height + 8,
+                    left: 0,
+                    maxWidth: '250px',
+                  }}
+                >
+                  <div className="font-semibold">{key}</div>
+                  <div className="text-gray-300">{mapping.label}</div>
+                  {hasValue && (
+                    <div className="text-blue-300 mt-1">
+                      Current: "{fieldValue}"
+                    </div>
+                  )}
+                  <div className="text-gray-400 text-xs">
+                    Font: {mapping.font.name}, Size: {mapping.font.size}
+                  </div>
+                  <div className="text-gray-400 text-xs mt-1">
+                    Click to edit
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Editable Input - Rendered separately with backdrop */}
+      {editingField && editInputPosition && (
+        <>
+          {/* Backdrop to catch clicks outside */}
+          <div 
+            className="fixed inset-0 z-40 bg-transparent"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditCancel();
+            }}
+          />
+          
+          {/* Input popup positioned relative to the overlay */}
+          <div
+            className="absolute z-50 bg-white rounded-lg shadow-lg border border-gray-300 p-2"
+            style={{
+              left: editInputPosition.x,
+              top: editInputPosition.y,
+              minWidth: '200px'
+            }}
+            onClick={(e) => e.stopPropagation()} // Prevent clicks inside popup from bubbling
+          >
+            <div className="flex items-center space-x-2">
+              <input
+                ref={(input) => input?.focus()}
+                type="text"
+                defaultValue={fields[editingField]?.value || ''} // Use defaultValue instead of value
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleFieldSave(editingField, e.currentTarget.value);
+                  } else if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    handleEditCancel();
+                  }
+                }}
+                placeholder={`Enter ${mappings[editingField]?.label || 'value'}`}
+                className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
+                autoFocus
+              />
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const inputElement = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement;
+                  handleFieldSave(editingField, inputElement?.value || '');
+                }}
+                className="h-7 w-7 p-0 bg-green-500 hover:bg-green-600 text-white flex-shrink-0"
+              >
+                <Check size={14} />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditCancel();
+                }}
+                className="h-7 w-7 p-0 flex-shrink-0"
+              >
+                <X size={14} />
+              </Button>
+            </div>
           </div>
-        );
-      })}
-    </div>
+        </>
+      )}
+    </>
   );
 };
 
 // PDF Viewer Component with Template Overlay Support
-// Fixed PDF Viewer Component with proper horizontal scrolling
 const PDFViewer: React.FC<{ 
   url: string; 
   templateMappings?: Record<string, TemplateMapping>;
+  fields?: Record<string, WorkflowField>;
   showMappings?: boolean;
-}> = ({ url, templateMappings, showMappings = false }) => {
+  onFieldUpdate?: (fieldKey: string, newValue: string) => void;
+}> = ({ url, templateMappings, fields = {}, showMappings = false, onFieldUpdate }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
@@ -416,7 +662,7 @@ const PDFViewer: React.FC<{
         </div>
       )}
 
-      {/* PDF Canvas Container - FIXED: Proper scrolling container */}
+      {/* PDF Canvas Container */}
       <div className="flex-1 overflow-auto bg-gray-100 p-4">
         {loading && (
           <div className="flex items-center justify-center h-full">
@@ -427,16 +673,13 @@ const PDFViewer: React.FC<{
           </div>
         )}
         
-        {/* FIXED: Removed flex justify-center and added proper container */}
         <div 
           ref={containerRef}
           className="relative"
           style={{ 
             width: canvasDimensions.width || 'auto',
             height: canvasDimensions.height || 'auto',
-            // FIXED: Ensure minimum width when zoomed
             minWidth: canvasDimensions.width || 'auto',
-            // FIXED: Center the canvas when it's smaller than container
             margin: canvasDimensions.width < (containerRef.current?.parentElement?.clientWidth || 0) ? '0 auto' : '0'
           }}
         >
@@ -446,9 +689,7 @@ const PDFViewer: React.FC<{
               loading ? 'hidden' : 'block'
             }`}
             style={{ 
-              // FIXED: Remove width constraints that prevent horizontal scrolling
               display: loading ? 'none' : 'block',
-              // FIXED: Ensure canvas takes its natural size
               width: canvasDimensions.width || 'auto',
               height: canvasDimensions.height || 'auto'
             }}
@@ -458,11 +699,13 @@ const PDFViewer: React.FC<{
           {templateMappings && (
             <TemplateMappingOverlay
               mappings={templateMappings}
+              fields={fields}
               pageNum={pageNum}
               scale={scale}
               canvasWidth={canvasDimensions.width}
               canvasHeight={canvasDimensions.height}
               visible={showMappings && !loading}
+              onFieldUpdate={onFieldUpdate || (() => {})}
             />
           )}
         </div>
@@ -515,8 +758,10 @@ const FileViewer: React.FC<{
   url: string; 
   filename?: string; 
   templateMappings?: Record<string, TemplateMapping>;
+  fields?: Record<string, WorkflowField>;
   showMappings?: boolean;
-}> = ({ url, filename, templateMappings, showMappings = false }) => {
+  onFieldUpdate?: (fieldKey: string, newValue: string) => void;
+}> = ({ url, filename, templateMappings, fields = {}, showMappings = false, onFieldUpdate }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
       // Handle URLs with query parameters by extracting the pathname
@@ -560,7 +805,9 @@ const FileViewer: React.FC<{
       <PDFViewer 
         url={url} 
         templateMappings={templateMappings}
+        fields={fields}
         showMappings={showMappings}
+        onFieldUpdate={onFieldUpdate}
       />
     );
   }
@@ -627,7 +874,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         conversationId,
         hasWorkflow: response.data.has_workflow,
         hasData: response.data.workflow_data,
-        hasMappings: response.data.workflow_data?.origin_template_mappings
+        hasMappings: response.data.workflow_data?.origin_template_mappings,
+        hasFields: response.data.workflow_data?.fields
       });
       
       setHasWorkflow(response.data.has_workflow);
@@ -653,6 +901,41 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   };
 
+  // Handle field updates
+  const handleFieldUpdate = async (fieldKey: string, newValue: string) => {
+    if (!workflowData?.fields) return;
+
+    // Update local state immediately for responsive UI
+    const updatedFields = {
+      ...workflowData.fields,
+      [fieldKey]: {
+        ...workflowData.fields[fieldKey],
+        value: newValue,
+        value_status: 'manual' as const // Mark as manually edited
+      }
+    };
+
+    setWorkflowData({
+      ...workflowData,
+      fields: updatedFields
+    });
+
+    // Send update to backend
+    try {
+      await api.patch(`/api/workflow/${conversationId}/field`, {
+        field_key: fieldKey,
+        value: newValue,
+        value_status: 'manual'
+      });
+      
+      console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue);
+    } catch (err: any) {
+      console.error('DocumentCanvas: Error updating field:', err);
+      // Optionally revert the optimistic update on error
+      // For now, we'll keep the optimistic update
+    }
+  };
+
   // Fetch workflow data whenever the canvas opens or conversationId changes
   useEffect(() => {
     if (isOpen && conversationId) {
@@ -662,6 +945,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   }, [isOpen, conversationId]);
 
   // Clear state when canvas closes
+   // Clear state when canvas closes
   useEffect(() => {
     if (!isOpen) {
       setWorkflowData(null);
@@ -751,7 +1035,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
             url={workflowData.template_file_public_url} 
             filename="Template"
             templateMappings={workflowData.origin_template_mappings}
+            fields={workflowData.fields}
             showMappings={showMappings}
+            onFieldUpdate={handleFieldUpdate}
           />
         </div>
       );
