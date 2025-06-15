@@ -268,17 +268,6 @@ const TemplateMappingOverlay: React.FC<{
                   </span>
                 </div>
               )}
-
-              {/* Edit Icon */}
-              {(isHovered || hasValue) && !isEditing && (
-                <div
-                  className="absolute -top-2 -right-2 bg-blue-500 text-white rounded-full p-1 shadow-sm"
-                  style={{ width: '16px', height: '16px' }}
-                >
-                  <Edit3 size={8} />
-                </div>
-              )}
-
               {/* Label tooltip */}
               {isHovered && !isEditing && (
                 <div
@@ -925,7 +914,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       await api.patch(`/api/workflow/${conversationId}/field`, {
         field_key: fieldKey,
         value: newValue,
-        value_status: 'manual'
+        value_status: 'edited'
       });
       
       console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue);
