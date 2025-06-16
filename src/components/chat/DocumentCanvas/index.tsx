@@ -81,6 +81,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         hasWorkflow={hasWorkflow}
         onViewChange={setCurrentView}
         onToggleMappings={() => setShowMappings(!showMappings)}
+        conversationId={conversationId}
+        fetchWorkflowData={fetchWorkflowData}
       />
 
       {/* Content */}

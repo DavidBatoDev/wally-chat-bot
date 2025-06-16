@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff, File, FileText, Languages } from 'lucide-react';
+import { Eye, EyeOff, File, FileText, Languages, RefreshCw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkflowData, ViewType } from '../types/workflow';
+import api from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 interface ViewControlsProps {
   currentView: ViewType;
@@ -13,6 +15,8 @@ interface ViewControlsProps {
   hasWorkflow: boolean;
   onViewChange: (view: ViewType) => void;
   onToggleMappings: () => void;
+  conversationId: string;
+  fetchWorkflowData: () => Promise<void>;
 }
 
 const ViewControls: React.FC<ViewControlsProps> = ({
@@ -23,8 +27,14 @@ const ViewControls: React.FC<ViewControlsProps> = ({
   error,
   hasWorkflow,
   onViewChange,
-  onToggleMappings
+  onToggleMappings,
+  conversationId,
+  fetchWorkflowData
 }) => {
+  const { toast } = useToast();
+  const [translateLoading, setTranslateLoading] = useState(false);
+  const [translateError, setTranslateError] = useState<string | null>(null);
+
   const getMappingsCount = () => {
     if (currentView === 'translated_template') {
       return workflowData?.translated_template_mappings 
@@ -35,6 +45,85 @@ const ViewControls: React.FC<ViewControlsProps> = ({
       ? Object.keys(workflowData.origin_template_mappings).length 
       : 0;
   };
+
+    const languageNameToCode: Record<string, string> = {
+    'greek': 'el',
+    'english': 'en',
+    'spanish': 'es',
+    'french': 'fr',
+    'german': 'de',
+    'italian': 'it',
+    'japanese': 'ja',
+    'korean': 'ko',
+    'chinese': 'zh',
+    'arabic': 'ar',
+    'hindi': 'hi',
+    // Add more mappings as needed
+    };
+
+    const getLanguageCode = (languageName: string | undefined): string => {
+    if (!languageName) return 'en';
+    const normalized = languageName.toLowerCase().trim();
+    return languageNameToCode[normalized] || 'en';
+    };
+
+    const handleTranslateAll = async () => {
+    if (!conversationId || !workflowData) return;
+    
+    setTranslateLoading(true);
+    setTranslateError(null);
+    
+    try {
+        // Convert language names to ISO codes
+        const targetLanguage = getLanguageCode(workflowData.translate_to);
+        const sourceLanguage = workflowData.translate_from 
+        ? getLanguageCode(workflowData.translate_from)
+        : undefined;
+
+        console.log("Translate All Request:", {
+        target_language: targetLanguage,
+        source_language: sourceLanguage,
+        use_gemini: false,
+        force_retranslate: false
+        });
+
+        const response = await api.post(
+        `/api/workflow/${conversationId}/translate-all-fields`,
+        {
+            target_language: targetLanguage,
+            use_gemini: false,
+            source_language: sourceLanguage,
+            force_retranslate: false
+        }
+        );
+        
+        if (response.data.success) {
+        toast({
+            title: "Translation Successful",
+            description: `Translated ${Object.keys(response.data.translated_fields).length} fields`,
+            variant: "default"
+        });
+        
+        await fetchWorkflowData();
+        } else {
+        throw new Error(response.data.message || "Translation failed");
+        }
+    } catch (err: any) {
+        console.error("Translate all error:", err);
+        const errorMessage = err.response?.data?.detail || 
+                            err.response?.data?.message || 
+                            err.message || 
+                            "Translation failed";
+        
+        toast({
+        title: "Translation Error",
+        description: errorMessage,
+        variant: "destructive"
+        });
+    } finally {
+        setTranslateLoading(false);
+    }
+    };
 
   if (loading || error || !hasWorkflow) return null;
 
@@ -101,23 +190,51 @@ const ViewControls: React.FC<ViewControlsProps> = ({
         </TooltipProvider>
       </div>
       
-      {(currentView === 'template' || currentView === 'translated_template') && 
-      ((currentView === 'template' && workflowData?.origin_template_mappings) || 
-        (currentView === 'translated_template' && workflowData?.translated_template_mappings)) && (
-        <div className="flex items-center space-x-2">
-          <Button
-            onClick={onToggleMappings}
-            variant="outline"
-            size="sm"
-            className="flex items-center space-x-2"
-          >
-            {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
-            <span>
-              {showMappings ? 'Hide' : 'Show'} Mappings ({getMappingsCount()})
-            </span>
-          </Button>
-        </div>
-      )}
+      <div className="flex items-center space-x-2">
+        {(currentView === 'template' || currentView === 'translated_template') && 
+        ((currentView === 'template' && workflowData?.origin_template_mappings) || 
+          (currentView === 'translated_template' && workflowData?.translated_template_mappings)) && (
+          <>
+            <Button
+              onClick={onToggleMappings}
+              variant="outline"
+              size="sm"
+              className="flex items-center space-x-2"
+            >
+              {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
+              <span>
+                {showMappings ? 'Hide' : 'Show'} Mappings ({getMappingsCount()})
+              </span>
+            </Button>
+            
+            {currentView === 'translated_template' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={handleTranslateAll}
+                      variant="outline"
+                      size="sm"
+                      disabled={translateLoading || !workflowData?.fields || Object.keys(workflowData.fields).length === 0}
+                      className="flex items-center space-x-2"
+                    >
+                      {translateLoading ? (
+                        <RefreshCw size={16} className="animate-spin" />
+                      ) : (
+                        <RefreshCw size={16} />
+                      )}
+                      <span>Translate All</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Translate all editable fields</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

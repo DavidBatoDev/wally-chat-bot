@@ -45,6 +45,8 @@ export interface WorkflowData {
   fields?: Record<string, WorkflowField>;
   template_translated_file_public_url?: string;
   translated_template_mappings?: Record<string, TemplateMapping>;
+  translate_to: string;
+  translate_from: string;
 }
 
 export type ViewType = 'original' | 'template' | 'translated_template';
