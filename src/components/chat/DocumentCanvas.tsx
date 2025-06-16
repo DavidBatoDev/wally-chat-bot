@@ -164,13 +164,13 @@ const TemplateMappingOverlay: React.FC<{
 
     // Priority system: higher numbers = higher priority for display
     switch (status) {
-      case 'confirmed':
-        return {
-          border: '#10b981',      // green-500 - confirmed
-          background: 'rgba(16, 185, 129, 0.15)',
-          label: 'Confirmed',
-          priority: 4
-        };
+      // case 'confirmed':
+      //   return {
+      //     border: '#10b981',      // green-500 - confirmed
+      //     background: 'rgba(16, 185, 129, 0.15)',
+      //     label: 'Confirmed',
+      //     priority: 4
+      //   };
       case 'edited':
         return {
           border: '#3b82f6',      // blue-500 - manually edited
@@ -403,10 +403,10 @@ const TemplateMappingOverlay: React.FC<{
           {!legendCollapsed && (
             <div className="px-3 pb-3 border-t border-gray-200">
               <div className="space-y-1 mt-2">
-                <div className="flex items-center space-x-2">
+                {/* <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10b981' }}></div>
                   <span className="text-xs text-gray-600">Confirmed</span>
-                </div>
+                </div> */}
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: '#3b82f6' }}></div>
                   <span className="text-xs text-gray-600">Edited</span>

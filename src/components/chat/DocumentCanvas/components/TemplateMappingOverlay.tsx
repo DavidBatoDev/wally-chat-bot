@@ -14,8 +14,8 @@ interface TemplateMappingOverlayProps {
   visible: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string) => void;
   isTranslatedView?: boolean;
-    workflowData: any; // Add this prop
-    conversationId: string; // Add this prop
+  workflowData: any; // Add this prop
+  conversationId: string; // Add this prop
   
 }
 
@@ -35,7 +35,7 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
   const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editInputPosition, setEditInputPosition] = useState<{ x: number; y: number } | null>(null);
-  const [legendCollapsed, setLegendCollapsed] = useState<boolean>(false);
+  const [legendCollapsed, setLegendCollapsed] = useState<boolean>(true);
 
   if (!visible || !mappings) return null;
 
@@ -54,13 +54,13 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
     const hasValue = value && value.trim().length > 0;
 
     switch (status) {
-      case 'confirmed':
-        return {
-          border: '#10b981',
-          background: 'rgba(16, 185, 129, 0.15)',
-          label: 'Confirmed',
-          priority: 4
-        };
+    //   case 'confirmed':
+    //     return {
+    //       border: '#10b981',
+    //       background: 'rgba(16, 185, 129, 0.15)',
+    //       label: 'Confirmed',
+    //       priority: 4
+    //     };
       case 'edited':
         return {
           border: '#3b82f6',
@@ -270,10 +270,10 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
           {!legendCollapsed && (
             <div className="px-3 pb-3 border-t border-gray-200">
               <div className="space-y-1 mt-2">
-                <div className="flex items-center space-x-2">
+                {/* <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10b981' }}></div>
                   <span className="text-xs text-gray-600">Confirmed</span>
-                </div>
+                </div> */}
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: '#3b82f6' }}></div>
                   <span className="text-xs text-gray-600">Edited</span>
