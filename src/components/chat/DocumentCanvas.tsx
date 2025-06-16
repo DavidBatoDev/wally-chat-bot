@@ -46,9 +46,9 @@ interface TemplateMapping {
 
 interface WorkflowField {
   value: string;
-  value_status: 'ocr' | 'pending' | 'manual';
+  value_status: 'ocr' | 'pending' | 'edited' | 'confirmed';
   translated_value: string | null;
-  translated_status: 'pending' | 'completed';
+  translated_status: 'pending'| 'translated' | 'completed' | 'edited';
 }
 
 interface WorkflowData {
@@ -143,8 +143,68 @@ const TemplateMappingOverlay: React.FC<{
   const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editInputPosition, setEditInputPosition] = useState<{ x: number; y: number } | null>(null);
+  const [legendCollapsed, setLegendCollapsed] = useState<boolean>(false);
 
   if (!visible || !mappings) return null;
+
+  // Color schemes for different statuses
+  const getStatusColors = (field: WorkflowField | undefined, isTranslatedView: boolean) => {
+    if (!field) {
+      return {
+        border: '#9ca3af',      // gray-400 - no data
+        background: 'rgba(156, 163, 175, 0.1)',
+        label: 'No Data',
+        priority: 0
+      };
+    }
+
+    const status = isTranslatedView ? field.translated_status : field.value_status;
+    const value = isTranslatedView ? field.translated_value : field.value;
+    const hasValue = value && value.trim().length > 0;
+
+    // Priority system: higher numbers = higher priority for display
+    switch (status) {
+      case 'confirmed':
+        return {
+          border: '#10b981',      // green-500 - confirmed
+          background: 'rgba(16, 185, 129, 0.15)',
+          label: 'Confirmed',
+          priority: 4
+        };
+      case 'edited':
+        return {
+          border: '#3b82f6',      // blue-500 - manually edited
+          background: 'rgba(59, 130, 246, 0.15)',
+          label: 'Edited',
+          priority: 3
+        };
+      case 'ocr':
+      case 'translated':
+        return {
+          border: '#f59e0b',      // amber-500 - OCR extracted or translated
+          background: 'rgba(245, 158, 11, 0.15)',
+          label: isTranslatedView ? 'Translated' : 'OCR Extracted',
+          priority: 2
+        };
+      case 'pending':
+      default:
+        if (hasValue) {
+          return {
+            border: '#6b7280',    // gray-500 - has value but pending
+            background: 'rgba(107, 114, 128, 0.15)',
+            label: 'Pending Review',
+            priority: 1
+          };
+        } else {
+          return {
+            border: '#666666',    // red-500 - empty/required
+            background: 'rgba(239, 68, 68, 0.15)',
+            label: 'Required',
+            priority: 0
+          };
+        }
+    }
+  };
 
   // Filter mappings for current page
   const currentPageMappings = Object.entries(mappings).filter(
@@ -155,7 +215,6 @@ const TemplateMappingOverlay: React.FC<{
 
   // Handle clicking outside to close popup
   const handleOverlayClick = (event: React.MouseEvent) => {
-    // Only close if clicking on the overlay itself, not on a mapping
     if (event.target === event.currentTarget && editingField) {
       setEditingField(null);
       setEditInputPosition(null);
@@ -165,33 +224,27 @@ const TemplateMappingOverlay: React.FC<{
   const handleFieldClick = (fieldKey: string, event: React.MouseEvent) => {
     event.stopPropagation();
     
-    // If already editing this field, don't reopen
     if (editingField === fieldKey) {
       return;
     }
     
-    // Close any existing popup first
     if (editingField) {
       setEditingField(null);
       setEditInputPosition(null);
       return;
     }
     
-    // Get the bounding box element's position and size
     const target = event.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
     const overlayContainer = target.parentElement;
     
     if (overlayContainer) {
       const containerRect = overlayContainer.getBoundingClientRect();
-      
-      // Position relative to the overlay container
       setEditInputPosition({
         x: rect.left - containerRect.left,
         y: rect.bottom - containerRect.top + 4
       });
     } else {
-      // Fallback: position below the bounding box
       setEditInputPosition({
         x: target.offsetLeft,
         y: target.offsetTop + target.offsetHeight + 4
@@ -223,7 +276,7 @@ const TemplateMappingOverlay: React.FC<{
         }}
       >
         {currentPageMappings.map(([key, mapping]) => {
-          // Convert coordinates assuming position values start at top-left
+          // Convert coordinates
           const x = mapping.position.x0 * scale;
           const y = mapping.position.y0 * scale;
           const width = (mapping.position.x1 - mapping.position.x0) * scale;
@@ -231,10 +284,25 @@ const TemplateMappingOverlay: React.FC<{
 
           const isHovered = hoveredMapping === key;
           const isEditing = editingField === key;
+          const field = fields[key];
           const fieldValue = isTranslatedView 
-            ? (fields[key]?.translated_value || '') 
-            : (fields[key]?.value || '');
-          const hasValue = fieldValue.trim().length > 0;
+            ? (field?.translated_value || '') 
+            : (field?.value || '');
+          
+          // Get status-based colors
+          const statusColors = getStatusColors(field, isTranslatedView);
+          
+          // Override colors for hover and edit states
+          let borderColor = statusColors.border;
+          let backgroundColor = statusColors.background;
+          
+          if (isEditing) {
+            borderColor = '#10b981'; // green-500
+            backgroundColor = 'rgba(16, 185, 129, 0.2)';
+          } else if (isHovered) {
+            borderColor = '#8b5cf6'; // violet-500 for hover
+            backgroundColor = 'rgba(139, 92, 246, 0.2)';
+          }
 
           return (
             <div
@@ -245,26 +313,20 @@ const TemplateMappingOverlay: React.FC<{
                 top: y,
                 width: Math.max(width, 4),
                 height: Math.max(height, 4),
-                border: `2px solid ${isEditing ? '#10b981' : isHovered ? '#ef4444' : hasValue ? '#3b82f6' : '#9ca3af'}`,
-                backgroundColor: isEditing 
-                  ? 'rgba(16, 185, 129, 0.2)' 
-                  : isHovered 
-                  ? 'rgba(239, 68, 68, 0.2)' 
-                  : hasValue 
-                  ? 'rgba(59, 130, 246, 0.1)' 
-                  : 'rgba(156, 163, 175, 0.1)',
+                border: `2px solid ${borderColor}`,
+                backgroundColor: backgroundColor,
                 borderRadius: '2px',
-                zIndex: isEditing ? 30 : isHovered ? 20 : 10,
+                zIndex: isEditing ? 30 : isHovered ? 20 : statusColors.priority + 10,
               }}
               onMouseEnter={() => !editingField && setHoveredMapping(key)}
               onMouseLeave={() => !editingField && setHoveredMapping(null)}
               onClick={(e) => handleFieldClick(key, e)}
-              title={`${key}: ${mapping.label}${fieldValue ? ` - "${fieldValue}"` : ''}`}
+              title={`${key}: ${mapping.label}${fieldValue ? ` - "${fieldValue}"` : ''} (${statusColors.label})`}
             >
               {/* Field Value Display */}
-              {hasValue && !isEditing && (
+              {fieldValue && fieldValue.trim().length > 0 && !isEditing && (
                 <div
-                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-800 bg-white bg-opacity-80 rounded"
+                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-800 bg-white bg-opacity-90 rounded"
                   style={{
                     fontSize: Math.max(8, Math.min(12, height * 0.6)),
                     padding: '1px 2px',
@@ -275,24 +337,48 @@ const TemplateMappingOverlay: React.FC<{
                   </span>
                 </div>
               )}
-              {/* Label tooltip */}
+
+              {/* Enhanced tooltip */}
               {isHovered && !isEditing && (
                 <div
-                  className="absolute bg-gray-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-40"
+                  className="absolute bg-gray-900 text-white text-xs px-3 py-2 rounded shadow-lg whitespace-nowrap z-40"
                   style={{
                     top: height + 8,
                     left: 0,
-                    maxWidth: '250px',
+                    maxWidth: '300px',
                   }}
                 >
-                  <div className="font-semibold">{key}</div>
+                  <div className="font-semibold text-yellow-300">{key}</div>
                   <div className="text-gray-300">{mapping.label}</div>
-                  {hasValue && (
-                    <div className="text-blue-300 mt-1">
-                      {isTranslatedView ? 'Translated' : 'Current'}: "{fieldValue}"
+                  
+                  {/* Status Information */}
+                  <div className="flex items-center mt-1 space-x-2">
+                    <div 
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: statusColors.border }}
+                    />
+                    <span className="text-sm font-medium">{statusColors.label}</span>
+                  </div>
+                  
+                  {/* Field Values */}
+                  {field && (
+                    <div className="mt-2 border-t border-gray-700 pt-2">
+                      {field.value && (
+                        <div className="text-blue-300">
+                          <span className="text-gray-400">Original:</span> "{field.value}"
+                          <span className="text-xs text-gray-500 ml-2">({field.value_status})</span>
+                        </div>
+                      )}
+                      {field.translated_value && (
+                        <div className="text-green-300 mt-1">
+                          <span className="text-gray-400">Translated:</span> "{field.translated_value}"
+                          <span className="text-xs text-gray-500 ml-2">({field.translated_status})</span>
+                        </div>
+                      )}
                     </div>
                   )}
-                  <div className="text-gray-400 text-xs">
+                  
+                  <div className="text-gray-400 text-xs mt-2">
                     Font: {mapping.font.name}, Size: {mapping.font.size}
                   </div>
                   <div className="text-gray-400 text-xs mt-1">
@@ -305,10 +391,56 @@ const TemplateMappingOverlay: React.FC<{
         })}
       </div>
 
+      {/* Collapsible Status Legend */}
+      <div className="absolute top-4 left-4 z-40">
+        <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
+          {/* Legend Header - Always visible */}
+          <div 
+            className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => setLegendCollapsed(!legendCollapsed)}
+          >
+            <div className="text-xs font-semibold text-gray-700">Field Status</div>
+            <div 
+              className="w-4 h-4 flex items-center justify-center text-gray-500 transform transition-transform"
+              style={{ transform: legendCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+            >
+              ▼
+            </div>
+          </div>
+          
+          {/* Legend Content - Collapsible */}
+          {!legendCollapsed && (
+            <div className="px-3 pb-3 border-t border-gray-200">
+              <div className="space-y-1 mt-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10b981' }}></div>
+                  <span className="text-xs text-gray-600">Confirmed</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#3b82f6' }}></div>
+                  <span className="text-xs text-gray-600">Edited</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f59e0b' }}></div>
+                  <span className="text-xs text-gray-600">{isTranslatedView ? 'Translated' : 'OCR'}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#6b7280' }}></div>
+                  <span className="text-xs text-gray-600">Pending</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#ef4444' }}></div>
+                  <span className="text-xs text-gray-600">Required</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Editable Input - Rendered separately with backdrop */}
       {editingField && editInputPosition && (
         <>
-          {/* Backdrop to catch clicks outside */}
           <div 
             className="fixed inset-0 z-40 bg-transparent"
             onClick={(e) => {
@@ -317,7 +449,6 @@ const TemplateMappingOverlay: React.FC<{
             }}
           />
           
-          {/* Input popup positioned relative to the overlay */}
           <div
             className="absolute z-50 bg-white rounded-lg shadow-lg border border-gray-300 p-2"
             style={{
@@ -325,7 +456,7 @@ const TemplateMappingOverlay: React.FC<{
               top: editInputPosition.y,
               minWidth: '200px'
             }}
-            onClick={(e) => e.stopPropagation()} // Prevent clicks inside popup from bubbling
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center space-x-2">
               <input
@@ -333,7 +464,7 @@ const TemplateMappingOverlay: React.FC<{
                 type="text"
                 defaultValue={isTranslatedView 
                 ? (fields[editingField]?.translated_value || '') 
-                : (fields[editingField]?.value || '')} // Use defaultValue instead of value
+                : (fields[editingField]?.value || '')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleFieldSave(editingField, e.currentTarget.value);
@@ -906,56 +1037,68 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   };
 
   // Handle field updates
-const handleFieldUpdate = async (fieldKey: string, newValue: string) => {
-  if (!workflowData?.fields) return;
+  const handleFieldUpdate = async (fieldKey: string, newValue: string) => {
+    if (!workflowData?.fields) return;
 
-  // Determine if we're updating translated value or regular value
-  const isUpdatingTranslated = currentView === 'translated_template';
+    // Get the existing field data
+    const existingField = workflowData.fields[fieldKey] || {
+      value: '',
+      value_status: 'pending',
+      translated_value: null,
+      translated_status: 'pending'
+    };
 
-  // Update local state immediately for responsive UI
-  const updatedFields = {
-    ...workflowData.fields,
-    [fieldKey]: {
-      ...workflowData.fields[fieldKey],
-      ...(isUpdatingTranslated 
-        ? {
-            translated_value: newValue,
-            translated_status: 'completed' as const
-          }
-        : {
-            value: newValue,
-            value_status: 'manual' as const
-          }
-      )
+    // Determine if we're updating translated value or regular value
+    const isUpdatingTranslated = currentView === 'translated_template';
+
+    // Update local state immediately for responsive UI
+    const updatedFields = {
+      ...workflowData.fields,
+      [fieldKey]: {
+        ...existingField,
+        ...(isUpdatingTranslated 
+          ? {
+              translated_value: newValue,
+              translated_status: 'edited' as const
+            }
+          : {
+              value: newValue,
+              value_status: 'edited' as const
+            }
+        )
+      }
+    };
+
+    setWorkflowData({
+      ...workflowData,
+      fields: updatedFields
+    });
+
+    // Send update to backend - ALWAYS include all required fields
+    try {
+      const updateData = {
+        field_key: fieldKey,
+        // Always include the current value and value_status
+        value: isUpdatingTranslated ? existingField.value : newValue,
+        value_status: isUpdatingTranslated ? existingField.value_status : 'edited',
+        // Always include the current translated_value and translated_status
+        translated_value: isUpdatingTranslated ? newValue : existingField.translated_value,
+        translated_status: isUpdatingTranslated ? 'edited' : existingField.translated_status
+      };
+
+      await api.patch(`/api/workflow/${conversationId}/field`, updateData);
+      
+      console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue, isUpdatingTranslated ? '(translated)' : '(original)');
+    } catch (err: any) {
+      console.error('DocumentCanvas: Error updating field:', err);
+      
+      // Revert local state on error
+      setWorkflowData({
+        ...workflowData,
+        fields: workflowData.fields // Revert to original state
+      });
     }
   };
-
-  setWorkflowData({
-    ...workflowData,
-    fields: updatedFields
-  });
-
-  // Send update to backend
-  try {
-    const updateData = isUpdatingTranslated 
-      ? {
-          field_key: fieldKey,
-          translated_value: newValue,
-          translated_status: 'completed'
-        }
-      : {
-          field_key: fieldKey,
-          value: newValue,
-          value_status: 'manual'
-        };
-
-    await api.patch(`/api/workflow/${conversationId}/field`, updateData);
-    
-    console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue, isUpdatingTranslated ? '(translated)' : '(original)');
-  } catch (err: any) {
-    console.error('DocumentCanvas: Error updating field:', err);
-  }
-};
 
   // Fetch workflow data whenever the canvas opens or conversationId changes
   useEffect(() => {
