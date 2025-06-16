@@ -203,7 +203,7 @@ const ViewControls: React.FC<ViewControlsProps> = ({
             >
               {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
               <span>
-                {showMappings ? 'Hide' : 'Show'} Mappings ({getMappingsCount()})
+                {showMappings ? 'Hide' : 'Show'} Preview ({getMappingsCount()})
               </span>
             </Button>
             
