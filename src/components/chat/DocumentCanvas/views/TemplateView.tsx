@@ -8,6 +8,8 @@ interface TemplateViewProps {
   fields?: Record<string, any>;
   showMappings: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string, isTranslatedView: boolean) => Promise<void>;
+    conversationId: string;
+    workflowData: any;
 }
 
 const TemplateView: React.FC<TemplateViewProps> = ({ 
@@ -16,7 +18,9 @@ const TemplateView: React.FC<TemplateViewProps> = ({
   templateMappings,
   fields,
   showMappings,
-  onFieldUpdate
+  onFieldUpdate,
+  conversationId,
+  workflowData
 }) => {
   return (
     <div className="h-full">
@@ -27,6 +31,8 @@ const TemplateView: React.FC<TemplateViewProps> = ({
         fields={fields}
         showMappings={showMappings}
         onFieldUpdate={(fieldKey, newValue) => onFieldUpdate(fieldKey, newValue, false)}
+        conversationId={conversationId}
+        workflowData={workflowData}
       />
     </div>
   );

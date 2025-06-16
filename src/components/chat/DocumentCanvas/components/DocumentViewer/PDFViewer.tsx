@@ -17,6 +17,8 @@ interface PDFViewerProps {
   showMappings?: boolean;
   onFieldUpdate?: (fieldKey: string, newValue: string) => void;
   isTranslatedView?: boolean;
+  workflowData: any;
+  conversationId: string;
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ 
@@ -25,7 +27,9 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   fields = {}, 
   showMappings = false, 
   onFieldUpdate, 
-  isTranslatedView = false 
+  isTranslatedView = false,
+  workflowData,
+  conversationId
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -332,6 +336,8 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
               visible={showMappings && !loading}
               onFieldUpdate={onFieldUpdate || (() => {})}
               isTranslatedView={isTranslatedView}
+                workflowData={workflowData}
+                conversationId={conversationId}
             />
           )}
         </div>

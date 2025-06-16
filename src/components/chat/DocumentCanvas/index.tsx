@@ -114,6 +114,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
               <OriginalFileView 
                 url={workflowData.base_file_public_url} 
                 filename="Original File" 
+                workflowData={workflowData}
+                conversationId={conversationId}
               />
             )}
 
@@ -125,6 +127,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                 fields={workflowData.fields}
                 showMappings={showMappings}
                 onFieldUpdate={handleFieldUpdate}
+                conversationId={conversationId}
+                workflowData={workflowData}
 
               />
             )}
@@ -136,6 +140,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                 templateMappings={workflowData.translated_template_mappings}
                 fields={workflowData.fields}
                 showMappings={showMappings}
+                conversationId={conversationId}
+                workflowData={workflowData}
                 
                 onFieldUpdate={handleFieldUpdate}
               />

@@ -12,6 +12,8 @@ interface FileViewerProps {
   showMappings?: boolean;
   onFieldUpdate?: (fieldKey: string, newValue: string) => void;
   isTranslatedView?: boolean;
+  conversationId: string;
+  workflowData: any;
 }
 
 const FileViewer: React.FC<FileViewerProps> = ({ 
@@ -21,7 +23,9 @@ const FileViewer: React.FC<FileViewerProps> = ({
   fields = {}, 
   showMappings = false, 
   onFieldUpdate, 
-  isTranslatedView = false 
+  isTranslatedView = false,
+  conversationId,
+  workflowData
 }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
@@ -55,6 +59,8 @@ const FileViewer: React.FC<FileViewerProps> = ({
         showMappings={showMappings}
         onFieldUpdate={onFieldUpdate}
         isTranslatedView={isTranslatedView}
+        conversationId={conversationId}
+        workflowData={workflowData}
       />
     );
   }

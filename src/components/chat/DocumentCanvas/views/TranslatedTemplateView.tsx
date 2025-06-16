@@ -8,6 +8,8 @@ interface TranslatedTemplateViewProps {
   fields?: Record<string, any>;
   showMappings: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string, isTranslatedView: boolean) => Promise<void>;
+  workflowData: any;
+    conversationId: string;
 }
 
 const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({ 
@@ -16,6 +18,8 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
   templateMappings,
   fields,
   showMappings,
+    workflowData,
+    conversationId,
   onFieldUpdate
 }) => {
   const handleFieldUpdate = (fieldKey: string, newValue: string) => {
@@ -31,6 +35,9 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
       showMappings={showMappings}
       onFieldUpdate={handleFieldUpdate}
       isTranslatedView={true}
+        conversationId={conversationId}
+        workflowData={workflowData}
+      
     />
   );
 };

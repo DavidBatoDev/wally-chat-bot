@@ -14,6 +14,9 @@ interface TemplateMappingOverlayProps {
   visible: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string) => void;
   isTranslatedView?: boolean;
+    workflowData: any; // Add this prop
+    conversationId: string; // Add this prop
+  
 }
 
 const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({ 
@@ -25,6 +28,8 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
   canvasHeight, 
   visible, 
   onFieldUpdate, 
+  workflowData, // Add this prop
+  conversationId, // Add this prop
   isTranslatedView = false 
 }) => {
   const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
@@ -301,7 +306,12 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
             value={isTranslatedView 
               ? (fields[editingField]?.translated_value || '') 
               : (fields[editingField]?.value || '')}
-            onSave={(newValue: string) => handleFieldSave(editingField, newValue)}
+            field={fields[editingField]}
+            fieldKey={editingField}
+            conversationId={conversationId || ""}
+            workflowData={workflowData}
+            isTranslatedView={isTranslatedView}
+            onSave={(newValue) => handleFieldSave(editingField, newValue)}
             onCancel={handleEditCancel}
             placeholder={`Enter ${isTranslatedView ? 'translated ' : ''}${mappings[editingField]?.label || 'value'}`}
             position={editInputPosition}
