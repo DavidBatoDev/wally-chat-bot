@@ -188,21 +188,12 @@ const TemplateMappingOverlay: React.FC<{
         };
       case 'pending':
       default:
-        if (hasValue) {
-          return {
-            border: '#6b7280',    // gray-500 - has value but pending
-            background: 'rgba(107, 114, 128, 0.15)',
-            label: 'Pending Review',
-            priority: 1
-          };
-        } else {
-          return {
-            border: '#666666',    // red-500 - empty/required
-            background: 'rgba(239, 68, 68, 0.15)',
-            label: 'Required',
-            priority: 0
-          };
-        }
+        return {
+          border: '#6b7280',    // gray-500 - has value but pending
+          background: 'rgba(107, 114, 128, 0.15)',
+          label: 'Pending',
+          priority: 1
+        };
     }
   };
 
@@ -427,10 +418,6 @@ const TemplateMappingOverlay: React.FC<{
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 rounded" style={{ backgroundColor: '#6b7280' }}></div>
                   <span className="text-xs text-gray-600">Pending</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#ef4444' }}></div>
-                  <span className="text-xs text-gray-600">Required</span>
                 </div>
               </div>
             </div>
