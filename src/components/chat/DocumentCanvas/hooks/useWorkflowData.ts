@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-import { WorkflowData } from '../types/workflow';
+import { WorkflowData, WorkflowField, WorkflowFieldStatus, TranslatedFieldStatus } from '../types/workflow';
 
 export const useWorkflowData = (conversationId: string) => {
   const [workflowData, setWorkflowData] = useState<WorkflowData | null>(null);
@@ -48,6 +48,12 @@ export const useWorkflowData = (conversationId: string) => {
       translated_status: 'pending'
     };
 
+    // Determine new status based on value with proper typing
+    const isEmpty = newValue.trim() === '';
+    const newValueStatus: WorkflowFieldStatus = isEmpty ? 'pending' : 'edited';
+    const newTranslatedStatus: TranslatedFieldStatus = isEmpty ? 'pending' : 'edited';
+
+    // Update local state with proper typing
     const updatedFields = {
       ...workflowData.fields,
       [fieldKey]: {
@@ -55,25 +61,28 @@ export const useWorkflowData = (conversationId: string) => {
         ...(isTranslatedView 
           ? {
               translated_value: newValue,
-              translated_status: 'edited' as const
+              translated_status: newTranslatedStatus
             }
           : {
               value: newValue,
-              value_status: 'edited' as const
+              value_status: newValueStatus
             }
         )
       }
     };
 
-    setWorkflowData(prev => prev ? ({ ...prev, fields: updatedFields }) : null);
+    setWorkflowData(prev => prev ? ({ 
+      ...prev, 
+      fields: updatedFields as Record<string, WorkflowField>
+    }) : null);
 
     try {
       const updateData = {
         field_key: fieldKey,
         value: isTranslatedView ? existingField.value : newValue,
-        value_status: isTranslatedView ? existingField.value_status : 'edited',
+        value_status: isTranslatedView ? existingField.value_status : newValueStatus,
         translated_value: isTranslatedView ? newValue : existingField.translated_value,
-        translated_status: isTranslatedView ? 'edited' : existingField.translated_status
+        translated_status: isTranslatedView ? newTranslatedStatus : existingField.translated_status
       };
 
       await api.patch(`/api/workflow/${conversationId}/field`, updateData);

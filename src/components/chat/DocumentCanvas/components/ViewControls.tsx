@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, File, FileText, Languages } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkflowData, ViewType } from '../types/workflow';
 
 interface ViewControlsProps {
@@ -40,44 +41,64 @@ const ViewControls: React.FC<ViewControlsProps> = ({
   return (
     <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
       <div className="flex space-x-3">
-        <Button
-          onClick={() => onViewChange('original')}
-          variant={currentView === 'original' ? 'default' : 'outline'}
-          disabled={!workflowData?.base_file_public_url}
-          className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-            currentView === 'original'
-              ? 'bg-red-500 text-white hover:bg-red-600'
-              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          Original File
-        </Button>
-        
-        <Button
-          onClick={() => onViewChange('template')}
-          variant={currentView === 'template' ? 'default' : 'outline'}
-          disabled={!workflowData?.template_file_public_url}
-          className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-            currentView === 'template'
-              ? 'bg-red-500 text-white hover:bg-red-600'
-              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          Template
-        </Button>
+        <TooltipProvider delayDuration={200}>
+          {/* Original File Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={currentView === 'original' ? 'default' : 'outline'}
+                disabled={!workflowData?.base_file_public_url}
+                className={`h-10 w-10 ${currentView === 'original' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
+                onClick={() => onViewChange('original')}
+                aria-label="Original File"
+              >
+                <File size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Original File</p>
+            </TooltipContent>
+          </Tooltip>
+          
+          {/* Template Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={currentView === 'template' ? 'default' : 'outline'}
+                disabled={!workflowData?.template_file_public_url}
+                className={`h-10 w-10 ${currentView === 'template' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
+                onClick={() => onViewChange('template')}
+                aria-label="OCRed"
+              >
+                <FileText size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>OCRed</p>
+            </TooltipContent>
+          </Tooltip>
 
-        <Button
-          onClick={() => onViewChange('translated_template')}
-          variant={currentView === 'translated_template' ? 'default' : 'outline'}
-          disabled={!workflowData?.template_translated_file_public_url}
-          className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-            currentView === 'translated_template'
-              ? 'bg-red-500 text-white hover:bg-red-600'
-              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          Translated Template
-        </Button>
+          {/* Translated Template Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant={currentView === 'translated_template' ? 'default' : 'outline'}
+                disabled={!workflowData?.template_translated_file_public_url}
+                className={`h-10 w-10 ${currentView === 'translated_template' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
+                onClick={() => onViewChange('translated_template')}
+                aria-label="Translation"
+              >
+                <Languages size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Translation</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       
       {(currentView === 'template' || currentView === 'translated_template') && 
