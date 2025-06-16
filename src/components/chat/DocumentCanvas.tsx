@@ -58,9 +58,13 @@ interface WorkflowData {
   template_file_public_url?: string;
   origin_template_mappings?: Record<string, TemplateMapping>;
   fields?: Record<string, WorkflowField>;
+  template_translated_file_public_url?: string;
+  translated_template_mappings?: Record<string, TemplateMapping>;
+
+  
 }
 
-type ViewType = 'original' | 'template';
+type ViewType = 'original' | 'template' | 'translated_template';
 
 // Editable Input Component
 const EditableInput: React.FC<{
@@ -134,7 +138,8 @@ const TemplateMappingOverlay: React.FC<{
   canvasHeight: number;
   visible: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string) => void;
-}> = ({ mappings, fields, pageNum, scale, canvasWidth, canvasHeight, visible, onFieldUpdate }) => {
+  isTranslatedView?: boolean;
+}> = ({ mappings, fields, pageNum, scale, canvasWidth, canvasHeight, visible, onFieldUpdate, isTranslatedView = false }) => {
   const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editInputPosition, setEditInputPosition] = useState<{ x: number; y: number } | null>(null);
@@ -226,7 +231,9 @@ const TemplateMappingOverlay: React.FC<{
 
           const isHovered = hoveredMapping === key;
           const isEditing = editingField === key;
-          const fieldValue = fields[key]?.value || '';
+          const fieldValue = isTranslatedView 
+            ? (fields[key]?.translated_value || '') 
+            : (fields[key]?.value || '');
           const hasValue = fieldValue.trim().length > 0;
 
           return (
@@ -282,7 +289,7 @@ const TemplateMappingOverlay: React.FC<{
                   <div className="text-gray-300">{mapping.label}</div>
                   {hasValue && (
                     <div className="text-blue-300 mt-1">
-                      Current: "{fieldValue}"
+                      {isTranslatedView ? 'Translated' : 'Current'}: "{fieldValue}"
                     </div>
                   )}
                   <div className="text-gray-400 text-xs">
@@ -324,7 +331,9 @@ const TemplateMappingOverlay: React.FC<{
               <input
                 ref={(input) => input?.focus()}
                 type="text"
-                defaultValue={fields[editingField]?.value || ''} // Use defaultValue instead of value
+                defaultValue={isTranslatedView 
+                ? (fields[editingField]?.translated_value || '') 
+                : (fields[editingField]?.value || '')} // Use defaultValue instead of value
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleFieldSave(editingField, e.currentTarget.value);
@@ -333,7 +342,7 @@ const TemplateMappingOverlay: React.FC<{
                     handleEditCancel();
                   }
                 }}
-                placeholder={`Enter ${mappings[editingField]?.label || 'value'}`}
+                placeholder={`Enter ${isTranslatedView ? 'translated ' : ''}${mappings[editingField]?.label || 'value'}`}
                 className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
                 autoFocus
               />
@@ -374,7 +383,8 @@ const PDFViewer: React.FC<{
   fields?: Record<string, WorkflowField>;
   showMappings?: boolean;
   onFieldUpdate?: (fieldKey: string, newValue: string) => void;
-}> = ({ url, templateMappings, fields = {}, showMappings = false, onFieldUpdate }) => {
+  isTranslatedView?: boolean;
+}> = ({ url, templateMappings, fields = {}, showMappings = false, onFieldUpdate, isTranslatedView = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
@@ -695,6 +705,7 @@ const PDFViewer: React.FC<{
               canvasHeight={canvasDimensions.height}
               visible={showMappings && !loading}
               onFieldUpdate={onFieldUpdate || (() => {})}
+              isTranslatedView={isTranslatedView}
             />
           )}
         </div>
@@ -750,7 +761,8 @@ const FileViewer: React.FC<{
   fields?: Record<string, WorkflowField>;
   showMappings?: boolean;
   onFieldUpdate?: (fieldKey: string, newValue: string) => void;
-}> = ({ url, filename, templateMappings, fields = {}, showMappings = false, onFieldUpdate }) => {
+  isTranslatedView?: boolean;
+}> = ({ url, filename, templateMappings, fields = {}, showMappings = false, onFieldUpdate, isTranslatedView = false }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
       // Handle URLs with query parameters by extracting the pathname
@@ -797,6 +809,7 @@ const FileViewer: React.FC<{
         fields={fields}
         showMappings={showMappings}
         onFieldUpdate={onFieldUpdate}
+        isTranslatedView={isTranslatedView}
       />
     );
   }
@@ -837,6 +850,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [hasWorkflow, setHasWorkflow] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  console.log(workflowData)
   
   // View state - default to 'original' since we removed forms
   const [currentView, setCurrentView] = useState<ViewType>('original');
@@ -891,39 +906,56 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   };
 
   // Handle field updates
-  const handleFieldUpdate = async (fieldKey: string, newValue: string) => {
-    if (!workflowData?.fields) return;
+const handleFieldUpdate = async (fieldKey: string, newValue: string) => {
+  if (!workflowData?.fields) return;
 
-    // Update local state immediately for responsive UI
-    const updatedFields = {
-      ...workflowData.fields,
-      [fieldKey]: {
-        ...workflowData.fields[fieldKey],
-        value: newValue,
-        value_status: 'manual' as const // Mark as manually edited
-      }
-    };
+  // Determine if we're updating translated value or regular value
+  const isUpdatingTranslated = currentView === 'translated_template';
 
-    setWorkflowData({
-      ...workflowData,
-      fields: updatedFields
-    });
-
-    // Send update to backend
-    try {
-      await api.patch(`/api/workflow/${conversationId}/field`, {
-        field_key: fieldKey,
-        value: newValue,
-        value_status: 'edited'
-      });
-      
-      console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue);
-    } catch (err: any) {
-      console.error('DocumentCanvas: Error updating field:', err);
-      // Optionally revert the optimistic update on error
-      // For now, we'll keep the optimistic update
+  // Update local state immediately for responsive UI
+  const updatedFields = {
+    ...workflowData.fields,
+    [fieldKey]: {
+      ...workflowData.fields[fieldKey],
+      ...(isUpdatingTranslated 
+        ? {
+            translated_value: newValue,
+            translated_status: 'completed' as const
+          }
+        : {
+            value: newValue,
+            value_status: 'manual' as const
+          }
+      )
     }
   };
+
+  setWorkflowData({
+    ...workflowData,
+    fields: updatedFields
+  });
+
+  // Send update to backend
+  try {
+    const updateData = isUpdatingTranslated 
+      ? {
+          field_key: fieldKey,
+          translated_value: newValue,
+          translated_status: 'completed'
+        }
+      : {
+          field_key: fieldKey,
+          value: newValue,
+          value_status: 'manual'
+        };
+
+    await api.patch(`/api/workflow/${conversationId}/field`, updateData);
+    
+    console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue, isUpdatingTranslated ? '(translated)' : '(original)');
+  } catch (err: any) {
+    console.error('DocumentCanvas: Error updating field:', err);
+  }
+};
 
   // Fetch workflow data whenever the canvas opens or conversationId changes
   useEffect(() => {
@@ -955,6 +987,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     setCurrentView('template');
   };
 
+  const handleShowTranslatedTemplate = () => {
+    console.log("DocumentCanvas: Translated Template clicked");
+    setCurrentView('translated_template');
+  };
+
   const toggleMappings = () => {
     setShowMappings(!showMappings);
   };
@@ -966,12 +1003,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     switch (currentView) {
       case 'original': return 'Original File';
       case 'template': return 'Template';
+      case 'translated_template': return 'Translated Template';
       default: return 'Original File';
     }
   };
 
   // Count mappings for current view
   const getMappingsCount = () => {
+    if (currentView === 'translated_template') {
+      if (!workflowData?.translated_template_mappings) return 0;
+      return Object.keys(workflowData.translated_template_mappings).length;
+    }
     if (!workflowData?.origin_template_mappings) return 0;
     return Object.keys(workflowData.origin_template_mappings).length;
   };
@@ -1032,6 +1074,20 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       );
     }
 
+    if (currentView === 'translated_template' && workflowData?.template_translated_file_public_url) {
+    return (
+      <FileViewer 
+        url={workflowData.template_translated_file_public_url} 
+        filename="Translated Template"
+        templateMappings={workflowData.translated_template_mappings}
+        fields={workflowData.fields}
+        showMappings={showMappings}
+        onFieldUpdate={handleFieldUpdate}
+        isTranslatedView={true}
+      />
+    );
+  }
+
     return (
       <div className="text-center text-gray-500 p-8 bg-white rounded-lg border border-gray-200">
         <p className="font-medium">File not available</p>
@@ -1084,10 +1140,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
             >
               Template
             </Button>
+
+            <Button
+              onClick={handleShowTranslatedTemplate}
+              variant={currentView === 'translated_template' ? 'default' : 'outline'}
+              disabled={!workflowData?.template_translated_file_public_url}
+              className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
+                currentView === 'translated_template'
+                  ? 'bg-red-500 text-white hover:bg-red-600'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Translated Template
+            </Button>
           </div>
           
           {/* Template Mappings Toggle */}
-          {currentView === 'template' && workflowData?.origin_template_mappings && (
+          {(currentView === 'template' || currentView === 'translated_template') && 
+          ((currentView === 'template' && workflowData?.origin_template_mappings) || 
+            (currentView === 'translated_template' && workflowData?.translated_template_mappings)) && (
             <div className="flex items-center space-x-2">
               <Button
                 onClick={toggleMappings}
