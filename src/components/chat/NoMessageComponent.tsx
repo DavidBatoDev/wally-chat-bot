@@ -1,7 +1,6 @@
-// client/src/components/chat/NoMessagesComponent.tsx
 "use client";
 import React, { useState, useRef } from "react";
-import { Upload, Globe, MessageCircle, FileText, Loader2 } from "lucide-react";
+import { Upload, Globe, MessageCircle, FileText, Loader2, Image } from "lucide-react";
 
 interface NoMessagesComponentProps {
   onSendMessage: (text: string) => void;
@@ -86,7 +85,7 @@ const NoMessagesComponent: React.FC<NoMessagesComponentProps> = ({
               <div>
                 <h3 className="font-semibold text-gray-800 mb-2">1. Upload Document</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Upload the document you want to translate. Supported formats: PDF, DOCX, TXT
+                  Upload the document or image you want to translate. Supported formats: PDF, DOCX, TXT, JPG, PNG, WEBP
                 </p>
               </div>
 
@@ -102,7 +101,10 @@ const NoMessagesComponent: React.FC<NoMessagesComponentProps> = ({
                   </>
                 ) : (
                   <>
-                    <FileText className="w-4 h-4" />
+                    <div className="flex items-center space-x-1">
+                      <FileText className="w-4 h-4" />
+                      <Image className="w-3 h-3" />
+                    </div>
                     <span>Choose File</span>
                   </>
                 )}
@@ -112,7 +114,7 @@ const NoMessagesComponent: React.FC<NoMessagesComponentProps> = ({
                 ref={fileInputRef}
                 type="file"
                 onChange={handleFileUpload}
-                accept=".pdf,.docx,.doc,.txt"
+                accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tiff"
                 className="hidden"
               />
             </div>
@@ -161,12 +163,12 @@ const NoMessagesComponent: React.FC<NoMessagesComponentProps> = ({
               <div>
                 <h3 className="font-semibold text-gray-800 mb-2">3. Start Chatting</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Once you've uploaded your document and set your target language, start chatting to begin the translation process!
+                  Once you've uploaded your document/image and set your target language, start chatting to begin the translation process!
                 </p>
               </div>
 
               <div className="w-full bg-red-50 border border-red-200 text-gray-700 px-4 py-2 rounded-lg text-sm">
-                Ready to help you translate your document!
+                Ready to help you translate your content!
               </div>
             </div>
           </div>
@@ -175,8 +177,8 @@ const NoMessagesComponent: React.FC<NoMessagesComponentProps> = ({
         {/* Additional Info */}
         <div className="text-center pt-2 border-t border-red-100">
           <p className="text-sm text-gray-500">
-            💡 <strong>Tip:</strong> You can upload your document and set your language in any order. 
-            I'll guide you through the translation process step by step.
+            💡 <strong>Tip:</strong> You can upload documents (PDF, DOCX, TXT) or images (JPG, PNG, WEBP) containing text to translate. 
+            I'll extract and translate the text for you!
           </p>
         </div>
       </div>

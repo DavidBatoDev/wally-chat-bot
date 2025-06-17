@@ -1,3 +1,4 @@
+// client/components/chat/DocumentCanvas/components/ViewControls.tsx
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { File, FileText, Languages, RefreshCw, Eye } from 'lucide-react';
@@ -57,6 +58,8 @@ const ViewControls: React.FC<ViewControlsProps> = ({
     try {
       // Get target language from workflow data or default to English
       const targetLanguage = workflowData.translate_to || 'en';
+
+      console.log("Translating all fields to:", targetLanguage);
       
       const response = await api.post(
         `/api/workflow/${conversationId}/translate-all-fields`,

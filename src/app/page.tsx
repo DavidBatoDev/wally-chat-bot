@@ -154,7 +154,7 @@ export default function HomePage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Welcome to Wally</h1>
-              <p className="text-gray-600">Your Multi-Agent AI for document processing, translation & templates</p>
+              <p className="text-gray-600">Your Multi-Agent AI for document processing, OCR & translation</p>
             </div>
           </div>
           <Button 
@@ -191,7 +191,7 @@ export default function HomePage() {
             <div className="w-12 h-12 bg-pink-100 rounded-xl flex items-center justify-center mb-4">
               <File className="w-6 h-6 text-pink-600" />
             </div>
-            <h3 className="font-semibold text-gray-900 mb-2">ranslation</h3>
+            <h3 className="font-semibold text-gray-900 mb-2">Translation</h3>
             <p className="text-gray-600 text-sm">Scan and translate local documents like birth certificates, Local IDs, and government requirements.</p>
           </div>
         </div>
