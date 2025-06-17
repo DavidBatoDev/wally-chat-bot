@@ -43,6 +43,7 @@ export interface WorkflowData {
   template_file_public_url?: string;
   origin_template_mappings?: Record<string, TemplateMapping>;
   fields?: Record<string, WorkflowField>;
+  template_translated_id: string;
   template_translated_file_public_url?: string;
   translated_template_mappings?: Record<string, TemplateMapping>;
   translate_to: string;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff, File, FileText, Languages, RefreshCw } from 'lucide-react';
+import { File, FileText, Languages, RefreshCw, Eye } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkflowData, ViewType } from '../types/workflow';
 import api from '@/lib/api';
@@ -17,6 +17,8 @@ interface ViewControlsProps {
   onToggleMappings: () => void;
   conversationId: string;
   fetchWorkflowData: () => Promise<void>;
+  onTogglePreview: () => void;
+  showPreview: boolean;
 }
 
 const ViewControls: React.FC<ViewControlsProps> = ({
@@ -29,11 +31,12 @@ const ViewControls: React.FC<ViewControlsProps> = ({
   onViewChange,
   onToggleMappings,
   conversationId,
-  fetchWorkflowData
+  fetchWorkflowData,
+  onTogglePreview,
+  showPreview
 }) => {
   const { toast } = useToast();
   const [translateLoading, setTranslateLoading] = useState(false);
-  const [translateError, setTranslateError] = useState<string | null>(null);
 
   const getMappingsCount = () => {
     if (currentView === 'translated_template') {
@@ -46,84 +49,52 @@ const ViewControls: React.FC<ViewControlsProps> = ({
       : 0;
   };
 
-    const languageNameToCode: Record<string, string> = {
-    'greek': 'el',
-    'english': 'en',
-    'spanish': 'es',
-    'french': 'fr',
-    'german': 'de',
-    'italian': 'it',
-    'japanese': 'ja',
-    'korean': 'ko',
-    'chinese': 'zh',
-    'arabic': 'ar',
-    'hindi': 'hi',
-    // Add more mappings as needed
-    };
-
-    const getLanguageCode = (languageName: string | undefined): string => {
-    if (!languageName) return 'en';
-    const normalized = languageName.toLowerCase().trim();
-    return languageNameToCode[normalized] || 'en';
-    };
-
-    const handleTranslateAll = async () => {
+  const handleTranslateAll = async () => {
     if (!conversationId || !workflowData) return;
     
     setTranslateLoading(true);
-    setTranslateError(null);
     
     try {
-        // Convert language names to ISO codes
-        const targetLanguage = getLanguageCode(workflowData.translate_to);
-        const sourceLanguage = workflowData.translate_from 
-        ? getLanguageCode(workflowData.translate_from)
-        : undefined;
-
-        console.log("Translate All Request:", {
-        target_language: targetLanguage,
-        source_language: sourceLanguage,
-        use_gemini: false,
-        force_retranslate: false
-        });
-
-        const response = await api.post(
+      // Get target language from workflow data or default to English
+      const targetLanguage = workflowData.translate_to || 'en';
+      
+      const response = await api.post(
         `/api/workflow/${conversationId}/translate-all-fields`,
         {
-            target_language: targetLanguage,
-            use_gemini: false,
-            source_language: sourceLanguage,
-            force_retranslate: false
+          target_language: targetLanguage,
+          use_gemini: false,
+          source_language: workflowData.translate_from || undefined,
+          force_retranslate: false
         }
-        );
-        
-        if (response.data.success) {
+      );
+      
+      if (response.data.success) {
         toast({
-            title: "Translation Successful",
-            description: `Translated ${Object.keys(response.data.translated_fields).length} fields`,
-            variant: "default"
+          title: "Translation Successful",
+          description: `Translated ${Object.keys(response.data.translated_fields).length} fields`,
+          variant: "default"
         });
         
         await fetchWorkflowData();
-        } else {
+      } else {
         throw new Error(response.data.message || "Translation failed");
-        }
+      }
     } catch (err: any) {
-        console.error("Translate all error:", err);
-        const errorMessage = err.response?.data?.detail || 
-                            err.response?.data?.message || 
-                            err.message || 
-                            "Translation failed";
-        
-        toast({
+      console.error("Translate all error:", err);
+      const errorMessage = err.response?.data?.detail || 
+                           err.response?.data?.message || 
+                           err.message || 
+                           "Translation failed";
+      
+      toast({
         title: "Translation Error",
         description: errorMessage,
         variant: "destructive"
-        });
+      });
     } finally {
-        setTranslateLoading(false);
+      setTranslateLoading(false);
     }
-    };
+  };
 
   if (loading || error || !hasWorkflow) return null;
 
@@ -192,8 +163,7 @@ const ViewControls: React.FC<ViewControlsProps> = ({
       
       <div className="flex items-center space-x-2">
         {(currentView === 'template' || currentView === 'translated_template') && 
-        ((currentView === 'template' && workflowData?.origin_template_mappings) || 
-          (currentView === 'translated_template' && workflowData?.translated_template_mappings)) && (
+        workflowData?.fields && Object.keys(workflowData.fields).length > 0 && (
           <>
             <Button
               onClick={onToggleMappings}
@@ -201,10 +171,20 @@ const ViewControls: React.FC<ViewControlsProps> = ({
               size="sm"
               className="flex items-center space-x-2"
             >
-              {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
+              {showMappings ? <Eye size={16} /> : <Eye size={16} />}
               <span>
-                {showMappings ? 'Hide' : 'Show'} Preview ({getMappingsCount()})
+                {showMappings ? 'Hide' : 'Show'} Mappings ({getMappingsCount()})
               </span>
+            </Button>
+            
+            <Button
+              onClick={onTogglePreview}
+              variant={showPreview ? 'default' : 'outline'}
+              size="sm"
+              className="flex items-center space-x-2"
+            >
+              <Eye size={16} />
+              <span>Preview</span>
             </Button>
             
             {currentView === 'translated_template' && (
@@ -215,7 +195,7 @@ const ViewControls: React.FC<ViewControlsProps> = ({
                       onClick={handleTranslateAll}
                       variant="outline"
                       size="sm"
-                      disabled={translateLoading || !workflowData?.fields || Object.keys(workflowData.fields).length === 0}
+                      disabled={translateLoading}
                       className="flex items-center space-x-2"
                     >
                       {translateLoading ? (

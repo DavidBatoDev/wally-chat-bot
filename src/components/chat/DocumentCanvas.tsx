@@ -1298,7 +1298,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
               >
                 {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
                 <span>
-                  {showMappings ? 'Hide' : 'Show'} Preview ({getMappingsCount()})
+                  {showMappings ? 'Hide' : 'Show'} Mapp ({getMappingsCount()})
                 </span>
               </Button>
             </div>
