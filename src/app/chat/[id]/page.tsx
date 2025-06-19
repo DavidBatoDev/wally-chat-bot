@@ -20,6 +20,7 @@ export default function ChatPage() {
   const conversationId = params?.id as string;
   const [isDocumentCanvasOpen, setIsDocumentCanvasOpen] = useState(false);
   const [showWorkflowButton, setShowWorkflowButton] = useState(false);
+  const [hasAutoOpened, setHasAutoOpened] = useState(false); // Track if we've auto-opened
 
   // Initialize chat with the conversation ID from the URL
   const {
@@ -57,9 +58,15 @@ export default function ChatPage() {
     }
   }, [messages.length, conversationId, checkWorkflow]);
 
-  // Handle workflow button animation when workflow is detected
+  // Handle workflow detection - Auto-open DocumentCanvas and show button
   useEffect(() => {
     if (hasWorkflow && !workflowLoading) {
+      // Auto-open the DocumentCanvas when workflow is first detected
+      if (!hasAutoOpened) {
+        setIsDocumentCanvasOpen(true);
+        setHasAutoOpened(true);
+      }
+      
       // Delay the button appearance for a smooth animation
       const timeoutId = setTimeout(() => {
         setShowWorkflowButton(true);
@@ -68,8 +75,17 @@ export default function ChatPage() {
       return () => clearTimeout(timeoutId);
     } else {
       setShowWorkflowButton(false);
+      // Reset auto-open flag when no workflow
+      if (!hasWorkflow) {
+        setHasAutoOpened(false);
+      }
     }
-  }, [hasWorkflow, workflowLoading]);
+  }, [hasWorkflow, workflowLoading, hasAutoOpened]);
+
+  // Reset auto-open flag when conversation changes
+  useEffect(() => {
+    setHasAutoOpened(false);
+  }, [conversationId]);
 
   // Debug logging for workflow state
   useEffect(() => {
@@ -77,9 +93,11 @@ export default function ChatPage() {
       conversationId,
       hasWorkflow,
       workflowData: workflowData ? 'present' : 'none',
-      messagesCount: messages.length
+      messagesCount: messages.length,
+      isDocumentCanvasOpen,
+      hasAutoOpened
     });
-  }, [conversationId, hasWorkflow, workflowData, messages.length]);
+  }, [conversationId, hasWorkflow, workflowData, messages.length, isDocumentCanvasOpen, hasAutoOpened]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -187,12 +205,14 @@ export default function ChatPage() {
                   Workflow: {hasWorkflow ? 'Yes' : 'No'} | Messages: {messages.length}
                   {workflowLoading && ' (Checking...)'}
                   {workflowError && ` (Error: ${workflowError})`}
+                  | Canvas: {isDocumentCanvasOpen ? 'Open' : 'Closed'}
+                  | Auto-opened: {hasAutoOpened ? 'Yes' : 'No'}
                 </div>
               )}
             </div>
           </div>
           
-          {/* Document Canvas Toggle Button - Show if workflow exists with animation */}
+          {/* Document Canvas Toggle Button - Show if workflow exists */}
           {showWorkflowButton && (
             <div className="relative">
               <Button
@@ -211,13 +231,13 @@ export default function ChatPage() {
                 <FileText size={18} />
               </Button>
               
-              {/* Notification glow effect */}
-              {!isDocumentCanvasOpen && (
+              {/* Notification glow effect - only show if closed and workflow exists */}
+              {!isDocumentCanvasOpen && hasWorkflow && (
                 <div className="absolute inset-0 rounded-md animate-ping-slow bg-blue-400 opacity-20 pointer-events-none"></div>
               )}
               
-              {/* Notification dot */}
-              {!isDocumentCanvasOpen && (
+              {/* Notification dot - only show if closed and workflow exists */}
+              {!isDocumentCanvasOpen && hasWorkflow && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-lg"></div>
               )}
             </div>

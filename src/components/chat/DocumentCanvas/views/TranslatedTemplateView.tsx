@@ -1,3 +1,4 @@
+// client/src/components/chat/DocumentCanvas/views/TranslatedTemplateView.tsx
 import React from 'react';
 import FileViewer from '../components/DocumentViewer/FileViewer';
 
