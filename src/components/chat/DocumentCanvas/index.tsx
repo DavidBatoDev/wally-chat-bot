@@ -248,14 +248,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       return updated;
     });
     setLocalFields(prev => {
-      if (prev && prev[fieldKey]) return prev;
-      if (workflowData) {
-        const otherMappings = currentView === 'template'
-          ? (workflowData.translated_template_mappings || {})
-          : (workflowData.origin_template_mappings || {});
-        if (otherMappings[fieldKey]) return prev;
+      // Always add the field if missing
+      if (!prev || !prev[fieldKey]) {
+        return { ...(prev || {}), [fieldKey]: { value: '', value_status: 'pending', translated_value: null, translated_status: 'pending' } };
       }
-      return { ...(prev || {}), [fieldKey]: { value: '', value_status: 'pending', translated_value: null, translated_status: 'pending' } };
+      return prev;
     });
     setEditingField(fieldKey);
   };
@@ -287,7 +284,15 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const handleFieldUpdateLocal = (fieldKey: string, newValue: string, isTranslatedView = false) => {
     setLocalFields(prev => {
       const updated = { ...(prev || {}) };
-      if (!updated[fieldKey]) return prev;
+      // Always create the field if missing!
+      if (!updated[fieldKey]) {
+        updated[fieldKey] = {
+          value: '',
+          value_status: 'pending',
+          translated_value: null,
+          translated_status: 'pending'
+        };
+      }
       if (isTranslatedView) {
         updated[fieldKey] = {
           ...updated[fieldKey],
@@ -311,6 +316,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     if (!workflowData) return;
     setIsSaving(true);
     try {
+      
       // Filter out mappings with value null (deleted)
       const filteredMappings: Record<string, any> = {};
       Object.entries(localMappings || {}).forEach(([key, value]) => {
@@ -321,11 +327,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       Object.keys(filteredMappings).forEach(key => {
         if (localRequiredFields[key]) validRequiredFields[key] = localRequiredFields[key];
       });
+      // Ensure every mapping has a field
+      const allFields = { ...(localFields || {}) };
+      Object.keys(filteredMappings).forEach(key => {
+        if (!allFields[key]) {
+          allFields[key] = { value: '', value_status: 'pending', translated_value: null, translated_status: 'pending' };
+        }
+      });
       // Only keep fields for existing mappings
       const cleanFields: Record<string, any> = {};
-      Object.keys(localFields || {}).forEach(key => {
+      Object.keys(allFields).forEach(key => {
         if (filteredMappings[key]) {
-          cleanFields[key] = (localFields as any)[key];
+          cleanFields[key] = allFields[key];
         }
       });
       // Build info_json_custom for PATCH
@@ -334,6 +347,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         required_fields: validRequiredFields,
         fillable_text_info: Object.values(filteredMappings),
       };
+      console.log(localMappings)
+      console.log(localFields)
+      console.log(filteredMappings)
+      console.log(cleanFields)
       const mappingsKey = currentView === 'template' ? 'origin_template_mappings' : 'translated_template_mappings';
       await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
         [mappingsKey]: filteredMappings,

@@ -216,6 +216,9 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
       page_number: pageNum
     };
     onUpdateLayout({ ...mappings, [key]: newMapping });
+    if (onFieldUpdate) {
+      onFieldUpdate(key, ""); // This should update localFields in the parent!
+    }
     setShowAddBox(false);
     setNewBoxKey('');
   };
