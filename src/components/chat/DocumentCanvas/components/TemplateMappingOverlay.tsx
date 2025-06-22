@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { X, Check, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useImperativeHandle, forwardRef } from 'react';
+import { X, Check, Eye, EyeOff, Trash2, Move } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EditableInput from './EditableInput';
 import { TemplateMapping, WorkflowField } from '../types/workflow';
+import api from '@/lib/api';
 
 interface TemplateMappingOverlayProps {
   mappings: Record<string, TemplateMapping>;
@@ -16,10 +17,13 @@ interface TemplateMappingOverlayProps {
   isTranslatedView?: boolean;
   workflowData: any; // Add this prop
   conversationId: string; // Add this prop
-  
+  isEditingLayout?: boolean;
+  onUpdateLayout?: (newMappings: any) => void;
+  editingField?: string | null;
+  setEditingField?: (fieldKey: string | null) => void;
 }
 
-const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({ 
+const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({ 
   mappings, 
   fields, 
   pageNum, 
@@ -30,12 +34,46 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
   onFieldUpdate, 
   workflowData, // Add this prop
   conversationId, // Add this prop
-  isTranslatedView = false 
-}) => {
+  isTranslatedView = false,
+  isEditingLayout = false,
+  onUpdateLayout,
+  editingField,
+  setEditingField
+}, ref) => {
+  // All hooks must be called unconditionally
   const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<string | null>(null);
   const [editInputPosition, setEditInputPosition] = useState<{ x: number; y: number } | null>(null);
   const [legendCollapsed, setLegendCollapsed] = useState<boolean>(true);
+  const [showAddBox, setShowAddBox] = useState(false);
+  const [newBoxKey, setNewBoxKey] = useState('');
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
+  const [resizingKey, setResizingKey] = useState<string | null>(null);
+  const [resizeStart, setResizeStart] = useState<{ x: number; y: number; x1: number; y1: number } | null>(null);
+
+  // Mouse event listeners for drag/resize
+  React.useEffect(() => {
+    if (draggingKey) {
+      window.addEventListener('mousemove', handleDrag);
+      window.addEventListener('mouseup', handleDragEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleDrag);
+        window.removeEventListener('mouseup', handleDragEnd);
+      };
+    }
+    if (resizingKey) {
+      window.addEventListener('mousemove', handleResize);
+      window.addEventListener('mouseup', handleResizeEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleResize);
+        window.removeEventListener('mouseup', handleResizeEnd);
+      };
+    }
+  }, [draggingKey, resizingKey, dragOffset, resizeStart]);
+
+  useImperativeHandle(ref, () => ({
+    showAddBox: () => setShowAddBox(true)
+  }));
 
   if (!visible || !mappings) return null;
 
@@ -88,16 +126,15 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
   };
 
   const currentPageMappings = Object.entries(mappings).filter(
-    ([_, mapping]) => mapping.page_number === pageNum
+    ([_, mapping]) => mapping && mapping.page_number === pageNum
   );
 
   if (currentPageMappings.length === 0) return null;
 
   const handleFieldClick = (fieldKey: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    
     if (editingField === fieldKey) return;
-    if (editingField) {
+    if (editingField && setEditingField) {
       setEditingField(null);
       setEditInputPosition(null);
       return;
@@ -120,22 +157,169 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
       });
     }
     
-    setEditingField(fieldKey);
+    if (setEditingField) setEditingField(fieldKey);
+  };
+
+  // PATCH single field value if not in edit mode
+  const patchFieldValue = async (fieldKey: string, newValue: string) => {
+    try {
+      await api.patch(`/api/workflow/${conversationId}/field`, {
+        field_key: fieldKey,
+        value: newValue,
+        value_status: 'edited',
+      });
+    } catch (err) {
+      console.error('Failed to update field value', err);
+    }
+  };
+
+  // PATCH mappings/fields when deleting a box
+  const patchDeleteMapping = async (newMappings: any, newFields: any) => {
+    console.log(newMappings)
+    console.log(fields)
+    try {
+      await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
+        origin_template_mappings: newMappings,
+        fields: newFields,
+      });
+    } catch (err) {
+      console.error('Failed to delete mapping', err);
+    }
   };
 
   const handleFieldSave = (fieldKey: string, newValue: string) => {
     onFieldUpdate(fieldKey, newValue);
-    setEditingField(null);
+    if (setEditingField) setEditingField(null);
     setEditInputPosition(null);
+    if (!isEditingLayout) {
+      patchFieldValue(fieldKey, newValue);
+    }
   };
 
   const handleEditCancel = () => {
-    setEditingField(null);
+    if (setEditingField) setEditingField(null);
     setEditInputPosition(null);
+  };
+
+  const handleAddTextBox = () => setShowAddBox(true);
+  const handleAddBoxSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateLayout) return;
+    const key = newBoxKey.trim();
+    if (!key || mappings[key]) return;
+    const newMapping = {
+      label: key,
+      font: { name: 'Arial', size: 10, color: '#000000' },
+      position: { x0: 100, y0: 100, x1: 200, y1: 120 },
+      bbox_center: { x: 150, y: 110 },
+      alignment: 'left',
+      page_number: pageNum
+    };
+    onUpdateLayout({ ...mappings, [key]: newMapping });
+    setShowAddBox(false);
+    setNewBoxKey('');
+  };
+  const handleDeleteBox = (key: string) => {
+    if (!onUpdateLayout) return;
+    const newMappings = { ...mappings, [key]: null };
+    onUpdateLayout(newMappings);
+  };
+
+  const handleDragStart = (key: string, e: React.MouseEvent) => {
+    if (!isEditingLayout) return;
+    setDraggingKey(key);
+    const mapping = mappings[key];
+    const startX = e.clientX;
+    const startY = e.clientY;
+    setDragOffset({
+      x: startX - mapping.position.x0 * scale,
+      y: startY - mapping.position.y0 * scale
+    });
+  };
+  const handleDrag = (e: MouseEvent) => {
+    if (!draggingKey || !onUpdateLayout || !dragOffset) return;
+    const mapping = mappings[draggingKey];
+    const newX0 = (e.clientX - dragOffset.x) / scale;
+    const newY0 = (e.clientY - dragOffset.y) / scale;
+    const width = mapping.position.x1 - mapping.position.x0;
+    const height = mapping.position.y1 - mapping.position.y0;
+    const newMapping = {
+      ...mapping,
+      position: {
+        ...mapping.position,
+        x0: newX0,
+        y0: newY0,
+        x1: newX0 + width,
+        y1: newY0 + height
+      },
+      bbox_center: {
+        x: newX0 + width / 2,
+        y: newY0 + height / 2
+      }
+    };
+    onUpdateLayout({ ...mappings, [draggingKey]: newMapping });
+  };
+  const handleDragEnd = () => {
+    setDraggingKey(null);
+    setDragOffset(null);
+  };
+
+  const handleResizeStart = (key: string, e: React.MouseEvent) => {
+    if (!isEditingLayout) return;
+    e.stopPropagation();
+    setResizingKey(key);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      x1: mappings[key].position.x1,
+      y1: mappings[key].position.y1
+    });
+  };
+  const handleResize = (e: MouseEvent) => {
+    if (!resizingKey || !onUpdateLayout || !resizeStart) return;
+    const mapping = mappings[resizingKey];
+    const dx = (e.clientX - resizeStart.x) / scale;
+    const dy = (e.clientY - resizeStart.y) / scale;
+    const newX1 = resizeStart.x1 + dx;
+    const newY1 = resizeStart.y1 + dy;
+    const newMapping = {
+      ...mapping,
+      position: {
+        ...mapping.position,
+        x1: newX1,
+        y1: newY1
+      },
+      bbox_center: {
+        x: mapping.position.x0 + (newX1 - mapping.position.x0) / 2,
+        y: mapping.position.y0 + (newY1 - mapping.position.y0) / 2
+      }
+    };
+    onUpdateLayout({ ...mappings, [resizingKey]: newMapping });
+  };
+  const handleResizeEnd = () => {
+    setResizingKey(null);
+    setResizeStart(null);
   };
 
   return (
     <>
+      {isEditingLayout && !showAddBox && (
+        <Button onClick={handleAddTextBox} className="absolute top-2 right-2 z-50" size="sm" variant="outline">Add Text Box</Button>
+      )}
+      {isEditingLayout && showAddBox && (
+        <form onSubmit={handleAddBoxSubmit} className="absolute top-2 right-2 z-50 bg-white p-2 rounded shadow flex items-center space-x-2">
+          <input
+            type="text"
+            value={newBoxKey}
+            onChange={e => setNewBoxKey(e.target.value)}
+            placeholder="Field key (unique)"
+            className="border px-2 py-1 rounded text-xs"
+            autoFocus
+          />
+          <Button type="submit" size="sm" variant="default" disabled={!newBoxKey.trim() || !!mappings[newBoxKey.trim()]}>Add</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => { setShowAddBox(false); setNewBoxKey(''); }}>Cancel</Button>
+        </form>
+      )}
       <div 
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -172,7 +356,7 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
           return (
             <div
               key={key}
-              className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
+              className={`absolute pointer-events-auto transition-all duration-200 ${isEditingLayout ? 'cursor-move' : 'cursor-pointer'}`}
               style={{
                 left: x,
                 top: y,
@@ -182,12 +366,33 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
                 backgroundColor: backgroundColor,
                 borderRadius: '2px',
                 zIndex: isEditing ? 30 : isHovered ? 20 : statusColors.priority + 10,
+                userSelect: 'none',
               }}
               onMouseEnter={() => !editingField && setHoveredMapping(key)}
               onMouseLeave={() => !editingField && setHoveredMapping(null)}
-              onClick={(e) => handleFieldClick(key, e)}
+              onClick={isEditingLayout ? undefined : (e) => handleFieldClick(key, e)}
+              onMouseDown={isEditingLayout ? (e) => handleDragStart(key, e) : undefined}
               title={`${key}: ${mapping.label}${fieldValue ? ` - "${fieldValue}"` : ''} (${statusColors.label})`}
             >
+              {isEditingLayout && (
+                <button
+                  type="button"
+                  className="absolute top-0 right-0 m-1 p-1 bg-white rounded-full shadow z-50 hover:bg-red-100"
+                  style={{ zIndex: 100 }}
+                  onClick={e => { e.stopPropagation(); handleDeleteBox(key); }}
+                  title="Delete box"
+                >
+                  <Trash2 size={14} className="text-red-500" />
+                </button>
+              )}
+              {isEditingLayout && (
+                <div
+                  className="absolute bottom-0 right-0 w-3 h-3 bg-gray-300 rounded cursor-se-resize z-50"
+                  style={{ zIndex: 100 }}
+                  onMouseDown={e => handleResizeStart(key, e)}
+                  title="Resize"
+                />
+              )}
               {fieldValue && fieldValue.trim().length > 0 && !isEditing && (
                 <div
                   className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-800 bg-white bg-opacity-90 rounded"
@@ -320,6 +525,6 @@ const TemplateMappingOverlay: React.FC<TemplateMappingOverlayProps> = ({
       )}
     </>
   );
-};
+});
 
 export default TemplateMappingOverlay;

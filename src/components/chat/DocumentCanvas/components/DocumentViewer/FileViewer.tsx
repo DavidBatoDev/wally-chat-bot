@@ -14,6 +14,17 @@ interface FileViewerProps {
   isTranslatedView?: boolean;
   conversationId: string;
   workflowData: any;
+  onMappingUpdate?: (fieldKey: string, newMapping: any) => void;
+  onMappingAdd?: (fieldKey: string, mapping: any) => void;
+  onMappingDelete?: (fieldKey: string) => void;
+  onSaveChanges?: () => void;
+  onCancelChanges?: () => void;
+  unsavedChanges?: boolean;
+  isEditingMode?: boolean;
+  setIsEditingMode?: (v: boolean) => void;
+  requiredFields?: Record<string, string>;
+  editingField?: string | null;
+  setEditingField?: (fieldKey: string | null) => void;
 }
 
 const FileViewer: React.FC<FileViewerProps> = ({ 
@@ -25,7 +36,18 @@ const FileViewer: React.FC<FileViewerProps> = ({
   onFieldUpdate, 
   isTranslatedView = false,
   conversationId,
-  workflowData
+  workflowData,
+  onMappingUpdate,
+  onMappingAdd,
+  onMappingDelete,
+  onSaveChanges,
+  onCancelChanges,
+  unsavedChanges,
+  isEditingMode,
+  setIsEditingMode,
+  requiredFields,
+  editingField,
+  setEditingField
 }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
@@ -61,6 +83,17 @@ const FileViewer: React.FC<FileViewerProps> = ({
         isTranslatedView={isTranslatedView}
         conversationId={conversationId}
         workflowData={workflowData}
+        onMappingUpdate={onMappingUpdate}
+        onMappingAdd={onMappingAdd}
+        onMappingDelete={onMappingDelete}
+        onSaveChanges={onSaveChanges}
+        onCancelChanges={onCancelChanges}
+        unsavedChanges={unsavedChanges}
+        isEditingMode={isEditingMode}
+        setIsEditingMode={setIsEditingMode}
+        requiredFields={requiredFields}
+        editingField={editingField}
+        setEditingField={setEditingField}
       />
     );
   }

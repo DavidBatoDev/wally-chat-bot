@@ -10,7 +10,18 @@ interface TranslatedTemplateViewProps {
   showMappings: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string, isTranslatedView: boolean) => Promise<void>;
   workflowData: any;
-    conversationId: string;
+  conversationId: string;
+  onMappingUpdate: (fieldKey: string, newMapping: any) => void;
+  onMappingAdd: (fieldKey: string, mapping: any) => void;
+  onMappingDelete: (fieldKey: string) => void;
+  onSaveChanges: () => void;
+  onCancelChanges: () => void;
+  unsavedChanges: boolean;
+  isEditingMode: boolean;
+  setIsEditingMode: (v: boolean) => void;
+  requiredFields?: Record<string, string>;
+  editingField: string | null;
+  setEditingField: (fieldKey: string | null) => void;
 }
 
 const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({ 
@@ -19,9 +30,20 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
   templateMappings,
   fields,
   showMappings,
-    workflowData,
-    conversationId,
-  onFieldUpdate
+  workflowData,
+  conversationId,
+  onFieldUpdate,
+  onMappingUpdate,
+  onMappingAdd,
+  onMappingDelete,
+  onSaveChanges,
+  onCancelChanges,
+  unsavedChanges,
+  isEditingMode,
+  setIsEditingMode,
+  requiredFields,
+  editingField,
+  setEditingField
 }) => {
   const handleFieldUpdate = (fieldKey: string, newValue: string) => {
     return onFieldUpdate(fieldKey, newValue, true);
@@ -36,9 +58,19 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
       showMappings={showMappings}
       onFieldUpdate={handleFieldUpdate}
       isTranslatedView={true}
-        conversationId={conversationId}
-        workflowData={workflowData}
-      
+      conversationId={conversationId}
+      workflowData={workflowData}
+      onMappingUpdate={onMappingUpdate}
+      onMappingAdd={onMappingAdd}
+      onMappingDelete={onMappingDelete}
+      onSaveChanges={onSaveChanges}
+      onCancelChanges={onCancelChanges}
+      unsavedChanges={unsavedChanges}
+      isEditingMode={isEditingMode}
+      setIsEditingMode={setIsEditingMode}
+      requiredFields={requiredFields}
+      editingField={editingField}
+      setEditingField={setEditingField}
     />
   );
 };

@@ -33,6 +33,11 @@ const EditableInput: React.FC<EditableInputProps> = ({
   const [translating, setTranslating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Always sync inputValue with value prop
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus();
@@ -69,7 +74,7 @@ const EditableInput: React.FC<EditableInputProps> = ({
           field_key: fieldKey,
           target_language: targetLanguage,
           source_language: sourceLanguage,
-          use_gemini: false
+          use_gemini: true
         }
       );
 

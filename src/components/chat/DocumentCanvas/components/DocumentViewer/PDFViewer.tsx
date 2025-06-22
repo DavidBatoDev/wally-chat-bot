@@ -19,6 +19,17 @@ interface PDFViewerProps {
   isTranslatedView?: boolean;
   workflowData: any;
   conversationId: string;
+  onMappingUpdate?: (fieldKey: string, newMapping: TemplateMapping) => void;
+  onMappingAdd?: (fieldKey: string, mapping: TemplateMapping) => void;
+  onMappingDelete?: (fieldKey: string) => void;
+  onSaveChanges?: () => void;
+  onCancelChanges?: () => void;
+  unsavedChanges?: boolean;
+  isEditingMode?: boolean;
+  setIsEditingMode?: (v: boolean) => void;
+  requiredFields?: Record<string, string>;
+  editingField?: string | null;
+  setEditingField?: (fieldKey: string | null) => void;
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ 
@@ -29,7 +40,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   onFieldUpdate, 
   isTranslatedView = false,
   workflowData,
-  conversationId
+  conversationId,
+  onMappingUpdate,
+  onMappingAdd,
+  onMappingDelete,
+  onSaveChanges,
+  onCancelChanges,
+  unsavedChanges,
+  isEditingMode,
+  setIsEditingMode,
+  editingField,
+  setEditingField
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,6 +63,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   const [scale, setScale] = useState(1.2);
   const [isRendering, setIsRendering] = useState(false);
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
+  const overlayRef = useRef<any>(null);
 
   // Cleanup function
   const cleanup = () => {
@@ -222,6 +244,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     handleZoom(1.0);
   };
 
+  // Handler to trigger Add Text Box in overlay
+  const handleAddTextBoxClick = () => {
+    if (overlayRef.current && overlayRef.current.showAddBox) {
+      overlayRef.current.showAddBox();
+    }
+  };
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-50">
@@ -235,7 +264,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="flex flex-col h-full bg-gray-50 relative">
       {numPages > 0 && (
         <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center space-x-2">
@@ -292,53 +321,99 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           </div>
         </div>
       )}
-
-      <div className="flex-1 overflow-auto bg-gray-100 p-4">
-        {loading && (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-            <span className="ml-2 text-gray-500">
-              {isRendering ? 'Rendering PDF...' : 'Loading PDF...'}
-            </span>
-          </div>
-        )}
-        
-        <div 
+      <div className="flex-1 overflow-auto" style={{ background: '#222' }}>
+        <div
           ref={containerRef}
-          className="relative"
-          style={{ 
+          className="relative mx-auto"
+          style={{
             width: canvasDimensions.width || 'auto',
             height: canvasDimensions.height || 'auto',
             minWidth: canvasDimensions.width || 'auto',
-            margin: canvasDimensions.width < (containerRef.current?.parentElement?.clientWidth || 0) ? '0 auto' : '0'
+            minHeight: canvasDimensions.height || 'auto',
+            background: '#fff', // fallback for PDF
           }}
         >
           <canvas
             ref={canvasRef}
-            className={`border border-gray-300 shadow-lg transition-opacity duration-200 ${
-              loading ? 'hidden' : 'block'
-            }`}
-            style={{ 
-              display: loading ? 'none' : 'block',
+            className="border border-gray-300 shadow-lg transition-opacity duration-200"
+            style={{
               width: canvasDimensions.width || 'auto',
-              height: canvasDimensions.height || 'auto'
+              height: canvasDimensions.height || 'auto',
+              display: loading ? 'none' : 'block',
             }}
           />
-          
           {templateMappings && (
-            <TemplateMappingOverlay
-              mappings={templateMappings}
-              fields={fields}
-              pageNum={pageNum}
-              scale={scale}
-              canvasWidth={canvasDimensions.width}
-              canvasHeight={canvasDimensions.height}
-              visible={showMappings && !loading}
-              onFieldUpdate={onFieldUpdate || (() => {})}
-              isTranslatedView={isTranslatedView}
+            <div className="absolute top-0 left-0 w-full h-full z-10">
+              <TemplateMappingOverlay
+                ref={overlayRef}
+                mappings={templateMappings}
+                fields={fields}
+                pageNum={pageNum}
+                scale={scale}
+                canvasWidth={canvasDimensions.width}
+                canvasHeight={canvasDimensions.height}
+                visible={showMappings && !loading}
+                onFieldUpdate={(fieldKey, newValue) => {
+                  if (onFieldUpdate) {
+                    console.log('onFieldUpdate called', fieldKey, newValue);
+                    onFieldUpdate(fieldKey, newValue);
+                  }
+                }}
+                isTranslatedView={isTranslatedView}
                 workflowData={workflowData}
                 conversationId={conversationId}
-            />
+                isEditingLayout={!!isEditingMode}
+                onUpdateLayout={newMappings => {
+                  if (onMappingUpdate && onMappingDelete) {
+                    // Find deleted keys
+                    const deletedKeys = Object.keys(templateMappings || {}).filter(
+                      key => !(key in newMappings)
+                    );
+                    deletedKeys.forEach(key => {
+                      console.log('onMappingDelete called', key);
+                      onMappingDelete(key);
+                    });
+                    // Update or add mappings
+                    Object.entries(newMappings).forEach(([key, mapping]) => {
+                      onMappingUpdate(key, mapping as TemplateMapping);
+                    });
+                  }
+                }}
+                editingField={editingField}
+                setEditingField={setEditingField}
+              />
+            </div>
+          )}
+          {/* Save/Cancel/Add bar at bottom right, outside overlay area */}
+          {isEditingMode && (
+            <div className="fixed bottom-8 right-8 z-50 flex space-x-2 pointer-events-auto">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleAddTextBoxClick}
+              >
+                Add Text Box
+              </Button>
+              {unsavedChanges && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={onSaveChanges}
+                    disabled={!unsavedChanges}
+                  >
+                    Save Changes
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onCancelChanges}
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

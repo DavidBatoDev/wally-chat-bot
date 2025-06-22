@@ -20,6 +20,8 @@ interface ViewControlsProps {
   fetchWorkflowData: () => Promise<void>;
   onTogglePreview: () => void;
   showPreview: boolean;
+  isEditingMode: boolean;
+  setIsEditingMode: (v: boolean) => void;
 }
 
 const ViewControls: React.FC<ViewControlsProps> = ({
@@ -34,7 +36,9 @@ const ViewControls: React.FC<ViewControlsProps> = ({
   conversationId,
   fetchWorkflowData,
   onTogglePreview,
-  showPreview
+  showPreview,
+  isEditingMode,
+  setIsEditingMode
 }) => {
   const { toast } = useToast();
   const [translateLoading, setTranslateLoading] = useState(false);
@@ -188,6 +192,16 @@ const ViewControls: React.FC<ViewControlsProps> = ({
             >
               <Eye size={16} />
               <span>Preview</span>
+            </Button>
+            
+            {/* Edit Layout Button */}
+            <Button
+              onClick={() => setIsEditingMode(!isEditingMode)}
+              variant={isEditingMode ? 'default' : 'outline'}
+              size="sm"
+              className="flex items-center space-x-2"
+            >
+              {isEditingMode ? 'Done' : 'Edit Layout'}
             </Button>
             
             {currentView === 'translated_template' && (

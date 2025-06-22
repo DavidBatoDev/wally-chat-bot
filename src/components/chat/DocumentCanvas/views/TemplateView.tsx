@@ -8,8 +8,19 @@ interface TemplateViewProps {
   fields?: Record<string, any>;
   showMappings: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string, isTranslatedView: boolean) => Promise<void>;
-    conversationId: string;
-    workflowData: any;
+  conversationId: string;
+  workflowData: any;
+  onMappingUpdate: (fieldKey: string, newMapping: any) => void;
+  onMappingAdd: (fieldKey: string, mapping: any) => void;
+  onMappingDelete: (fieldKey: string) => void;
+  onSaveChanges: () => void;
+  onCancelChanges: () => void;
+  unsavedChanges: boolean;
+  isEditingMode: boolean;
+  setIsEditingMode: (v: boolean) => void;
+  requiredFields?: Record<string, string>;
+  editingField: string | null;
+  setEditingField: (fieldKey: string | null) => void;
 }
 
 const TemplateView: React.FC<TemplateViewProps> = ({ 
@@ -20,7 +31,18 @@ const TemplateView: React.FC<TemplateViewProps> = ({
   showMappings,
   onFieldUpdate,
   conversationId,
-  workflowData
+  workflowData,
+  onMappingUpdate,
+  onMappingAdd,
+  onMappingDelete,
+  onSaveChanges,
+  onCancelChanges,
+  unsavedChanges,
+  isEditingMode,
+  setIsEditingMode,
+  requiredFields,
+  editingField,
+  setEditingField
 }) => {
   return (
     <div className="h-full">
@@ -33,6 +55,17 @@ const TemplateView: React.FC<TemplateViewProps> = ({
         onFieldUpdate={(fieldKey, newValue) => onFieldUpdate(fieldKey, newValue, false)}
         conversationId={conversationId}
         workflowData={workflowData}
+        onMappingUpdate={onMappingUpdate}
+        onMappingAdd={onMappingAdd}
+        onMappingDelete={onMappingDelete}
+        onSaveChanges={onSaveChanges}
+        onCancelChanges={onCancelChanges}
+        unsavedChanges={unsavedChanges}
+        isEditingMode={isEditingMode}
+        setIsEditingMode={setIsEditingMode}
+        requiredFields={requiredFields}
+        editingField={editingField}
+        setEditingField={setEditingField}
       />
     </div>
   );
