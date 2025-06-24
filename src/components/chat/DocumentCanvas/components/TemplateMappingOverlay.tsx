@@ -1,9 +1,10 @@
 import React, { useState, useImperativeHandle, forwardRef } from 'react';
-import { X, Check, Eye, EyeOff, Trash2, Move } from 'lucide-react';
+import { X, Check, Eye, EyeOff, Trash2, Move, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EditableInput from './EditableInput';
 import { TemplateMapping, WorkflowField } from '../types/workflow';
 import api from '@/lib/api';
+import { Rnd, DraggableData, RndResizeCallback } from 'react-rnd';
 
 interface TemplateMappingOverlayProps {
   mappings: Record<string, TemplateMapping>;
@@ -46,30 +47,8 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   const [legendCollapsed, setLegendCollapsed] = useState<boolean>(true);
   const [showAddBox, setShowAddBox] = useState(false);
   const [newBoxKey, setNewBoxKey] = useState('');
-  const [draggingKey, setDraggingKey] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
-  const [resizingKey, setResizingKey] = useState<string | null>(null);
-  const [resizeStart, setResizeStart] = useState<{ x: number; y: number; x1: number; y1: number } | null>(null);
-
-  // Mouse event listeners for drag/resize
-  React.useEffect(() => {
-    if (draggingKey) {
-      window.addEventListener('mousemove', handleDrag);
-      window.addEventListener('mouseup', handleDragEnd);
-      return () => {
-        window.removeEventListener('mousemove', handleDrag);
-        window.removeEventListener('mouseup', handleDragEnd);
-      };
-    }
-    if (resizingKey) {
-      window.addEventListener('mousemove', handleResize);
-      window.addEventListener('mouseup', handleResizeEnd);
-      return () => {
-        window.removeEventListener('mousemove', handleResize);
-        window.removeEventListener('mouseup', handleResizeEnd);
-      };
-    }
-  }, [draggingKey, resizingKey, dragOffset, resizeStart]);
+  const [isInteracting, setIsInteracting] = useState(false);
+  const [selectedBox, setSelectedBox] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     showAddBox: () => setShowAddBox(true)
@@ -228,80 +207,14 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
     onUpdateLayout(newMappings);
   };
 
-  const handleDragStart = (key: string, e: React.MouseEvent) => {
-    if (!isEditingLayout) return;
-    setDraggingKey(key);
-    const mapping = mappings[key];
-    const startX = e.clientX;
-    const startY = e.clientY;
-    setDragOffset({
-      x: startX - mapping.position.x0 * scale,
-      y: startY - mapping.position.y0 * scale
+  const handleEditIconClick = (key: string, boxRect: DOMRect) => {
+    if (setEditingField) setEditingField(key);
+    setSelectedBox(key);
+    // Position the input below the box, centered
+    setEditInputPosition({
+      x: boxRect.width / 2,
+      y: boxRect.height + 12
     });
-  };
-  const handleDrag = (e: MouseEvent) => {
-    if (!draggingKey || !onUpdateLayout || !dragOffset) return;
-    const mapping = mappings[draggingKey];
-    const newX0 = (e.clientX - dragOffset.x) / scale;
-    const newY0 = (e.clientY - dragOffset.y) / scale;
-    const width = mapping.position.x1 - mapping.position.x0;
-    const height = mapping.position.y1 - mapping.position.y0;
-    const newMapping = {
-      ...mapping,
-      position: {
-        ...mapping.position,
-        x0: newX0,
-        y0: newY0,
-        x1: newX0 + width,
-        y1: newY0 + height
-      },
-      bbox_center: {
-        x: newX0 + width / 2,
-        y: newY0 + height / 2
-      }
-    };
-    onUpdateLayout({ ...mappings, [draggingKey]: newMapping });
-  };
-  const handleDragEnd = () => {
-    setDraggingKey(null);
-    setDragOffset(null);
-  };
-
-  const handleResizeStart = (key: string, e: React.MouseEvent) => {
-    if (!isEditingLayout) return;
-    e.stopPropagation();
-    setResizingKey(key);
-    setResizeStart({
-      x: e.clientX,
-      y: e.clientY,
-      x1: mappings[key].position.x1,
-      y1: mappings[key].position.y1
-    });
-  };
-  const handleResize = (e: MouseEvent) => {
-    if (!resizingKey || !onUpdateLayout || !resizeStart) return;
-    const mapping = mappings[resizingKey];
-    const dx = (e.clientX - resizeStart.x) / scale;
-    const dy = (e.clientY - resizeStart.y) / scale;
-    const newX1 = resizeStart.x1 + dx;
-    const newY1 = resizeStart.y1 + dy;
-    const newMapping = {
-      ...mapping,
-      position: {
-        ...mapping.position,
-        x1: newX1,
-        y1: newY1
-      },
-      bbox_center: {
-        x: mapping.position.x0 + (newX1 - mapping.position.x0) / 2,
-        y: mapping.position.y0 + (newY1 - mapping.position.y0) / 2
-      }
-    };
-    onUpdateLayout({ ...mappings, [resizingKey]: newMapping });
-  };
-  const handleResizeEnd = () => {
-    setResizingKey(null);
-    setResizeStart(null);
   };
 
   return (
@@ -357,51 +270,137 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
           }
 
           return (
-            <div
+            <Rnd
               key={key}
-              className={`absolute pointer-events-auto transition-all duration-200 ${isEditingLayout ? 'cursor-move' : 'cursor-pointer'}`}
-              style={{
-                left: x,
-                top: y,
-                width: Math.max(width, 4),
-                height: Math.max(height, 4),
-                border: `2px solid ${borderColor}`,
-                backgroundColor: backgroundColor,
-                borderRadius: '2px',
-                zIndex: isEditing ? 30 : isHovered ? 20 : statusColors.priority + 10,
-                userSelect: 'none',
+              size={{ width: Math.max(width, 4), height: Math.max(height, 4) }}
+              position={{ x, y }}
+              enableResizing={isEditingLayout}
+              disableDragging={!isEditingLayout}
+              bounds="parent"
+              onDragStart={() => { setIsInteracting(true); setSelectedBox(key); }}
+              onDragStop={(e: any, d: DraggableData) => {
+                setIsInteracting(false);
+                if (!isEditingLayout || !onUpdateLayout) return;
+                const newX0 = d.x / scale;
+                const newY0 = d.y / scale;
+                const boxWidth = mapping.position.x1 - mapping.position.x0;
+                const boxHeight = mapping.position.y1 - mapping.position.y0;
+                const newMapping = {
+                  ...mapping,
+                  position: {
+                    ...mapping.position,
+                    x0: newX0,
+                    y0: newY0,
+                    x1: newX0 + boxWidth,
+                    y1: newY0 + boxHeight
+                  },
+                  bbox_center: {
+                    x: newX0 + boxWidth / 2,
+                    y: newY0 + boxHeight / 2
+                  }
+                };
+                onUpdateLayout({ ...mappings, [key]: newMapping });
               }}
-              onMouseEnter={() => !editingField && setHoveredMapping(key)}
-              onMouseLeave={() => !editingField && setHoveredMapping(null)}
-              onClick={isEditingLayout ? undefined : (e) => handleFieldClick(key, e)}
-              onMouseDown={isEditingLayout ? (e) => handleDragStart(key, e) : undefined}
-              title={`${key}: ${mapping.label}${fieldValue ? ` - "${fieldValue}"` : ''} (${statusColors.label})`}
+              onResizeStart={() => { setIsInteracting(true); setSelectedBox(key); }}
+              onResizeStop={(
+                e: any,
+                direction: string,
+                ref: HTMLElement,
+                delta: { width: number; height: number },
+                position: { x: number; y: number }
+              ) => {
+                setIsInteracting(false);
+                if (!isEditingLayout || !onUpdateLayout) return;
+                const newWidth = ref.offsetWidth / scale;
+                const newHeight = ref.offsetHeight / scale;
+                const newX0 = position.x / scale;
+                const newY0 = position.y / scale;
+                const newMapping = {
+                  ...mapping,
+                  position: {
+                    ...mapping.position,
+                    x0: newX0,
+                    y0: newY0,
+                    x1: newX0 + newWidth,
+                    y1: newY0 + newHeight
+                  },
+                  bbox_center: {
+                    x: newX0 + newWidth / 2,
+                    y: newY0 + newHeight / 2
+                  }
+                };
+                onUpdateLayout({ ...mappings, [key]: newMapping });
+              }}
+              style={{
+                boxShadow: selectedBox === key ? '0 2px 12px 0 rgba(0,0,0,0.14)' : '0 2px 8px 0 rgba(0,0,0,0.10)',
+                border: selectedBox === key ? `2.5px solid ${borderColor}` : `1.5px solid ${borderColor}`,
+                backgroundColor: backgroundColor,
+                borderRadius: '8px',
+                zIndex: isEditing ? 30 : statusColors.priority + 10,
+                userSelect: 'none',
+                position: 'absolute',
+                transition: 'border-color 0.2s, background-color 0.2s, box-shadow 0.2s',
+                boxSizing: 'border-box',
+                pointerEvents: 'auto',
+                cursor: isEditingLayout ? 'move' : 'pointer',
+                overflow: 'visible',
+              }}
+              onClick={(event: React.MouseEvent<HTMLElement>) => {
+                setSelectedBox(key);
+              }}
             >
-              {isEditingLayout && (
-                <button
-                  type="button"
-                  className="absolute top-0 right-0 m-1 p-1 bg-white rounded-full shadow z-50 hover:bg-red-100"
-                  style={{ zIndex: 100 }}
-                  onClick={e => { e.stopPropagation(); handleDeleteBox(key); }}
-                  title="Delete box"
-                >
-                  <Trash2 size={14} className="text-red-500" />
-                </button>
-              )}
-              {isEditingLayout && (
+              {/* Only show icons if selected */}
+              {selectedBox === key && isEditingLayout && (
                 <div
-                  className="absolute bottom-0 right-0 w-3 h-3 bg-gray-300 rounded cursor-se-resize z-50"
-                  style={{ zIndex: 100 }}
-                  onMouseDown={e => handleResizeStart(key, e)}
-                  title="Resize"
-                />
+                  className="absolute flex gap-2 z-50"
+                  style={{
+                    left: '50%',
+                    top: '-32px',
+                    transform: 'translateX(-50%)',
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="p-1 bg-white rounded-full shadow hover:bg-red-100 border border-gray-200"
+                    style={{ zIndex: 100 }}
+                    onClick={e => { e.stopPropagation(); handleDeleteBox(key); }}
+                    title="Delete box"
+                  >
+                    <Trash2 size={18} className="text-red-500" />
+                  </button>
+                  <button
+                    type="button"
+                    className="p-1 bg-white rounded-full shadow hover:bg-blue-100 border border-gray-200"
+                    style={{ zIndex: 100 }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      const box = (e.currentTarget as HTMLElement).parentElement?.parentElement as HTMLElement;
+                      if (box) {
+                        const rect = box.getBoundingClientRect();
+                        handleEditIconClick(key, rect);
+                      } else {
+                        if (setEditingField) setEditingField(key);
+                        setSelectedBox(key);
+                        setEditInputPosition({ x: 0, y: 40 });
+                      }
+                    }}
+                    title="Edit value"
+                  >
+                    <Pencil size={18} className="text-blue-500" />
+                  </button>
+                </div>
               )}
               {fieldValue && fieldValue.trim().length > 0 && !isEditing && (
                 <div
-                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-800 bg-white bg-opacity-90 rounded"
+                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900 bg-white bg-opacity-95 rounded-md px-2"
                   style={{
-                    fontSize: Math.max(8, Math.min(12, height * 0.6)),
-                    padding: '1px 2px',
+                    fontSize: Math.max(10, Math.min(14, height * 0.6)),
+                    padding: '2px 4px',
+                    borderRadius: '6px',
+                    boxShadow: '0 1px 2px 0 rgba(0,0,0,0.04)',
+                    border: '1px solid #e5e7eb',
+                    margin: 2,
                   }}
                 >
                   <span className="truncate max-w-full">
@@ -409,53 +408,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                   </span>
                 </div>
               )}
-
-              {isHovered && !isEditing && (
-                <div
-                  className="absolute bg-gray-900 text-white text-xs px-3 py-2 rounded shadow-lg whitespace-nowrap z-40"
-                  style={{
-                    top: height + 8,
-                    left: 0,
-                    maxWidth: '300px',
-                  }}
-                >
-                  <div className="font-semibold text-yellow-300">{key}</div>
-                  <div className="text-gray-300">{mapping.label}</div>
-                  
-                  <div className="flex items-center mt-1 space-x-2">
-                    <div 
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: statusColors.border }}
-                    />
-                    <span className="text-sm font-medium">{statusColors.label}</span>
-                  </div>
-                  
-                  {field && (
-                    <div className="mt-2 border-t border-gray-700 pt-2">
-                      {field.value && (
-                        <div className="text-blue-300">
-                          <span className="text-gray-400">Original:</span> "{field.value}"
-                          <span className="text-xs text-gray-500 ml-2">({field.value_status})</span>
-                        </div>
-                      )}
-                      {field.translated_value && (
-                        <div className="text-green-300 mt-1">
-                          <span className="text-gray-400">Translated:</span> "{field.translated_value}"
-                          <span className="text-xs text-gray-500 ml-2">({field.translated_status})</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  <div className="text-gray-400 text-xs mt-2">
-                    Font: {mapping.font.name}, Size: {mapping.font.size}
-                  </div>
-                  <div className="text-gray-400 text-xs mt-1">
-                    Click to edit
-                  </div>
-                </div>
-              )}
-            </div>
+            </Rnd>
           );
         })}
       </div>
@@ -504,7 +457,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
         <>
           <div 
             className="fixed inset-0 z-40 bg-transparent"
-            onClick={(e) => {
+            onClick={e => {
               e.stopPropagation();
               handleEditCancel();
             }}

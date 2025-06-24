@@ -316,7 +316,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     if (!workflowData) return;
     setIsSaving(true);
     try {
-      
       // Filter out mappings with value null (deleted)
       const filteredMappings: Record<string, any> = {};
       Object.entries(localMappings || {}).forEach(([key, value]) => {
@@ -347,16 +346,20 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         required_fields: validRequiredFields,
         fillable_text_info: Object.values(filteredMappings),
       };
-      console.log(localMappings)
-      console.log(localFields)
-      console.log(filteredMappings)
-      console.log(cleanFields)
+      // --- DEBUG LOGS ---
+      console.log('localMappings:', localMappings);
+      console.log('localFields:', localFields);
+      console.log('filteredMappings:', filteredMappings);
+      console.log('cleanFields:', cleanFields);
       const mappingsKey = currentView === 'template' ? 'origin_template_mappings' : 'translated_template_mappings';
-      await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
+      const patchPayload = {
         [mappingsKey]: filteredMappings,
         fields: cleanFields,
         info_json_custom,
-      });
+      };
+      console.log('PATCH payload:', patchPayload);
+      // --- END DEBUG LOGS ---
+      await api.patch(`/api/workflow/${conversationId}/template-mappings`, patchPayload);
       await fetchWorkflowData();
       toast({ title: 'Changes saved', variant: 'default' });
     } catch (err: any) {
