@@ -120,6 +120,11 @@ const DocumentCanvas: React.FC = () => {
   const [pageHeight, setPageHeight] = useState<number>(792);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [textSelectionPopup, setTextSelectionPopup] = useState<{
+    text: string;
+    position: { top: number; left: number };
+    pagePosition: { x: number; y: number };
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const documentRef = useRef<HTMLDivElement>(null);
@@ -250,47 +255,53 @@ const styles = `
     },
     origin_template_mappings: {
       "{fe}": {
-        font: {
-          name: "ArialMT",
-          size: 12,
-          color: "#ee0000",
-          flags: 0,
-          style: "normal",
+        "font": {
+          "name": "ArialMT",
+          "size": 6,
+          "color": "#ee0000",
+          "flags": 0,
+          "style": "normal"
         },
-        position: {
-          x0: 91.344,
-          y0: 164.99,
-          x1: 99.875,
-          y1: 171.68,
-          width: 8.531,
-          height: 6.69,
+        "position": {
+          "x0": 91.34400177001953,
+          "x1": 99.87519683837891,
+          "y0": 164.989990234375,
+          "y1": 171.6799774169922,
+          "width": 8.53119506835938,
+          "height": 6.6899871826171875
         },
-        rotation: 0,
-        alignment: "left",
-        bbox_center: { x: 95.61, y: 168.335 },
-        page_number: 1,
+        "rotation": 0,
+        "alignment": "left",
+        "bbox_center": {
+          "x": 95.60959930419922,
+          "y": 168.3349838256836
+        },
+        "page_number": 1
       },
-      "{last_name}": {
-        font: {
-          name: "ArialMT",
-          size: 14,
-          color: "#000000",
-          flags: 0,
-          style: "normal",
-        },
-        position: {
-          x0: 200,
-          y0: 300,
-          x1: 400,
-          y1: 320,
-          width: 200,
-          height: 20,
-        },
-        rotation: 0,
-        alignment: "left",
-        bbox_center: { x: 300, y: 310 },
-        page_number: 1,
+    "{last_name}": {
+      "font": {
+        "name": "ArialMT",
+        "size": 8.039999961853027,
+        "color": "#ee0000",
+        "flags": 0,
+        "style": "normal"
       },
+      "position": {
+        "x0": 294.8900146484375,
+        "x1": 335.6771774291992,
+        "y0": 144.90379333496094,
+        "y1": 153.86839294433594,
+        "width": 40.78716278076172,
+        "height": 8.964599609375
+      },
+      "rotation": 0,
+      "alignment": "left",
+      "bbox_center": {
+        "x": 315.28359603881836,
+        "y": 149.38609313964844
+      },
+      "page_number": 1
+    },
     },
     translated_template_mappings: {},
     translate_to: "Greek",
@@ -310,6 +321,8 @@ const styles = `
     }
   }, [pageWidth, pageHeight]);
 
+// Change only the loadWorkflowFields function to properly handle the coordinate conversion:
+
   const loadWorkflowFields = useCallback(() => {
     const fields: TextField[] = [];
 
@@ -318,10 +331,13 @@ const styles = `
         const fieldData = workflowData.fields[key];
         if (fieldData && mapping) {
           // Convert PDF coordinates (PDF uses bottom-left origin, we use top-left)
+          // Option 1: If your mappings are already in PDF coordinates (bottom-left origin)
+          // Comment out the lines below if using Option 2
+          /*
           const field: TextField = {
             id: `workflow-${key}`,
             x: mapping.position.x0,
-            y: pageHeight - mapping.position.y1, // Flip Y coordinate
+            y: pageHeight - mapping.position.y0, // Use y0 (bottom) and flip
             width: Math.max(mapping.position.width, 50),
             height: Math.max(mapping.position.height, 20),
             value: fieldData.value || "",
@@ -332,6 +348,24 @@ const styles = `
             fieldKey: key,
             isFromWorkflow: true,
           };
+          */
+          
+          // Option 2: If your mappings are already in web coordinates (top-left origin)
+          const field: TextField = {
+            id: `workflow-${key}`,
+            x: mapping.position.x0,
+            y: mapping.position.y0, // Use directly without flipping
+            width: Math.max(mapping.position.width, 30), // Reduced minimum width
+            height: Math.max(mapping.position.height, 12), // Reduced minimum height
+            value: fieldData.value || "",
+            fontSize: Math.max(mapping.font.size, 6), // Allow smaller font sizes
+            fontColor: mapping.font.color || "#000000",
+            fontFamily: "Arial, sans-serif",
+            page: mapping.page_number,
+            fieldKey: key,
+            isFromWorkflow: true,
+          };
+          
           fields.push(field);
         }
       }
@@ -361,11 +395,12 @@ const styles = `
     setIsTextSelectionMode(true);
     setIsEditMode(true);
     setSelectedFieldId(null);
+    setTextSelectionPopup(null); // Close any existing popups
   }, []);
 
-  // Handle creating field from text selection
-  const handleCreateFieldFromSelection = useCallback(
-    (e: React.MouseEvent) => {
+  // Handle text span click during selection mode
+  const handleTextSpanClick = useCallback(
+    (e: React.MouseEvent<HTMLSpanElement>) => {
       if (!isTextSelectionMode) return;
       
       const span = e.currentTarget;
@@ -384,33 +419,21 @@ const styles = `
       const x = spanRect.left - pageRect.left;
       const y = spanRect.top - pageRect.top;
       
-      // Calculate dimensions - use actual span dimensions
-      const width = Math.max(spanRect.width, 50);
-      const height = Math.max(spanRect.height, 20);
+      // Calculate page coordinates
+      const pageX = x;
+      const pageY = y;
       
-      // Estimate font size based on the span height
-      const estimatedFontSize = Math.max(8, Math.min(24, Math.round(spanRect.height * 0.7)));
+      // Show popup above the selected text
+      const popupTop = spanRect.top - 40;
+      const popupLeft = spanRect.left + (spanRect.width / 2);
       
-      // Create new text field
-      const newField: TextField = {
-        id: `field-${Date.now()}`,
-        x: Math.max(0, x),
-        y: Math.max(0, y),
-        width: width,
-        height: height,
-        value: textContent,
-        fontSize: estimatedFontSize,
-        fontColor: "#000000",
-        fontFamily: "Arial, sans-serif",
-        page: currentPage,
-        isFromWorkflow: false,
-      };
-      
-      setTextFields([...textFields, newField]);
-      setSelectedFieldId(newField.id);
-      setIsTextSelectionMode(false);
+      setTextSelectionPopup({
+        text: textContent,
+        position: { top: popupTop, left: popupLeft },
+        pagePosition: { x: pageX, y: pageY }
+      });
     },
-    [isTextSelectionMode, currentPage, textFields]
+    [isTextSelectionMode]
   );
 
   // Attach click handlers to text spans
@@ -422,15 +445,29 @@ const styles = `
     );
 
     textSpans.forEach(span => {
-      span.addEventListener('click', handleCreateFieldFromSelection as any);
+      span.addEventListener('click', handleTextSpanClick as any);
     });
 
     return () => {
       textSpans.forEach(span => {
-        span.removeEventListener('click', handleCreateFieldFromSelection as any);
+        span.removeEventListener('click', handleTextSpanClick as any);
       });
     };
-  }, [isTextSelectionMode, documentUrl, currentPage, handleCreateFieldFromSelection]);
+  }, [isTextSelectionMode, documentUrl, currentPage, handleTextSpanClick]);
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (textSelectionPopup && !(e.target as Element).closest('.text-selection-popup')) {
+        setTextSelectionPopup(null);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [textSelectionPopup]);
 
   const addTextField = () => {
     const newField: TextField = {
@@ -449,6 +486,7 @@ const styles = `
     setTextFields([...textFields, newField]);
     setSelectedFieldId(newField.id);
     setIsTextSelectionMode(false);
+    setTextSelectionPopup(null); // Close any popup
   };
 
   const deleteTextField = (fieldId: string) => {
@@ -553,6 +591,7 @@ const styles = `
       setSelectedFieldId(null);
       setCurrentPage(1);
       setIsTextSelectionMode(false);
+      setTextSelectionPopup(null); // Close any popup
     }
   };
 
@@ -560,7 +599,14 @@ const styles = `
     if (pageNumber >= 1 && pageNumber <= numPages) {
       setCurrentPage(pageNumber);
       setSelectedFieldId(null);
+      setTextSelectionPopup(null); // Close any popup
     }
+  };
+
+  // Handle trash icon click in text selection popup
+  const handleTrashClick = (position: { x: number; y: number }) => {
+    console.log("Text coordinates:", position);
+    setTextSelectionPopup(null);
   };
 
   return (
@@ -655,8 +701,8 @@ const styles = `
               <span>Text Selection Mode</span>
             </button>
             {isTextSelectionMode && (
-              <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200">
-                Click on any text in the document to create an editable field
+              <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200 z-[70]">
+                Click on any text in the document to inspect it
               </div>
             )}
           </div>
@@ -931,15 +977,36 @@ const styles = `
         )}
 
         {isTextSelectionMode && (
-          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center space-x-2">
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[60] flex items-center space-x-2">
             <MousePointer2 size={18} />
-            <span>Click on any text in the document to create an editable field</span>
+            <span>Click on any text in the document to inspect it</span>
             <button 
               onClick={() => setIsTextSelectionMode(false)}
               className="ml-4 p-1 bg-blue-800 rounded-full hover:bg-blue-900"
             >
               <X size={16} />
             </button>
+          </div>
+        )}
+
+        {/* Text Selection Popup */}
+        {textSelectionPopup && (
+          <div 
+            className="fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex items-center space-x-2 text-selection-popup"
+            style={{
+              top: `${textSelectionPopup.position.top}px`,
+              left: `${textSelectionPopup.position.left}px`,
+              transform: 'translateX(-50%)'
+            }}
+          >
+            <button
+              onClick={() => handleTrashClick(textSelectionPopup.pagePosition)}
+              className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+              title="Log coordinates"
+            >
+              <Trash2 size={16} />
+            </button>
+            <span className="text-sm max-w-xs truncate">{textSelectionPopup.text}</span>
           </div>
         )}
 
@@ -1006,13 +1073,13 @@ const styles = `
                     dragAxis="both"
                     dragGrid={[1, 1]}
                     resizeGrid={[1, 1]}
-                    className={`${showTextboxBorders ? 'border-2' : 'border-0'} ${field.isFromWorkflow ? 'border-purple-300 hover:border-purple-400' : 'border-gray-300 hover:border-blue-400'} ${
+                    className={`${showTextboxBorders ? 'border-2' : 'border-0'} ${field.isFromWorkflow ? ' hover:border-purple-400' : 'border-gray-300 hover:border-blue-400'} ${
                       selectedFieldId === field.id
-                        ? "ring-2 ring-blue-500 border-blue-500"
+                        ? ""
                         : ""
                     } transition-all duration-200 ease-in-out`}
                     style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.8)", // Semi-transparent background
+                      backgroundColor: "rgba(255, 255, 255, 0.1)", // Semi-transparent background
                       transition: "transform 0.1s ease-out",
                       zIndex: selectedFieldId === field.id ? 1000 : 100,
                     }}
@@ -1027,7 +1094,7 @@ const styles = `
                           </div>
                           
                           {/* Font size controls */}
-                          <div className="flex items-center bg-white border border-black rounded-md shadow-lg overflow-hidden">
+                          <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1074,27 +1141,34 @@ const styles = `
                           </button>
                         )}
 
+
                       {/* Text content */}
-                      <textarea
-                        value={field.value}
-                        onChange={(e) =>
-                          updateTextField(field.id, { value: e.target.value })
-                        }
-                        readOnly={!isEditMode}
-                        className="w-full h-full resize-none border-none outline-none bg-transparent p-1 overflow-hidden transition-all duration-200"
-                        style={{
-                          fontSize: `${field.fontSize}px`,
-                          color: field.fontColor,
-                          fontFamily: field.fontFamily,
-                          cursor: isEditMode ? "text" : "default",
-                          pointerEvents: isEditMode ? "auto" : "none",
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedFieldId(field.id);
-                          setIsTextSelectionMode(false);
-                        }}
-                      />
+  <textarea
+    value={field.value}
+    onChange={(e) =>
+      updateTextField(field.id, { value: e.target.value })
+    }
+    className="w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200 absolute"
+    style={{
+      fontSize: `${field.fontSize}px`,
+      color: field.fontColor,
+      fontFamily: field.fontFamily,
+      cursor: "text",
+      padding: "1px",
+      lineHeight: "1.1",
+      wordWrap: "break-word",
+      wordBreak: "break-all",
+      whiteSpace: "pre-wrap",
+      boxSizing: "border-box",
+      overflow: "hidden",
+    }}
+    onClick={(e) => {
+      e.stopPropagation();
+      setSelectedFieldId(field.id);
+      setIsTextSelectionMode(false);
+    }}
+  />
+                      
                     </div>
                   </Rnd>
                 ))}
