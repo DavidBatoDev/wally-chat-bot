@@ -1,1314 +1,1122 @@
-// client/src/components/chat/DocumentCanvas.tsx
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Loader2, FileText, Image, File, Eye, EyeOff, Check, Edit3 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import api from '@/lib/api';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Document, Page, pdfjs } from "react-pdf";
+import { Rnd } from "react-rnd";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import {
+  X,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Save,
+  Edit3,
+  Type,
+  Plus,
+  Trash2,
+  Eye,
+  EyeOff,
+  Upload,
+  Move,
+  Square,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Layout,
+  MousePointer2
+} from "lucide-react";
 
-// Add PDF.js types
-declare global {
-  interface Window {
-    pdfjsLib: any;
-  }
+// Add polyfill for Promise.withResolvers if not available
+if (!Promise.withResolvers) {
+  Promise.withResolvers = function <T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: any) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
 }
 
-interface DocumentCanvasProps {
-  isOpen: boolean;
-  onClose: () => void;
-  conversationId: string;
-}
+// Set up PDF.js worker with unpkg CDN (more reliable)
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-interface TemplateMappingFont {
-  name: string;
-  size: number;
-  color: string;
-}
-
-interface TemplateMappingPosition {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
-
-interface TemplateMappingBboxCenter {
+interface TextField {
+  id: string;
   x: number;
   y: number;
-}
-
-interface TemplateMapping {
-  label: string;
-  font: TemplateMappingFont;
-  position: TemplateMappingPosition;
-  bbox_center: TemplateMappingBboxCenter;
-  alignment: string;
-  page_number: number;
+  width: number;
+  height: number;
+  value: string;
+  fontSize: number;
+  fontColor: string;
+  fontFamily: string;
+  page: number;
+  fieldKey?: string;
+  isFromWorkflow?: boolean;
 }
 
 interface WorkflowField {
   value: string;
-  value_status: 'ocr' | 'pending' | 'edited' | 'confirmed';
+  value_status: string;
   translated_value: string | null;
-  translated_status: 'pending'| 'translated' | 'completed' | 'edited';
+  translated_status: string;
+}
+
+interface WorkflowMapping {
+  font: {
+    name: string;
+    size: number;
+    color: string;
+    flags: number;
+    style: string;
+  };
+  position: {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    width: number;
+    height: number;
+  };
+  rotation: number;
+  alignment: string;
+  bbox_center: { x: number; y: number };
+  page_number: number;
 }
 
 interface WorkflowData {
-  file_id: string;
-  base_file_public_url?: string;
+  id: string;
   template_id: string;
-  template_file_public_url?: string;
-  origin_template_mappings?: Record<string, TemplateMapping>;
-  fields?: Record<string, WorkflowField>;
-  template_translated_file_public_url?: string;
-  translated_template_mappings?: Record<string, TemplateMapping>;
-
-  
+  conversation_id: string;
+  base_file_public_url: string;
+  template_file_public_url: string;
+  template_required_fields: Record<
+    string,
+    {
+      label: string;
+      description: string;
+    }
+  >;
+  fields: Record<string, WorkflowField>;
+  origin_template_mappings: Record<string, WorkflowMapping>;
+  translated_template_mappings: Record<string, WorkflowMapping>;
+  translate_to: string;
+  created_at: string;
 }
 
-type ViewType = 'original' | 'template' | 'translated_template';
+const DocumentCanvas: React.FC = () => {
+  const [documentUrl, setDocumentUrl] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [scale, setScale] = useState<number>(1.0);
+  const [textFields, setTextFields] = useState<TextField[]>([]);
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState<boolean>(true);
+  const [showWorkflowFields, setShowWorkflowFields] = useState<boolean>(true);
+  const [showTextboxBorders, setShowTextboxBorders] = useState<boolean>(true);
+  const [isTextSelectionMode, setIsTextSelectionMode] = useState<boolean>(false);
+  const [pageWidth, setPageWidth] = useState<number>(612);
+  const [pageHeight, setPageHeight] = useState<number>(792);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
 
-// Editable Input Component
-const EditableInput: React.FC<{
-  value: string;
-  onSave: (newValue: string) => void;
-  onCancel: () => void;
-  placeholder?: string;
-  className?: string;
-}> = ({ value, onSave, onCancel, placeholder, className }) => {
-  const [inputValue, setInputValue] = useState(value);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentRef = useRef<HTMLDivElement>(null);
 
+const styles = `
+  .drag-handle:active {
+    transform: scale(0.95) !important;
+  }
+  
+  .rnd {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .rnd:hover {
+    z-index: 10;
+  }
+  
+  .rnd.react-draggable-dragging {
+    z-index: 1000;
+    transition: none;
+  }
+
+  /* CRITICAL: PDF Page Container Fixes */
+  .react-pdf__Page {
+    position: relative !important;
+    display: inline-block !important;
+    vertical-align: top !important;
+  }
+  
+  /* CRITICAL: Canvas positioning */
+  .react-pdf__Page__canvas {
+    display: block !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+  
+  /* CRITICAL: Text layer positioning - must exactly overlay the canvas */
+  .react-pdf__Page__textContent {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    /* Ensure text layer doesn't interfere with layout */
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+  
+  /* Text spans positioning */
+  .react-pdf__Page__textContent span {
+    position: absolute !important;
+    white-space: nowrap !important;
+    color: transparent !important;
+    line-height: 1 !important;
+    pointer-events: none !important;
+    transform-origin: 0% 0% !important;
+  }
+  
+  /* Enable pointer events and styling only in text selection mode */
+  .text-selection-mode .react-pdf__Page__textContent {
+    pointer-events: auto !important;
+    z-index: 50 !important;
+  }
+  
+  .text-selection-mode .react-pdf__Page__textContent span {
+    cursor: pointer !important;
+    color: rgba(0, 0, 0, 0.1) !important;
+    background-color: rgba(59, 130, 246, 0.2) !important;
+    transition: background-color 0.2s !important;
+    pointer-events: auto !important;
+    border-radius: 2px !important;
+  }
+  
+  .text-selection-mode .react-pdf__Page__textContent span:hover {
+    background-color: rgba(59, 130, 246, 0.4) !important;
+    color: rgba(0, 0, 0, 0.3) !important;
+  }
+  
+  /* Ensure text fields are properly layered above text layer */
+  .text-field-overlay {
+    position: absolute !important;
+    z-index: 100 !important;
+  }
+  
+  /* Fix any potential scaling issues */
+  .text-selection-mode .react-pdf__Page {
+    transform-origin: top left !important;
+  }
+`;
+  // Hardcoded workflow data for demo
+  const workflowData: WorkflowData = {
+    id: "5eb24566-ddd6-48ae-ab32-80574e0875a3",
+    template_id: "9fc0c5fc-2885-4d58-ba0f-4711244eb7df",
+    conversation_id: "e6cdbca2-c538-4f5f-8e7f-278840645bb3",
+    base_file_public_url:
+      "https://ylvmwrvyiamecvnydwvj.supabase.co/storage/v1/object/public/templates/templates/PSA%20Birth%20Cert%201993%20ENG%20blank%20w%202nd%20page.pdf",
+    template_file_public_url:
+      "https://ylvmwrvyiamecvnydwvj.supabase.co/storage/v1/object/public/templates/templates/PSA%20Birth%20Cert%201993%20ENG%20blank%20w%202nd%20page.pdf",
+    template_required_fields: {
+      "{fe}": {
+        label: "Sex: Female",
+        description: "Checkbox to mark with 'X' if the child is female.",
+      },
+      "{last_name}": {
+        label: "Child's Last Name",
+        description: "Text input field for the child's last name.",
+      },
+    },
+    fields: {
+      "{fe}": {
+        value: "X",
+        value_status: "ocr",
+        translated_value: null,
+        translated_status: "pending",
+      },
+      "{last_name}": {
+        value: "DIONISIO GARCIA",
+        value_status: "ocr",
+        translated_value: null,
+        translated_status: "pending",
+      },
+    },
+    origin_template_mappings: {
+      "{fe}": {
+        font: {
+          name: "ArialMT",
+          size: 12,
+          color: "#ee0000",
+          flags: 0,
+          style: "normal",
+        },
+        position: {
+          x0: 91.344,
+          y0: 164.99,
+          x1: 99.875,
+          y1: 171.68,
+          width: 8.531,
+          height: 6.69,
+        },
+        rotation: 0,
+        alignment: "left",
+        bbox_center: { x: 95.61, y: 168.335 },
+        page_number: 1,
+      },
+      "{last_name}": {
+        font: {
+          name: "ArialMT",
+          size: 14,
+          color: "#000000",
+          flags: 0,
+          style: "normal",
+        },
+        position: {
+          x0: 200,
+          y0: 300,
+          x1: 400,
+          y1: 320,
+          width: 200,
+          height: 20,
+        },
+        rotation: 0,
+        alignment: "left",
+        bbox_center: { x: 300, y: 310 },
+        page_number: 1,
+      },
+    },
+    translated_template_mappings: {},
+    translate_to: "Greek",
+    created_at: "2025-06-19T07:44:46.900296Z",
+  };
+
+  // Initialize with demo PDF on mount
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
+    // Load the demo PDF immediately
+    setDocumentUrl(workflowData.base_file_public_url);
   }, []);
 
-  const handleSave = () => {
-    onSave(inputValue);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSave();
-    } else if (e.key === 'Escape') {
-      onCancel();
+  // Load workflow fields when page dimensions are available
+  useEffect(() => {
+    if (pageWidth && pageHeight) {
+      loadWorkflowFields();
     }
+  }, [pageWidth, pageHeight]);
+
+  const loadWorkflowFields = useCallback(() => {
+    const fields: TextField[] = [];
+
+    Object.entries(workflowData.origin_template_mappings).forEach(
+      ([key, mapping]) => {
+        const fieldData = workflowData.fields[key];
+        if (fieldData && mapping) {
+          // Convert PDF coordinates (PDF uses bottom-left origin, we use top-left)
+          const field: TextField = {
+            id: `workflow-${key}`,
+            x: mapping.position.x0,
+            y: pageHeight - mapping.position.y1, // Flip Y coordinate
+            width: Math.max(mapping.position.width, 50),
+            height: Math.max(mapping.position.height, 20),
+            value: fieldData.value || "",
+            fontSize: Math.max(mapping.font.size, 8),
+            fontColor: mapping.font.color || "#000000",
+            fontFamily: "Arial, sans-serif",
+            page: mapping.page_number,
+            fieldKey: key,
+            isFromWorkflow: true,
+          };
+          fields.push(field);
+        }
+      }
+    );
+
+    setTextFields(fields);
+  }, [pageHeight]);
+
+  const handleDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages);
+    setError("");
   };
 
-  return (
-    <div className={`absolute z-50 bg-white rounded-lg shadow-lg border border-gray-300 p-2 ${className}`}>
-      <div className="flex items-center space-x-2">
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[120px]"
-        />
-        <Button
-          size="sm"
-          onClick={handleSave}
-          className="h-7 w-7 p-0 bg-green-500 hover:bg-green-600 text-white"
-        >
-          <Check size={14} />
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onCancel}
-          className="h-7 w-7 p-0"
-        >
-          <X size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-};
+  const handleDocumentLoadError = (error: Error) => {
+    setError(`Failed to load PDF: ${error.message}`);
+    console.error("PDF loading error:", error);
+  };
 
-// Template Mapping Overlay Component with Editable Fields
-const TemplateMappingOverlay: React.FC<{
-  mappings: Record<string, TemplateMapping>;
-  fields: Record<string, WorkflowField>;
-  pageNum: number;
-  scale: number;
-  canvasWidth: number;
-  canvasHeight: number;
-  visible: boolean;
-  onFieldUpdate: (fieldKey: string, newValue: string) => void;
-  isTranslatedView?: boolean;
-}> = ({ mappings, fields, pageNum, scale, canvasWidth, canvasHeight, visible, onFieldUpdate, isTranslatedView = false }) => {
-  const [hoveredMapping, setHoveredMapping] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [editInputPosition, setEditInputPosition] = useState<{ x: number; y: number } | null>(null);
-  const [legendCollapsed, setLegendCollapsed] = useState<boolean>(false);
+  const handlePageLoadSuccess = (page: any) => {
+    const { width, height } = page.getViewport({ scale: 1 });
+    setPageWidth(width);
+    setPageHeight(height);
+  };
 
-  if (!visible || !mappings) return null;
+  // Handle text selection mode
+  const handleTextSelection = useCallback(() => {
+    setIsTextSelectionMode(true);
+    setIsEditMode(true);
+    setSelectedFieldId(null);
+  }, []);
 
-  // Color schemes for different statuses
-  const getStatusColors = (field: WorkflowField | undefined, isTranslatedView: boolean) => {
-    if (!field) {
-      return {
-        border: '#9ca3af',      // gray-400 - no data
-        background: 'rgba(156, 163, 175, 0.1)',
-        label: 'No Data',
-        priority: 0
+  // Handle creating field from text selection
+  const handleCreateFieldFromSelection = useCallback(
+    (e: React.MouseEvent) => {
+      if (!isTextSelectionMode) return;
+      
+      const span = e.currentTarget;
+      const textContent = span.textContent || '';
+      
+      if (!textContent.trim()) return;
+      
+      // Get the PDF page container
+      const pdfPage = documentRef.current?.querySelector('.react-pdf__Page');
+      if (!pdfPage) return;
+      
+      const pageRect = pdfPage.getBoundingClientRect();
+      const spanRect = span.getBoundingClientRect();
+      
+      // Calculate position relative to the PDF page (not scaled container)
+      const x = spanRect.left - pageRect.left;
+      const y = spanRect.top - pageRect.top;
+      
+      // Calculate dimensions - use actual span dimensions
+      const width = Math.max(spanRect.width, 50);
+      const height = Math.max(spanRect.height, 20);
+      
+      // Estimate font size based on the span height
+      const estimatedFontSize = Math.max(8, Math.min(24, Math.round(spanRect.height * 0.7)));
+      
+      // Create new text field
+      const newField: TextField = {
+        id: `field-${Date.now()}`,
+        x: Math.max(0, x),
+        y: Math.max(0, y),
+        width: width,
+        height: height,
+        value: textContent,
+        fontSize: estimatedFontSize,
+        fontColor: "#000000",
+        fontFamily: "Arial, sans-serif",
+        page: currentPage,
+        isFromWorkflow: false,
       };
-    }
-
-    const status = isTranslatedView ? field.translated_status : field.value_status;
-    const value = isTranslatedView ? field.translated_value : field.value;
-    const hasValue = value && value.trim().length > 0;
-
-    // Priority system: higher numbers = higher priority for display
-    switch (status) {
-      // case 'confirmed':
-      //   return {
-      //     border: '#10b981',      // green-500 - confirmed
-      //     background: 'rgba(16, 185, 129, 0.15)',
-      //     label: 'Confirmed',
-      //     priority: 4
-      //   };
-      case 'edited':
-        return {
-          border: '#3b82f6',      // blue-500 - manually edited
-          background: 'rgba(59, 130, 246, 0.15)',
-          label: 'Edited',
-          priority: 3
-        };
-      case 'ocr':
-      case 'translated':
-        return {
-          border: '#f59e0b',      // amber-500 - OCR extracted or translated
-          background: 'rgba(245, 158, 11, 0.15)',
-          label: isTranslatedView ? 'Translated' : 'OCR Extracted',
-          priority: 2
-        };
-      case 'pending':
-      default:
-        return {
-          border: '#6b7280',    // gray-500 - has value but pending
-          background: 'rgba(107, 114, 128, 0.15)',
-          label: 'Pending',
-          priority: 1
-        };
-    }
-  };
-
-  // Filter mappings for current page
-  const currentPageMappings = Object.entries(mappings).filter(
-    ([_, mapping]) => mapping.page_number === pageNum
+      
+      setTextFields([...textFields, newField]);
+      setSelectedFieldId(newField.id);
+      setIsTextSelectionMode(false);
+    },
+    [isTextSelectionMode, currentPage, textFields]
   );
 
-  if (currentPageMappings.length === 0) return null;
+  // Attach click handlers to text spans
+  useEffect(() => {
+    if (!isTextSelectionMode || !documentUrl) return;
 
-  // Handle clicking outside to close popup
-  const handleOverlayClick = (event: React.MouseEvent) => {
-    if (event.target === event.currentTarget && editingField) {
-      setEditingField(null);
-      setEditInputPosition(null);
-    }
-  };
+    const textSpans = document.querySelectorAll(
+      '.react-pdf__Page__textContent span'
+    );
 
-  const handleFieldClick = (fieldKey: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    
-    if (editingField === fieldKey) {
-      return;
-    }
-    
-    if (editingField) {
-      setEditingField(null);
-      setEditInputPosition(null);
-      return;
-    }
-    
-    const target = event.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    const overlayContainer = target.parentElement;
-    
-    if (overlayContainer) {
-      const containerRect = overlayContainer.getBoundingClientRect();
-      setEditInputPosition({
-        x: rect.left - containerRect.left,
-        y: rect.bottom - containerRect.top + 4
+    textSpans.forEach(span => {
+      span.addEventListener('click', handleCreateFieldFromSelection as any);
+    });
+
+    return () => {
+      textSpans.forEach(span => {
+        span.removeEventListener('click', handleCreateFieldFromSelection as any);
       });
-    } else {
-      setEditInputPosition({
-        x: target.offsetLeft,
-        y: target.offsetTop + target.offsetHeight + 4
-      });
+    };
+  }, [isTextSelectionMode, documentUrl, currentPage, handleCreateFieldFromSelection]);
+
+  const addTextField = () => {
+    const newField: TextField = {
+      id: `field-${Date.now()}`,
+      x: 50,
+      y: 50,
+      width: 150,
+      height: 30,
+      value: "New Text Field",
+      fontSize: 14,
+      fontColor: "#000000",
+      fontFamily: "Arial, sans-serif",
+      page: currentPage,
+      isFromWorkflow: false,
+    };
+    setTextFields([...textFields, newField]);
+    setSelectedFieldId(newField.id);
+    setIsTextSelectionMode(false);
+  };
+
+  const deleteTextField = (fieldId: string) => {
+    setTextFields(textFields.filter((field) => field.id !== fieldId));
+    if (selectedFieldId === fieldId) {
+      setSelectedFieldId(null);
     }
-    
-    setEditingField(fieldKey);
   };
 
-  const handleFieldSave = (fieldKey: string, newValue: string) => {
-    onFieldUpdate(fieldKey, newValue);
-    setEditingField(null);
-    setEditInputPosition(null);
+  const updateTextField = (fieldId: string, updates: Partial<TextField>) => {
+    setTextFields(
+      textFields.map((field) =>
+        field.id === fieldId ? { ...field, ...updates } : field
+      )
+    );
   };
 
-  const handleEditCancel = () => {
-    setEditingField(null);
-    setEditInputPosition(null);
+  const exportToPDF = async () => {
+    if (!documentUrl) return;
+
+    setIsLoading(true);
+    try {
+      // Fetch the original PDF
+      const existingPdfBytes = await fetch(documentUrl).then((res) =>
+        res.arrayBuffer()
+      );
+      const pdfDoc = await PDFDocument.load(existingPdfBytes);
+      const pages = pdfDoc.getPages();
+
+      // Add text fields to PDF
+      for (const field of textFields) {
+        if (field.page <= pages.length && field.value.trim()) {
+          const page = pages[field.page - 1];
+          const { height } = page.getSize();
+
+          // Convert color from hex to RGB
+          const hexColor = field.fontColor.replace("#", "");
+          const r = parseInt(hexColor.substr(0, 2), 16) / 255;
+          const g = parseInt(hexColor.substr(2, 2), 16) / 255;
+          const b = parseInt(hexColor.substr(4, 2), 16) / 255;
+
+          // Add text to page (PDF uses bottom-left origin)
+          page.drawText(field.value, {
+            x: field.x,
+            y: height - field.y - field.height,
+            size: field.fontSize,
+            color: rgb(r, g, b),
+            font: await pdfDoc.embedFont(StandardFonts.Helvetica),
+          });
+        }
+      }
+
+      // Save and download the PDF
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "edited-document.pdf";
+      link.click();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      setError("Failed to export PDF");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const exportFieldsData = () => {
+    const exportData = {
+      documentUrl,
+      fields: textFields,
+      scale,
+      pageWidth,
+      pageHeight,
+      numPages,
+      workflowId: workflowData.id,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "document-fields.json";
+    link.click();
+
+    URL.revokeObjectURL(url);
+  };
+
+  const loadDocumentFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === "application/pdf") {
+      const url = URL.createObjectURL(file);
+      setDocumentUrl(url);
+      setTextFields([]);
+      setSelectedFieldId(null);
+      setCurrentPage(1);
+      setIsTextSelectionMode(false);
+    }
+  };
+
+  const goToPage = (pageNumber: number) => {
+    if (pageNumber >= 1 && pageNumber <= numPages) {
+      setCurrentPage(pageNumber);
+      setSelectedFieldId(null);
+    }
   };
 
   return (
-    <>
-      {/* Main overlay */}
-      <div 
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          width: canvasWidth,
-          height: canvasHeight,
-        }}
-      >
-        {currentPageMappings.map(([key, mapping]) => {
-          // Convert coordinates
-          const x = mapping.position.x0 * scale;
-          const y = mapping.position.y0 * scale;
-          const width = (mapping.position.x1 - mapping.position.x0) * scale;
-          const height = (mapping.position.y1 - mapping.position.y0) * scale;
+    <div className="h-screen flex bg-gray-100">
+      <style>{styles}</style>
+      {/* Sidebar */}
+      <div className="w-80 bg-white shadow-lg border-r border-gray-200 flex flex-col">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center space-x-2 mb-4">
+            <Edit3 size={20} className="text-blue-600" />
+            <h1 className="text-lg font-semibold text-gray-800">PDF Editor</h1>
+          </div>
 
-          const isHovered = hoveredMapping === key;
-          const isEditing = editingField === key;
-          const field = fields[key];
-          const fieldValue = isTranslatedView 
-            ? (field?.translated_value || '') 
-            : (field?.value || '');
-          
-          // Get status-based colors
-          const statusColors = getStatusColors(field, isTranslatedView);
-          
-          // Override colors for hover and edit states
-          let borderColor = statusColors.border;
-          let backgroundColor = statusColors.background;
-          
-          if (isEditing) {
-            borderColor = '#10b981'; // green-500
-            backgroundColor = 'rgba(16, 185, 129, 0.2)';
-          } else if (isHovered) {
-            borderColor = '#8b5cf6'; // violet-500 for hover
-            backgroundColor = 'rgba(139, 92, 246, 0.2)';
-          }
+          {/* File Upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            onChange={loadDocumentFile}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+          >
+            <Upload size={16} />
+            <span>Load PDF</span>
+          </button>
+        </div>
 
-          return (
-            <div
-              key={key}
-              className="absolute pointer-events-auto cursor-pointer transition-all duration-200"
-              style={{
-                left: x,
-                top: y,
-                width: Math.max(width, 4),
-                height: Math.max(height, 4),
-                border: `2px solid ${borderColor}`,
-                backgroundColor: backgroundColor,
-                borderRadius: '2px',
-                zIndex: isEditing ? 30 : isHovered ? 20 : statusColors.priority + 10,
-              }}
-              onMouseEnter={() => !editingField && setHoveredMapping(key)}
-              onMouseLeave={() => !editingField && setHoveredMapping(null)}
-              onClick={(e) => handleFieldClick(key, e)}
-              title={`${key}: ${mapping.label}${fieldValue ? ` - "${fieldValue}"` : ''} (${statusColors.label})`}
+        {/* Toolbar */}
+        <div className="p-4 border-b border-gray-200">
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button
+              onClick={addTextField}
+              className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center justify-center space-x-1"
             >
-              {/* Field Value Display */}
-              {fieldValue && fieldValue.trim().length > 0 && !isEditing && (
-                <div
-                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-800 bg-white bg-opacity-90 rounded"
-                  style={{
-                    fontSize: Math.max(8, Math.min(12, height * 0.6)),
-                    padding: '1px 2px',
-                  }}
-                >
-                  <span className="truncate max-w-full">
-                    {fieldValue}
-                  </span>
-                </div>
-              )}
+              <Plus size={16} />
+              <span>Add Text</span>
+            </button>
+            <button
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`px-3 py-2 rounded transition-colors flex items-center justify-center space-x-1 ${
+                isEditMode
+                  ? "bg-orange-600 text-white hover:bg-orange-700"
+                  : "bg-gray-600 text-white hover:bg-gray-700"
+              }`}
+            >
+              <Type size={16} />
+              <span>{isEditMode ? "Edit" : "View"}</span>
+            </button>
+          </div>
 
-              {/* Enhanced tooltip */}
-              {isHovered && !isEditing && (
-                <div
-                  className="absolute bg-gray-900 text-white text-xs px-3 py-2 rounded shadow-lg whitespace-nowrap z-40"
-                  style={{
-                    top: height + 8,
-                    left: 0,
-                    maxWidth: '300px',
-                  }}
-                >
-                  <div className="font-semibold text-yellow-300">{key}</div>
-                  <div className="text-gray-300">{mapping.label}</div>
-                  
-                  {/* Status Information */}
-                  <div className="flex items-center mt-1 space-x-2">
-                    <div 
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: statusColors.border }}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button
+              onClick={() => setShowWorkflowFields(!showWorkflowFields)}
+              className={`px-3 py-2 rounded transition-colors flex items-center space-x-1 ${
+                showWorkflowFields
+                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                  : "bg-gray-400 text-white hover:bg-gray-500"
+              }`}
+            >
+              {showWorkflowFields ? <Eye size={16} /> : <EyeOff size={16} />}
+              <span>Workflow</span>
+            </button>
+            
+            <button
+              onClick={() => setShowTextboxBorders(!showTextboxBorders)}
+              className={`px-3 py-2 rounded transition-colors flex items-center space-x-1 ${
+                showTextboxBorders
+                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : "bg-gray-400 text-white hover:bg-gray-500"
+              }`}
+            >
+              <Layout size={16} />
+              <span>Borders</span>
+            </button>
+          </div>
+
+          {/* Text Selection Mode Button */}
+          <div className="mb-4">
+            <button
+              onClick={handleTextSelection}
+              className={`w-full px-3 py-2 rounded transition-colors flex items-center justify-center space-x-1 ${
+                isTextSelectionMode
+                  ? "bg-blue-600 text-white hover:bg-blue-700"
+                  : "bg-gray-600 text-white hover:bg-gray-700"
+              }`}
+            >
+              <MousePointer2 size={16} />
+              <span>Text Selection Mode</span>
+            </button>
+            {isTextSelectionMode && (
+              <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200">
+                Click on any text in the document to create an editable field
+              </div>
+            )}
+          </div>
+
+          {/* Zoom Controls */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => setScale(Math.max(0.5, scale - 0.1))}
+              className="p-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <span className="text-sm text-gray-600 min-w-[60px] text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <button
+              onClick={() => setScale(Math.min(2.0, scale + 0.1))}
+              className="p-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+            >
+              <ZoomIn size={16} />
+            </button>
+          </div>
+
+          {/* Export Buttons */}
+          <div className="space-y-2">
+            <button
+              onClick={exportToPDF}
+              disabled={!documentUrl || isLoading}
+              className="w-full px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+            >
+              <Download size={16} />
+              <span>{isLoading ? "Exporting..." : "Export PDF"}</span>
+            </button>
+            <button
+              onClick={exportFieldsData}
+              disabled={!documentUrl}
+              className="w-full px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+            >
+              <Save size={16} />
+              <span>Export Data</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Page Navigation */}
+        {numPages > 0 && (
+          <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="p-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-sm text-gray-600">
+                Page {currentPage} of {numPages}
+              </span>
+              <button
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= numPages}
+                className="p-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Field Properties Panel */}
+        {selectedFieldId && isEditMode && (
+          <div className="p-4 border-b border-gray-200 flex-1 overflow-y-auto">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              Field Properties
+            </h3>
+            {(() => {
+              const field = textFields.find((f) => f.id === selectedFieldId);
+              if (!field) return null;
+
+              return (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Text Value
+                    </label>
+                    <textarea
+                      value={field.value}
+                      onChange={(e) =>
+                        updateTextField(field.id, { value: e.target.value })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded resize-none"
+                      rows={3}
                     />
-                    <span className="text-sm font-medium">{statusColors.label}</span>
                   </div>
-                  
-                  {/* Field Values */}
-                  {field && (
-                    <div className="mt-2 border-t border-gray-700 pt-2">
-                      {field.value && (
-                        <div className="text-blue-300">
-                          <span className="text-gray-400">Original:</span> "{field.value}"
-                          <span className="text-xs text-gray-500 ml-2">({field.value_status})</span>
-                        </div>
-                      )}
-                      {field.translated_value && (
-                        <div className="text-green-300 mt-1">
-                          <span className="text-gray-400">Translated:</span> "{field.translated_value}"
-                          <span className="text-xs text-gray-500 ml-2">({field.translated_status})</span>
+
+                  {/* Position Controls */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        X Position
+                      </label>
+                      <input
+                        type="number"
+                        value={Math.round(field.x)}
+                        onChange={(e) =>
+                          updateTextField(field.id, {
+                            x: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        Y Position
+                      </label>
+                      <input
+                        type="number"
+                        value={Math.round(field.y)}
+                        onChange={(e) =>
+                          updateTextField(field.id, {
+                            y: parseInt(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Size Controls */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        Width
+                      </label>
+                      <input
+                        type="number"
+                        value={Math.round(field.width)}
+                        onChange={(e) =>
+                          updateTextField(field.id, {
+                            width: parseInt(e.target.value) || 50,
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        min="10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">
+                        Height
+                      </label>
+                      <input
+                        type="number"
+                        value={Math.round(field.height)}
+                        onChange={(e) =>
+                          updateTextField(field.id, {
+                            height: parseInt(e.target.value) || 20,
+                          })
+                        }
+                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                        min="10"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Font Size
+                    </label>
+                    <input
+                      type="number"
+                      value={field.fontSize}
+                      onChange={(e) =>
+                        updateTextField(field.id, {
+                          fontSize: parseInt(e.target.value) || 12,
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                      min="6"
+                      max="72"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Color
+                    </label>
+                    <input
+                      type="color"
+                      value={field.fontColor}
+                      onChange={(e) =>
+                        updateTextField(field.id, { fontColor: e.target.value })
+                      }
+                      className="w-full h-8 border border-gray-300 rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">
+                      Font Family
+                    </label>
+                    <select
+                      value={field.fontFamily}
+                      onChange={(e) =>
+                        updateTextField(field.id, {
+                          fontFamily: e.target.value,
+                        })
+                      }
+                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+                    >
+                      <option value="Arial, sans-serif">Arial</option>
+                      <option value="Georgia, serif">Georgia</option>
+                      <option value="'Times New Roman', serif">
+                        Times New Roman
+                      </option>
+                      <option value="'Courier New', monospace">
+                        Courier New
+                      </option>
+                      <option value="Verdana, sans-serif">Verdana</option>
+                    </select>
+                  </div>
+                  {field.isFromWorkflow && (
+                    <div className="p-2 bg-purple-100 rounded text-xs">
+                      <div className="font-semibold text-purple-800">
+                        Workflow Field
+                      </div>
+                      <div className="text-purple-600">
+                        Key: {field.fieldKey}
+                      </div>
+                      {workflowData.template_required_fields[
+                        field.fieldKey!
+                      ] && (
+                        <div className="mt-1 text-purple-600">
+                          <div className="font-medium">
+                            {
+                              workflowData.template_required_fields[
+                                field.fieldKey!
+                              ].label
+                            }
+                          </div>
+                          <div className="text-xs">
+                            {
+                              workflowData.template_required_fields[
+                                field.fieldKey!
+                              ].description
+                            }
+                          </div>
                         </div>
                       )}
                     </div>
                   )}
-                  
-                  <div className="text-gray-400 text-xs mt-2">
-                    Font: {mapping.font.name}, Size: {mapping.font.size}
-                  </div>
-                  <div className="text-gray-400 text-xs mt-1">
-                    Click to edit
-                  </div>
+                  <button
+                    onClick={() => deleteTextField(field.id)}
+                    className="w-full px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center justify-center space-x-1"
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete Field</span>
+                  </button>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Collapsible Status Legend */}
-      <div className="absolute top-4 left-4 z-40">
-        <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
-          {/* Legend Header - Always visible */}
-          <div 
-            className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-50 transition-colors"
-            onClick={() => setLegendCollapsed(!legendCollapsed)}
-          >
-            <div className="text-xs font-semibold text-gray-700">Field Status</div>
-            <div 
-              className="w-4 h-4 flex items-center justify-center text-gray-500 transform transition-transform"
-              style={{ transform: legendCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
-            >
-              ▼
-            </div>
-          </div>
-          
-          {/* Legend Content - Collapsible */}
-          {!legendCollapsed && (
-            <div className="px-3 pb-3 border-t border-gray-200">
-              <div className="space-y-1 mt-2">
-                {/* <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10b981' }}></div>
-                  <span className="text-xs text-gray-600">Confirmed</span>
-                </div> */}
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#3b82f6' }}></div>
-                  <span className="text-xs text-gray-600">Edited</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f59e0b' }}></div>
-                  <span className="text-xs text-gray-600">{isTranslatedView ? 'Translated' : 'OCR'}</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#6b7280' }}></div>
-                  <span className="text-xs text-gray-600">Pending</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Editable Input - Rendered separately with backdrop */}
-      {editingField && editInputPosition && (
-        <>
-          <div 
-            className="fixed inset-0 z-40 bg-transparent"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEditCancel();
-            }}
-          />
-          
-          <div
-            className="absolute z-50 bg-white rounded-lg shadow-lg border border-gray-300 p-2"
-            style={{
-              left: editInputPosition.x,
-              top: editInputPosition.y,
-              minWidth: '200px'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center space-x-2">
-              <input
-                ref={(input) => input?.focus()}
-                type="text"
-                defaultValue={isTranslatedView 
-                ? (fields[editingField]?.translated_value || '') 
-                : (fields[editingField]?.value || '')}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleFieldSave(editingField, e.currentTarget.value);
-                  } else if (e.key === 'Escape') {
-                    e.stopPropagation();
-                    handleEditCancel();
-                  }
-                }}
-                placeholder={`Enter ${isTranslatedView ? 'translated ' : ''}${mappings[editingField]?.label || 'value'}`}
-                className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
-                autoFocus
-              />
-              <Button
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const inputElement = e.currentTarget.parentElement?.querySelector('input') as HTMLInputElement;
-                  handleFieldSave(editingField, inputElement?.value || '');
-                }}
-                className="h-7 w-7 p-0 bg-green-500 hover:bg-green-600 text-white flex-shrink-0"
-              >
-                <Check size={14} />
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditCancel();
-                }}
-                className="h-7 w-7 p-0 flex-shrink-0"
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
-    </>
-  );
-};
-
-// PDF Viewer Component with Template Overlay Support
-const PDFViewer: React.FC<{ 
-  url: string; 
-  templateMappings?: Record<string, TemplateMapping>;
-  fields?: Record<string, WorkflowField>;
-  showMappings?: boolean;
-  onFieldUpdate?: (fieldKey: string, newValue: string) => void;
-  isTranslatedView?: boolean;
-}> = ({ url, templateMappings, fields = {}, showMappings = false, onFieldUpdate, isTranslatedView = false }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const renderTaskRef = useRef<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [pageNum, setPageNum] = useState(1);
-  const [numPages, setNumPages] = useState(0);
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [scale, setScale] = useState(1.2);
-  const [isRendering, setIsRendering] = useState(false);
-  const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 });
-
-  // Cleanup function
-  const cleanup = () => {
-    if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
-      renderTaskRef.current = null;
-    }
-    if (pdfDoc) {
-      pdfDoc.destroy();
-    }
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    
-    const loadPDF = async () => {
-      if (!isMounted) return;
-      
-      // Cleanup previous PDF
-      cleanup();
-      
-      setLoading(true);
-      setError(null);
-      setPageNum(1);
-      setNumPages(0);
-      setPdfDoc(null);
-      setIsRendering(false);
-
-      try {
-        // Load PDF.js if not already loaded
-        if (!window.pdfjsLib) {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-          script.onload = () => {
-            if (isMounted) {
-              window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-              loadDocument();
-            }
-          };
-          script.onerror = () => {
-            if (isMounted) setError('Failed to load PDF.js');
-          };
-          document.head.appendChild(script);
-        } else {
-          loadDocument();
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError('Failed to load PDF');
-          setLoading(false);
-        }
-      }
-    };
-
-    const loadDocument = async () => {
-      if (!isMounted) return;
-      
-      try {
-        const loadingTask = window.pdfjsLib.getDocument({
-          url: url,
-          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-          cMapPacked: true,
-        });
-        
-        const pdf = await loadingTask.promise;
-        
-        if (!isMounted) {
-          pdf.destroy();
-          return;
-        }
-        
-        setPdfDoc(pdf);
-        setNumPages(pdf.numPages);
-        setPageNum(1);
-        await renderPage(pdf, 1, scale);
-      } catch (err) {
-        console.error('PDF loading error:', err);
-        if (isMounted) {
-          setError('Failed to load PDF document');
-          setLoading(false);
-        }
-      }
-    };
-
-    loadPDF();
-
-    return () => {
-      isMounted = false;
-      cleanup();
-    };
-  }, [url]);
-
-  // Re-render when scale changes
-  useEffect(() => {
-    if (pdfDoc && pageNum && !loading) {
-      renderPage(pdfDoc, pageNum, scale);
-    }
-  }, [scale, pdfDoc, pageNum]);
-
-  const renderPage = async (pdf: any, pageNumber: number, currentScale: number = scale) => {
-    if (!pdf || !canvasRef.current) return;
-    
-    try {
-      setIsRendering(true);
-      setLoading(true);
-      
-      // Cancel any existing render task
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-        renderTaskRef.current = null;
-      }
-      
-      const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: currentScale });
-      
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      
-      if (!context) {
-        throw new Error('Could not get canvas context');
-      }
-      
-      // Set canvas dimensions
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      
-      // Update canvas dimensions state for overlay positioning
-      setCanvasDimensions({ width: viewport.width, height: viewport.height });
-      
-      // Clear canvas with white background
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport
-      };
-
-      // Start rendering and store the task reference
-      renderTaskRef.current = page.render(renderContext);
-      await renderTaskRef.current.promise;
-      
-      // Clear the reference after successful render
-      renderTaskRef.current = null;
-      setLoading(false);
-      setIsRendering(false);
-      
-    } catch (err: any) {
-      console.error('PDF render error:', err);
-      if (err.name !== 'RenderingCancelledException') {
-        setError('Failed to render PDF page');
-        setLoading(false);
-        setIsRendering(false);
-      }
-    }
-  };
-
-  const goToPage = async (newPageNum: number) => {
-    if (newPageNum >= 1 && newPageNum <= numPages && pdfDoc && !isRendering) {
-      setPageNum(newPageNum);
-      await renderPage(pdfDoc, newPageNum, scale);
-    }
-  };
-
-  const handleZoom = async (newScale: number) => {
-    // Clamp scale between reasonable bounds
-    const clampedScale = Math.max(0.5, Math.min(3.0, newScale));
-    
-    if (clampedScale !== scale && pdfDoc && !isRendering) {
-      setScale(clampedScale);
-      // The useEffect will handle re-rendering with new scale
-    }
-  };
-
-  // Predefined zoom levels for more accurate zooming
-  const zoomLevels = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
-  
-  const zoomIn = () => {
-    const currentIndex = zoomLevels.findIndex(level => level >= scale);
-    const nextIndex = currentIndex < zoomLevels.length - 1 ? currentIndex + 1 : zoomLevels.length - 1;
-    handleZoom(zoomLevels[nextIndex]);
-  };
-
-  const zoomOut = () => {
-    const currentIndex = zoomLevels.findIndex(level => level >= scale);
-    const prevIndex = currentIndex > 0 ? currentIndex - 1 : 0;
-    handleZoom(zoomLevels[prevIndex]);
-  };
-
-  const resetZoom = () => {
-    handleZoom(1.0);
-  };
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-50">
-        <div className="text-center text-red-500">
-          <FileText size={48} className="mx-auto mb-4" />
-          <p className="font-medium">Error loading PDF</p>
-          <p className="text-sm mt-1">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col h-full bg-gray-50">
-      {/* PDF Controls */}
-      {numPages > 0 && (
-        <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 flex-shrink-0">
-          <div className="flex items-center space-x-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => goToPage(pageNum - 1)}
-              disabled={pageNum <= 1 || isRendering}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-gray-600">
-              Page {pageNum} of {numPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => goToPage(pageNum + 1)}
-              disabled={pageNum >= numPages || isRendering}
-            >
-              Next
-            </Button>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={zoomOut}
-              disabled={scale <= 0.5 || isRendering}
-              title="Zoom Out"
-            >
-              Zoom Out
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={resetZoom}
-              disabled={isRendering}
-              title="Reset Zoom (100%)"
-              className="min-w-[60px]"
-            >
-              {Math.round(scale * 100)}%
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={zoomIn}
-              disabled={scale >= 3 || isRendering}
-              title="Zoom In"
-            >
-              Zoom In
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* PDF Canvas Container */}
-      <div className="flex-1 overflow-auto bg-gray-100 p-4">
-        {loading && (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-            <span className="ml-2 text-gray-500">
-              {isRendering ? 'Rendering PDF...' : 'Loading PDF...'}
-            </span>
+              );
+            })()}
           </div>
         )}
-        
-        <div 
-          ref={containerRef}
-          className="relative"
-          style={{ 
-            width: canvasDimensions.width || 'auto',
-            height: canvasDimensions.height || 'auto',
-            minWidth: canvasDimensions.width || 'auto',
-            margin: canvasDimensions.width < (containerRef.current?.parentElement?.clientWidth || 0) ? '0 auto' : '0'
-          }}
-        >
-          <canvas
-            ref={canvasRef}
-            className={`border border-gray-300 shadow-lg transition-opacity duration-200 ${
-              loading ? 'hidden' : 'block'
-            }`}
-            style={{ 
-              display: loading ? 'none' : 'block',
-              width: canvasDimensions.width || 'auto',
-              height: canvasDimensions.height || 'auto'
-            }}
-          />
-          
-          {/* Template Mappings Overlay */}
-          {templateMappings && (
-            <TemplateMappingOverlay
-              mappings={templateMappings}
-              fields={fields}
-              pageNum={pageNum}
-              scale={scale}
-              canvasWidth={canvasDimensions.width}
-              canvasHeight={canvasDimensions.height}
-              visible={showMappings && !loading}
-              onFieldUpdate={onFieldUpdate || (() => {})}
-              isTranslatedView={isTranslatedView}
-            />
-          )}
-        </div>
       </div>
-    </div>
-  );
-};
 
-// Image Viewer Component
-const ImageViewer: React.FC<{ url: string }> = ({ url }) => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  return (
-    <div className="flex flex-col h-full bg-gray-50">
-      <div className="flex-1 overflow-auto p-4">
-        {loading && (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-            <span className="ml-2 text-gray-500">Loading image...</span>
-          </div>
-        )}
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-auto bg-gray-200 p-4">
         {error && (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-red-500">
-              <Image size={48} className="mx-auto mb-4" />
-              <p className="font-medium">Error loading image</p>
-            </div>
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
           </div>
         )}
-        <div className="flex justify-center">
-          <img
-            src={url}
-            alt="Document"
-            className={`max-w-full h-auto border border-gray-300 shadow-lg ${loading ? 'hidden' : ''}`}
-            onLoad={() => setLoading(false)}
-            onError={() => {
-              setLoading(false);
-              setError(true);
-            }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
 
-// File Viewer Component
-const FileViewer: React.FC<{ 
-  url: string; 
-  filename?: string; 
-  templateMappings?: Record<string, TemplateMapping>;
-  fields?: Record<string, WorkflowField>;
-  showMappings?: boolean;
-  onFieldUpdate?: (fieldKey: string, newValue: string) => void;
-  isTranslatedView?: boolean;
-}> = ({ url, filename, templateMappings, fields = {}, showMappings = false, onFieldUpdate, isTranslatedView = false }) => {
-  const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
-    try {
-      // Handle URLs with query parameters by extracting the pathname
-      const urlObj = new URL(url);
-      const pathname = urlObj.pathname;
-      
-      // Get file extension from pathname, not the full URL
-      const extension = pathname.split('.').pop()?.toLowerCase();
-      
-      if (extension === 'pdf') return 'pdf';
-      
-      // Common image extensions
-      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif'].includes(extension || '')) {
-        return 'image';
-      }
-      
-      // Common document extensions that might be viewable as images or PDFs
-      if (['doc', 'docx', 'txt', 'rtf'].includes(extension || '')) {
-        return 'other';
-      }
-      
-      return 'other';
-    } catch (error) {
-      // If URL parsing fails, fall back to simple extension check
-      console.warn('Failed to parse URL for file type detection:', error);
-      const extension = url.split('.').pop()?.toLowerCase();
-      
-      if (extension === 'pdf') return 'pdf';
-      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif'].includes(extension || '')) {
-        return 'image';
-      }
-      
-      return 'other';
-    }
-  };
-
-  const fileType = getFileType(url);
-
-  if (fileType === 'pdf') {
-    return (
-      <PDFViewer 
-        url={url} 
-        templateMappings={templateMappings}
-        fields={fields}
-        showMappings={showMappings}
-        onFieldUpdate={onFieldUpdate}
-        isTranslatedView={isTranslatedView}
-      />
-    );
-  }
-
-  if (fileType === 'image') {
-    return <ImageViewer url={url} />;
-  }
-
-  // For other file types, show download link
-  return (
-    <div className="flex items-center justify-center h-full bg-gray-50">
-      <div className="text-center">
-        <File size={48} className="mx-auto mb-4 text-gray-400" />
-        <p className="font-medium text-gray-600 mb-2">
-          {filename || 'Document'}
-        </p>
-        <p className="text-sm text-gray-500 mb-4">
-          This file type cannot be previewed in the browser
-        </p>
-        <Button
-          onClick={() => window.open(url, '_blank')}
-          className="bg-red-500 hover:bg-red-600 text-white"
-        >
-          Open File
-        </Button>
-      </div>
-    </div>
-  );
-};
-
-const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
-  isOpen,
-  onClose,
-  conversationId
-}) => {
-  // Local workflow state - managed directly by this component
-  const [workflowData, setWorkflowData] = useState<WorkflowData | null>(null);
-  const [hasWorkflow, setHasWorkflow] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  console.log(workflowData)
-  
-  // View state - default to 'original' since we removed forms
-  const [currentView, setCurrentView] = useState<ViewType>('original');
-  
-  // Template mappings overlay state
-  const [showMappings, setShowMappings] = useState<boolean>(true);
-
-  // Fetch workflow data directly from database
-  const fetchWorkflowData = async () => {
-    if (!conversationId) {
-      setHasWorkflow(false);
-      setWorkflowData(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      console.log('DocumentCanvas: Fetching workflow data for conversation:', conversationId);
-      const response = await api.get(`/api/workflow/${conversationId}`);
-      
-      console.log('DocumentCanvas: Workflow fetch result:', {
-        conversationId,
-        hasWorkflow: response.data.has_workflow,
-        hasData: response.data.workflow_data,
-        hasMappings: response.data.workflow_data?.origin_template_mappings,
-        hasFields: response.data.workflow_data?.fields
-      });
-      
-      setHasWorkflow(response.data.has_workflow);
-      setWorkflowData(response.data.workflow_data);
-      
-    } catch (err: any) {
-      console.error('DocumentCanvas: Error fetching workflow:', err);
-      
-      // Handle 404 specifically - no workflow exists (this is normal)
-      if (err.response?.status === 404) {
-        setHasWorkflow(false);
-        setWorkflowData(null);
-        setError(null); // Clear error for 404
-        return;
-      }
-      
-      // For other errors, set error state
-      setError(err.response?.data?.message || 'Failed to load workflow');
-      setHasWorkflow(false);
-      setWorkflowData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle field updates
-  const handleFieldUpdate = async (fieldKey: string, newValue: string) => {
-    if (!workflowData?.fields) return;
-
-    // Get the existing field data
-    const existingField = workflowData.fields[fieldKey] || {
-      value: '',
-      value_status: 'pending',
-      translated_value: null,
-      translated_status: 'pending'
-    };
-
-    // Determine if we're updating translated value or regular value
-    const isUpdatingTranslated = currentView === 'translated_template';
-
-    // Update local state immediately for responsive UI
-    const updatedFields = {
-      ...workflowData.fields,
-      [fieldKey]: {
-        ...existingField,
-        ...(isUpdatingTranslated 
-          ? {
-              translated_value: newValue,
-              translated_status: 'edited' as const
-            }
-          : {
-              value: newValue,
-              value_status: 'edited' as const
-            }
-        )
-      }
-    };
-
-    setWorkflowData({
-      ...workflowData,
-      fields: updatedFields
-    });
-
-    // Send update to backend - ALWAYS include all required fields
-    try {
-      const updateData = {
-        field_key: fieldKey,
-        // Always include the current value and value_status
-        value: isUpdatingTranslated ? existingField.value : newValue,
-        value_status: isUpdatingTranslated ? existingField.value_status : 'edited',
-        // Always include the current translated_value and translated_status
-        translated_value: isUpdatingTranslated ? newValue : existingField.translated_value,
-        translated_status: isUpdatingTranslated ? 'edited' : existingField.translated_status
-      };
-
-      await api.patch(`/api/workflow/${conversationId}/field`, updateData);
-      
-      console.log('DocumentCanvas: Field updated successfully:', fieldKey, newValue, isUpdatingTranslated ? '(translated)' : '(original)');
-    } catch (err: any) {
-      console.error('DocumentCanvas: Error updating field:', err);
-      
-      // Revert local state on error
-      setWorkflowData({
-        ...workflowData,
-        fields: workflowData.fields // Revert to original state
-      });
-    }
-  };
-
-  // Fetch workflow data whenever the canvas opens or conversationId changes
-  useEffect(() => {
-    if (isOpen && conversationId) {
-      console.log('DocumentCanvas: Opening, fetching fresh workflow data');
-      fetchWorkflowData();
-    }
-  }, [isOpen, conversationId]);
-
-  // Clear state when canvas closes
-   // Clear state when canvas closes
-  useEffect(() => {
-    if (!isOpen) {
-      setWorkflowData(null);
-      setHasWorkflow(false);
-      setError(null);
-      setCurrentView('original');
-      setShowMappings(true);
-    }
-  }, [isOpen]);
-
-  const handleShowBaseFile = () => {
-    console.log("DocumentCanvas: Show Base File clicked");
-    setCurrentView('original');
-  };
-
-  const handleShowTemplate = () => {
-    console.log("DocumentCanvas: Template clicked");
-    setCurrentView('template');
-  };
-
-  const handleShowTranslatedTemplate = () => {
-    console.log("DocumentCanvas: Translated Template clicked");
-    setCurrentView('translated_template');
-  };
-
-  const toggleMappings = () => {
-    setShowMappings(!showMappings);
-  };
-
-  if (!isOpen) return null;
-
-  // Get view title
-  const getViewTitle = () => {
-    switch (currentView) {
-      case 'original': return 'Original File';
-      case 'template': return 'Template';
-      case 'translated_template': return 'Translated Template';
-      default: return 'Original File';
-    }
-  };
-
-  // Count mappings for current view
-  const getMappingsCount = () => {
-    if (currentView === 'translated_template') {
-      if (!workflowData?.translated_template_mappings) return 0;
-      return Object.keys(workflowData.translated_template_mappings).length;
-    }
-    if (!workflowData?.origin_template_mappings) return 0;
-    return Object.keys(workflowData.origin_template_mappings).length;
-  };
-
-  // Render content based on current view
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-32">
-          <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-          <span className="ml-2 text-gray-500">Loading workflow...</span>
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="text-center text-red-500 p-4 bg-red-50 rounded-lg border border-red-200">
-          <p className="font-medium">Error</p>
-          <p className="text-sm mt-1">{error}</p>
-        </div>
-      );
-    }
-
-    if (!hasWorkflow) {
-      return (
-        <div className="text-center text-gray-500 p-8 bg-white rounded-lg border border-gray-200">
-          <p className="font-medium">No workflow found</p>
-          <p className="text-sm mt-1">No workflow found for this conversation</p>
-        </div>
-      );
-    }
-
-    // Show file views
-    if (currentView === 'original' && workflowData?.base_file_public_url) {
-      return (
-        <div className="h-full">
-          <FileViewer 
-            url={workflowData.base_file_public_url} 
-            filename="Original File" 
-          />
-        </div>
-      );
-    }
-
-    if (currentView === 'template' && workflowData?.template_file_public_url) {
-      return (
-        <div className="h-full">
-          <FileViewer 
-            url={workflowData.template_file_public_url} 
-            filename="Template"
-            templateMappings={workflowData.origin_template_mappings}
-            fields={workflowData.fields}
-            showMappings={showMappings}
-            onFieldUpdate={handleFieldUpdate}
-          />
-        </div>
-      );
-    }
-
-    if (currentView === 'translated_template' && workflowData?.template_translated_file_public_url) {
-    return (
-      <FileViewer 
-        url={workflowData.template_translated_file_public_url} 
-        filename="Translated Template"
-        templateMappings={workflowData.translated_template_mappings}
-        fields={workflowData.fields}
-        showMappings={showMappings}
-        onFieldUpdate={handleFieldUpdate}
-        isTranslatedView={true}
-      />
-    );
-  }
-
-    return (
-      <div className="text-center text-gray-500 p-8 bg-white rounded-lg border border-gray-200">
-        <p className="font-medium">File not available</p>
-        <p className="text-sm mt-1">The requested file is not available</p>
-      </div>
-    );
-  };
-
-  return (
-    <div className="fixed right-0 top-0 h-full w-full sm:w-96 lg:w-[600px] xl:w-[700px] bg-gray-50 border-l border-gray-200 shadow-xl z-50 flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-800">{getViewTitle()}</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="h-8 w-8 hover:bg-gray-100"
-        >
-          <X size={16} />
-        </Button>
-      </div>
-
-      {/* Action Buttons */}
-      {!loading && !error && hasWorkflow && (
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-          <div className="flex space-x-3">
-            <Button
-              onClick={handleShowBaseFile}
-              variant={currentView === 'original' ? 'default' : 'outline'}
-              disabled={!workflowData?.base_file_public_url}
-              className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-                currentView === 'original'
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+        {isTextSelectionMode && (
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center space-x-2">
+            <MousePointer2 size={18} />
+            <span>Click on any text in the document to create an editable field</span>
+            <button 
+              onClick={() => setIsTextSelectionMode(false)}
+              className="ml-4 p-1 bg-blue-800 rounded-full hover:bg-blue-900"
             >
-              Original File
-            </Button>
-            
-            <Button
-              onClick={handleShowTemplate}
-              variant={currentView === 'template' ? 'default' : 'outline'}
-              disabled={!workflowData?.template_file_public_url}
-              className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-                currentView === 'template'
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              Template
-            </Button>
-
-            <Button
-              onClick={handleShowTranslatedTemplate}
-              variant={currentView === 'translated_template' ? 'default' : 'outline'}
-              disabled={!workflowData?.template_translated_file_public_url}
-              className={`px-4 py-2 rounded-md shadow-sm font-medium transition-colors duration-200 ${
-                currentView === 'translated_template'
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              Translated Template
-            </Button>
+              <X size={16} />
+            </button>
           </div>
-          
-          {/* Template Mappings Toggle */}
-          {(currentView === 'template' || currentView === 'translated_template') && 
-          ((currentView === 'template' && workflowData?.origin_template_mappings) || 
-            (currentView === 'translated_template' && workflowData?.translated_template_mappings)) && (
-            <div className="flex items-center space-x-2">
-              <Button
-                onClick={toggleMappings}
-                variant="outline"
-                size="sm"
-                className="flex items-center space-x-2"
-              >
-                {showMappings ? <EyeOff size={16} /> : <Eye size={16} />}
-                <span>
-                  {showMappings ? 'Hide' : 'Show'} Mapp ({getMappingsCount()})
-                </span>
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {renderContent()}
+        {documentUrl ? (
+          <div className="flex justify-center">
+            <div
+              className={`relative bg-white shadow-lg ${
+                isTextSelectionMode ? "text-selection-mode" : ""
+              }`}
+              ref={documentRef}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setSelectedFieldId(null);
+                  setIsTextSelectionMode(false);
+                }
+              }}
+            >
+              <Document
+                file={documentUrl}
+                onLoadSuccess={handleDocumentLoadSuccess}
+                onLoadError={handleDocumentLoadError}
+                loading={<div className="p-8 text-center">Loading PDF...</div>}
+              >
+                <Page
+                  pageNumber={currentPage}
+                  onLoadSuccess={handlePageLoadSuccess}
+                  renderTextLayer={isTextSelectionMode}
+                  renderAnnotationLayer={false}
+                  width={pageWidth}
+                />
+              </Document>
+
+              {/* Text Field Overlays */}
+              {textFields
+                .filter((field) => field.page === currentPage)
+                .filter((field) => !field.isFromWorkflow || showWorkflowFields)
+                .map((field) => (
+                  <Rnd
+                    key={field.id}
+                    size={{ width: field.width, height: field.height }}
+                    position={{ x: field.x, y: field.y }}
+                    onDrag={(e, d) => {
+                      updateTextField(field.id, { x: d.x, y: d.y });
+                    }}
+                    onDragStop={(e, d) => {
+                      updateTextField(field.id, { x: d.x, y: d.y });
+                    }}
+                    onResizeStop={(e, direction, ref, delta, position) => {
+                      updateTextField(field.id, {
+                        width: parseInt(ref.style.width),
+                        height: parseInt(ref.style.height),
+                        ...position,
+                      });
+                    }}
+                    disableDragging={!isEditMode}
+                    enableResizing={isEditMode}
+                    bounds="parent"
+                    onClick={(e: { stopPropagation: () => void }) => {
+                      e.stopPropagation();
+                      setSelectedFieldId(field.id);
+                      setIsTextSelectionMode(false);
+                    }}
+                    dragHandleClassName="drag-handle"
+                    dragAxis="both"
+                    dragGrid={[1, 1]}
+                    resizeGrid={[1, 1]}
+                    className={`${showTextboxBorders ? 'border-2' : 'border-0'} ${field.isFromWorkflow ? 'border-purple-300 hover:border-purple-400' : 'border-gray-300 hover:border-blue-400'} ${
+                      selectedFieldId === field.id
+                        ? "ring-2 ring-blue-500 border-blue-500"
+                        : ""
+                    } transition-all duration-200 ease-in-out`}
+                    style={{
+                      backgroundColor: "rgba(255, 255, 255, 0.8)", // Semi-transparent background
+                      transition: "transform 0.1s ease-out",
+                      zIndex: selectedFieldId === field.id ? 1000 : 100,
+                    }}
+                  >
+                    <div className="w-full h-full relative group">
+                      {/* Move handle */}
+                      {isEditMode && (
+                       <div className="absolute -bottom-7 left-1 transform opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 flex items-center space-x-1">
+                          {/* Move handle */}
+                          <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                            <Move size={10} />
+                          </div>
+                          
+                          {/* Font size controls */}
+                          <div className="flex items-center bg-white border border-black rounded-md shadow-lg overflow-hidden">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateTextField(field.id, { 
+                                  fontSize: Math.max(6, field.fontSize - 1) 
+                                });
+                              }}
+                              className="text-black p-1 transition-all duration-200 transform hover:scale-105"
+                              title="Decrease font size"
+                            >
+                              <Minus size={10} />
+                            </button>
+                            <span className="text-black text-xs font-medium text-center">
+                              {field.fontSize}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateTextField(field.id, { 
+                                  fontSize: Math.min(72, field.fontSize + 1) 
+                                });
+                              }}
+                              className="text-black p-1 transition-all duration-200 transform hover:scale-105"
+                              title="Increase font size"
+                            >
+                              <Plus size={10} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Delete button */}
+                      {isEditMode &&
+                        selectedFieldId === field.id &&
+                        !field.isFromWorkflow && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteTextField(field.id);
+                            }}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 transform hover:scale-110 z-10"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        )}
+
+                      {/* Text content */}
+                      <textarea
+                        value={field.value}
+                        onChange={(e) =>
+                          updateTextField(field.id, { value: e.target.value })
+                        }
+                        readOnly={!isEditMode}
+                        className="w-full h-full resize-none border-none outline-none bg-transparent p-1 overflow-hidden transition-all duration-200"
+                        style={{
+                          fontSize: `${field.fontSize}px`,
+                          color: field.fontColor,
+                          fontFamily: field.fontFamily,
+                          cursor: isEditMode ? "text" : "default",
+                          pointerEvents: isEditMode ? "auto" : "none",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFieldId(field.id);
+                          setIsTextSelectionMode(false);
+                        }}
+                      />
+                    </div>
+                  </Rnd>
+                ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <Edit3 size={64} className="mb-4 text-gray-300" />
+            <h2 className="text-xl font-semibold mb-2">PDF Document Editor</h2>
+            <p className="text-center mb-6 max-w-md">
+              Upload a PDF document to start adding and editing text fields. You
+              can drag, resize, and customize text overlays.
+            </p>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            >
+              <Upload size={20} />
+              <span>Load PDF Document</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
