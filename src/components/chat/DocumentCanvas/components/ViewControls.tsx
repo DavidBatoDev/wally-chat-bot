@@ -22,6 +22,7 @@ interface ViewControlsProps {
   showPreview: boolean;
   isEditingMode: boolean;
   setIsEditingMode: (v: boolean) => void;
+  onDownloadFilledPdf: () => void;
 }
 
 const ViewControls: React.FC<ViewControlsProps> = ({
@@ -38,7 +39,8 @@ const ViewControls: React.FC<ViewControlsProps> = ({
   onTogglePreview,
   showPreview,
   isEditingMode,
-  setIsEditingMode
+  setIsEditingMode,
+  onDownloadFilledPdf
 }) => {
   const { toast } = useToast();
   const [translateLoading, setTranslateLoading] = useState(false);
@@ -185,13 +187,13 @@ const ViewControls: React.FC<ViewControlsProps> = ({
             </Button>
             
             <Button
-              onClick={onTogglePreview}
-              variant={showPreview ? 'default' : 'outline'}
+              onClick={onDownloadFilledPdf}
+              variant="outline"
               size="sm"
               className="flex items-center space-x-2"
             >
-              <Eye size={16} />
-              <span>Preview</span>
+              <FileText size={16} />
+              <span>Download</span>
             </Button>
             
             {/* Edit Layout Button */}

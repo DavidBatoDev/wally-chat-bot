@@ -24,6 +24,7 @@ interface TranslatedTemplateViewProps {
   editingField: string | null;
   setEditingField: (fieldKey: string | null) => void;
   onUpdateLayout?: (newMappings: Record<string, TemplateMapping>) => void;
+  onScaleChange?: (scale: number) => void;
 }
 
 const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
@@ -46,7 +47,8 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
   requiredFields,
   editingField,
   setEditingField,
-  onUpdateLayout
+  onUpdateLayout,
+  onScaleChange
 }) => {
   // Wrap onFieldUpdate to always use isTranslatedView = true
   const handleFieldUpdate = (fieldKey: string, newValue: string) => onFieldUpdate(fieldKey, newValue, true);
@@ -73,6 +75,7 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
       editingField={editingField}
       setEditingField={setEditingField}
       onUpdateLayout={onUpdateLayout}
+      onScaleChange={onScaleChange}
     />
   );
 };

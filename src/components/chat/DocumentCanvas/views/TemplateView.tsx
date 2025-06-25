@@ -23,6 +23,7 @@ interface TemplateViewProps {
   editingField: string | null;
   setEditingField: (fieldKey: string | null) => void;
   onUpdateLayout?: (newMappings: Record<string, TemplateMapping>) => void;
+  onScaleChange?: (scale: number) => void;
 }
 
 const TemplateView: React.FC<TemplateViewProps> = ({
@@ -45,7 +46,8 @@ const TemplateView: React.FC<TemplateViewProps> = ({
   requiredFields,
   editingField,
   setEditingField,
-  onUpdateLayout
+  onUpdateLayout,
+  onScaleChange
 }) => {
   // Wrap onFieldUpdate to always use isTranslatedView = false
   const handleFieldUpdate = (fieldKey: string, newValue: string) => onFieldUpdate(fieldKey, newValue, false);
@@ -72,6 +74,7 @@ const TemplateView: React.FC<TemplateViewProps> = ({
         editingField={editingField}
         setEditingField={setEditingField}
         onUpdateLayout={onUpdateLayout}
+        onScaleChange={onScaleChange}
       />
     </div>
   );

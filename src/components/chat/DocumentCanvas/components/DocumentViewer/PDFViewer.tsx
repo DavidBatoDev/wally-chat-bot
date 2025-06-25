@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Rnd } from 'react-rnd';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ interface PDFViewerProps {
   editingField?: string | null;
   setEditingField?: (fieldKey: string | null) => void;
   onUpdateLayout?: (newMappings: Record<string, TemplateMapping>) => void;
+  onScaleChange?: (scale: number) => void;
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ 
@@ -51,26 +52,30 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
   requiredFields,
   editingField,
   setEditingField,
-  onUpdateLayout
+  onUpdateLayout,
+  onScaleChange
 }) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNum, setPageNum] = useState<number>(1);
   const [scale, setScale] = useState<number>(1.2);
   const [pageDims, setPageDims] = useState<{width: number, height: number}>({width: 0, height: 0});
 
-
+  // Call onScaleChange whenever scale changes
+  useEffect(() => {
+    if (onScaleChange) onScaleChange(scale);
+  }, [scale, onScaleChange]);
 
   const onDocumentLoadSuccess = (pdf: any) => {
     console.log('[PDF DEBUG] PDF loaded successfully:', pdf);
-    setNumPages(pdf.numPages);
-    setPageNum(1);
+        setNumPages(pdf.numPages);
+        setPageNum(1);
   };
 
   const onDocumentLoadError = (err: any) => {
     console.error('[PDF DEBUG] PDF load error:', err);
     if (err && err.message) {
       console.error('[PDF DEBUG] Error message:', err.message);
-    }
+        }
     if (err && err.name) {
       console.error('[PDF DEBUG] Error name:', err.name);
     }
@@ -172,12 +177,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
             onLoadSuccess={onDocumentLoadSuccess}
             onLoadError={onDocumentLoadError}
             loading={<div>Loading PDF...</div>}
-          >
+        >
             <Page
               pageNumber={pageNum}
               scale={scale}
               onRenderSuccess={onPageRenderSuccess}
-            />
+          />
             {/* Overlay boxes */}
             {showMappings && (
               <TemplateMappingOverlay

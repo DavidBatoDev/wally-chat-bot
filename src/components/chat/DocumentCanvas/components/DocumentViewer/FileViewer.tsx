@@ -25,6 +25,7 @@ interface FileViewerProps {
   editingField?: string | null;
   setEditingField?: (fieldKey: string | null) => void;
   onUpdateLayout?: (newMappings: Record<string, any>) => void;
+  onScaleChange?: (scale: number) => void;
 }
 
 const FileViewer: React.FC<FileViewerProps> = ({
@@ -48,7 +49,8 @@ const FileViewer: React.FC<FileViewerProps> = ({
   requiredFields,
   editingField,
   setEditingField,
-  onUpdateLayout
+  onUpdateLayout,
+  onScaleChange
 }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
@@ -99,6 +101,7 @@ const FileViewer: React.FC<FileViewerProps> = ({
         editingField={editingField}
         setEditingField={setEditingField}
         onUpdateLayout={onUpdateLayout}
+        onScaleChange={onScaleChange}
       />
     );
   }

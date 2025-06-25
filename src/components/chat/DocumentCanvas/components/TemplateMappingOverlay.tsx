@@ -392,7 +392,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                   onDoubleClick={() => { if (setEditingField) setEditingField(key); }}
                   title="Double-click to edit"
                 >
-                  {fieldValue || mapping.label}
+                  {fieldValue || <span style={{ color: '#bbb' }}>Click to enter text</span>}
                 </div>
               )}
               {/* Controls: show only if selected and in edit mode */}

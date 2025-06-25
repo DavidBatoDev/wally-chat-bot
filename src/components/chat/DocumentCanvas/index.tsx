@@ -14,6 +14,7 @@ import api from '@/lib/api';
 import { cloneDeep, isEqual } from 'lodash';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Document, Page } from 'react-pdf';
+import { saveAs } from 'file-saver';
 
 interface DocumentCanvasProps {
   isOpen: boolean;
@@ -59,6 +60,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [isEditingMode, setIsEditingMode] = useState(false);
   const [translatingFields, setTranslatingFields] = useState<Record<string, boolean>>({});
   const [editingField, setEditingField] = useState<string | null>(null);
+  const [lastOverlayScale, setLastOverlayScale] = useState(1);
 
   // 2. All useMemo/useCallback hooks
   const memoizedMappings = useMemo(() => localMappings, [localMappings]);
@@ -315,10 +317,13 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       const page = pdfDoc.getPage(mapping.page_number - 1);
       const value = localFields?.[key]?.value || '';
       const { x0, y0 } = mapping.position;
+      const scaledFontSize = (mapping.font.size || 12) * lastOverlayScale;
+      const pdfHeight = page.getHeight();
+      const yPdfLib = pdfHeight - y0 - scaledFontSize;
       page.drawText(value, {
         x: x0,
-        y: y0,
-        size: mapping.font.size,
+        y: yPdfLib,
+        size: scaledFontSize,
         font,
         color: rgb(0, 0, 0)
       });
@@ -326,6 +331,51 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     return URL.createObjectURL(blob);
+  };
+
+  const handleDownloadFilledPdf = async () => {
+    try {
+      if (!workflowData?.template_file_public_url) throw new Error('No template PDF');
+      // Fetch the template PDF
+      const existingPdfBytes = await fetch(workflowData.template_file_public_url).then(res => res.arrayBuffer());
+      const pdfDoc = await PDFDocument.load(existingPdfBytes);
+      // For each mapping, draw the field value at the mapped position
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      Object.entries(localMappings || {}).forEach(([key, mapping]) => {
+        if (!mapping) return;
+        const page = pdfDoc.getPage(mapping.page_number - 1);
+        let value = '';
+        if (currentView === 'translated_template') {
+          value = localFields?.[key]?.translated_value || '';
+        } else {
+          value = localFields?.[key]?.value || '';
+        }
+        const { x0, y0 } = mapping.position;
+        const scaledFontSize = (mapping.font.size || 12) * lastOverlayScale;
+        const pdfHeight = page.getHeight();
+        const yPdfLib = pdfHeight - y0 - scaledFontSize;
+        // Debug log
+        console.log({ key, value, x0, y0, scaledFontSize, pdfHeight, yPdfLib });
+        // Draw a test rectangle to verify position
+        page.drawRectangle({ x: x0, y: yPdfLib, width: 10, height: 10, color: rgb(1, 0, 0) });
+        page.drawText(value, {
+          x: x0,
+          y: yPdfLib,
+          size: scaledFontSize,
+          font,
+          color: rgb(0, 0, 0)
+        });
+      });
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      saveAs(blob, 'filled-template.pdf');
+    } catch (err) {
+      toast({
+        title: 'Download Error',
+        description: 'Failed to generate filled PDF',
+        variant: 'destructive'
+      });
+    }
   };
 
   useEffect(() => {
@@ -397,6 +447,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         showPreview={showPreview}
         isEditingMode={isEditingMode}
         setIsEditingMode={setIsEditingMode}
+        onDownloadFilledPdf={handleDownloadFilledPdf}
       />
 
       {/* Content */}
@@ -423,14 +474,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         )}
 
         {!loading && !error && hasWorkflow && (
-          <>
-            {showPreview && previewBlobUrl ? (
-              <div className="h-full w-full">
-                <Document file={previewBlobUrl} loading={<div>Loading preview...</div>}>
-                  <Page pageNumber={1} />
-                </Document>
-              </div>
-            ) : (
               <>
                 {currentView === 'original' && workflowData?.base_file_public_url && (
                   <OriginalFileView 
@@ -441,7 +484,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                   />
                 )}
 
-                {currentView === 'template' && filteredMappings && memoizedFields && (
+            {currentView === 'template' && filteredMappings && memoizedFields && (
                   <TemplateView
                     url={workflowData?.template_file_public_url || ''}
                     filename="Template"
@@ -463,10 +506,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                     requiredFields={memoizedRequiredFields}
                     editingField={editingField}
                     setEditingField={setEditingField}
+                    onScaleChange={setLastOverlayScale}
                   />
                 )}
 
-                {currentView === 'translated_template' && filteredMappings && memoizedFields && (
+            {currentView === 'translated_template' && filteredMappings && memoizedFields && (
                   <TranslatedTemplateView
                     url={workflowData?.template_translated_file_public_url || ''}
                     filename="Translated Template"
@@ -488,9 +532,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                     requiredFields={memoizedRequiredFields}
                     editingField={editingField}
                     setEditingField={setEditingField}
+                    onScaleChange={setLastOverlayScale}
                   />
-                )}
-              </>
             )}
           </>
         )}
