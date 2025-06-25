@@ -341,6 +341,19 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       const pdfDoc = await PDFDocument.load(existingPdfBytes);
       // For each mapping, draw the field value at the mapped position
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      // Assume all overlays use the same scale as lastOverlayScale
+      // Get the original PDF page width (in points)
+      // We'll use the first mapping's page to get the width, or default to 1.0 scale if not available
+      let canvasWidth = null;
+      let pdfWidth = null;
+      // Try to get a mapping to extract dimensions
+      const firstMapping = Object.values(localMappings || {}).find(Boolean);
+      if (firstMapping) {
+        const page = pdfDoc.getPage(firstMapping.page_number - 1);
+        pdfWidth = page.getWidth();
+        // The rendered width is pdfWidth * lastOverlayScale
+        canvasWidth = pdfWidth * lastOverlayScale;
+      }
       Object.entries(localMappings || {}).forEach(([key, mapping]) => {
         if (!mapping) return;
         const page = pdfDoc.getPage(mapping.page_number - 1);
@@ -350,18 +363,21 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         } else {
           value = localFields?.[key]?.value || '';
         }
+        // Convert overlay coordinates to PDF coordinates
+        // overlayX = mapping.position.x0 * lastOverlayScale
+        // pdfX = overlayX / lastOverlayScale = mapping.position.x0
+        // But if overlayX is already in scaled units, we need to divide by scale
+        // Here, mapping.position.x0 is in PDF units, so we use as is
         const { x0, y0 } = mapping.position;
-        const scaledFontSize = (mapping.font.size || 12) * lastOverlayScale;
+        const fontSize = (mapping.font.size || 12);
+        // Y coordinate: PDF-lib's (0,0) is bottom-left, overlay's (0,0) is top-left
+        // So, yPdfLib = pdfHeight - y0 - fontSize
         const pdfHeight = page.getHeight();
-        const yPdfLib = pdfHeight - y0 - scaledFontSize;
-        // Debug log
-        console.log({ key, value, x0, y0, scaledFontSize, pdfHeight, yPdfLib });
-        // Draw a test rectangle to verify position
-        page.drawRectangle({ x: x0, y: yPdfLib, width: 10, height: 10, color: rgb(1, 0, 0) });
+        const yPdfLib = pdfHeight - y0 - fontSize;
         page.drawText(value, {
-          x: x0,
-          y: yPdfLib,
-          size: scaledFontSize,
+          x: x0 + 4.5,
+          y: yPdfLib - 5,
+          size: fontSize,
           font,
           color: rgb(0, 0, 0)
         });
