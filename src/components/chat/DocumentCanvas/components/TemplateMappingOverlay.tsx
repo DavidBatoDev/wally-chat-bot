@@ -166,13 +166,24 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
     }
   };
 
+  // PATCH mappings/fields when adding a box
+  const patchAddMapping = async (newMappings: any, newFields: any) => {
+    try {
+      await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
+        origin_template_mappings: newMappings,
+        fields: newFields,
+      });
+    } catch (err) {
+      console.error('Failed to add mapping', err);
+    }
+  };
+
   const handleFieldSave = (fieldKey: string, newValue: string) => {
     onFieldUpdate(fieldKey, newValue);
     if (setEditingField) setEditingField(null);
     setEditInputPosition(null);
-    if (!isEditingLayout) {
-      patchFieldValue(fieldKey, newValue);
-    }
+    // Always persist value to backend
+    patchFieldValue(fieldKey, newValue);
   };
 
   const handleEditCancel = () => {
@@ -181,30 +192,49 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   };
 
   const handleAddTextBox = () => setShowAddBox(true);
+
+  // 1. Helper to generate a unique field key
+  function generateFieldKey(base: string, mappings: Record<string, TemplateMapping>) {
+    let key = base.replace(/\s+/g, '_').toLowerCase();
+    let i = 1;
+    while (mappings[key]) {
+      key = `${base.replace(/\s+/g, '_').toLowerCase()}_${i++}`;
+    }
+    return key;
+  }
+
   const handleAddBoxSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!onUpdateLayout) return;
-    const key = newBoxKey.trim();
-    if (!key || mappings[key]) return;
+    let key = newBoxKey.trim();
+    if (!key) key = generateFieldKey('field', mappings);
+    if (mappings[key]) return;
     const newMapping = {
       label: key,
-      font: { name: 'Arial', size: 10, color: '#000000' },
-      position: { x0: 100, y0: 100, x1: 200, y1: 120 },
-      bbox_center: { x: 150, y: 110 },
+      font: { name: 'Arial', size: 12, color: '#222222' },
+      position: { x0: 100, y0: 100, x1: 220, y1: 130 },
+      bbox_center: { x: 160, y: 115 },
       alignment: 'left',
       page_number: pageNum
     };
-    onUpdateLayout({ ...mappings, [key]: newMapping });
+    const newMappings = { ...mappings, [key]: newMapping };
+    onUpdateLayout(newMappings);
     if (onFieldUpdate) {
-      onFieldUpdate(key, ""); // This should update localFields in the parent!
+      onFieldUpdate(key, "");
     }
+    // Persist add to backend
+    patchAddMapping(newMappings, fields);
     setShowAddBox(false);
     setNewBoxKey('');
   };
+
   const handleDeleteBox = (key: string) => {
     if (!onUpdateLayout) return;
-    const newMappings = { ...mappings, [key]: null };
+    const newMappings = { ...mappings };
+    delete newMappings[key];
     onUpdateLayout(newMappings);
+    // Optionally, also remove the field value from backend
+    patchDeleteMapping(newMappings, fields);
   };
 
   const handleEditIconClick = (key: string, boxRect: DOMRect) => {
@@ -217,195 +247,208 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
     });
   };
 
+  const handleBoxDragStop = (key: string, d: any) => {
+    const mapping = mappings[key];
+    if (!mapping) return;
+    const newX0 = d.x / scale;
+    const newY0 = d.y / scale;
+    const width = mapping.position.x1 - mapping.position.x0;
+    const height = mapping.position.y1 - mapping.position.y0;
+    const newMapping = {
+      ...mapping,
+      position: {
+        x0: newX0,
+        y0: newY0,
+        x1: newX0 + width,
+        y1: newY0 + height
+      },
+      bbox_center: {
+        x: newX0 + width / 2,
+        y: newY0 + height / 2
+      }
+    };
+    if (onUpdateLayout) onUpdateLayout({ ...mappings, [key]: newMapping });
+  };
+
+  const handleBoxResizeStop = (key: string, dir: any, ref: any, delta: any, pos: any) => {
+    const mapping = mappings[key];
+    if (!mapping) return;
+    const newX0 = pos.x / scale;
+    const newY0 = pos.y / scale;
+    const newWidth = ref.offsetWidth / scale;
+    const newHeight = ref.offsetHeight / scale;
+    const newMapping = {
+      ...mapping,
+      position: {
+        x0: newX0,
+        y0: newY0,
+        x1: newX0 + newWidth,
+        y1: newY0 + newHeight
+      },
+      bbox_center: {
+        x: newX0 + newWidth / 2,
+        y: newY0 + newHeight / 2
+      }
+    };
+    if (onUpdateLayout) onUpdateLayout({ ...mappings, [key]: newMapping });
+  };
+
   return (
     <>
       {isEditingLayout && !showAddBox && (
-        <Button onClick={handleAddTextBox} className="absolute top-2 right-2 z-50" size="sm" variant="outline">Add Text Box</Button>
+        <Button onClick={handleAddTextBox} className="absolute top-2 right-2 z-50 rounded shadow bg-white border border-gray-200 hover:bg-gray-100" size="sm" variant="outline">+ Add Text Box</Button>
       )}
       {isEditingLayout && showAddBox && (
-        <form onSubmit={handleAddBoxSubmit} className="absolute top-2 right-2 z-50 bg-white p-2 rounded shadow flex items-center space-x-2">
+        <form onSubmit={handleAddBoxSubmit} className="absolute top-2 right-2 z-50 bg-white p-2 rounded shadow flex items-center space-x-2 border border-gray-200">
           <input
             type="text"
             value={newBoxKey}
             onChange={e => setNewBoxKey(e.target.value)}
-            placeholder="Field key (unique)"
+            placeholder="Field label (optional)"
             className="border px-2 py-1 rounded text-xs"
             autoFocus
           />
-          <Button type="submit" size="sm" variant="default" disabled={!newBoxKey.trim() || !!mappings[newBoxKey.trim()]}>Add</Button>
+          <Button type="submit" size="sm" variant="default">Add</Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => { setShowAddBox(false); setNewBoxKey(''); }}>Cancel</Button>
         </form>
       )}
       <div 
         className="absolute inset-0 pointer-events-none"
-        style={{
-          width: canvasWidth,
-          height: canvasHeight,
-        }}
+        style={{ width: canvasWidth, height: canvasHeight }}
       >
         {currentPageMappings.map(([key, mapping]) => {
           const x = mapping.position.x0 * scale;
           const y = mapping.position.y0 * scale;
           const width = (mapping.position.x1 - mapping.position.x0) * scale;
           const height = (mapping.position.y1 - mapping.position.y0) * scale;
-
-          const isHovered = hoveredMapping === key;
+          const fontSize = (mapping.font && mapping.font.size) || 14;
+          const isSelected = selectedBox === key;
           const isEditing = editingField === key;
           const field = fields[key];
-          const fieldValue = isTranslatedView 
-            ? (field?.translated_value || '') 
-            : (field?.value || '');
-          
-          const statusColors = getStatusColors(field, isTranslatedView);
-          
-          let borderColor = statusColors.border;
-          let backgroundColor = statusColors.background;
-          
-          if (isEditing) {
-            borderColor = '#10b981';
-            backgroundColor = 'rgba(16, 185, 129, 0.2)';
-          } else if (isHovered) {
-            borderColor = '#8b5cf6';
-            backgroundColor = 'rgba(139, 92, 246, 0.2)';
-          }
-
+          const fieldValue = isTranslatedView ? (field?.translated_value || '') : (field?.value || '');
           return (
             <Rnd
               key={key}
-              size={{ width: Math.max(width, 4), height: Math.max(height, 4) }}
+              size={{ width: Math.max(width, 40), height: Math.max(height, 28) }}
               position={{ x, y }}
               enableResizing={isEditingLayout}
               disableDragging={!isEditingLayout}
               bounds="parent"
               onDragStart={() => { setIsInteracting(true); setSelectedBox(key); }}
-              onDragStop={(e: any, d: DraggableData) => {
-                setIsInteracting(false);
-                if (!isEditingLayout || !onUpdateLayout) return;
-                const newX0 = d.x / scale;
-                const newY0 = d.y / scale;
-                const boxWidth = mapping.position.x1 - mapping.position.x0;
-                const boxHeight = mapping.position.y1 - mapping.position.y0;
-                const newMapping = {
-                  ...mapping,
-                  position: {
-                    ...mapping.position,
-                    x0: newX0,
-                    y0: newY0,
-                    x1: newX0 + boxWidth,
-                    y1: newY0 + boxHeight
-                  },
-                  bbox_center: {
-                    x: newX0 + boxWidth / 2,
-                    y: newY0 + boxHeight / 2
-                  }
-                };
-                onUpdateLayout({ ...mappings, [key]: newMapping });
-              }}
+              onDragStop={(e: any, d: DraggableData) => handleBoxDragStop(key, d)}
               onResizeStart={() => { setIsInteracting(true); setSelectedBox(key); }}
-              onResizeStop={(
-                e: any,
-                direction: string,
-                ref: HTMLElement,
-                delta: { width: number; height: number },
-                position: { x: number; y: number }
-              ) => {
-                setIsInteracting(false);
-                if (!isEditingLayout || !onUpdateLayout) return;
-                const newWidth = ref.offsetWidth / scale;
-                const newHeight = ref.offsetHeight / scale;
-                const newX0 = position.x / scale;
-                const newY0 = position.y / scale;
-                const newMapping = {
-                  ...mapping,
-                  position: {
-                    ...mapping.position,
-                    x0: newX0,
-                    y0: newY0,
-                    x1: newX0 + newWidth,
-                    y1: newY0 + newHeight
-                  },
-                  bbox_center: {
-                    x: newX0 + newWidth / 2,
-                    y: newY0 + newHeight / 2
-                  }
-                };
-                onUpdateLayout({ ...mappings, [key]: newMapping });
-              }}
+              onResizeStop={(e: any, direction: string, ref: HTMLElement, delta: { width: number; height: number }, position: { x: number; y: number }) => handleBoxResizeStop(key, direction, ref, delta, position)}
               style={{
-                boxShadow: selectedBox === key ? '0 2px 12px 0 rgba(0,0,0,0.14)' : '0 2px 8px 0 rgba(0,0,0,0.10)',
-                border: selectedBox === key ? `2.5px solid ${borderColor}` : `1.5px solid ${borderColor}`,
-                backgroundColor: backgroundColor,
-                borderRadius: '8px',
-                zIndex: isEditing ? 30 : statusColors.priority + 10,
+                border: isSelected ? '2px solid #6366f1' : '1.5px solid #d1d5db',
+                background: 'rgba(99,102,241,0.03)',
+                borderRadius: '6px',
+                boxShadow: isSelected ? '0 2px 8px 0 rgba(99,102,241,0.10)' : 'none',
+                zIndex: isSelected ? 30 : 10,
                 userSelect: 'none',
                 position: 'absolute',
-                transition: 'border-color 0.2s, background-color 0.2s, box-shadow 0.2s',
-                boxSizing: 'border-box',
+                transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s',
                 pointerEvents: 'auto',
                 cursor: isEditingLayout ? 'move' : 'pointer',
                 overflow: 'visible',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                minHeight: 20,
+                minWidth: 40,
+                fontSize: (fontSize * scale) + 'px',
               }}
-              onClick={(event: React.MouseEvent<HTMLElement>) => {
-                setSelectedBox(key);
-              }}
+              onClick={() => setSelectedBox(key)}
             >
-              {/* Only show icons if selected */}
+              {/* Show value or label, editable inline */}
+              {isEditing ? (
+                <EditableInput
+                  value={fieldValue}
+                  field={field}
+                  fieldKey={key}
+                  conversationId={conversationId || ""}
+                  workflowData={workflowData}
+                  isTranslatedView={isTranslatedView}
+                  onSave={val => handleFieldSave(key, val)}
+                  onCancel={handleEditCancel}
+                  autoFocus
+                  position={{ x: 0, y: 0 }}
+                />
+              ) : (
+                <div
+                  className="w-full h-full flex items-center justify-center text-xs px-1 py-0 rounded cursor-pointer"
+                  style={{
+                    background: 'transparent',
+                    color: '#222',
+                    textShadow: '0 1px 2px rgba(255,255,255,0.7)',
+                    fontSize: (fontSize * scale) + 'px',
+                    fontWeight: 500,
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                    minHeight: 18,
+                    minWidth: 30,
+                  }}
+                  onDoubleClick={() => { if (setEditingField) setEditingField(key); }}
+                  title="Double-click to edit"
+                >
+                  {fieldValue || mapping.label}
+                </div>
+              )}
+              {/* Controls: show only if selected and in edit mode */}
               {selectedBox === key && isEditingLayout && (
                 <div
-                  className="absolute flex gap-2 z-50"
+                  className="absolute flex gap-1 z-50"
                   style={{
-                    left: '50%',
-                    top: '-32px',
-                    transform: 'translateX(-50%)',
                     pointerEvents: 'auto',
+                    background: 'rgba(255,255,255,0.92)',
+                    borderRadius: 6,
+                    padding: '1px 2px',
+                    top: '-32px',
+                    right: 0,
+                    boxShadow: '0 2px 8px 0 rgba(99,102,241,0.10)',
+                    border: '1px solid #e0e7ef',
                   }}
                 >
                   <button
                     type="button"
-                    className="p-1 bg-white rounded-full shadow hover:bg-red-100 border border-gray-200"
-                    style={{ zIndex: 100 }}
+                    className="p-0.5 bg-white rounded-full shadow hover:bg-red-100 border border-gray-200"
+                    style={{ zIndex: 100, width: 20, height: 20 }}
                     onClick={e => { e.stopPropagation(); handleDeleteBox(key); }}
                     title="Delete box"
                   >
-                    <Trash2 size={18} className="text-red-500" />
+                    <Trash2 size={14} className="text-red-500" />
                   </button>
                   <button
                     type="button"
-                    className="p-1 bg-white rounded-full shadow hover:bg-blue-100 border border-gray-200"
-                    style={{ zIndex: 100 }}
-                    onClick={e => {
-                      e.stopPropagation();
-                      const box = (e.currentTarget as HTMLElement).parentElement?.parentElement as HTMLElement;
-                      if (box) {
-                        const rect = box.getBoundingClientRect();
-                        handleEditIconClick(key, rect);
-                      } else {
-                        if (setEditingField) setEditingField(key);
-                        setSelectedBox(key);
-                        setEditInputPosition({ x: 0, y: 40 });
-                      }
-                    }}
+                    className="p-0.5 bg-white rounded-full shadow hover:bg-blue-100 border border-gray-200"
+                    style={{ zIndex: 100, width: 20, height: 20 }}
+                    onClick={e => { e.stopPropagation(); if (setEditingField) setEditingField(key); }}
                     title="Edit value"
                   >
-                    <Pencil size={18} className="text-blue-500" />
+                    <Pencil size={14} className="text-blue-500" />
                   </button>
-                </div>
-              )}
-              {fieldValue && fieldValue.trim().length > 0 && !isEditing && (
-                <div
-                  className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900 bg-white bg-opacity-95 rounded-md px-2"
-                  style={{
-                    fontSize: Math.max(10, Math.min(14, height * 0.6)),
-                    padding: '2px 4px',
-                    borderRadius: '6px',
-                    boxShadow: '0 1px 2px 0 rgba(0,0,0,0.04)',
-                    border: '1px solid #e5e7eb',
-                    margin: 2,
-                  }}
-                >
-                  <span className="truncate max-w-full">
-                    {fieldValue}
-                  </span>
+                  {/* Font size dropdown */}
+                  <select
+                    value={fontSize}
+                    onChange={e => {
+                      const newFontSize = parseInt(e.target.value, 10);
+                      const updated = {
+                        ...mapping,
+                        font: {
+                          ...mapping.font,
+                          size: newFontSize,
+                        },
+                      };
+                      const newMappings = { ...mappings, [key]: updated };
+                      if (onUpdateLayout) onUpdateLayout(newMappings);
+                    }}
+                    style={{ fontSize: 12, borderRadius: 4, border: '1px solid #d1d5db', marginRight: 4, height: 22 }}
+                  >
+                    {[10,12,14,16,18,20,22,24,26,28].map(size => (
+                      <option key={size} value={size}>{size}px</option>
+                    ))}
+                  </select>
                 </div>
               )}
             </Rnd>

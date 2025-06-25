@@ -1,17 +1,18 @@
 import React from 'react';
 import FileViewer from '../components/DocumentViewer/FileViewer';
+import { TemplateMapping, WorkflowField } from '../types/workflow';
 
 interface TemplateViewProps {
   url: string;
   filename?: string;
-  templateMappings?: Record<string, any>;
-  fields?: Record<string, any>;
+  templateMappings?: Record<string, TemplateMapping>;
+  fields?: Record<string, WorkflowField>;
   showMappings: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string, isTranslatedView: boolean) => Promise<void>;
   conversationId: string;
   workflowData: any;
-  onMappingUpdate: (fieldKey: string, newMapping: any) => void;
-  onMappingAdd: (fieldKey: string, mapping: any) => void;
+  onMappingUpdate: (fieldKey: string, newMapping: TemplateMapping) => void;
+  onMappingAdd: (fieldKey: string, mapping: TemplateMapping) => void;
   onMappingDelete: (fieldKey: string) => void;
   onSaveChanges: () => void;
   onCancelChanges: () => void;
@@ -21,10 +22,11 @@ interface TemplateViewProps {
   requiredFields?: Record<string, string>;
   editingField: string | null;
   setEditingField: (fieldKey: string | null) => void;
+  onUpdateLayout?: (newMappings: Record<string, TemplateMapping>) => void;
 }
 
-const TemplateView: React.FC<TemplateViewProps> = ({ 
-  url, 
+const TemplateView: React.FC<TemplateViewProps> = ({
+  url,
   filename,
   templateMappings,
   fields,
@@ -42,17 +44,20 @@ const TemplateView: React.FC<TemplateViewProps> = ({
   setIsEditingMode,
   requiredFields,
   editingField,
-  setEditingField
+  setEditingField,
+  onUpdateLayout
 }) => {
+  // Wrap onFieldUpdate to always use isTranslatedView = false
+  const handleFieldUpdate = (fieldKey: string, newValue: string) => onFieldUpdate(fieldKey, newValue, false);
   return (
     <div className="h-full">
-      <FileViewer 
-        url={url} 
-        filename={filename || "Template"}
+      <FileViewer
+        url={url}
+        filename={filename || 'Template'}
         templateMappings={templateMappings}
         fields={fields}
         showMappings={showMappings}
-        onFieldUpdate={(fieldKey, newValue) => onFieldUpdate(fieldKey, newValue, false)}
+        onFieldUpdate={handleFieldUpdate}
         conversationId={conversationId}
         workflowData={workflowData}
         onMappingUpdate={onMappingUpdate}
@@ -66,6 +71,7 @@ const TemplateView: React.FC<TemplateViewProps> = ({
         requiredFields={requiredFields}
         editingField={editingField}
         setEditingField={setEditingField}
+        onUpdateLayout={onUpdateLayout}
       />
     </div>
   );

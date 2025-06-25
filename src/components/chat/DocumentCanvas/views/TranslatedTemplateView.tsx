@@ -1,18 +1,19 @@
 // client/src/components/chat/DocumentCanvas/views/TranslatedTemplateView.tsx
 import React from 'react';
 import FileViewer from '../components/DocumentViewer/FileViewer';
+import { TemplateMapping, WorkflowField } from '../types/workflow';
 
 interface TranslatedTemplateViewProps {
   url: string;
   filename?: string;
-  templateMappings?: Record<string, any>;
-  fields?: Record<string, any>;
+  templateMappings?: Record<string, TemplateMapping>;
+  fields?: Record<string, WorkflowField>;
   showMappings: boolean;
   onFieldUpdate: (fieldKey: string, newValue: string, isTranslatedView: boolean) => Promise<void>;
   workflowData: any;
   conversationId: string;
-  onMappingUpdate: (fieldKey: string, newMapping: any) => void;
-  onMappingAdd: (fieldKey: string, mapping: any) => void;
+  onMappingUpdate: (fieldKey: string, newMapping: TemplateMapping) => void;
+  onMappingAdd: (fieldKey: string, mapping: TemplateMapping) => void;
   onMappingDelete: (fieldKey: string) => void;
   onSaveChanges: () => void;
   onCancelChanges: () => void;
@@ -22,10 +23,11 @@ interface TranslatedTemplateViewProps {
   requiredFields?: Record<string, string>;
   editingField: string | null;
   setEditingField: (fieldKey: string | null) => void;
+  onUpdateLayout?: (newMappings: Record<string, TemplateMapping>) => void;
 }
 
-const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({ 
-  url, 
+const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
+  url,
   filename,
   templateMappings,
   fields,
@@ -43,16 +45,15 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
   setIsEditingMode,
   requiredFields,
   editingField,
-  setEditingField
+  setEditingField,
+  onUpdateLayout
 }) => {
-  const handleFieldUpdate = (fieldKey: string, newValue: string) => {
-    return onFieldUpdate(fieldKey, newValue, true);
-  };
-
+  // Wrap onFieldUpdate to always use isTranslatedView = true
+  const handleFieldUpdate = (fieldKey: string, newValue: string) => onFieldUpdate(fieldKey, newValue, true);
   return (
-    <FileViewer 
-      url={url} 
-      filename={filename || "Translated Template"}
+    <FileViewer
+      url={url}
+      filename={filename || 'Translated Template'}
       templateMappings={templateMappings}
       fields={fields}
       showMappings={showMappings}
@@ -71,6 +72,7 @@ const TranslatedTemplateView: React.FC<TranslatedTemplateViewProps> = ({
       requiredFields={requiredFields}
       editingField={editingField}
       setEditingField={setEditingField}
+      onUpdateLayout={onUpdateLayout}
     />
   );
 };

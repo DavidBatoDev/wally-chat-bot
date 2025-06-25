@@ -1,5 +1,5 @@
 // client/src/components/chat/DocumentCanvas/index.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -12,6 +12,8 @@ import { WorkflowData, ViewType, TemplateMapping, WorkflowField } from './types/
 import api from '@/lib/api';
 // @ts-ignore
 import { cloneDeep, isEqual } from 'lodash';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { Document, Page } from 'react-pdf';
 
 interface DocumentCanvasProps {
   isOpen: boolean;
@@ -35,13 +37,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   onClose,
   conversationId
 }) => {
+  // 1. All useState hooks
   const [currentView, setCurrentView] = useState<ViewType>('original');
   const [showMappings, setShowMappings] = useState<boolean>(true);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
-  const [previewLoading, setPreviewLoading] = useState(false);
   const { toast } = useToast();
-  
   const {
     workflowData,
     loading,
@@ -50,7 +51,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     handleFieldUpdate,
     fetchWorkflowData
   } = useWorkflowData(conversationId);
-
   const [localMappings, setLocalMappings] = useState<Record<string, TemplateMapping | null> | null>(null);
   const [localFields, setLocalFields] = useState<Record<string, WorkflowField> | null>(null);
   const [localRequiredFields, setLocalRequiredFields] = useState<Record<string, string>>({});
@@ -60,7 +60,142 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [translatingFields, setTranslatingFields] = useState<Record<string, boolean>>({});
   const [editingField, setEditingField] = useState<string | null>(null);
 
-  // Sync local state with workflowData when loaded or view changes
+  // 2. All useMemo/useCallback hooks
+  const memoizedMappings = useMemo(() => localMappings, [localMappings]);
+  const memoizedFields = useMemo(() => localFields, [localFields]);
+  const memoizedRequiredFields = useMemo(() => localRequiredFields, [localRequiredFields]);
+  const filteredMappings = useMemo(() => {
+    if (!memoizedMappings) return null;
+    const result: Record<string, TemplateMapping> = {};
+    Object.entries(memoizedMappings).forEach(([key, value]) => {
+      if (value) result[key] = value;
+    });
+    return result;
+  }, [memoizedMappings]);
+  const handleFieldUpdateLocalMemo = useCallback(
+    (fieldKey: string, newValue: string, isTranslatedView = false) => {
+      setLocalFields(prev => {
+        const updated = { ...(prev || {}) };
+        if (!updated[fieldKey]) {
+          updated[fieldKey] = {
+            value: '',
+            value_status: 'pending',
+            translated_value: null,
+            translated_status: 'pending'
+          };
+        }
+        if (isTranslatedView) {
+          updated[fieldKey] = {
+            ...updated[fieldKey],
+            translated_value: newValue,
+            translated_status: 'edited',
+          };
+        } else {
+          updated[fieldKey] = {
+            ...updated[fieldKey],
+            value: newValue,
+            value_status: newValue.trim() === '' ? 'pending' : 'edited',
+          };
+        }
+        setUnsavedChanges(true);
+        return updated;
+      });
+    },
+    []
+  );
+  const handleSaveChanges = useCallback(async () => {
+    if (!workflowData) return;
+    setIsSaving(true);
+    try {
+      const filteredMappings: Record<string, any> = {};
+      Object.entries(localMappings || {}).forEach(([key, value]) => {
+        if (value !== null) filteredMappings[key] = value;
+      });
+      const validRequiredFields: Record<string, string> = {};
+      Object.keys(filteredMappings).forEach(key => {
+        if (localRequiredFields[key]) validRequiredFields[key] = localRequiredFields[key];
+      });
+      const allFields = { ...(localFields || {}) };
+      Object.keys(filteredMappings).forEach(key => {
+        if (!allFields[key]) {
+          allFields[key] = { value: '', value_status: 'pending', translated_value: null, translated_status: 'pending' };
+        }
+      });
+      const cleanFields: Record<string, any> = {};
+      Object.keys(allFields).forEach(key => {
+        if (filteredMappings[key]) {
+          cleanFields[key] = allFields[key];
+        }
+      });
+      const info_json_custom = {
+        ...(workflowData.info_json_custom || workflowData.info_json || {}),
+        required_fields: validRequiredFields,
+        fillable_text_info: Object.values(filteredMappings),
+      };
+      const mappingsKey = currentView === 'template' ? 'origin_template_mappings' : 'translated_template_mappings';
+      const patchPayload = {
+        [mappingsKey]: filteredMappings,
+        fields: cleanFields,
+        info_json_custom,
+      };
+      await api.patch(`/api/workflow/${conversationId}/template-mappings`, patchPayload);
+      await fetchWorkflowData();
+      toast({ title: 'Changes saved', variant: 'default' });
+    } catch (err: any) {
+      toast({ title: 'Save failed', description: err.message, variant: 'destructive' });
+    }
+    setIsSaving(false);
+    setUnsavedChanges(false);
+  }, [workflowData, localMappings, localFields, localRequiredFields, currentView, conversationId, fetchWorkflowData, toast]);
+  const handleCancelChanges = useCallback(() => {
+    if (!workflowData) return;
+    if (currentView === 'template') {
+      setLocalMappings(cloneDeep(workflowData.origin_template_mappings || {}));
+    } else if (currentView === 'translated_template') {
+      setLocalMappings(cloneDeep(workflowData.translated_template_mappings || {}));
+    }
+    setLocalFields(cloneDeep(workflowData.fields || {}));
+    setLocalRequiredFields(cloneDeep((workflowData.required_fields || workflowData.template_required_fields) || {}));
+    setUnsavedChanges(false);
+  }, [workflowData, currentView]);
+
+  const handleFieldUpdateTemplate = useCallback(
+    (fieldKey: string, newValue: string) => {
+      handleFieldUpdateLocalMemo(fieldKey, newValue);
+      return Promise.resolve();
+    },
+    [handleFieldUpdateLocalMemo]
+  );
+  const handleFieldUpdateTranslated = useCallback(
+    (fieldKey: string, newValue: string) => {
+      handleFieldUpdateLocalMemo(fieldKey, newValue, true);
+      return Promise.resolve();
+    },
+    [handleFieldUpdateLocalMemo]
+  );
+
+  const handleMappingUpdate = useCallback(() => {
+    // TODO: Implement mapping update logic
+  }, []);
+  const handleMappingAdd = useCallback(() => {
+    // TODO: Implement mapping add logic
+  }, []);
+  const handleMappingDelete = useCallback(() => {
+    // TODO: Implement mapping delete logic
+  }, []);
+
+  // Add this handler to update mappings and persist
+  const handleUpdateLayout = useCallback((newMappings: Record<string, TemplateMapping>) => {
+    setLocalMappings(newMappings);
+    // Persist to backend
+    api.patch(`/api/workflow/${conversationId}/template-mappings`, {
+      origin_template_mappings: newMappings,
+      fields: localFields,
+    });
+    setUnsavedChanges(true);
+  }, [conversationId, localFields]);
+
+  // 3. All useEffect hooks
   useEffect(() => {
     if (!workflowData) return;
     if (currentView === 'template') {
@@ -75,30 +210,27 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     setUnsavedChanges(false);
   }, [workflowData, currentView]);
 
-  // Clean up preview URL when component unmounts or preview closes
   useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
       }
     };
   }, []);
 
   useEffect(() => {
-    if (!showPreview && previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
+    if (!showPreview && previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
     }
-  }, [showPreview, previewUrl]);
+  }, [showPreview, previewBlobUrl]);
 
-  // Reset preview when view changes
   useEffect(() => {
     if (showPreview) {
       setShowPreview(false);
     }
   }, [currentView]);
 
-  // Auto-translate only pending fields when switching to translated view
   useEffect(() => {
     if (
       currentView === 'translated_template' &&
@@ -151,65 +283,49 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const handleTogglePreview = async () => {
     const newPreviewState = !showPreview;
     setShowPreview(newPreviewState);
-    
-    if (newPreviewState && !previewUrl) {
+    if (newPreviewState) {
       try {
-        setPreviewLoading(true);
         const url = await generatePreview();
-        setPreviewUrl(url);
+        setPreviewBlobUrl(url);
       } catch (err) {
-        console.error("Preview failed:", err);
         toast({
-          title: "Preview Error",
-          description: "Failed to generate preview",
-          variant: "destructive"
+          title: 'Preview Error',
+          description: 'Failed to generate preview',
+          variant: 'destructive'
         });
         setShowPreview(false);
-      } finally {
-        setPreviewLoading(false);
+      }
+    } else {
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+        setPreviewBlobUrl(null);
       }
     }
   };
 
   const generatePreview = async (): Promise<string> => {
-    if (!conversationId) {
-      throw new Error("Missing data for preview");
-    }
-    try {
-      const isTranslated = currentView === 'translated_template';
-      const templateId = isTranslated 
-        ? workflowData?.template_translated_id || workflowData?.template_id
-        : workflowData?.template_id;
-      // Use localMappings and localFields for preview
-      const mappings = localMappings;
-      const fields = localFields;
-      const response = await api.post(
-        '/api/workflow/generate/insert-text-enhanced',
-        {
-          template_id: workflowData?.template_id,
-          template_translated_id: templateId,
-          isTranslated,
-          fields: fields || {},
-          template_mappings: mappings || {},
-        },
-        {
-          responseType: 'blob'
-        }
-      );
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      return URL.createObjectURL(blob);
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || 
-                           err.response?.data?.message || 
-                           err.message || 
-                           "Preview generation failed";
-      toast({
-        title: "Preview Error",
-        description: errorMessage,
-        variant: "destructive"
+    if (!workflowData?.template_file_public_url) throw new Error('No template PDF');
+    // Fetch the template PDF
+    const existingPdfBytes = await fetch(workflowData.template_file_public_url).then(res => res.arrayBuffer());
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    // For each mapping, draw the field value at the mapped position
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    Object.entries(localMappings || {}).forEach(([key, mapping]) => {
+      if (!mapping) return;
+      const page = pdfDoc.getPage(mapping.page_number - 1);
+      const value = localFields?.[key]?.value || '';
+      const { x0, y0 } = mapping.position;
+      page.drawText(value, {
+        x: x0,
+        y: y0,
+        size: mapping.font.size,
+        font,
+        color: rgb(0, 0, 0)
       });
-      throw err;
-    }
+    });
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    return URL.createObjectURL(blob);
   };
 
   useEffect(() => {
@@ -224,170 +340,14 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setShowMappings(true);
       setShowPreview(false);
       setIsEditingMode(false);
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPreviewUrl(null);
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+        setPreviewBlobUrl(null);
       }
     }
   }, [isOpen]);
 
-  // Handlers for mapping/field changes
-  const handleMappingUpdate = (fieldKey: string, newMapping: TemplateMapping) => {
-    setLocalMappings(prev => {
-      const updated = { ...(prev || {}) };
-      updated[fieldKey] = newMapping;
-      setUnsavedChanges(true);
-      return updated;
-    });
-  };
-  const handleMappingAdd = (fieldKey: string, mapping: TemplateMapping) => {
-    setLocalMappings(prev => {
-      const updated = { ...(prev || {}) };
-      updated[fieldKey] = mapping;
-      setUnsavedChanges(true);
-      return updated;
-    });
-    setLocalFields(prev => {
-      // Always add the field if missing
-      if (!prev || !prev[fieldKey]) {
-        return { ...(prev || {}), [fieldKey]: { value: '', value_status: 'pending', translated_value: null, translated_status: 'pending' } };
-      }
-      return prev;
-    });
-    setEditingField(fieldKey);
-  };
-  const handleMappingDelete = (fieldKey: string) => {
-    setLocalMappings(prev => {
-      const updated = { ...(prev || {}) };
-      updated[fieldKey] = null;
-      setUnsavedChanges(true);
-      return updated;
-    });
-    // Only delete field if not present in the other template
-    if (workflowData) {
-      const otherMappings = currentView === 'template' ? (workflowData.translated_template_mappings || {}) : (workflowData.origin_template_mappings || {});
-      if (!otherMappings[fieldKey]) {
-        setLocalFields(prev => {
-          const updated = { ...(prev || {}) };
-          delete updated[fieldKey];
-          return updated;
-        });
-      }
-    }
-    // Remove from required fields as well
-    setLocalRequiredFields(prev => {
-      const updated = { ...prev };
-      delete updated[fieldKey];
-      return updated;
-    });
-  };
-  const handleFieldUpdateLocal = (fieldKey: string, newValue: string, isTranslatedView = false) => {
-    setLocalFields(prev => {
-      const updated = { ...(prev || {}) };
-      // Always create the field if missing!
-      if (!updated[fieldKey]) {
-        updated[fieldKey] = {
-          value: '',
-          value_status: 'pending',
-          translated_value: null,
-          translated_status: 'pending'
-        };
-      }
-      if (isTranslatedView) {
-        updated[fieldKey] = {
-          ...updated[fieldKey],
-          translated_value: newValue,
-          translated_status: 'edited',
-        };
-      } else {
-        updated[fieldKey] = {
-          ...updated[fieldKey],
-          value: newValue,
-          value_status: newValue.trim() === '' ? 'pending' : 'edited',
-        };
-      }
-      setUnsavedChanges(true);
-      return updated;
-    });
-  };
-
-  // Save/Cancel logic
-  const handleSaveChanges = async () => {
-    if (!workflowData) return;
-    setIsSaving(true);
-    try {
-      // Filter out mappings with value null (deleted)
-      const filteredMappings: Record<string, any> = {};
-      Object.entries(localMappings || {}).forEach(([key, value]) => {
-        if (value !== null) filteredMappings[key] = value;
-      });
-      // Only keep required fields for existing boxes
-      const validRequiredFields: Record<string, string> = {};
-      Object.keys(filteredMappings).forEach(key => {
-        if (localRequiredFields[key]) validRequiredFields[key] = localRequiredFields[key];
-      });
-      // Ensure every mapping has a field
-      const allFields = { ...(localFields || {}) };
-      Object.keys(filteredMappings).forEach(key => {
-        if (!allFields[key]) {
-          allFields[key] = { value: '', value_status: 'pending', translated_value: null, translated_status: 'pending' };
-        }
-      });
-      // Only keep fields for existing mappings
-      const cleanFields: Record<string, any> = {};
-      Object.keys(allFields).forEach(key => {
-        if (filteredMappings[key]) {
-          cleanFields[key] = allFields[key];
-        }
-      });
-      // Build info_json_custom for PATCH
-      const info_json_custom = {
-        ...(workflowData.info_json_custom || workflowData.info_json || {}),
-        required_fields: validRequiredFields,
-        fillable_text_info: Object.values(filteredMappings),
-      };
-      // --- DEBUG LOGS ---
-      console.log('localMappings:', localMappings);
-      console.log('localFields:', localFields);
-      console.log('filteredMappings:', filteredMappings);
-      console.log('cleanFields:', cleanFields);
-      const mappingsKey = currentView === 'template' ? 'origin_template_mappings' : 'translated_template_mappings';
-      const patchPayload = {
-        [mappingsKey]: filteredMappings,
-        fields: cleanFields,
-        info_json_custom,
-      };
-      console.log('PATCH payload:', patchPayload);
-      // --- END DEBUG LOGS ---
-      await api.patch(`/api/workflow/${conversationId}/template-mappings`, patchPayload);
-      await fetchWorkflowData();
-      toast({ title: 'Changes saved', variant: 'default' });
-    } catch (err: any) {
-      toast({ title: 'Save failed', description: err.message, variant: 'destructive' });
-    }
-    setIsSaving(false);
-    setUnsavedChanges(false);
-  };
-  const handleCancelChanges = () => {
-    if (!workflowData) return;
-    if (currentView === 'template') {
-      setLocalMappings(cloneDeep(workflowData.origin_template_mappings || {}));
-    } else if (currentView === 'translated_template') {
-      setLocalMappings(cloneDeep(workflowData.translated_template_mappings || {}));
-    }
-    setLocalFields(cloneDeep(workflowData.fields || {}));
-    setLocalRequiredFields(cloneDeep((workflowData.required_fields || workflowData.template_required_fields) || {}));
-    setUnsavedChanges(false);
-  };
-
-  // After fetchWorkflowData (after saving or loading)
-  useEffect(() => {
-    if (workflowData) {
-      console.log('origin_template_mappings after load:', workflowData.origin_template_mappings, typeof workflowData.origin_template_mappings);
-      console.log('translated_template_mappings after load:', workflowData.translated_template_mappings, typeof workflowData.translated_template_mappings);
-    }
-  }, [workflowData]);
-
+  // 4. All logic and returns
   if (!isOpen) return null;
 
   const getViewTitle = () => {
@@ -464,18 +424,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
         {!loading && !error && hasWorkflow && (
           <>
-            {showPreview && previewUrl && !previewLoading ? (
+            {showPreview && previewBlobUrl ? (
               <div className="h-full w-full">
-                <iframe
-                  src={`${previewUrl}#toolbar=0&navpanes=0`}
-                  className="w-full h-full border-0"
-                  title="Preview Document"
-                />
-              </div>
-            ) : previewLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-                <span className="ml-2 text-gray-500">Generating preview...</span>
+                <Document file={previewBlobUrl} loading={<div>Loading preview...</div>}>
+                  <Page pageNumber={1} />
+                </Document>
               </div>
             ) : (
               <>
@@ -488,49 +441,51 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                   />
                 )}
 
-                {currentView === 'template' && localMappings && localFields && (
+                {currentView === 'template' && filteredMappings && memoizedFields && (
                   <TemplateView
                     url={workflowData?.template_file_public_url || ''}
                     filename="Template"
-                    templateMappings={localMappings}
-                    fields={localFields}
+                    templateMappings={filteredMappings}
+                    fields={memoizedFields}
                     showMappings={showMappings}
-                    onFieldUpdate={async (fieldKey, newValue) => { handleFieldUpdateLocal(fieldKey, newValue); return Promise.resolve(); }}
+                    onFieldUpdate={handleFieldUpdateTemplate}
                     conversationId={conversationId}
                     workflowData={workflowData}
                     onMappingUpdate={handleMappingUpdate}
                     onMappingAdd={handleMappingAdd}
                     onMappingDelete={handleMappingDelete}
+                    onUpdateLayout={handleUpdateLayout}
                     onSaveChanges={handleSaveChanges}
                     onCancelChanges={handleCancelChanges}
                     unsavedChanges={unsavedChanges}
                     isEditingMode={isEditingMode}
                     setIsEditingMode={setIsEditingMode}
-                    requiredFields={localRequiredFields}
+                    requiredFields={memoizedRequiredFields}
                     editingField={editingField}
                     setEditingField={setEditingField}
                   />
                 )}
 
-                {currentView === 'translated_template' && localMappings && localFields && (
+                {currentView === 'translated_template' && filteredMappings && memoizedFields && (
                   <TranslatedTemplateView
                     url={workflowData?.template_translated_file_public_url || ''}
                     filename="Translated Template"
-                    templateMappings={localMappings}
-                    fields={localFields}
+                    templateMappings={filteredMappings}
+                    fields={memoizedFields}
                     showMappings={showMappings}
-                    onFieldUpdate={async (fieldKey, newValue) => { handleFieldUpdateLocal(fieldKey, newValue, true); return Promise.resolve(); }}
+                    onFieldUpdate={handleFieldUpdateTranslated}
                     conversationId={conversationId}
                     workflowData={workflowData}
                     onMappingUpdate={handleMappingUpdate}
                     onMappingAdd={handleMappingAdd}
                     onMappingDelete={handleMappingDelete}
+                    onUpdateLayout={handleUpdateLayout}
                     onSaveChanges={handleSaveChanges}
                     onCancelChanges={handleCancelChanges}
                     unsavedChanges={unsavedChanges}
                     isEditingMode={isEditingMode}
                     setIsEditingMode={setIsEditingMode}
-                    requiredFields={localRequiredFields}
+                    requiredFields={memoizedRequiredFields}
                     editingField={editingField}
                     setEditingField={setEditingField}
                   />

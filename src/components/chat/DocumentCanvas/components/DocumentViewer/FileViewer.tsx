@@ -1,12 +1,11 @@
 import React from 'react';
 import PDFViewer from './PDFViewer';
-import ImageViewer from './ImageViewer';
 import { File } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface FileViewerProps {
-  url: string; 
-  filename?: string; 
+  url: string;
+  filename?: string;
   templateMappings?: Record<string, any>;
   fields?: Record<string, any>;
   showMappings?: boolean;
@@ -25,15 +24,16 @@ interface FileViewerProps {
   requiredFields?: Record<string, string>;
   editingField?: string | null;
   setEditingField?: (fieldKey: string | null) => void;
+  onUpdateLayout?: (newMappings: Record<string, any>) => void;
 }
 
-const FileViewer: React.FC<FileViewerProps> = ({ 
-  url, 
-  filename, 
-  templateMappings, 
-  fields = {}, 
-  showMappings = false, 
-  onFieldUpdate, 
+const FileViewer: React.FC<FileViewerProps> = ({
+  url,
+  filename,
+  templateMappings,
+  fields = {},
+  showMappings = false,
+  onFieldUpdate,
   isTranslatedView = false,
   conversationId,
   workflowData,
@@ -47,23 +47,27 @@ const FileViewer: React.FC<FileViewerProps> = ({
   setIsEditingMode,
   requiredFields,
   editingField,
-  setEditingField
+  setEditingField,
+  onUpdateLayout
 }) => {
   const getFileType = (url: string): 'pdf' | 'image' | 'other' => {
     try {
       const urlObj = new URL(url);
       const pathname = urlObj.pathname;
       const extension = pathname.split('.').pop()?.toLowerCase();
-      
       if (extension === 'pdf') return 'pdf';
-      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif'].includes(extension || '')) {
+      if ([
+        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif'
+      ].includes(extension || '')) {
         return 'image';
       }
       return 'other';
     } catch (error) {
       const extension = url.split('.').pop()?.toLowerCase();
       if (extension === 'pdf') return 'pdf';
-      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif'].includes(extension || '')) {
+      if ([
+        'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'tif'
+      ].includes(extension || '')) {
         return 'image';
       }
       return 'other';
@@ -74,8 +78,8 @@ const FileViewer: React.FC<FileViewerProps> = ({
 
   if (fileType === 'pdf') {
     return (
-      <PDFViewer 
-        url={url} 
+      <PDFViewer
+        url={url}
         templateMappings={templateMappings}
         fields={fields}
         showMappings={showMappings}
@@ -94,12 +98,25 @@ const FileViewer: React.FC<FileViewerProps> = ({
         requiredFields={requiredFields}
         editingField={editingField}
         setEditingField={setEditingField}
+        onUpdateLayout={onUpdateLayout}
       />
     );
   }
 
   if (fileType === 'image') {
-    return <ImageViewer url={url} />;
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-50">
+        <img
+          src={url}
+          alt={filename || 'Image'}
+          style={{ maxWidth: '100%', maxHeight: '100%' }}
+          onError={(e) => {
+            (e.target as HTMLImageElement).src = '';
+            (e.target as HTMLImageElement).alt = 'Failed to load image';
+          }}
+        />
+      </div>
+    );
   }
 
   return (

@@ -15,6 +15,7 @@ interface EditableInputProps {
   onCancel: () => void;
   placeholder?: string;
   position: { x: number; y: number };
+  autoFocus?: boolean;
 }
 
 const EditableInput: React.FC<EditableInputProps> = ({ 
@@ -27,7 +28,8 @@ const EditableInput: React.FC<EditableInputProps> = ({
   onSave, 
   onCancel, 
   placeholder, 
-  position 
+  position,
+  autoFocus = false
 }) => {
   const [inputValue, setInputValue] = useState(value);
   const [translating, setTranslating] = useState(false);
@@ -39,11 +41,11 @@ const EditableInput: React.FC<EditableInputProps> = ({
   }, [value]);
 
   useEffect(() => {
-    if (inputRef.current) {
+    if (autoFocus && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
-  }, []);
+  }, [autoFocus]);
 
   const handleSave = () => {
     onSave(inputValue);
@@ -116,7 +118,7 @@ const EditableInput: React.FC<EditableInputProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
-          autoFocus
+          autoFocus={autoFocus}
         />
         <Button
           size="sm"
