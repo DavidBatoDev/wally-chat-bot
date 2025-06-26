@@ -188,13 +188,14 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   // Add this handler to update mappings and persist
   const handleUpdateLayout = useCallback((newMappings: Record<string, TemplateMapping>) => {
     setLocalMappings(newMappings);
-    // Persist to backend
+    // Persist to backend - use the correct mappings key based on current view
+    const mappingsKey = currentView === 'template' ? 'origin_template_mappings' : 'translated_template_mappings';
     api.patch(`/api/workflow/${conversationId}/template-mappings`, {
-      origin_template_mappings: newMappings,
+      [mappingsKey]: newMappings,
       fields: localFields,
     });
     setUnsavedChanges(true);
-  }, [conversationId, localFields]);
+  }, [conversationId, localFields, currentView]);
 
   // 3. All useEffect hooks
   useEffect(() => {

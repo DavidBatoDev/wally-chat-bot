@@ -143,11 +143,18 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   // PATCH single field value if not in edit mode
   const patchFieldValue = async (fieldKey: string, newValue: string) => {
     try {
-      await api.patch(`/api/workflow/${conversationId}/field`, {
+      // In translated view, update translated_value; in normal view, update value
+      const payload = isTranslatedView ? {
+        field_key: fieldKey,
+        translated_value: newValue,
+        translated_status: 'edited',
+      } : {
         field_key: fieldKey,
         value: newValue,
         value_status: 'edited',
-      });
+      };
+      
+      await api.patch(`/api/workflow/${conversationId}/field`, payload);
     } catch (err) {
       console.error('Failed to update field value', err);
     }
@@ -155,10 +162,10 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
 
   // PATCH mappings/fields when deleting a box
   const patchDeleteMapping = async (newMappings: any, newFields: any) => {
-
     try {
+      const mappingsKey = isTranslatedView ? 'translated_template_mappings' : 'origin_template_mappings';
       await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
-        origin_template_mappings: newMappings,
+        [mappingsKey]: newMappings,
         fields: newFields,
       });
     } catch (err) {
@@ -169,8 +176,9 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   // PATCH mappings/fields when adding a box
   const patchAddMapping = async (newMappings: any, newFields: any) => {
     try {
+      const mappingsKey = isTranslatedView ? 'translated_template_mappings' : 'origin_template_mappings';
       await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
-        origin_template_mappings: newMappings,
+        [mappingsKey]: newMappings,
         fields: newFields,
       });
     } catch (err) {
