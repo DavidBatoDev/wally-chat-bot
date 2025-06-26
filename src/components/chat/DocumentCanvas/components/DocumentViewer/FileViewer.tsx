@@ -2,6 +2,7 @@ import React from 'react';
 import PDFViewer from './PDFViewer';
 import { File } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ImageViewer from './ImageViewer';
 
 interface FileViewerProps {
   url: string;
@@ -108,17 +109,10 @@ const FileViewer: React.FC<FileViewerProps> = ({
 
   if (fileType === 'image') {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-50">
-        <img
-          src={url}
-          alt={filename || 'Image'}
-          style={{ maxWidth: '100%', maxHeight: '100%' }}
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = '';
-            (e.target as HTMLImageElement).alt = 'Failed to load image';
-          }}
-        />
-      </div>
+      <ImageViewer
+        url={url}
+        filename={filename}
+      />
     );
   }
 

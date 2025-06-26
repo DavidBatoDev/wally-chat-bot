@@ -1,5 +1,5 @@
 import React, { useState, useImperativeHandle, forwardRef } from 'react';
-import { X, Check, Eye, EyeOff, Trash2, Move, Pencil } from 'lucide-react';
+import { X, Check, Eye, EyeOff, Trash2, Move, Pencil, Languages, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EditableInput from './EditableInput';
 import { TemplateMapping, WorkflowField } from '../types/workflow';
@@ -49,6 +49,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   const [newBoxKey, setNewBoxKey] = useState('');
   const [isInteracting, setIsInteracting] = useState(false);
   const [selectedBox, setSelectedBox] = useState<string | null>(null);
+  const [translatingFields, setTranslatingFields] = useState<Record<string, boolean>>({});
 
   useImperativeHandle(ref, () => ({
     showAddBox: () => setShowAddBox(true)
@@ -59,8 +60,8 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   const getStatusColors = (field: WorkflowField | undefined, isTranslatedView: boolean) => {
     if (!field) {
       return {
-        border: '#9ca3af',
-        background: 'rgba(156, 163, 175, 0.1)',
+        border: 'rgba(156, 163, 175, 0.3)',
+        background: 'rgba(156, 163, 175, 0.03)',
         label: 'No Data',
         priority: 0
       };
@@ -73,31 +74,31 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
     switch (status) {
     //   case 'confirmed':
     //     return {
-    //       border: '#10b981',
-    //       background: 'rgba(16, 185, 129, 0.15)',
+    //       border: 'rgba(16, 185, 129, 0.4)',
+    //       background: 'rgba(16, 185, 129, 0.05)',
     //       label: 'Confirmed',
     //       priority: 4
     //     };
       case 'edited':
         return {
-          border: '#3b82f6',
-          background: 'rgba(59, 130, 246, 0.15)',
+          border: 'rgba(59, 130, 246, 0.4)',
+          background: 'rgba(59, 130, 246, 0.05)',
           label: 'Edited',
           priority: 3
         };
       case 'ocr':
       case 'translated':
         return {
-          border: '#f59e0b',
-          background: 'rgba(245, 158, 11, 0.15)',
+          border: 'rgba(245, 158, 11, 0.4)',
+          background: 'rgba(245, 158, 11, 0.05)',
           label: isTranslatedView ? 'Translated' : 'OCR',
           priority: 2
         };
       case 'pending':
       default:
         return {
-          border: '#6b7280',
-          background: 'rgba(107, 114, 128, 0.15)',
+          border: 'rgba(107, 114, 128, 0.3)',
+          background: 'rgba(107, 114, 128, 0.03)',
           label: 'Pending',
           priority: 1
         };
@@ -154,8 +155,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
 
   // PATCH mappings/fields when deleting a box
   const patchDeleteMapping = async (newMappings: any, newFields: any) => {
-    console.log(newMappings)
-    console.log(fields)
+
     try {
       await api.patch(`/api/workflow/${conversationId}/template-mappings`, {
         origin_template_mappings: newMappings,
@@ -189,6 +189,33 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   const handleEditCancel = () => {
     if (setEditingField) setEditingField(null);
     setEditInputPosition(null);
+  };
+
+  const handleTranslateField = async (fieldKey: string) => {
+    const field = fields[fieldKey];
+    if (!field?.value || !workflowData?.translate_to) return;
+    
+    setTranslatingFields(prev => ({ ...prev, [fieldKey]: true }));
+    console.log("translating");
+    try {
+      const response = await api.post(`/api/workflow/${conversationId}/translate-field`, {
+        field_key: fieldKey,
+        target_language: workflowData.translate_to,
+        source_language: workflowData.translate_from || undefined,
+        use_gemini: true
+      });
+      
+      const translatedValue = response.data.translated_value;
+      onFieldUpdate(fieldKey, translatedValue);
+    } catch (err) {
+      console.error(`Failed to translate field ${fieldKey}:`, err);
+    } finally {
+      setTranslatingFields(prev => {
+        const copy = { ...prev };
+        delete copy[fieldKey];
+        return copy;
+      });
+    }
   };
 
   const handleAddTextBox = () => setShowAddBox(true);
@@ -295,26 +322,36 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
 
   return (
     <>
-      {isEditingLayout && !showAddBox && (
-        <Button onClick={handleAddTextBox} className="absolute top-2 right-2 z-50 rounded shadow bg-white border border-gray-200 hover:bg-gray-100" size="sm" variant="outline">+ Add Text Box</Button>
-      )}
-      {isEditingLayout && showAddBox && (
-        <form onSubmit={handleAddBoxSubmit} className="absolute top-2 right-2 z-50 bg-white p-2 rounded shadow flex items-center space-x-2 border border-gray-200">
-          <input
-            type="text"
-            value={newBoxKey}
-            onChange={e => setNewBoxKey(e.target.value)}
-            placeholder="Field label (optional)"
-            className="border px-2 py-1 rounded text-xs"
-            autoFocus
-          />
-          <Button type="submit" size="sm" variant="default">Add</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => { setShowAddBox(false); setNewBoxKey(''); }}>Cancel</Button>
-        </form>
-      )}
+      {/* Floating Add Textbox Controls - Top Right */}
+      <div className="fixed top-32 right-4 z-50">
+        {isEditingLayout && !showAddBox && (
+          <Button 
+            onClick={handleAddTextBox} 
+            className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-lg border border-gray-200 hover:bg-white text-gray-700" 
+            size="sm" 
+            variant="outline"
+          >
+            + Add Field
+          </Button>
+        )}
+        {isEditingLayout && showAddBox && (
+          <form onSubmit={handleAddBoxSubmit} className="bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow-lg flex items-center space-x-2 border border-gray-200">
+            <input
+              type="text"
+              value={newBoxKey}
+              onChange={e => setNewBoxKey(e.target.value)}
+              placeholder="Field label (optional)"
+              className="border px-2 py-1 rounded text-xs w-32"
+              autoFocus
+            />
+            <Button type="submit" size="sm" variant="default">Add</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setShowAddBox(false); setNewBoxKey(''); }}>Cancel</Button>
+          </form>
+        )}
+      </div>
       <div 
         className="absolute inset-0 pointer-events-none"
-        style={{ width: canvasWidth, height: canvasHeight }}
+        style={{ width: canvasWidth, height: canvasHeight, paddingBottom: '80px' }}
       >
         {currentPageMappings.map(([key, mapping]) => {
           const x = mapping.position.x0 * scale;
@@ -339,14 +376,14 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
               onResizeStart={() => { setIsInteracting(true); setSelectedBox(key); }}
               onResizeStop={(e: any, direction: string, ref: HTMLElement, delta: { width: number; height: number }, position: { x: number; y: number }) => handleBoxResizeStop(key, direction, ref, delta, position)}
               style={{
-                border: isSelected ? '2px solid #6366f1' : '1.5px solid #d1d5db',
-                background: 'rgba(99,102,241,0.03)',
-                borderRadius: '6px',
-                boxShadow: isSelected ? '0 2px 8px 0 rgba(99,102,241,0.10)' : 'none',
-                zIndex: isSelected ? 30 : 10,
+                border: isSelected ? '2px solid #3b82f6' : `1px solid ${getStatusColors(field, isTranslatedView).border}`,
+                background: isSelected ? 'rgba(59, 130, 246, 0.08)' : getStatusColors(field, isTranslatedView).background,
+                borderRadius: '3px',
+                boxShadow: isSelected ? '0 0 0 3px rgba(59, 130, 246, 0.1)' : 'none',
+                zIndex: isSelected ? 30 : 5,
                 userSelect: 'none',
                 position: 'absolute',
-                transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s',
+                transition: 'all 0.2s ease',
                 pointerEvents: 'auto',
                 cursor: isEditingLayout ? 'move' : 'pointer',
                 overflow: 'visible',
@@ -354,9 +391,10 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                 alignItems: 'center',
                 justifyContent: 'center',
                 padding: 0,
-                minHeight: 20,
-                minWidth: 40,
+                minHeight: 28,
+                minWidth: 60,
                 fontSize: (fontSize * scale) + 'px',
+                opacity: isSelected ? 1 : 0.8,
               }}
               onClick={() => setSelectedBox(key)}
             >
@@ -395,60 +433,85 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                   {fieldValue || <span style={{ color: '#bbb' }}>Click to enter text</span>}
                 </div>
               )}
-              {/* Controls: show only if selected and in edit mode */}
-              {selectedBox === key && isEditingLayout && (
+              {/* Controls: show only if selected and in edit mode, or for translate in translated view */}
+              {selectedBox === key && (
                 <div
-                  className="absolute flex gap-1 z-50"
+                  className="absolute flex items-center gap-1 z-40"
                   style={{
                     pointerEvents: 'auto',
-                    background: 'rgba(255,255,255,0.92)',
-                    borderRadius: 6,
-                    padding: '1px 2px',
-                    top: '-32px',
-                    right: 0,
-                    boxShadow: '0 2px 8px 0 rgba(99,102,241,0.10)',
-                    border: '1px solid #e0e7ef',
+                    background: 'rgba(255, 255, 255, 0.95)',
+                    backdropFilter: 'blur(8px)',
+                    borderRadius: '6px',
+                    padding: '4px',
+                    top: '-36px',
+                    right: '0',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                    border: '1px solid rgba(0, 0, 0, 0.08)',
                   }}
                 >
+                  {isEditingLayout && (
+                    <>
+                      <button
+                        type="button"
+                        className="p-1 rounded hover:bg-red-50 transition-colors"
+                        onClick={e => { e.stopPropagation(); handleDeleteBox(key); }}
+                        title="Delete field"
+                      >
+                        <Trash2 size={14} className="text-red-600" />
+                      </button>
+                      <div className="w-px h-4 bg-gray-200" />
+                    </>
+                  )}
                   <button
                     type="button"
-                    className="p-0.5 bg-white rounded-full shadow hover:bg-red-100 border border-gray-200"
-                    style={{ zIndex: 100, width: 20, height: 20 }}
-                    onClick={e => { e.stopPropagation(); handleDeleteBox(key); }}
-                    title="Delete box"
-                  >
-                    <Trash2 size={14} className="text-red-500" />
-                  </button>
-                  <button
-                    type="button"
-                    className="p-0.5 bg-white rounded-full shadow hover:bg-blue-100 border border-gray-200"
-                    style={{ zIndex: 100, width: 20, height: 20 }}
+                    className="p-1 rounded hover:bg-blue-50 transition-colors"
                     onClick={e => { e.stopPropagation(); if (setEditingField) setEditingField(key); }}
                     title="Edit value"
                   >
-                    <Pencil size={14} className="text-blue-500" />
+                    <Pencil size={14} className="text-blue-600" />
                   </button>
+                  {/* Translate button - only show in translated view and if original value exists */}
+                  {isTranslatedView && fields[key]?.value && fields[key].value.trim() !== '' && (
+                    <button
+                      type="button"
+                      className="p-1 rounded hover:bg-green-50 transition-colors disabled:opacity-50"
+                      onClick={e => { e.stopPropagation(); handleTranslateField(key); }}
+                      disabled={translatingFields[key]}
+                      title="Translate field"
+                    >
+                      {translatingFields[key] ? (
+                        <Loader2 size={14} className="text-green-600 animate-spin" />
+                      ) : (
+                        <Languages size={14} className="text-green-600" />
+                      )}
+                    </button>
+                  )}
                   {/* Font size dropdown */}
-                  <select
-                    value={fontSize}
-                    onChange={e => {
-                      const newFontSize = parseInt(e.target.value, 10);
-                      const updated = {
-                        ...mapping,
-                        font: {
-                          ...mapping.font,
-                          size: newFontSize,
-                        },
-                      };
-                      const newMappings = { ...mappings, [key]: updated };
-                      if (onUpdateLayout) onUpdateLayout(newMappings);
-                    }}
-                    style={{ fontSize: 12, borderRadius: 4, border: '1px solid #d1d5db', marginRight: 4, height: 22 }}
-                  >
-                    {[10,12,14,16,18,20,22,24,26,28].map(size => (
-                      <option key={size} value={size}>{size}px</option>
-                    ))}
-                  </select>
+                  {isEditingLayout && (
+                    <>
+                      <div className="w-px h-4 bg-gray-200" />
+                      <select
+                        value={fontSize}
+                        onChange={e => {
+                          const newFontSize = parseInt(e.target.value, 10);
+                          const updated = {
+                            ...mapping,
+                            font: {
+                              ...mapping.font,
+                              size: newFontSize,
+                            },
+                          };
+                          const newMappings = { ...mappings, [key]: updated };
+                          if (onUpdateLayout) onUpdateLayout(newMappings);
+                        }}
+                        className="text-xs px-1 py-0.5 rounded border border-gray-200 bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        {[10,12,14,16,18,20,22,24,26,28].map(size => (
+                          <option key={size} value={size}>{size}px</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                 </div>
               )}
             </Rnd>
@@ -456,38 +519,36 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
         })}
       </div>
 
-      <div className="absolute top-4 left-4 z-40">
-        <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
-          <div 
-            className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-50 transition-colors"
+      <div className="absolute top-4 left-4 z-30">
+        <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 overflow-hidden">
+          <button
+            className="flex items-center justify-between w-full px-3 py-2 hover:bg-gray-50 transition-colors"
             onClick={() => setLegendCollapsed(!legendCollapsed)}
           >
-            <div className="text-xs font-semibold text-gray-700">Field Status</div>
-            <div 
-              className="w-4 h-4 flex items-center justify-center text-gray-500 transform transition-transform"
-              style={{ transform: legendCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}
+            <span className="text-sm font-medium text-gray-700">Field Status</span>
+            <svg 
+              className={`w-4 h-4 text-gray-400 transition-transform ${legendCollapsed ? '-rotate-90' : 'rotate-0'}`}
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
             >
-              ▼
-            </div>
-          </div>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
           
           {!legendCollapsed && (
-            <div className="px-3 pb-3 border-t border-gray-200">
-              <div className="space-y-1 mt-2">
-                {/* <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#10b981' }}></div>
-                  <span className="text-xs text-gray-600">Confirmed</span>
-                </div> */}
+            <div className="px-3 pb-3 pt-1 border-t border-gray-100">
+              <div className="space-y-2">
                 <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#3b82f6' }}></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                   <span className="text-xs text-gray-600">Edited</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#f59e0b' }}></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
                   <span className="text-xs text-gray-600">{isTranslatedView ? 'Translated' : 'OCR'}</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded" style={{ backgroundColor: '#6b7280' }}></div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-gray-400" />
                   <span className="text-xs text-gray-600">Pending</span>
                 </div>
               </div>

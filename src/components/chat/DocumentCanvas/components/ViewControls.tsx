@@ -1,7 +1,7 @@
 // client/components/chat/DocumentCanvas/components/ViewControls.tsx
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { File, FileText, Languages, RefreshCw, Eye } from 'lucide-react';
+import { File, FileText, Languages, RefreshCw, Eye, EyeOff, Download, Edit2, Save, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkflowData, ViewType } from '../types/workflow';
 import api from '@/lib/api';
@@ -62,10 +62,7 @@ const ViewControls: React.FC<ViewControlsProps> = ({
     setTranslateLoading(true);
     
     try {
-      // Get target language from workflow data or default to English
       const targetLanguage = workflowData.translate_to || 'en';
-
-      console.log("Translating all fields to:", targetLanguage);
       
       const response = await api.post(
         `/api/workflow/${conversationId}/translate-all-fields`,
@@ -107,132 +104,166 @@ const ViewControls: React.FC<ViewControlsProps> = ({
 
   if (loading || error || !hasWorkflow) return null;
 
-  return (
-    <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-      <div className="flex space-x-3">
-        <TooltipProvider delayDuration={200}>
-          {/* Original File Button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant={currentView === 'original' ? 'default' : 'outline'}
-                disabled={!workflowData?.base_file_public_url}
-                className={`h-10 w-10 ${currentView === 'original' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
-                onClick={() => onViewChange('original')}
-                aria-label="Original File"
-              >
-                <File size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Original File</p>
-            </TooltipContent>
-          </Tooltip>
-          
-          {/* Template Button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant={currentView === 'template' ? 'default' : 'outline'}
-                disabled={!workflowData?.template_file_public_url}
-                className={`h-10 w-10 ${currentView === 'template' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
-                onClick={() => onViewChange('template')}
-                aria-label="OCRed"
-              >
-                <FileText size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>OCRed</p>
-            </TooltipContent>
-          </Tooltip>
+  const viewButtons = [
+    {
+      view: 'original' as ViewType,
+      icon: File,
+      label: 'Original',
+      disabled: !workflowData?.base_file_public_url
+    },
+    {
+      view: 'template' as ViewType,
+      icon: FileText,
+      label: 'Template',
+      disabled: !workflowData?.template_file_public_url
+    },
+    {
+      view: 'translated_template' as ViewType,
+      icon: Languages,
+      label: 'Translated',
+      disabled: !workflowData?.template_translated_file_public_url
+    }
+  ];
 
-          {/* Translated Template Button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant={currentView === 'translated_template' ? 'default' : 'outline'}
-                disabled={!workflowData?.template_translated_file_public_url}
-                className={`h-10 w-10 ${currentView === 'translated_template' ? 'bg-red-500 text-white hover:bg-red-600' : ''}`}
-                onClick={() => onViewChange('translated_template')}
-                aria-label="Translation"
-              >
-                <Languages size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p>Translation</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-      
-      <div className="flex items-center space-x-2">
-        {(currentView === 'template' || currentView === 'translated_template') && 
-        workflowData?.fields && Object.keys(workflowData.fields).length > 0 && (
-          <>
-            <Button
-              onClick={onToggleMappings}
-              variant="outline"
-              size="sm"
-              className="flex items-center space-x-2"
-            >
-              {showMappings ? <Eye size={16} /> : <Eye size={16} />}
-              <span>
-                {showMappings ? 'Hide' : 'Show'} Mappings ({getMappingsCount()})
-              </span>
-            </Button>
-            
-            <Button
-              onClick={onDownloadFilledPdf}
-              variant="outline"
-              size="sm"
-              className="flex items-center space-x-2"
-            >
-              <FileText size={16} />
-              <span>Download</span>
-            </Button>
-            
-            {/* Edit Layout Button */}
-            <Button
-              onClick={() => setIsEditingMode(!isEditingMode)}
-              variant={isEditingMode ? 'default' : 'outline'}
-              size="sm"
-              className="flex items-center space-x-2"
-            >
-              {isEditingMode ? 'Done' : 'Edit Layout'}
-            </Button>
-            
-            {currentView === 'translated_template' && (
+  return (
+    <div className="bg-white border-b border-gray-200 shadow-sm">
+      {/* Compact Controls */}
+      <div className="px-3 py-2">
+        <div className="flex items-center justify-between">
+          {/* View Switcher - Compact */}
+          <div className="flex items-center space-x-0.5 bg-gray-50 rounded-md p-0.5">
+            <TooltipProvider delayDuration={300}>
+              {viewButtons.map(({ view, icon: Icon, label, disabled }) => (
+                <Tooltip key={view}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant={currentView === view ? 'default' : 'ghost'}
+                      disabled={disabled}
+                      className={`
+                        px-2 py-1 h-7 text-xs font-medium transition-all min-w-0
+                        ${currentView === view 
+                          ? 'bg-white shadow-sm text-gray-900 border border-gray-200' 
+                          : 'hover:bg-gray-100 text-gray-600 border border-transparent'
+                        }
+                      `}
+                      onClick={() => onViewChange(view)}
+                    >
+                      <Icon size={14} className="mr-1.5" />
+                      <span className="hidden sm:inline">{label}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="text-xs">
+                    <p>{label} Document</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </TooltipProvider>
+          </div>
+
+          {/* Action Buttons - Compact */}
+          {(currentView === 'template' || currentView === 'translated_template') && 
+          workflowData?.fields && Object.keys(workflowData.fields).length > 0 && (
+            <div className="flex items-center space-x-1">
+              {/* Show/Hide Fields */}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
-                      onClick={handleTranslateAll}
-                      variant="outline"
+                      onClick={onToggleMappings}
+                      variant="ghost"
                       size="sm"
-                      disabled={translateLoading}
-                      className="flex items-center space-x-2"
+                      className="h-7 px-2 text-xs"
                     >
-                      {translateLoading ? (
-                        <RefreshCw size={16} className="animate-spin" />
-                      ) : (
-                        <RefreshCw size={16} />
-                      )}
-                      <span>Translate All</span>
+                      {showMappings ? <EyeOff size={14} className="mr-1" /> : <Eye size={14} className="mr-1" />}
+                      <span className="hidden sm:inline">
+                        Fields ({getMappingsCount()})
+                      </span>
+                      <span className="sm:hidden">
+                        {getMappingsCount()}
+                      </span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p>Translate all editable fields</p>
+                  <TooltipContent className="text-xs">
+                    <p>{showMappings ? 'Hide' : 'Show'} field mappings</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-          </>
-        )}
+
+              {/* Edit Mode Toggle */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => setIsEditingMode(!isEditingMode)}
+                      variant={isEditingMode ? 'default' : 'ghost'}
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${isEditingMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
+                    >
+                      {isEditingMode ? (
+                        <>
+                          <Save size={14} className="mr-1" />
+                          <span className="hidden sm:inline">Done</span>
+                        </>
+                      ) : (
+                        <>
+                          <Edit2 size={14} className="mr-1" />
+                          <span className="hidden sm:inline">Edit</span>
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="text-xs">
+                    <p>{isEditingMode ? 'Save changes' : 'Edit field positions'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Translate All - Only in translated view */}
+              {currentView === 'translated_template' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        onClick={handleTranslateAll}
+                        variant="ghost"
+                        size="sm"
+                        disabled={translateLoading}
+                        className="h-7 px-2 text-xs"
+                      >
+                        <RefreshCw size={14} className={`mr-1 ${translateLoading ? 'animate-spin' : ''}`} />
+                        <span className="hidden sm:inline">Translate</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-xs">
+                      <p>Translate all fields to {workflowData?.translate_to || 'target language'}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
+              {/* Download Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={onDownloadFilledPdf}
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200"
+                    >
+                      <Download size={14} className="mr-1" />
+                      <span className="hidden sm:inline">PDF</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="text-xs">
+                    <p>Download filled PDF document</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

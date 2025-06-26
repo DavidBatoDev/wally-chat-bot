@@ -58,7 +58,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isEditingMode, setIsEditingMode] = useState(false);
-  const [translatingFields, setTranslatingFields] = useState<Record<string, boolean>>({});
   const [editingField, setEditingField] = useState<string | null>(null);
   const [lastOverlayScale, setLastOverlayScale] = useState(1);
 
@@ -233,55 +232,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   }, [currentView]);
 
-  useEffect(() => {
-    if (
-      currentView === 'translated_template' &&
-      localFields &&
-      workflowData &&
-      workflowData.translate_to
-    ) {
-      const fieldsToTranslate = Object.entries(localFields)
-        .filter(([key, field]) =>
-          field.value &&
-          (!field.translated_value || field.translated_value.trim() === '') &&
-          (field.translated_status === 'pending' || !field.translated_status)
-        );
-      if (fieldsToTranslate.length > 0) {
-        fieldsToTranslate.forEach(async ([key, field]) => {
-          setTranslatingFields(prev => ({ ...prev, [key]: true }));
-          try {
-            const response = await api.post(`/api/workflow/${conversationId}/translate-field`, {
-              field_key: key,
-              target_language: workflowData.translate_to,
-              source_language: workflowData.translate_from || undefined,
-              use_gemini: true
-            });
-            const translatedValue = response.data.translated_value;
-            setLocalFields(prev => {
-              const next = { ...(prev || {}) };
-              next[key] = {
-                value: (prev && prev[key] && typeof prev[key].value === 'string') ? prev[key].value : '',
-                value_status: (prev && prev[key] && prev[key].value_status) ? prev[key].value_status : 'pending',
-                translated_value: translatedValue,
-                translated_status: 'translated'
-              };
-              return next;
-            });
-          } catch (err) {
-            console.error(`Failed to translate field ${key}:`, err);
-          } finally {
-            setTranslatingFields(prev => {
-              const copy = { ...prev };
-              delete copy[key];
-              return copy;
-            });
-          }
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentView, localFields, workflowData, conversationId]);
-
   const handleTogglePreview = async () => {
     const newPreviewState = !showPreview;
     setShowPreview(newPreviewState);
@@ -335,57 +285,107 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   const handleDownloadFilledPdf = async () => {
     try {
-      if (!workflowData?.template_file_public_url) throw new Error('No template PDF');
-      // Fetch the template PDF
-      const existingPdfBytes = await fetch(workflowData.template_file_public_url).then(res => res.arrayBuffer());
+      // Debug: log all fields and which value will be used
+      console.log('Download PDF - localFields:', localFields);
+      if (localFields) {
+        Object.entries(localFields).forEach(([key, field]) => {
+          let chosen;
+          let usedType;
+          if (currentView === 'translated_template') {
+            chosen = field.translated_value;
+            usedType = 'translated_value';
+          } else {
+            chosen = field.value;
+            usedType = 'value';
+          }
+          console.log(`Field: ${key} | View: ${currentView} | Used: ${usedType}`, {
+            value: field.value,
+            translated_value: field.translated_value,
+            used: chosen
+          });
+        });
+      }
+      const templateUrl = currentView === 'translated_template'
+        ? workflowData?.template_translated_file_public_url
+        : workflowData?.template_file_public_url;
+      if (!templateUrl) throw new Error('No template PDF');
+      // Fetch the correct template PDF
+      const existingPdfBytes = await fetch(templateUrl).then(res => res.arrayBuffer());
       const pdfDoc = await PDFDocument.load(existingPdfBytes);
-      // For each mapping, draw the field value at the mapped position
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      // Assume all overlays use the same scale as lastOverlayScale
-      // Get the original PDF page width (in points)
-      // We'll use the first mapping's page to get the width, or default to 1.0 scale if not available
+      // Register fontkit for Unicode support
+      const fontkit = await import('@pdf-lib/fontkit');
+      pdfDoc.registerFontkit(fontkit.default);
+      
+      // Load NotoSans-Regular.ttf for Unicode support with fallback
+      let customFont, fallbackFont;
+      try {
+        const fontBytes = await fetch('/NotoSans-Regular.ttf').then(res => res.arrayBuffer());
+        customFont = await pdfDoc.embedFont(fontBytes);
+        fallbackFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        console.log('Custom font loaded successfully');
+      } catch (fontErr) {
+        console.warn('Failed to load custom font, using fallback:', fontErr);
+        customFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        fallbackFont = customFont;
+      }
       let canvasWidth = null;
       let pdfWidth = null;
-      // Try to get a mapping to extract dimensions
       const firstMapping = Object.values(localMappings || {}).find(Boolean);
       if (firstMapping) {
         const page = pdfDoc.getPage(firstMapping.page_number - 1);
         pdfWidth = page.getWidth();
-        // The rendered width is pdfWidth * lastOverlayScale
         canvasWidth = pdfWidth * lastOverlayScale;
       }
       Object.entries(localMappings || {}).forEach(([key, mapping]) => {
-        if (!mapping) return;
-        const page = pdfDoc.getPage(mapping.page_number - 1);
-        let value = '';
-        if (currentView === 'translated_template') {
-          value = localFields?.[key]?.translated_value || '';
-        } else {
-          value = localFields?.[key]?.value || '';
+        try {
+          if (!mapping) return;
+          const pageNum = mapping.page_number - 1;
+          const page = pdfDoc.getPage(pageNum);
+          let value = '';
+          if (currentView === 'translated_template') {
+            value = localFields?.[key]?.translated_value || '';
+          } else {
+            value = localFields?.[key]?.value || '';
+          }
+          // Debug log
+          console.log('PDF field:', { key, value, mapping, pageNum });
+          const { x0, y0 } = mapping.position;
+          const fontSize = (mapping.font.size || 12);
+          const pdfHeight = page.getHeight();
+          const yPdfLib = pdfHeight - y0 - fontSize;
+          // Draw text with fallback handling
+          try {
+            page.drawText(value, {
+              x: x0 + 4.5,
+              y: yPdfLib - 5,
+              size: fontSize,
+              font: customFont,
+              color: rgb(0, 0, 0)
+            });
+          } catch (textErr) {
+            console.error(`Error drawing text with custom font for field ${key}:`, textErr);
+            // Fallback to standard font
+            try {
+              page.drawText(value, {
+                x: x0 + 4.5,
+                y: yPdfLib - 5,
+                size: fontSize,
+                font: fallbackFont,
+                color: rgb(0, 0, 0)
+              });
+            } catch (fallbackErr) {
+              console.error(`Error drawing text with fallback font for field ${key}:`, fallbackErr);
+            }
+          }
+        } catch (fieldErr) {
+          console.error('Error drawing field on PDF:', { key, mapping, err: fieldErr });
         }
-        // Convert overlay coordinates to PDF coordinates
-        // overlayX = mapping.position.x0 * lastOverlayScale
-        // pdfX = overlayX / lastOverlayScale = mapping.position.x0
-        // But if overlayX is already in scaled units, we need to divide by scale
-        // Here, mapping.position.x0 is in PDF units, so we use as is
-        const { x0, y0 } = mapping.position;
-        const fontSize = (mapping.font.size || 12);
-        // Y coordinate: PDF-lib's (0,0) is bottom-left, overlay's (0,0) is top-left
-        // So, yPdfLib = pdfHeight - y0 - fontSize
-        const pdfHeight = page.getHeight();
-        const yPdfLib = pdfHeight - y0 - fontSize;
-        page.drawText(value, {
-          x: x0 + 4.5,
-          y: yPdfLib - 5,
-          size: fontSize,
-          font,
-          color: rgb(0, 0, 0)
-        });
       });
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      saveAs(blob, 'filled-template.pdf');
+      saveAs(blob, currentView === 'translated_template' ? 'translated-template.pdf' : 'filled-template.pdf');
     } catch (err) {
+      console.error('Download PDF error:', err);
       toast({
         title: 'Download Error',
         description: 'Failed to generate filled PDF',
