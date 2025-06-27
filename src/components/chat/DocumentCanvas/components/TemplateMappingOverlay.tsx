@@ -1,4 +1,4 @@
-import React, { useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useImperativeHandle, forwardRef, useEffect, useRef } from 'react';
 import { X, Check, Eye, EyeOff, Trash2, Move, Pencil, Languages, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EditableInput from './EditableInput';
@@ -50,10 +50,20 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
   const [isInteracting, setIsInteracting] = useState(false);
   const [selectedBox, setSelectedBox] = useState<string | null>(null);
   const [translatingFields, setTranslatingFields] = useState<Record<string, boolean>>({});
+  const [forceUpdate, setForceUpdate] = useState(0);
+  const prevScale = useRef(scale);
 
   useImperativeHandle(ref, () => ({
     showAddBox: () => setShowAddBox(true)
   }));
+
+  // Force re-render when scale changes to ensure proper positioning
+  useEffect(() => {
+    if (prevScale.current !== scale) {
+      prevScale.current = scale;
+      setForceUpdate(prev => prev + 1);
+    }
+  }, [scale]);
 
   if (!visible || !mappings) return null;
 
@@ -302,6 +312,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
         y: newY0 + height / 2
       }
     };
+    setIsInteracting(false);
     if (onUpdateLayout) onUpdateLayout({ ...mappings, [key]: newMapping });
   };
 
@@ -325,6 +336,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
         y: newY0 + newHeight / 2
       }
     };
+    setIsInteracting(false);
     if (onUpdateLayout) onUpdateLayout({ ...mappings, [key]: newMapping });
   };
 
@@ -362,19 +374,20 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
         style={{ width: canvasWidth, height: canvasHeight, paddingBottom: '80px' }}
       >
         {currentPageMappings.map(([key, mapping]) => {
-          const x = mapping.position.x0 * scale;
-          const y = mapping.position.y0 * scale;
-          const width = (mapping.position.x1 - mapping.position.x0) * scale;
-          const height = (mapping.position.y1 - mapping.position.y0) * scale;
-          const fontSize = (mapping.font && mapping.font.size) || 14;
+          // Use more precise coordinate calculations
+          const x = Math.round(mapping.position.x0 * scale * 100) / 100;
+          const y = Math.round(mapping.position.y0 * scale * 100) / 100;
+          const width = Math.round((mapping.position.x1 - mapping.position.x0) * scale * 100) / 100;
+          const height = Math.round((mapping.position.y1 - mapping.position.y0) * scale * 100) / 100;
+          const fontSize = (mapping.font && mapping.font.size) || 12;
           const isSelected = selectedBox === key;
           const isEditing = editingField === key;
           const field = fields[key];
           const fieldValue = isTranslatedView ? (field?.translated_value || '') : (field?.value || '');
           return (
             <Rnd
-              key={key}
-              size={{ width: Math.max(width, 40), height: Math.max(height, 28) }}
+              key={`${key}-${forceUpdate}`}
+              size={{ width: Math.max(width, 20), height: Math.max(height, 12) }}
               position={{ x, y }}
               enableResizing={isEditingLayout}
               disableDragging={!isEditingLayout}
@@ -391,7 +404,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                 zIndex: isSelected ? 30 : 5,
                 userSelect: 'none',
                 position: 'absolute',
-                transition: 'all 0.2s ease',
+                transition: isInteracting ? 'none' : 'all 0.2s ease',
                 pointerEvents: 'auto',
                 cursor: isEditingLayout ? 'move' : 'pointer',
                 overflow: 'visible',
@@ -399,8 +412,8 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                 alignItems: 'center',
                 justifyContent: 'center',
                 padding: 0,
-                minHeight: 28,
-                minWidth: 60,
+                minHeight: Math.max(12, height * 0.5),
+                minWidth: Math.max(20, width * 0.5),
                 fontSize: (fontSize * scale) + 'px',
                 opacity: isSelected ? 1 : 0.8,
               }}
@@ -432,8 +445,8 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                     overflow: 'hidden',
                     whiteSpace: 'nowrap',
                     textOverflow: 'ellipsis',
-                    minHeight: 18,
-                    minWidth: 30,
+                    minHeight: Math.max(8, height * 0.3),
+                    minWidth: Math.max(15, width * 0.3),
                   }}
                   onDoubleClick={() => { if (setEditingField) setEditingField(key); }}
                   title="Double-click to edit"
@@ -514,7 +527,7 @@ const TemplateMappingOverlay = forwardRef<any, TemplateMappingOverlayProps>(({
                         }}
                         className="text-xs px-1 py-0.5 rounded border border-gray-200 bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
-                        {[10,12,14,16,18,20,22,24,26,28].map(size => (
+                        {[4,5,6,7,8,9,10,11,12,14,16,18,20,22,24,26,28].map(size => (
                           <option key={size} value={size}>{size}px</option>
                         ))}
                       </select>

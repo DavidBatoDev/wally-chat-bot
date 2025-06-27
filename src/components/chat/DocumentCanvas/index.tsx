@@ -15,6 +15,10 @@ import { cloneDeep, isEqual } from 'lodash';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Document, Page } from 'react-pdf';
 import { saveAs } from 'file-saver';
+import { transformCoordinatesForPdf, drawTextWithFallback, validateTextPosition } from './utils/pdfTextPositioning';
+import { loadFontsWithFallbacks } from './utils/fontLoader';
+import { validateFieldData, createDebugInfo, logDebugInfo, createGenerationReport, DebugInfo } from './utils/debugHelper';
+import { createPositionDebugInfo, validateMultipleFields } from './utils/positionValidator';
 
 interface DocumentCanvasProps {
   isOpen: boolean;
@@ -261,24 +265,47 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     // Fetch the template PDF
     const existingPdfBytes = await fetch(workflowData.template_file_public_url).then(res => res.arrayBuffer());
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    
+    // Load fonts with fallback handling
+    const fontResult = await loadFontsWithFallbacks(pdfDoc);
+    const { primaryFont, fallbackFont } = fontResult;
+    
     // For each mapping, draw the field value at the mapped position
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     Object.entries(localMappings || {}).forEach(([key, mapping]) => {
       if (!mapping) return;
+      
       const page = pdfDoc.getPage(mapping.page_number - 1);
       const value = localFields?.[key]?.value || '';
-      const { x0, y0 } = mapping.position;
-      const scaledFontSize = (mapping.font.size || 12) * lastOverlayScale;
-      const pdfHeight = page.getHeight();
-      const yPdfLib = pdfHeight - y0 - scaledFontSize;
-      page.drawText(value, {
-        x: x0,
-        y: yPdfLib,
-        size: scaledFontSize,
-        font,
-        color: rgb(0, 0, 0)
+      
+      if (!value.trim()) return; // Skip empty values
+      
+      // Use the new positioning logic
+      const position = transformCoordinatesForPdf({
+        mapping,
+        textValue: value,
+        font: primaryFont,
+        pdfPageHeight: page.getHeight(),
+        scale: lastOverlayScale,
+        debugMode: false // Set to true for debugging
       });
+      
+      // Validate position
+      if (!validateTextPosition(position, page.getWidth(), page.getHeight(), value)) {
+        console.warn(`Preview: Text position out of bounds for field ${key}`);
+        return;
+      }
+      
+      // Draw text with fallback handling
+      drawTextWithFallback(
+        page,
+        value,
+        position,
+        primaryFont,
+        fallbackFont,
+        rgb(0, 0, 0)
+      );
     });
+    
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     return URL.createObjectURL(blob);
@@ -286,8 +313,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   const handleDownloadFilledPdf = async () => {
     try {
+      console.log('🚀 Starting PDF Generation Process...');
+      
+      // Validate field data before processing
+      if (localMappings && localFields) {
+        // Filter out null mappings for validation
+        const validMappings: Record<string, TemplateMapping> = {};
+        Object.entries(localMappings).forEach(([key, mapping]) => {
+          if (mapping) validMappings[key] = mapping;
+        });
+        
+        const validation = validateFieldData(validMappings, localFields, currentView === 'translated_template');
+        console.log('📋 Field Validation:', validation.summary);
+        if (validation.issues.length > 0) {
+          console.warn('⚠️ Validation Issues:', validation.issues);
+        }
+      }
+      
       // Debug: log all fields and which value will be used
-      console.log('Download PDF - localFields:', localFields);
+      console.log('📊 Download PDF - Field Analysis:');
       if (localFields) {
         Object.entries(localFields).forEach(([key, field]) => {
           let chosen;
@@ -299,7 +343,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
             chosen = field.value;
             usedType = 'value';
           }
-          console.log(`Field: ${key} | View: ${currentView} | Used: ${usedType}`, {
+          console.log(`  📝 Field: ${key} | View: ${currentView} | Used: ${usedType}`, {
             value: field.value,
             translated_value: field.translated_value,
             used: chosen
@@ -313,22 +357,15 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       // Fetch the correct template PDF
       const existingPdfBytes = await fetch(templateUrl).then(res => res.arrayBuffer());
       const pdfDoc = await PDFDocument.load(existingPdfBytes);
-      // Register fontkit for Unicode support
-      const fontkit = await import('@pdf-lib/fontkit');
-      pdfDoc.registerFontkit(fontkit.default);
+      // Load fonts with enhanced fallback handling
+      const fontResult = await loadFontsWithFallbacks(pdfDoc);
+      const { primaryFont: customFont, fallbackFont, fontName } = fontResult;
+      console.log(`🔤 PDF Generation using font: ${fontName}`);
       
-      // Load NotoSans-Regular.ttf for Unicode support with fallback
-      let customFont, fallbackFont;
-      try {
-        const fontBytes = await fetch('/NotoSans-Regular.ttf').then(res => res.arrayBuffer());
-        customFont = await pdfDoc.embedFont(fontBytes);
-        fallbackFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        console.log('Custom font loaded successfully');
-      } catch (fontErr) {
-        console.warn('Failed to load custom font, using fallback:', fontErr);
-        customFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        fallbackFont = customFont;
-      }
+      // Initialize debug tracking
+      const debugInfos: DebugInfo[] = [];
+      const actualPositions: Record<string, { x: number; y: number; fontSize: number }> = {};
+      const processedFieldValues: Record<string, string> = {};
       let canvasWidth = null;
       let pdfWidth = null;
       const firstMapping = Object.values(localMappings || {}).find(Boolean);
@@ -337,54 +374,116 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         pdfWidth = page.getWidth();
         canvasWidth = pdfWidth * lastOverlayScale;
       }
+      
+      console.log('📐 Processing text fields...');
       Object.entries(localMappings || {}).forEach(([key, mapping]) => {
         try {
           if (!mapping) return;
+          
           const pageNum = mapping.page_number - 1;
           const page = pdfDoc.getPage(pageNum);
+          
+          // Get the appropriate field value based on current view
           let value = '';
           if (currentView === 'translated_template') {
             value = localFields?.[key]?.translated_value || '';
           } else {
             value = localFields?.[key]?.value || '';
           }
-          // Debug log
-          console.log('PDF field:', { key, value, mapping, pageNum });
-          const { x0, y0 } = mapping.position;
-          const fontSize = (mapping.font.size || 12);
-          const pdfHeight = page.getHeight();
-          const yPdfLib = pdfHeight - y0 - fontSize;
-          // Draw text with fallback handling
-          try {
-            page.drawText(value, {
-              x: x0 + 4.5,
-              y: yPdfLib - 5,
-              size: fontSize,
-              font: customFont,
-              color: rgb(0, 0, 0)
-            });
-          } catch (textErr) {
-            console.error(`Error drawing text with custom font for field ${key}:`, textErr);
-            // Fallback to standard font
-            try {
-              page.drawText(value, {
-                x: x0 + 4.5,
-                y: yPdfLib - 5,
-                size: fontSize,
-                font: fallbackFont,
-                color: rgb(0, 0, 0)
-              });
-            } catch (fallbackErr) {
-              console.error(`Error drawing text with fallback font for field ${key}:`, fallbackErr);
-            }
+          
+          if (!value.trim()) {
+            console.log(`Skipping empty field: ${key}`);
+            return; // Skip empty values
           }
+          
+          // Use the new positioning logic with proper text centering
+          const position = transformCoordinatesForPdf({
+            mapping,
+            textValue: value,
+            font: customFont,
+            pdfPageHeight: page.getHeight(),
+            scale: 1, // No scaling for final PDF
+            debugMode: true // Enable debug for download
+          });
+          
+          // Create debug info for this field
+          let textWidth: number | undefined;
+          try {
+            textWidth = customFont.widthOfTextAtSize(value, position.fontSize);
+          } catch {
+            // Fallback approximation if measurement fails
+            textWidth = value.length * position.fontSize * 0.6;
+          }
+          
+          // Store position and value for validation
+          actualPositions[key] = position;
+          processedFieldValues[key] = value;
+          
+          const debugInfo = createDebugInfo(key, value, mapping, position, fontName, textWidth);
+          debugInfos.push(debugInfo);
+          logDebugInfo(debugInfo);
+          
+          // Create detailed position debug info
+          const positionDebug = createPositionDebugInfo(key, mapping, position, page.getHeight(), value);
+          console.log(positionDebug);
+          
+          // Validate position bounds
+          if (!validateTextPosition(position, page.getWidth(), page.getHeight(), value, true)) {
+            console.warn(`📍 Download: Text position out of bounds for field ${key}, skipping`);
+            return;
+          }
+          
+          // Draw text with enhanced fallback handling
+          const success = drawTextWithFallback(
+            page,
+            value,
+            position,
+            customFont,
+            fallbackFont,
+            rgb(0, 0, 0),
+            true // Enable debug mode
+          );
+          
+          if (!success) {
+            console.error(`❌ Failed to draw text for field ${key} after all attempts`);
+          } else {
+            console.log(`✅ Successfully drew text for field ${key}`);
+          }
+          
         } catch (fieldErr) {
-          console.error('Error drawing field on PDF:', { key, mapping, err: fieldErr });
+          console.error('❌ Error processing field for PDF:', { key, mapping, err: fieldErr });
         }
       });
+      
+      // Generate comprehensive validation report
+      if (Object.keys(actualPositions).length > 0) {
+        // Filter out null mappings for validation
+        const validMappings: Record<string, TemplateMapping> = {};
+        Object.entries(localMappings || {}).forEach(([key, mapping]) => {
+          if (mapping && actualPositions[key]) validMappings[key] = mapping;
+        });
+        
+        const firstPage = pdfDoc.getPage(0);
+        const validationResult = validateMultipleFields(
+          validMappings,
+          actualPositions,
+          processedFieldValues,
+          firstPage.getHeight()
+        );
+        
+        console.log(validationResult.summary);
+      }
+      
+      // Generate and log comprehensive report
+      const report = createGenerationReport(debugInfos, fontName, currentView === 'translated_template');
+      console.log(report);
+      
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      saveAs(blob, currentView === 'translated_template' ? 'translated-template.pdf' : 'filled-template.pdf');
+      const filename = currentView === 'translated_template' ? 'translated-template.pdf' : 'filled-template.pdf';
+      saveAs(blob, filename);
+      
+      console.log(`🎉 PDF Generation Complete! Downloaded as: ${filename}`);
     } catch (err) {
       console.error('Download PDF error:', err);
       toast({
