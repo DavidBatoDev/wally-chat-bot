@@ -1,5 +1,5 @@
 // client/src/components/chat/DocumentCanvas.tsx
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Rnd } from "react-rnd";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -21,19 +21,48 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import 'react-pdf/dist/Page/TextLayer.css';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+
+const measureText = (
+  text: string,
+  fontSize: number,
+  fontFamily: string
+): { width: number; height: number } => {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return { width: 0, height: 0 };
+
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  const lines = text.split("\n");
+  
+  let maxWidth = 0;
+  lines.forEach(line => {
+    const width = ctx.measureText(line).width;
+    if (width > maxWidth) maxWidth = width;
+  });
+  
+  const lineHeight = fontSize * 1.2;
+  const height = lines.length * lineHeight;
+  
+  return {
+    width: maxWidth,
+    height
+  };
+};
 
 // Add polyfill for Promise.withResolvers if not available
-if (!Promise.withResolvers) {
-  Promise.withResolvers = function <T>() {
-    let resolve!: (value: T | PromiseLike<T>) => void;
-    let reject!: (reason?: any) => void;
-    const promise = new Promise<T>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return { promise, resolve, reject };
-  };
-}
+// if (!Promise.withResolvers) {
+//   Promise.withResolvers = function <T>() {
+//     let resolve!: (value: T | PromiseLike<T>) => void;
+//     let reject!: (reason?: any) => void;
+//     const promise = new Promise<T>((res, rej) => {
+//       resolve = res;
+//       reject = rej;
+//     });
+//     return { promise, resolve, reject };
+//   };
+// }
 
 // Set up PDF.js worker with unpkg CDN (more reliable)
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -108,6 +137,19 @@ interface WorkflowData {
   created_at: string;
 }
 
+interface TextSelectionPopupState {
+  texts: {
+    text: string;
+    position: { top: number; left: number };
+    pagePosition: { x: number; y: number };
+  }[];
+  popupPosition: {
+    top: number;
+    left: number;
+    position: 'above' | 'below'; // Add position type
+  };
+}
+
 const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conversationId }) => {
   const [documentUrl, setDocumentUrl] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -122,18 +164,20 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   const [pageWidth, setPageWidth] = useState<number>(612);
   const [pageHeight, setPageHeight] = useState<number>(792);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isAddTextBoxMode, setIsAddTextBoxMode] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [textSelectionPopup, setTextSelectionPopup] = useState<{
-    text: string;
-    position: { top: number; left: number };
-    pagePosition: { x: number; y: number };
-  } | null>(null);
+  const [textSelectionPopup, setTextSelectionPopup] = useState<TextSelectionPopupState | null>(null);
   const [zoomMode, setZoomMode] = useState<'page' | 'width'>('page');
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [settingsPopupFor, setSettingsPopupFor] = useState<string | null>(null)
   
   const documentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
+  const [mouseDownTime, setMouseDownTime] = useState<number | null>(null);
+  
 
   const styles = `
     .drag-handle:active {
@@ -318,7 +362,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         translated_status: "pending",
       },
       "{last_name}": {
-        value: "DIONISIO GARCIA",
+        value: "DIONISIO GARCIA Dsadasd",
         value_status: "ocr",
         translated_value: null,
         translated_status: "pending",
@@ -388,7 +432,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     setZoomMode('width');
   }, []);
 
-    useEffect(() => {
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      if (isDragging) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('contextmenu', handleContextMenu);
+    return () => document.removeEventListener('contextmenu', handleContextMenu);
+  }, [isDragging]);
+
+  useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (settingsPopupFor && !(e.target as Element).closest('.settings-popup')) {
         setSettingsPopupFor(null);
@@ -431,24 +486,41 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     }
   }, [containerWidth, pageWidth, zoomMode]);
 
+  useEffect(() => {
+  const timer = setTimeout(() => {
+    if (mouseDownTime && !isDragging) {
+      // Mouse has been held for 100ms without moving
+      setMouseDownTime(null);
+    }
+  }, 100);
+  
+  return () => clearTimeout(timer);
+}, [mouseDownTime, isDragging]);
+
   const loadWorkflowFields = useCallback(() => {
     const fields: TextField[] = [];
 
     Object.entries(workflowData.origin_template_mappings).forEach(
       ([key, mapping]) => {
         const fieldData = workflowData.fields[key];
-        if (fieldData && mapping) {          
-          // If your mappings are already in web coordinates (top-left origin)
+        if (fieldData && mapping) {
+          // Calculate dimensions based on the value and font from mapping
+          const { width, height } = calculateFieldDimensions(
+            fieldData.value || "",
+            mapping.font.size,
+            mapping.font.name || "Arial, sans-serif"
+          );
+          
           const field: TextField = {
             id: `workflow-${key}`,
             x: mapping.position.x0,
-            y: mapping.position.y0, // Use directly without flipping
-            width: Math.max(mapping.position.width, 30), // Reduced minimum width
-            height: Math.max(mapping.position.height, 12), // Reduced minimum height
+            y: mapping.position.y0,
+            width,   // Use calculated width instead of mapping width
+            height,  // Use calculated height instead of mapping height
             value: fieldData.value || "",
-            fontSize: Math.max(mapping.font.size, 6), // Allow smaller font sizes
+            fontSize: mapping.font.size,
             fontColor: mapping.font.color || "#000000",
-            fontFamily: "Arial, sans-serif",
+            fontFamily: mapping.font.name || "Arial, sans-serif",
             page: mapping.page_number,
             fieldKey: key,
             isFromWorkflow: true,
@@ -461,6 +533,146 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
     setTextFields(fields);
   }, [pageHeight]);
+
+  const selectionRect = useMemo(() => {
+    if (!dragStart || !dragEnd) return null;
+    
+    const left = Math.min(dragStart.x, dragEnd.x);
+    const top = Math.min(dragStart.y, dragEnd.y);
+    const width = Math.abs(dragEnd.x - dragStart.x);
+    const height = Math.abs(dragEnd.y - dragStart.y);
+    
+    return { left, top, width, height };
+  }, [dragStart, dragEnd]);
+
+
+  // Handle mouse down for drag selection
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only respond to right-click (button 2)
+    if (!isTextSelectionMode || e.button !== 2) return;
+    
+    e.preventDefault(); // Prevent context menu
+    setMouseDownTime(Date.now());
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+    setDragEnd({ x: e.clientX, y: e.clientY });
+  };
+
+  // Handle mouse move for drag selection
+  const handleMouseMove = (e: React.MouseEvent) => {
+    // Check if we should start dragging (after 100ms)
+    if (!isDragging && mouseDownTime && Date.now() - mouseDownTime > 100) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+      setDragEnd({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    
+    if (!isDragging || !dragStart) return;
+    
+    e.preventDefault();
+    setDragEnd({ x: e.clientX, y: e.clientY });
+  }
+  // Handle mouse up to finalize selection
+  const handleMouseUp = (e: React.MouseEvent) => {
+    // Only handle right-click release
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
+    setMouseDownTime(null);
+
+  if (e.button !== 2 || !selectionRect || !documentRef.current) return;
+
+  const pdfPage = documentRef.current.querySelector('.react-pdf__Page');
+    if (!pdfPage) return;
+    
+    const pageRect = pdfPage.getBoundingClientRect();
+    const selectedSpans: {
+      text: string;
+      position: { top: number; left: number };
+      pagePosition: { x: number; y: number };
+    }[] = [];
+    
+    // Find all text spans within the selection rectangle
+    document.querySelectorAll('.react-pdf__Page__textContent span').forEach(span => {
+      const spanRect = span.getBoundingClientRect();
+      
+      if (
+        spanRect.left < selectionRect.left + selectionRect.width &&
+        spanRect.right > selectionRect.left &&
+        spanRect.top < selectionRect.top + selectionRect.height &&
+        spanRect.bottom > selectionRect.top
+      ) {
+        const text = span.textContent || '';
+        
+        // Calculate position in PDF coordinates (original scale)
+        const pageX = (spanRect.left - pageRect.left) / scale;
+        const pageY = (spanRect.top - pageRect.top) / scale;
+        
+        selectedSpans.push({
+          text,
+          position: { top: spanRect.top, left: spanRect.left },
+          pagePosition: { x: pageX, y: pageY }
+        });
+      }
+    });
+    
+    if (selectedSpans.length > 0) {
+      const popupPosition = calculatePopupPosition(
+        selectionRect.top,
+        selectionRect.height
+      );
+
+      setTextSelectionPopup({
+        texts: selectedSpans,
+        popupPosition: {
+          top: popupPosition.top,
+          left: selectionRect.left + (selectionRect.width / 2),
+          position: popupPosition.position
+        }
+      });
+    }
+    
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
+  };
+
+
+  const calculateFieldDimensions = (
+    text: string,
+    fontSize: number,
+    fontFamily: string
+  ) => {
+    const padding = 7; // Small padding for visual comfort
+    const { width, height } = measureText(text, fontSize, fontFamily);
+    
+    return {
+      width: Math.max(width + padding, 30), // Minimum width 30px
+      height: Math.max(height + padding, 12) // Minimum height 12px
+    };
+  };
+
+  const calculatePopupPosition = (
+    top: number,
+    height: number
+  ): { top: number; position: 'above' | 'below' } => {
+    const windowHeight = window.innerHeight;
+    const estimatedPopupHeight = 200; // Estimated max height of popup
+
+    // If near bottom of viewport, show above the selection
+    if (top + height + estimatedPopupHeight > windowHeight) {
+      return {
+        top: top - estimatedPopupHeight - 5,
+        position: 'above',
+      };
+    }
+    // Otherwise show below the selection
+    return {
+      top: top + height + 5,
+      position: 'below',
+    };
+  };
 
   const handleDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -490,55 +702,100 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   const handleTextSpanClick = useCallback(
     (e: React.MouseEvent<HTMLSpanElement>) => {
       if (!isTextSelectionMode) return;
+      e.stopPropagation();
       
       const span = e.currentTarget;
       const textContent = span.textContent || '';
       
       if (!textContent.trim()) return;
       
-      // Get the PDF page container
       const pdfPage = documentRef.current?.querySelector('.react-pdf__Page');
       if (!pdfPage) return;
       
-      const pageRect = pdfPage.getBoundingClientRect();
       const spanRect = span.getBoundingClientRect();
       
-      // Calculate position relative to the PDF page (not scaled container)
-      const x = spanRect.left - pageRect.left;
-      const y = spanRect.top - pageRect.top;
-      
-      // Calculate page coordinates
-      const pageX = x;
-      const pageY = y;
-      
-      // Show popup above the selected text
-      const popupTop = spanRect.top - 40;
+      // Calculate position relative to viewport
+      const popupTop = spanRect.bottom + 5;
       const popupLeft = spanRect.left + (spanRect.width / 2);
       
-      setTextSelectionPopup({
-        text: textContent,
-        position: { top: popupTop, left: popupLeft },
-        pagePosition: { x: pageX, y: pageY }
+      // Calculate position relative to PDF page (original scale)
+      const pageRect = pdfPage.getBoundingClientRect();
+      const pageX = (spanRect.left - pageRect.left) / scale;
+      const pageY = (spanRect.top - pageRect.top) / scale;
+
+      const popupPosition = calculatePopupPosition(
+        spanRect.top,
+        spanRect.height
+      );
+      
+      setTextSelectionPopup(prev => {
+        const newSelection = {
+          text: textContent,
+          position: { top: spanRect.top, left: spanRect.left },
+          pagePosition: { x: pageX, y: pageY }
+        };
+        
+        // If shift key is pressed, add to existing selections
+        if (e.shiftKey && prev) {
+          return {
+            texts: [...prev.texts, newSelection],
+            popupPosition: { top: popupTop, left: popupLeft, position: "below" } // Explicitly set position
+          };
+        }
+        
+        // Otherwise, create new selection
+        return {
+          texts: [newSelection],
+          popupPosition: {
+            top: popupPosition.top,
+            left: popupLeft,
+            position: popupPosition.position || "below" // Ensure position is always set
+          }
+        };
       });
+      console.log("Text selected", textSelectionPopup);
     },
-    [isTextSelectionMode]
+    [isTextSelectionMode, scale]
   );
+
 
   // Attach click handlers to text spans
   useEffect(() => {
     if (!isTextSelectionMode || !documentUrl) return;
 
-    const textSpans = document.querySelectorAll(
-      '.react-pdf__Page__textContent span'
-    );
+    const attachHandlers = () => {
+      const textSpans = document.querySelectorAll(
+        '.react-pdf__Page__textContent span'
+      );
 
-    textSpans.forEach(span => {
-      span.addEventListener('click', handleTextSpanClick as any);
-    });
+      textSpans.forEach(span => {
+        // Only attach handler once
+        if (!(span as any).hasListener) {
+          span.addEventListener('click', handleTextSpanClick as any);
+          (span as any).hasListener = true;
+        }
+      });
+    };
+
+    // Create a mutation observer to detect when text layer updates
+    const observer = new MutationObserver(attachHandlers);
+    
+    if (documentRef.current) {
+      const config = { childList: true, subtree: true };
+      observer.observe(documentRef.current, config);
+      
+      // Initial attachment
+      attachHandlers();
+    }
 
     return () => {
+      observer.disconnect();
+      const textSpans = document.querySelectorAll(
+        '.react-pdf__Page__textContent span'
+      );
       textSpans.forEach(span => {
         span.removeEventListener('click', handleTextSpanClick as any);
+        delete (span as any).hasListener;
       });
     };
   }, [isTextSelectionMode, documentUrl, currentPage, handleTextSpanClick]);
@@ -557,24 +814,36 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     };
   }, [textSelectionPopup]);
 
-  const addTextField = () => {
+  const addTextField = (x: number, y: number) => {
+    const value = "New Text Field";
+    const fontSize = 14;
+    const fontFamily = "Arial, sans-serif";
+    
+    const { width, height } = calculateFieldDimensions(
+      value,
+      fontSize,
+      fontFamily
+    );
+
     const newField: TextField = {
       id: `field-${Date.now()}`,
-      x: 50,
-      y: 50,
-      width: 150,
-      height: 30,
-      value: "New Text Field",
-      fontSize: 14,
+      x: x,  // Use provided x coordinate
+      y: y,  // Use provided y coordinate
+      width,
+      height,
+      value,
+      fontSize,
       fontColor: "#000000",
-      fontFamily: "Arial, sans-serif",
+      fontFamily,
       page: currentPage,
       isFromWorkflow: false,
     };
+    
     setTextFields([...textFields, newField]);
     setSelectedFieldId(newField.id);
+    setIsAddTextBoxMode(false);
     setIsTextSelectionMode(false);
-    setTextSelectionPopup(null); // Close any popup
+    setTextSelectionPopup(null);
   };
 
   const deleteTextField = (fieldId: string) => {
@@ -584,11 +853,52 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     }
   };
 
+  const handleDocumentContainerClick = (e: React.MouseEvent) => {
+    if (isAddTextBoxMode && documentRef.current) {
+      const container = documentRef.current;
+      const rect = container.getBoundingClientRect();
+      
+      // Calculate click position relative to document container
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      // Convert to original scale coordinates
+      const originalX = clickX / scale;
+      const originalY = clickY / scale;
+      
+      addTextField(originalX, originalY);
+    }
+    
+    if (e.target === e.currentTarget) {
+      setSelectedFieldId(null);
+      setIsTextSelectionMode(false);
+      setIsAddTextBoxMode(false);
+    }
+  };
+
   const updateTextField = (fieldId: string, updates: Partial<TextField>) => {
     setTextFields(
-      textFields.map((field) =>
-        field.id === fieldId ? { ...field, ...updates } : field
-      )
+      textFields.map((field) => {
+        if (field.id !== fieldId) return field;
+        
+        const newField = { ...field, ...updates };
+        
+        // Recalculate dimensions when text/font changes
+        if (updates.value !== undefined || 
+            updates.fontSize !== undefined || 
+            updates.fontFamily !== undefined) {
+          const { width, height } = calculateFieldDimensions(
+            updates.value ?? field.value,
+            updates.fontSize ?? field.fontSize,
+            updates.fontFamily ?? field.fontFamily
+          );
+          
+          newField.width = width;
+          newField.height = height;
+        }
+        
+        return newField;
+      })
     );
   };
 
@@ -716,7 +1026,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     <AnimatePresence>
 
       <div 
-        className={`${isOpen ? "flex" : "hidden"} w-full transition-all duration-300 ease-in-out  h-screen flex flex-col bg-gray-100 shadow-2xl`}>
+        className={`${isOpen ? "flex" : "hidden"} relative w-full transition-all duration-300 ease-in-out  h-screen flex flex-col bg-gray-100 shadow-2xl`}>
         <style>{styles}</style>
         
         {/* Top Header Bar - Clean Red Design */}
@@ -776,12 +1086,16 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                       <div className="flex items-center space-x-3">
                         {/* Add textbox button */}
                         <button
-                          onClick={addTextField}
-                          className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
+                          onClick={() => setIsAddTextBoxMode(prev => !prev)}
+                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                            isAddTextBoxMode 
+                              ? "bg-red-500 text-white" 
+                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                          }`}
                           disabled={!documentUrl}
-                          title="Add Text Field"
+                          title={isAddTextBoxMode ? "Click on document to place text field" : "Add Text Field"}
                         >
-                          <Plus size={20} className="group-hover:scale-110 transition-transform" />
+                          <Type size={20} className="group-hover:scale-110 transition-transform" />
                         </button>
                         
                         <button
@@ -860,7 +1174,19 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
           </div>
         </div>
-        
+
+        {isDragging && selectionRect && (
+          <div 
+            className="fixed border-2 border-blue-500 bg-blue-100 bg-opacity-20 z-[999] pointer-events-none"
+            style={{
+              left: `${selectionRect.left}px`,
+              top: `${selectionRect.top}px`,
+              width: `${selectionRect.width}px`,
+              height: `${selectionRect.height}px`,
+            }}
+          />
+        )}
+              
         {/* Main Content Area */}
         <div 
           className="h-[85%] bg-gray-200 relative overflow-hidden"
@@ -980,24 +1306,84 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
           {/* Text Selection Popup */}
           {textSelectionPopup && (
             <div 
-              className="absolute bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex items-center space-x-2 text-selection-popup"
+              className={`fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex flex-col max-h-60 overflow-y-auto text-selection-popup max-w-xs ${
+                textSelectionPopup.popupPosition.position === 'above' 
+                  ? 'bottom-auto' 
+                  : 'top-auto'
+              }`}
               style={{
-                top: `${textSelectionPopup.position.top}px`,
-                left: `${textSelectionPopup.position.left}px`,
-                transform: 'translateX(-50%)'
+                top: textSelectionPopup.popupPosition.position === 'below' 
+                  ? `${textSelectionPopup.popupPosition.top}px` 
+                  : undefined,
+                bottom: textSelectionPopup.popupPosition.position === 'above' 
+                  ? `${window.innerHeight - textSelectionPopup.popupPosition.top}px`
+                  : undefined,
+                left: `${textSelectionPopup.popupPosition.left}px`,
+                transform: 'translateX(-50%)',
+                maxWidth: '300px'
               }}
+              onClick={e => e.stopPropagation()}
             >
+              <div className="flex justify-between items-center mb-2 pb-2 border-b">
+                <span className="text-sm font-medium">
+                  {textSelectionPopup.texts.length} selected
+                </span>
+                <button
+                  onClick={() => setTextSelectionPopup(null)}
+                  className="text-gray-500 hover:text-gray-800"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              
+              {textSelectionPopup.texts.map((sel, index) => (
+                <div key={index} className="flex items-center justify-between py-1">
+                  <span className="text-sm truncate flex-1">{sel.text}</span>
+                  <div className="flex space-x-1 ml-2">
+                    <button
+                      onClick={() => console.log("Position:", sel.pagePosition)}
+                      className="p-1 text-gray-500 hover:text-blue-500"
+                      title="Log position"
+                    >
+                      <Move size={14} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newSelections = [...textSelectionPopup.texts];
+                        newSelections.splice(index, 1);
+                        
+                        if (newSelections.length === 0) {
+                          setTextSelectionPopup(null);
+                        } else {
+                          setTextSelectionPopup({
+                            texts: newSelections,
+                            popupPosition: textSelectionPopup.popupPosition
+                          });
+                        }
+                      }}
+                      className="p-1 text-gray-500 hover:text-red-500"
+                      title="Remove"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              
               <button
-                onClick={() => handleTrashClick(textSelectionPopup.pagePosition)}
-                className="p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                title="Log coordinates"
+                onClick={() => {
+                  textSelectionPopup.texts.forEach(sel => {
+                    console.log("Text coordinates:", sel.pagePosition);
+                  });
+                  setTextSelectionPopup(null);
+                }}
+                className="mt-2 p-1 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center"
               >
-                <Trash2 size={16} />
+                <Trash2 size={14} className="mr-1" />
+                <span>Log all positions</span>
               </button>
-              <span className="text-sm max-w-xs truncate">{textSelectionPopup.text}</span>
             </div>
           )}
-
           {documentUrl ? (
             <div className="flex flex-col h-full">            
               <div className="flex-1 overflow-auto p-4 max-h-full">
@@ -1014,10 +1400,22 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                     minWidth: pageWidth * scale,
                     minHeight: pageHeight * scale,
                   }}
-                  onClick={(e) => {
-                    if (e.target === e.currentTarget) {
-                      setSelectedFieldId(null);
-                      setIsTextSelectionMode(false);
+                  onContextMenu={(e) => {
+                    if (isTextSelectionMode) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onClick={handleDocumentContainerClick}
+                  // ADD THESE EVENT HANDLERS:
+                  onMouseDown={handleMouseDown}
+                  onMouseMove={handleMouseMove}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={() => {
+                    setMouseDownTime(null);
+                    if (isDragging) {
+                      setIsDragging(false);
+                      setDragStart(null);
+                      setDragEnd(null);
                     }
                   }}
                 >
@@ -1034,6 +1432,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                       renderTextLayer={isTextSelectionMode}
                       renderAnnotationLayer={false}
                       width={pageWidth * scale}
+                      renderMode="canvas"
                     />
                   </Document>
 
@@ -1068,16 +1467,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                           });
                         }}
                         disableDragging={!isEditMode}
-                        enableResizing={isEditMode ? {
-                          top: false,
-                          right: false,
-                          bottom: false,
-                          left: false,
-                          topRight: false,
-                          bottomLeft: false,
-                          topLeft: false,
-                          bottomRight: true
-                        } : false}
+                        enableResizing={false}
                         bounds="parent"
                         onClick={(e: { stopPropagation: () => void }) => {
                           e.stopPropagation();
@@ -1309,8 +1699,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         </div>
         
         {/* Bottom Controls - Simplified with Zoom Slider */}
-        <div className="absolute bottom-0 bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+        <div className="absolute w-full bottom-0 bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between z-[99999999]">
+          <div className="flex items-center space-x-3 w-full">
             <button
               onClick={() => goToPage(currentPage - 1)}
               disabled={currentPage <= 1}
