@@ -1,12 +1,11 @@
 // client/src/app/chat/[id]/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ChatContainer from "@/components/chat/ChatContainer";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import DocumentCanvas from "@/components/chat/DocumentCanvas";
-// import DocumentCanvas from "@/components/chat/DocumentCanvas/index";
 import useChat from "@/hooks/useChat";
 import useWorkflow from "@/hooks/useWorkflow";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,8 @@ export default function ChatPage() {
   const conversationId = params?.id as string;
   const [isDocumentCanvasOpen, setIsDocumentCanvasOpen] = useState(false);
   const [showWorkflowButton, setShowWorkflowButton] = useState(false);
-  const [hasAutoOpened, setHasAutoOpened] = useState(false); // Track if we've auto-opened
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
+  const [docCanvasWidth, setDocCanvasWidth] = useState(500); // Default width
 
   // Initialize chat with the conversation ID from the URL
   const {
@@ -49,7 +49,6 @@ export default function ChatPage() {
   // Check for workflow after messages change (when new messages arrive)
   useEffect(() => {
     if (messages.length > 0 && conversationId) {
-      // Small delay to ensure any workflow creation process is complete
       const timeoutId = setTimeout(() => {
         checkWorkflow();
       }, 1000);
@@ -61,13 +60,11 @@ export default function ChatPage() {
   // Handle workflow detection - Auto-open DocumentCanvas and show button
   useEffect(() => {
     if (hasWorkflow && !workflowLoading) {
-      // Auto-open the DocumentCanvas when workflow is first detected
       if (!hasAutoOpened) {
         setIsDocumentCanvasOpen(true);
         setHasAutoOpened(true);
       }
       
-      // Delay the button appearance for a smooth animation
       const timeoutId = setTimeout(() => {
         setShowWorkflowButton(true);
       }, 200);
@@ -75,7 +72,6 @@ export default function ChatPage() {
       return () => clearTimeout(timeoutId);
     } else {
       setShowWorkflowButton(false);
-      // Reset auto-open flag when no workflow
       if (!hasWorkflow) {
         setHasAutoOpened(false);
       }
@@ -121,7 +117,6 @@ export default function ChatPage() {
     console.log("Action triggered:", action, values);
     sendAction(action, values);
     
-    // Check for workflow after action is sent
     setTimeout(() => {
       checkWorkflow();
     }, 1500);
@@ -131,7 +126,6 @@ export default function ChatPage() {
   const handleSendMessage = async (text: string) => {
     await sendMessage(text);
     
-    // Check for workflow after sending message
     setTimeout(() => {
       checkWorkflow();
     }, 1500);
@@ -141,16 +135,35 @@ export default function ChatPage() {
   const handleFileUploadedWithWorkflowCheck = async (fileMessage: any) => {
     await handleFileUploaded(fileMessage);
     
-    // Check for workflow after file upload (workflows often created after file uploads)
     setTimeout(() => {
       checkWorkflow();
-    }, 2000); // Longer delay for file processing
+    }, 2000);
   };
 
   // Toggle document canvas
   const toggleDocumentCanvas = () => {
     console.log('Toggling document canvas, current hasWorkflow:', hasWorkflow);
     setIsDocumentCanvasOpen(!isDocumentCanvasOpen);
+  };
+
+  // Handle resizing of document canvas
+  const handleResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startWidth = docCanvasWidth;
+    const startX = e.clientX;
+    
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = startWidth + (startX - moveEvent.clientX);
+setDocCanvasWidth(Math.max(350, Math.min(window.innerWidth * 0.7, newWidth)));
+    };
+    
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
   // If we're loading initially
@@ -259,11 +272,24 @@ export default function ChatPage() {
       </div>
 
       {/* Document Canvas - appears on the right when open */}
-      <DocumentCanvas
-        isOpen={isDocumentCanvasOpen}
-        onClose={() => setIsDocumentCanvasOpen(false)}
-        conversationId={conversationId}
-      />
+      {isDocumentCanvasOpen && (
+        <div 
+          className="relative flex h-screen"
+          style={{ width: `${docCanvasWidth}px` }}
+        >
+          {/* Resize handle */}
+          <div 
+            className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize bg-gray-300 hover:bg-blue-500 z-50"
+            onMouseDown={handleResize}
+          />
+          
+          <DocumentCanvas
+            isOpen={isDocumentCanvasOpen}
+            onClose={() => setIsDocumentCanvasOpen(false)}
+            conversationId={conversationId}
+          />
+        </div>
+      )}
 
       {/* Custom styles for animations */}
       <style jsx>{`
