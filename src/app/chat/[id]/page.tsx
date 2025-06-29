@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ChatContainer from "@/components/chat/ChatContainer";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-// import DocumentCanvas from "@/components/chat/DocumentCanvas";
-import DocumentCanvas from "@/components/chat/DocumentCanvas/index";
+import DocumentCanvas from "@/components/chat/DocumentCanvas";
+// import DocumentCanvas from "@/components/chat/DocumentCanvas/index";
 import useChat from "@/hooks/useChat";
 import useWorkflow from "@/hooks/useWorkflow";
 import { Button } from "@/components/ui/button";
@@ -181,7 +181,7 @@ export default function ChatPage() {
       />
 
       {/* Main content area */}
-      <div className={`flex-1 flex flex-col min-w-0 ${isDocumentCanvasOpen ? 'mr-96' : ''}`}>
+      <div className={`flex-1 flex flex-col min-w-0 ${isDocumentCanvasOpen ? '' : ''}`}>
         {/* Chat header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white shadow-sm">
           <div className="flex items-center">

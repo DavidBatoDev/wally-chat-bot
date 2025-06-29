@@ -1,3 +1,4 @@
+// Document Canvas
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Rnd } from "react-rnd";
@@ -22,7 +23,12 @@ import {
   ChevronRight,
   Minus,
   Layout,
-  MousePointer2
+  MousePointer2,
+  Menu,
+  Settings,
+  ArrowLeft,
+  ArrowRight,
+  Maximize2
 } from "lucide-react";
 
 // Add polyfill for Promise.withResolvers if not available
@@ -125,101 +131,169 @@ const DocumentCanvas: React.FC = () => {
     position: { top: number; left: number };
     pagePosition: { x: number; y: number };
   } | null>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [zoomMode, setZoomMode] = useState<'page' | 'width'>('page');
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [showSettings, setShowSettings] = useState<boolean>(false);
+  
   const documentRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-const styles = `
-  .drag-handle:active {
-    transform: scale(0.95) !important;
-  }
-  
-  .rnd {
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  
-  .rnd:hover {
-    z-index: 10;
-  }
-  
-  .rnd.react-draggable-dragging {
-    z-index: 1000;
-    transition: none;
-  }
+  const styles = `
+    .drag-handle:active {
+      transform: scale(0.95) !important;
+    }
+    
+    .rnd .react-resizable-handle-se {
+      background: none !important;
+      border: none !important;
+      width: 12px !important;
+      height: 12px !important;
+      bottom: 0 !important;
+      right: 0 !important;
+    }
 
-  /* CRITICAL: PDF Page Container Fixes */
-  .react-pdf__Page {
-    position: relative !important;
-    display: inline-block !important;
-    vertical-align: top !important;
-  }
-  
-  /* CRITICAL: Canvas positioning */
-  .react-pdf__Page__canvas {
-    display: block !important;
-    position: relative !important;
-    z-index: 1 !important;
-  }
-  
-  /* CRITICAL: Text layer positioning - must exactly overlay the canvas */
-  .react-pdf__Page__textContent {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    z-index: 2 !important;
-    pointer-events: none !important;
-    overflow: hidden !important;
-    /* Ensure text layer doesn't interfere with layout */
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-  }
-  
-  /* Text spans positioning */
-  .react-pdf__Page__textContent span {
-    position: absolute !important;
-    white-space: nowrap !important;
-    color: transparent !important;
-    line-height: 1 !important;
-    pointer-events: none !important;
-    transform-origin: 0% 0% !important;
-  }
-  
-  /* Enable pointer events and styling only in text selection mode */
-  .text-selection-mode .react-pdf__Page__textContent {
-    pointer-events: auto !important;
-    z-index: 50 !important;
-  }
-  
-  .text-selection-mode .react-pdf__Page__textContent span {
-    cursor: pointer !important;
-    color: rgba(0, 0, 0, 0.1) !important;
-    background-color: rgba(59, 130, 246, 0.2) !important;
-    transition: background-color 0.2s !important;
-    pointer-events: auto !important;
-    border-radius: 2px !important;
-  }
-  
-  .text-selection-mode .react-pdf__Page__textContent span:hover {
-    background-color: rgba(59, 130, 246, 0.4) !important;
-    color: rgba(0, 0, 0, 0.3) !important;
-  }
-  
-  /* Ensure text fields are properly layered above text layer */
-  .text-field-overlay {
-    position: absolute !important;
-    z-index: 100 !important;
-  }
-  
-  /* Fix any potential scaling issues */
-  .text-selection-mode .react-pdf__Page {
-    transform-origin: top left !important;
-  }
-`;
+    .rnd .react-resizable-handle-se::after {
+      content: '';
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      width: 8px;
+      height: 8px;
+      background-image: 
+        linear-gradient(45deg, transparent 40%, #666 40%, #666 60%, transparent 60%),
+        linear-gradient(45deg, transparent 40%, #666 40%, #666 60%, transparent 60%);
+      background-size: 4px 1px, 1px 4px;
+      background-position: 2px 6px, 6px 2px;
+      background-repeat: no-repeat;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+    }
+
+    .rnd:hover .react-resizable-handle-se::after {
+      opacity: 1;
+    }
+
+    /* Hide all other resize handles */
+    .rnd .react-resizable-handle:not(.react-resizable-handle-se) {
+      display: none !important;
+    }
+
+    /* CRITICAL: PDF Page Container Fixes */
+    .react-pdf__Page {
+      position: relative !important;
+      display: inline-block !important;
+      vertical-align: top !important;
+    }
+    
+    /* CRITICAL: Canvas positioning */
+    .react-pdf__Page__canvas {
+      display: block !important;
+      position: relative !important;
+      z-index: 1 !important;
+    }
+    
+    /* CRITICAL: Text layer positioning - must exactly overlay the canvas */
+    .react-pdf__Page__textContent {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 2 !important;
+      pointer-events: none !important;
+      overflow: hidden !important;
+      /* Ensure text layer doesn't interfere with layout */
+      margin: 0 !important;
+      padding: 0 !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* Text spans positioning */
+    .react-pdf__Page__textContent span {
+      position: absolute !important;
+      white-space: nowrap !important;
+      color: transparent !important;
+      line-height: 1 !important;
+      pointer-events: none !important;
+      transform-origin: 0% 0% !important;
+    }
+    
+    /* Enable pointer events and styling only in text selection mode */
+    .text-selection-mode .react-pdf__Page__textContent {
+      pointer-events: auto !important;
+      z-index: 50 !important;
+    }
+    
+    .text-selection-mode .react-pdf__Page__textContent span {
+      cursor: pointer !important;
+      color: rgba(0, 0, 0, 0.1) !important;
+      background-color: rgba(59, 130, 246, 0.2) !important;
+      transition: background-color 0.2s !important;
+      pointer-events: auto !important;
+      border-radius: 2px !important;
+    }
+    
+    .text-selection-mode .react-pdf__Page__textContent span:hover {
+      background-color: rgba(59, 130, 246, 0.4) !important;
+      color: rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    /* Ensure text fields are properly layered above text layer */
+    .text-field-overlay {
+      position: absolute !important;
+      z-index: 100 !important;
+    }
+    
+    /* Fix any potential scaling issues */
+    .text-selection-mode .react-pdf__Page {
+      transform-origin: top left !important;
+    }
+
+    /* Custom vertical slider styling - Fixed */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 12px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 12px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      -moz-appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-track {
+      background: transparent;
+      height: 100%;
+    }
+
+    input[type="range"]::-moz-range-track {
+      background: transparent;
+      height: 100%;
+      border: none;
+    }
+
+    input[type="range"]:focus {
+      outline: none;
+    }
+  `;
+
   // Hardcoded workflow data for demo
   const workflowData: WorkflowData = {
     id: "5eb24566-ddd6-48ae-ab32-80574e0875a3",
@@ -312,6 +386,9 @@ const styles = `
   useEffect(() => {
     // Load the demo PDF immediately
     setDocumentUrl(workflowData.base_file_public_url);
+    
+    // Set initial zoom to fit width
+    setZoomMode('width');
   }, []);
 
   // Load workflow fields when page dimensions are available
@@ -321,7 +398,28 @@ const styles = `
     }
   }, [pageWidth, pageHeight]);
 
-// Change only the loadWorkflowFields function to properly handle the coordinate conversion:
+  // Calculate container width on resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerWidth(rect.width);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial measurement
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Adjust scale when in width mode
+  useEffect(() => {
+    if (zoomMode === 'width' && containerWidth > 0 && pageWidth > 0) {
+      const calculatedScale = containerWidth / pageWidth;
+      setScale(Math.min(calculatedScale, 3.0)); // Max zoom 300%
+    }
+  }, [containerWidth, pageWidth, zoomMode]);
 
   const loadWorkflowFields = useCallback(() => {
     const fields: TextField[] = [];
@@ -329,28 +427,8 @@ const styles = `
     Object.entries(workflowData.origin_template_mappings).forEach(
       ([key, mapping]) => {
         const fieldData = workflowData.fields[key];
-        if (fieldData && mapping) {
-          // Convert PDF coordinates (PDF uses bottom-left origin, we use top-left)
-          // Option 1: If your mappings are already in PDF coordinates (bottom-left origin)
-          // Comment out the lines below if using Option 2
-          /*
-          const field: TextField = {
-            id: `workflow-${key}`,
-            x: mapping.position.x0,
-            y: pageHeight - mapping.position.y0, // Use y0 (bottom) and flip
-            width: Math.max(mapping.position.width, 50),
-            height: Math.max(mapping.position.height, 20),
-            value: fieldData.value || "",
-            fontSize: Math.max(mapping.font.size, 8),
-            fontColor: mapping.font.color || "#000000",
-            fontFamily: "Arial, sans-serif",
-            page: mapping.page_number,
-            fieldKey: key,
-            isFromWorkflow: true,
-          };
-          */
-          
-          // Option 2: If your mappings are already in web coordinates (top-left origin)
+        if (fieldData && mapping) {          
+          // If your mappings are already in web coordinates (top-left origin)
           const field: TextField = {
             id: `workflow-${key}`,
             x: mapping.position.x0,
@@ -582,19 +660,6 @@ const styles = `
     URL.revokeObjectURL(url);
   };
 
-  const loadDocumentFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type === "application/pdf") {
-      const url = URL.createObjectURL(file);
-      setDocumentUrl(url);
-      setTextFields([]);
-      setSelectedFieldId(null);
-      setCurrentPage(1);
-      setIsTextSelectionMode(false);
-      setTextSelectionPopup(null); // Close any popup
-    }
-  };
-
   const goToPage = (pageNumber: number) => {
     if (pageNumber >= 1 && pageNumber <= numPages) {
       setCurrentPage(pageNumber);
@@ -609,375 +674,390 @@ const styles = `
     setTextSelectionPopup(null);
   };
 
+  // Zoom to fit width
+  const zoomToFitWidth = useCallback(() => {
+    setZoomMode('width');
+    if (containerRef.current && pageWidth) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const calculatedScale = rect.width / pageWidth;
+      setScale(Math.min(calculatedScale, 3.0)); // Max zoom 300%
+    }
+  }, [pageWidth]);
+
+  // Zoom to actual size
+  const zoomToActualSize = useCallback(() => {
+    setZoomMode('page');
+    setScale(1.0);
+  }, []);
+
+  // Zoom in
+  const zoomIn = useCallback(() => {
+    setZoomMode('page');
+    setScale(prev => Math.min(3.0, prev + 0.1));
+  }, []);
+
+  // Zoom out
+  const zoomOut = useCallback(() => {
+    setZoomMode('page');
+    setScale(prev => Math.max(0.25, prev - 0.1));
+  }, []);
+
   return (
-    <div className="h-screen flex bg-gray-100">
+    <div className="h-screen flex flex-col bg-gray-100 max-w-[600px]">
       <style>{styles}</style>
-      {/* Sidebar */}
-      <div className="w-80 bg-white shadow-lg border-r border-gray-200 flex flex-col">
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
-          <div className="flex items-center space-x-2 mb-4">
-            <Edit3 size={20} className="text-blue-600" />
-            <h1 className="text-lg font-semibold text-gray-800">PDF Editor</h1>
-          </div>
-
-          {/* File Upload */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            onChange={loadDocumentFile}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
-          >
-            <Upload size={16} />
-            <span>Load PDF</span>
-          </button>
-        </div>
-
-        {/* Toolbar */}
-        <div className="p-4 border-b border-gray-200">
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <button
-              onClick={addTextField}
-              className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors flex items-center justify-center space-x-1"
-            >
-              <Plus size={16} />
-              <span>Add Text</span>
-            </button>
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`px-3 py-2 rounded transition-colors flex items-center justify-center space-x-1 ${
-                isEditMode
-                  ? "bg-orange-600 text-white hover:bg-orange-700"
-                  : "bg-gray-600 text-white hover:bg-gray-700"
-              }`}
-            >
-              <Type size={16} />
-              <span>{isEditMode ? "Edit" : "View"}</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <button
-              onClick={() => setShowWorkflowFields(!showWorkflowFields)}
-              className={`px-3 py-2 rounded transition-colors flex items-center space-x-1 ${
-                showWorkflowFields
-                  ? "bg-purple-600 text-white hover:bg-purple-700"
-                  : "bg-gray-400 text-white hover:bg-gray-500"
-              }`}
-            >
-              {showWorkflowFields ? <Eye size={16} /> : <EyeOff size={16} />}
-              <span>Workflow</span>
-            </button>
-            
-            <button
-              onClick={() => setShowTextboxBorders(!showTextboxBorders)}
-              className={`px-3 py-2 rounded transition-colors flex items-center space-x-1 ${
-                showTextboxBorders
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "bg-gray-400 text-white hover:bg-gray-500"
-              }`}
-            >
-              <Layout size={16} />
-              <span>Borders</span>
-            </button>
-          </div>
-
-          {/* Text Selection Mode Button */}
-          <div className="mb-4">
-            <button
-              onClick={handleTextSelection}
-              className={`w-full px-3 py-2 rounded transition-colors flex items-center justify-center space-x-1 ${
-                isTextSelectionMode
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "bg-gray-600 text-white hover:bg-gray-700"
-              }`}
-            >
-              <MousePointer2 size={16} />
-              <span>Text Selection Mode</span>
-            </button>
-            {isTextSelectionMode && (
-              <div className="mt-2 p-2 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200 z-[70]">
-                Click on any text in the document to inspect it
-              </div>
-            )}
-          </div>
-
-          {/* Zoom Controls */}
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={() => setScale(Math.max(0.5, scale - 0.1))}
-              className="p-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
-            >
-              <ZoomOut size={16} />
-            </button>
-            <span className="text-sm text-gray-600 min-w-[60px] text-center">
-              {Math.round(scale * 100)}%
-            </span>
-            <button
-              onClick={() => setScale(Math.min(2.0, scale + 0.1))}
-              className="p-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
-            >
-              <ZoomIn size={16} />
-            </button>
-          </div>
-
-          {/* Export Buttons */}
-          <div className="space-y-2">
-            <button
-              onClick={exportToPDF}
-              disabled={!documentUrl || isLoading}
-              className="w-full px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
-            >
-              <Download size={16} />
-              <span>{isLoading ? "Exporting..." : "Export PDF"}</span>
-            </button>
-            <button
-              onClick={exportFieldsData}
-              disabled={!documentUrl}
-              className="w-full px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
-            >
-              <Save size={16} />
-              <span>Export Data</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Page Navigation */}
-        {numPages > 0 && (
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => goToPage(currentPage - 1)}
-                disabled={currentPage <= 1}
-                className="p-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-sm text-gray-600">
-                Page {currentPage} of {numPages}
-              </span>
-              <button
-                onClick={() => goToPage(currentPage + 1)}
-                disabled={currentPage >= numPages}
-                className="p-2 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Field Properties Panel */}
-        {selectedFieldId && isEditMode && (
-          <div className="p-4 border-b border-gray-200 flex-1 overflow-y-auto">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Field Properties
-            </h3>
-            {(() => {
-              const field = textFields.find((f) => f.id === selectedFieldId);
-              if (!field) return null;
-
-              return (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Text Value
-                    </label>
-                    <textarea
-                      value={field.value}
-                      onChange={(e) =>
-                        updateTextField(field.id, { value: e.target.value })
-                      }
-                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded resize-none"
-                      rows={3}
-                    />
-                  </div>
-
-                  {/* Position Controls */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">
-                        X Position
-                      </label>
-                      <input
-                        type="number"
-                        value={Math.round(field.x)}
-                        onChange={(e) =>
-                          updateTextField(field.id, {
-                            x: parseInt(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                        min="0"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">
-                        Y Position
-                      </label>
-                      <input
-                        type="number"
-                        value={Math.round(field.y)}
-                        onChange={(e) =>
-                          updateTextField(field.id, {
-                            y: parseInt(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                        min="0"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Size Controls */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">
-                        Width
-                      </label>
-                      <input
-                        type="number"
-                        value={Math.round(field.width)}
-                        onChange={(e) =>
-                          updateTextField(field.id, {
-                            width: parseInt(e.target.value) || 50,
-                          })
-                        }
-                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                        min="10"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">
-                        Height
-                      </label>
-                      <input
-                        type="number"
-                        value={Math.round(field.height)}
-                        onChange={(e) =>
-                          updateTextField(field.id, {
-                            height: parseInt(e.target.value) || 20,
-                          })
-                        }
-                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                        min="10"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Font Size
-                    </label>
-                    <input
-                      type="number"
-                      value={field.fontSize}
-                      onChange={(e) =>
-                        updateTextField(field.id, {
-                          fontSize: parseInt(e.target.value) || 12,
-                        })
-                      }
-                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
-                      min="6"
-                      max="72"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Color
-                    </label>
-                    <input
-                      type="color"
-                      value={field.fontColor}
-                      onChange={(e) =>
-                        updateTextField(field.id, { fontColor: e.target.value })
-                      }
-                      className="w-full h-8 border border-gray-300 rounded"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-600 mb-1">
-                      Font Family
-                    </label>
-                    <select
-                      value={field.fontFamily}
-                      onChange={(e) =>
-                        updateTextField(field.id, {
-                          fontFamily: e.target.value,
-                        })
-                      }
-                      className="w-full px-2 py-1 text-xs border border-gray-300 rounded"
+      
+      {/* Top Header Bar - Clean Red Design */}
+      <div className="bg-white shadow-lg border-b-2 border-red-500">
+        <div className="relative max-w-7xl mx-auto">
+          
+          {/* Persistent Toolbar - Always visible */}
+          <div className="bg-white">
+            <div className="max-w-7xl mx-auto px-6 py-4">
+              {/* Top Row - Always visible tools */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  {/* Document Tools */}
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={addTextField}
+                      className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
+                      disabled={!documentUrl}
+                      title="Add Text Field"
                     >
-                      <option value="Arial, sans-serif">Arial</option>
-                      <option value="Georgia, serif">Georgia</option>
-                      <option value="'Times New Roman', serif">
-                        Times New Roman
-                      </option>
-                      <option value="'Courier New', monospace">
-                        Courier New
-                      </option>
-                      <option value="Verdana, sans-serif">Verdana</option>
-                    </select>
+                      <Plus size={20} className="group-hover:scale-110 transition-transform" />
+                    </button>
+                    
+                    <button
+                      onClick={handleTextSelection}
+                      className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                        isTextSelectionMode 
+                          ? "bg-red-500 text-white" 
+                          : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                      }`}
+                      disabled={!documentUrl}
+                      title="Text Selection Mode"
+                    >
+                      <MousePointer2 size={20} className="group-hover:scale-110 transition-transform" />
+                    </button>
                   </div>
-                  {field.isFromWorkflow && (
-                    <div className="p-2 bg-purple-100 rounded text-xs">
-                      <div className="font-semibold text-purple-800">
-                        Workflow Field
-                      </div>
-                      <div className="text-purple-600">
-                        Key: {field.fieldKey}
-                      </div>
-                      {workflowData.template_required_fields[
-                        field.fieldKey!
-                      ] && (
-                        <div className="mt-1 text-purple-600">
-                          <div className="font-medium">
-                            {
-                              workflowData.template_required_fields[
-                                field.fieldKey!
-                              ].label
-                            }
-                          </div>
-                          <div className="text-xs">
-                            {
-                              workflowData.template_required_fields[
-                                field.fieldKey!
-                              ].description
-                            }
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  
+                  {/* View Options */}
+                  <div className="flex items-center space-x-3">
+                    <div className="w-px h-8 bg-gray-300"></div>
+                    <button
+                      onClick={() => setShowTextboxBorders(!showTextboxBorders)}
+                      className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                        showTextboxBorders
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                      }`}
+                      title="Toggle Field Borders"
+                    >
+                      <Layout size={20} className="group-hover:scale-110 transition-transform" />
+                    </button>
+                    
+                    <button
+                      onClick={() => setIsEditMode(!isEditMode)}
+                      className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                        isEditMode
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                      }`}
+                      title={isEditMode ? "Exit Edit Mode" : "Enter Edit Mode"}
+                    >
+                      <Type size={20} className="group-hover:scale-110 transition-transform" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Right side - Export actions */}
+                <div className="flex items-center space-x-3">
                   <button
-                    onClick={() => deleteTextField(field.id)}
-                    className="w-full px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center justify-center space-x-1"
+                    onClick={exportFieldsData}
+                    className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
+                    disabled={!documentUrl}
+                    title="Export Field Data"
                   >
-                    <Trash2 size={14} />
-                    <span>Delete Field</span>
+                    <Save size={20} className="group-hover:scale-110 transition-transform" />
+                  </button>
+                  
+                  <button
+                    onClick={exportToPDF}
+                    className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
+                    disabled={isLoading || !documentUrl}
+                    title="Export to PDF"
+                  >
+                    {isLoading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Download size={20} className="group-hover:scale-110 transition-transform" />
+                    )}
                   </button>
                 </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
+              </div>
+              
+              {/* Field Properties Row - Only when field is selected */}
+              {selectedFieldId && isEditMode && (
+                <div className="border-t border-gray-100 pt-4 mt-4">
+                  {(() => {
+                    const field = textFields.find((f) => f.id === selectedFieldId);
+                    if (!field) return null;
 
+                    return (
+                      <div className="bg-red-50 rounded-lg p-4 border-2 border-red-200">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-red-500 rounded-lg flex items-center justify-center">
+                              <Type size={20} className="text-white" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-semibold text-gray-900">Field Properties</h3>
+                              <div className="flex items-center space-x-2 mt-1">
+                                {field.isFromWorkflow && field.fieldKey && (
+                                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">
+                                    Workflow: {field.fieldKey}
+                                  </span>
+                                )}
+                                <span className="text-xs text-gray-500">
+                                  {field.isFromWorkflow ? 'Template Field' : 'Custom Field'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setSelectedFieldId(null)}
+                            className="p-2 hover:bg-red-100 rounded-lg transition-colors group"
+                          >
+                            <X size={16} className="text-gray-600 group-hover:text-gray-800" />
+                          </button>
+                        </div>
+                        
+                        <div className="grid grid-cols-6 gap-4">
+                          {/* Text Content */}
+                          <div className="col-span-2">
+                            <label className="block text-xs font-semibold text-gray-700 mb-2">Text Content</label>
+                            <input
+                              type="text"
+                              value={field.value}
+                              onChange={(e) =>
+                                updateTextField(field.id, { value: e.target.value })
+                              }
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white"
+                              placeholder="Enter text content..."
+                            />
+                          </div>
+
+                          {/* Position X */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-2">X Position</label>
+                            <input
+                              type="number"
+                              value={Math.round(field.x)}
+                              onChange={(e) =>
+                                updateTextField(field.id, {
+                                  x: parseInt(e.target.value) || 0,
+                                })
+                              }
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white"
+                              min="0"
+                            />
+                          </div>
+                          
+                          {/* Position Y */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-2">Y Position</label>
+                            <input
+                              type="number"
+                              value={Math.round(field.y)}
+                              onChange={(e) =>
+                                updateTextField(field.id, {
+                                  y: parseInt(e.target.value) || 0,
+                                })
+                              }
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white"
+                              min="0"
+                            />
+                          </div>
+
+                          {/* Font Size */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-2">Font Size</label>
+                            <div className="flex items-center space-x-1">
+                              <button
+                                onClick={() =>
+                                  updateTextField(field.id, {
+                                    fontSize: Math.max(6, field.fontSize - 1),
+                                  })
+                                }
+                                className="p-1 hover:bg-red-100 rounded transition-colors"
+                              >
+                                <Minus size={14} className="text-gray-600" />
+                              </button>
+                              <input
+                                type="number"
+                                value={field.fontSize}
+                                onChange={(e) =>
+                                  updateTextField(field.id, {
+                                    fontSize: parseInt(e.target.value) || 12,
+                                  })
+                                }
+                                className="w-16 px-2 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white text-center"
+                                min="6"
+                                max="72"
+                              />
+                              <button
+                                onClick={() =>
+                                  updateTextField(field.id, {
+                                    fontSize: Math.min(72, field.fontSize + 1),
+                                  })
+                                }
+                                className="p-1 hover:bg-red-100 rounded transition-colors"
+                              >
+                                <Plus size={14} className="text-gray-600" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Font Color */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-2">Font Color</label>
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="color"
+                                value={field.fontColor}
+                                onChange={(e) =>
+                                  updateTextField(field.id, { fontColor: e.target.value })
+                                }
+                                className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                              />
+                              <input
+                                type="text"
+                                value={field.fontColor}
+                                onChange={(e) =>
+                                  updateTextField(field.id, { fontColor: e.target.value })
+                                }
+                                className="flex-1 px-2 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200 bg-white"
+                                placeholder="#000000"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+      
       {/* Main Content Area */}
-      <div className="flex-1 overflow-auto bg-gray-200 p-4">
+      <div 
+        className="flex-1 bg-gray-200 relative"
+        ref={containerRef}
+      >
+
+      {/* Vertical Zoom Controls - Adobe Acrobat Style */}
+      {documentUrl && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
+          
+          {/* Auto Fit Button */}
+          <button
+            onClick={zoomToFitWidth}
+            className="p-2 hover:bg-gray-50 border-b border-gray-200 rounded-t-lg transition-colors group flex items-center justify-center"
+            title="Fit to Width"
+          >
+            <Maximize2 size={16} className="text-gray-600 group-hover:text-gray-800" />
+          </button>
+          
+          {/* Zoom In Button */}
+          <button
+            onClick={zoomIn}
+            className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
+            title="Zoom In"
+          >
+            <Plus size={16} className="text-gray-600 group-hover:text-gray-800" />
+          </button>
+          
+          {/* 300% Label */}
+          <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
+            300%
+          </div>
+          
+          {/* Vertical Slider Container */}
+          <div className="relative py-4 px-3 flex flex-col items-center">
+            <div className="relative h-32 w-6 flex items-center justify-center">
+              {/* Slider Track */}
+              <div className="absolute w-1 h-full bg-gray-300 rounded-full"></div>
+              
+              {/* Progress Track */}
+              <div 
+                className="absolute w-1 bg-blue-500 rounded-full bottom-0"
+                style={{
+                  height: `${((scale * 100 - 25) / 275) * 100}%`
+                }}
+              ></div>
+              
+              {/* Slider Input - Fixed positioning */}
+              <input
+                type="range"
+                min="25"
+                max="300"
+                value={Math.round(scale * 100)}
+                onChange={(e) => {
+                  setZoomMode('page');
+                  setScale(parseInt(e.target.value) / 100);
+                }}
+                className="absolute w-32 h-6 opacity-0 cursor-pointer origin-center"
+                style={{
+                  transform: 'rotate(-90deg)',
+                  transformOrigin: 'center'
+                }}
+              />
+              
+              {/* Custom Handle */}
+              <div 
+                className="absolute w-4 h-3 bg-white border-2 border-blue-500 rounded-sm shadow-sm pointer-events-none"
+                style={{
+                  bottom: `${((scale * 100 - 25) / 275) * 100}%`,
+                  transform: 'translateY(50%)'
+                }}
+              ></div>
+            </div>
+          </div>
+          
+          {/* 25% Label */}
+          <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
+            25%
+          </div>
+          
+          {/* Zoom Out Button */}
+          <button
+            onClick={zoomOut}
+            className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
+            title="Zoom Out"
+          >
+            <Minus size={16} className="text-gray-600 group-hover:text-gray-800" />
+          </button>
+          
+          {/* Current Zoom Display */}
+          <div className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-50 rounded-b-lg border-t border-gray-200 min-w-[60px] text-center">
+            {Math.round(scale * 100)}%
+          </div>
+          
+        </div>
+      )}
+
         {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 rounded px-4 py-2 z-[60]">
             {error}
           </div>
         )}
 
         {isTextSelectionMode && (
-          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[60] flex items-center space-x-2">
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[60] flex items-center space-x-2">
             <MousePointer2 size={18} />
             <span>Click on any text in the document to inspect it</span>
             <button 
@@ -992,7 +1072,7 @@ const styles = `
         {/* Text Selection Popup */}
         {textSelectionPopup && (
           <div 
-            className="fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex items-center space-x-2 text-selection-popup"
+            className="absolute bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex items-center space-x-2 text-selection-popup"
             style={{
               top: `${textSelectionPopup.position.top}px`,
               left: `${textSelectionPopup.position.left}px`,
@@ -1011,167 +1091,186 @@ const styles = `
         )}
 
         {documentUrl ? (
-          <div className="flex justify-center">
-            <div
-              className={`relative bg-white shadow-lg ${
-                isTextSelectionMode ? "text-selection-mode" : ""
-              }`}
-              ref={documentRef}
-              onClick={(e) => {
-                if (e.target === e.currentTarget) {
-                  setSelectedFieldId(null);
-                  setIsTextSelectionMode(false);
-                }
-              }}
-            >
-              <Document
-                file={documentUrl}
-                onLoadSuccess={handleDocumentLoadSuccess}
-                onLoadError={handleDocumentLoadError}
-                loading={<div className="p-8 text-center">Loading PDF...</div>}
+          <div className="flex flex-col h-full">            
+            <div className="flex-1 overflow-auto p-4">
+              <div
+                className={`relative bg-white shadow-lg mx-auto ${
+                  isTextSelectionMode ? "text-selection-mode" : ""
+                }`}
+                ref={documentRef}
+                style={{
+                  transform: `scale(${scale})`,
+                  transformOrigin: 'top left',
+                  width: pageWidth * scale,
+                  height: pageHeight * scale,
+                  minWidth: pageWidth * scale,
+                  minHeight: pageHeight * scale,
+                }}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) {
+                    setSelectedFieldId(null);
+                    setIsTextSelectionMode(false);
+                  }
+                }}
               >
-                <Page
-                  pageNumber={currentPage}
-                  onLoadSuccess={handlePageLoadSuccess}
-                  renderTextLayer={isTextSelectionMode}
-                  renderAnnotationLayer={false}
-                  width={pageWidth}
-                />
-              </Document>
+                <Document
+                  file={documentUrl}
+                  onLoadSuccess={handleDocumentLoadSuccess}
+                  onLoadError={handleDocumentLoadError}
+                  loading={<div className="p-8 text-center">Loading PDF...</div>}
+                >
+                  <Page
+                    pageNumber={currentPage}
+                    onLoadSuccess={handlePageLoadSuccess}
+                    renderTextLayer={isTextSelectionMode}
+                    renderAnnotationLayer={false}
+                    width={pageWidth}
+                  />
+                </Document>
 
-              {/* Text Field Overlays */}
-              {textFields
-                .filter((field) => field.page === currentPage)
-                .filter((field) => !field.isFromWorkflow || showWorkflowFields)
-                .map((field) => (
-                  <Rnd
-                    key={field.id}
-                    size={{ width: field.width, height: field.height }}
-                    position={{ x: field.x, y: field.y }}
-                    onDrag={(e, d) => {
-                      updateTextField(field.id, { x: d.x, y: d.y });
-                    }}
-                    onDragStop={(e, d) => {
-                      updateTextField(field.id, { x: d.x, y: d.y });
-                    }}
-                    onResizeStop={(e, direction, ref, delta, position) => {
-                      updateTextField(field.id, {
-                        width: parseInt(ref.style.width),
-                        height: parseInt(ref.style.height),
-                        ...position,
-                      });
-                    }}
-                    disableDragging={!isEditMode}
-                    enableResizing={isEditMode}
-                    bounds="parent"
-                    onClick={(e: { stopPropagation: () => void }) => {
-                      e.stopPropagation();
-                      setSelectedFieldId(field.id);
-                      setIsTextSelectionMode(false);
-                    }}
-                    dragHandleClassName="drag-handle"
-                    dragAxis="both"
-                    dragGrid={[1, 1]}
-                    resizeGrid={[1, 1]}
-                    className={`${showTextboxBorders ? 'border-2' : 'border-0'} ${field.isFromWorkflow ? ' hover:border-purple-400' : 'border-gray-300 hover:border-blue-400'} ${
-                      selectedFieldId === field.id
-                        ? ""
-                        : ""
-                    } transition-all duration-200 ease-in-out`}
-                    style={{
-                      backgroundColor: "rgba(255, 255, 255, 0.1)", // Semi-transparent background
-                      transition: "transform 0.1s ease-out",
-                      zIndex: selectedFieldId === field.id ? 1000 : 100,
-                    }}
-                  >
-                    <div className="w-full h-full relative group">
-                      {/* Move handle */}
-                      {isEditMode && (
-                       <div className="absolute -bottom-7 left-1 transform opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 flex items-center space-x-1">
-                          {/* Move handle */}
-                          <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
-                            <Move size={10} />
+                {/* Text Field Overlays */}
+                {textFields
+                  .filter((field) => field.page === currentPage)
+                  .filter((field) => !field.isFromWorkflow || showWorkflowFields)
+                  .map((field) => (
+                    <Rnd
+                      key={field.id}
+                      size={{ width: field.width, height: field.height }}
+                      position={{ x: field.x, y: field.y }}
+                      onDrag={(e, d) => {
+                        updateTextField(field.id, { x: d.x, y: d.y });
+                      }}
+                      onDragStop={(e, d) => {
+                        updateTextField(field.id, { x: d.x, y: d.y });
+                      }}
+                      onResizeStop={(e, direction, ref, delta, position) => {
+                        updateTextField(field.id, {
+                          width: parseInt(ref.style.width),
+                          height: parseInt(ref.style.height),
+                          ...position,
+                        });
+                      }}
+                      disableDragging={!isEditMode}
+                      enableResizing={isEditMode ? {
+                        top: false,
+                        right: false,
+                        bottom: false,
+                        left: false,
+                        topRight: false,
+                        bottomLeft: false,
+                        topLeft: false,
+                        bottomRight: true
+                      } : false}
+                      bounds="parent"
+                      onClick={(e: { stopPropagation: () => void }) => {
+                        e.stopPropagation();
+                        setSelectedFieldId(field.id);
+                        setIsTextSelectionMode(false);
+                      }}
+                      dragHandleClassName="drag-handle"
+                      dragAxis="both"
+                      dragGrid={[1, 1]}
+                      resizeGrid={[1, 1]}
+                      className={`${showTextboxBorders ? 'border border-blue-500' : 'border'} ${field.isFromWorkflow ? ' hover:border-purple-400' : 'border-gray-300 hover:border-blue-400'} ${
+                        selectedFieldId === field.id
+                          ? ""
+                          : ""
+                      } transition-all duration-200 ease-in-out`}
+                      style={{
+                        backgroundColor: "rgba(255, 255, 255, 0.1)",
+                        transition: "transform 0.1s ease-out",
+                        zIndex: selectedFieldId === field.id ? 1000 : 100,
+                      }}
+                    >
+                      <div className="w-full h-full relative group">
+                        {/* Move handle */}
+                        {isEditMode && selectedFieldId === field.id && (
+                          <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+                            {/* Move handle */}
+                            <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                              <Move size={10} />
+                            </div>
+                            
+                            {/* Font size controls */}
+                            <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateTextField(field.id, { 
+                                    fontSize: Math.max(6, field.fontSize - 1) 
+                                  });
+                                }}
+                                className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
+                                title="Decrease font size"
+                              >
+                                <Minus size={10} />
+                              </button>
+                              <span className="text-black text-xs font-medium px-2 min-w-[20px] text-center">
+                                {field.fontSize.toFixed(2)}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateTextField(field.id, { 
+                                    fontSize: Math.min(72, field.fontSize + 1) 
+                                  });
+                                }}
+                                className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
+                                title="Increase font size"
+                              >
+                                <Plus size={10} />
+                              </button>
+                            </div>
                           </div>
-                          
-                          {/* Font size controls */}
-                          <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updateTextField(field.id, { 
-                                  fontSize: Math.max(6, field.fontSize - 1) 
-                                });
-                              }}
-                              className="text-black p-1 transition-all duration-200 transform hover:scale-105"
-                              title="Decrease font size"
-                            >
-                              <Minus size={10} />
-                            </button>
-                            <span className="text-black text-xs font-medium text-center">
-                              {field.fontSize}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updateTextField(field.id, { 
-                                  fontSize: Math.min(72, field.fontSize + 1) 
-                                });
-                              }}
-                              className="text-black p-1 transition-all duration-200 transform hover:scale-105"
-                              title="Increase font size"
-                            >
-                              <Plus size={10} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Delete button */}
-                      {isEditMode &&
-                        selectedFieldId === field.id &&
-                        !field.isFromWorkflow && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteTextField(field.id);
-                            }}
-                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 transform hover:scale-110 z-10"
-                          >
-                            <Trash2 size={10} />
-                          </button>
                         )}
 
+                        {/* Delete button */}
+                        {isEditMode &&
+                          selectedFieldId === field.id &&
+                          !field.isFromWorkflow && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteTextField(field.id);
+                              }}
+                              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 transform hover:scale-110 z-10"
+                            >
+                              <Trash2 size={10} />
+                            </button>
+                          )}
 
-                      {/* Text content */}
-  <textarea
-    value={field.value}
-    onChange={(e) =>
-      updateTextField(field.id, { value: e.target.value })
-    }
-    className="w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200 absolute"
-    style={{
-      fontSize: `${field.fontSize}px`,
-      color: field.fontColor,
-      fontFamily: field.fontFamily,
-      cursor: "text",
-      padding: "1px",
-      lineHeight: "1.1",
-      wordWrap: "break-word",
-      wordBreak: "break-all",
-      whiteSpace: "pre-wrap",
-      boxSizing: "border-box",
-      overflow: "hidden",
-    }}
-    onClick={(e) => {
-      e.stopPropagation();
-      setSelectedFieldId(field.id);
-      setIsTextSelectionMode(false);
-    }}
-  />
-                      
-                    </div>
-                  </Rnd>
-                ))}
+
+                        {/* Text content */}
+                        <textarea
+                          value={field.value}
+                          onChange={(e) =>
+                            updateTextField(field.id, { value: e.target.value })
+                          }
+                          className="w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200 absolute"
+                          style={{
+                            fontSize: `${field.fontSize}px`,
+                            color: field.fontColor,
+                            fontFamily: field.fontFamily,
+                            cursor: "text",
+                            padding: "1px",
+                            lineHeight: "1.1",
+                            wordWrap: "break-word",
+                            wordBreak: "break-all",
+                            whiteSpace: "pre-wrap",
+                            boxSizing: "border-box",
+                            overflow: "hidden",
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFieldId(field.id);
+                            setIsTextSelectionMode(false);
+                          }}
+                        />
+                        
+                      </div>
+                    </Rnd>
+                  ))}
+              </div>
             </div>
           </div>
         ) : (
@@ -1182,16 +1281,37 @@ const styles = `
               Upload a PDF document to start adding and editing text fields. You
               can drag, resize, and customize text overlays.
             </p>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-            >
-              <Upload size={20} />
-              <span>Load PDF Document</span>
-            </button>
           </div>
         )}
       </div>
+      
+      {/* Bottom Controls - Simplified with Zoom Slider */}
+      <div className="bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => goToPage(currentPage - 1)}
+            disabled={currentPage <= 1}
+            className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="text-gray-700 min-w-[120px] text-center">
+            Page {currentPage} of {numPages}
+          </span>
+          <button
+            onClick={() => goToPage(currentPage + 1)}
+            disabled={currentPage >= numPages}
+            className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+        
+
+        
+        <div className="w-28"></div> {/* Spacer for alignment */}
+      </div>
+    
     </div>
   );
 };
