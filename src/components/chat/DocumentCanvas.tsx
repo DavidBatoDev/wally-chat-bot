@@ -1142,39 +1142,110 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   };
 
   const exportToPDF = async () => {
-    if (!documentUrl) return;
+    if (!documentUrl || !documentRef.current) return;
+
+    // Save current state before starting
+    const originalScale = scale;
+    const tempSelectedField = selectedFieldId;
+    const tempSettingsPopup = settingsPopupFor;
+    const tempEditMode = isEditMode;
+    const tempTextSelectionMode = isTextSelectionMode;
+    const originalTextFields = [...textFields];
 
     setIsLoading(true);
+
     try {
-      // Fetch the original PDF
-      const existingPdfBytes = await fetch(documentUrl).then((res) =>
+      // Turn off all editing controls and modes for clean export
+      setSelectedFieldId(null);
+      setSettingsPopupFor(null);
+      setIsEditMode(false);
+      setIsTextSelectionMode(false);
+
+      // Temporarily adjust text field positions upward for better export alignment
+      const adjustedTextFields = textFields.map((field) => ({
+        ...field,
+        x: field.x - 3, // Raise each text field by 3 pixels
+        y: field.y - 3, // Raise each text field by 3 pixels
+      }));
+      setTextFields(adjustedTextFields);
+
+      // Set zoom to 300% for maximum quality
+      setScale(3.0);
+      setZoomMode("page");
+
+      // Wait for zoom and controls to update
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // Find the PDF page element
+      const pdfPageElement =
+        documentRef.current.querySelector(".react-pdf__Page");
+      if (!pdfPageElement) {
+        throw new Error("PDF page not found");
+      }
+
+      // Use html2canvas to capture the rendered PDF with all styling
+      const html2canvas = (await import("html2canvas")).default;
+
+      // Capture the entire document container which includes text fields
+      const canvas = await html2canvas(documentRef.current, {
+        scale: 2, // Higher resolution
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        onclone: (clonedDoc) => {
+          // Remove editing controls but keep text content
+          const clonedContainer =
+            clonedDoc.querySelector('[data-testid="document-container"]') ||
+            clonedDoc.querySelector('div[style*="relative"]');
+
+          if (clonedContainer) {
+            // Remove control buttons and handles, but keep text fields
+            clonedContainer
+              .querySelectorAll("button")
+              .forEach((btn) => btn.remove());
+            clonedContainer
+              .querySelectorAll(".drag-handle")
+              .forEach((handle) => handle.remove());
+
+            // Remove all borders and backgrounds from text field containers
+            clonedContainer.querySelectorAll(".rnd").forEach((rnd) => {
+              if (rnd instanceof HTMLElement) {
+                rnd.style.border = "none";
+                rnd.style.backgroundColor = "transparent";
+                rnd.style.boxShadow = "none";
+              }
+            });
+
+            // Clean up text areas for better appearance
+            clonedContainer.querySelectorAll("textarea").forEach((textarea) => {
+              if (textarea instanceof HTMLElement) {
+                textarea.style.padding = "0px";
+                textarea.style.margin = "0px";
+              }
+            });
+          }
+        },
+      });
+
+      // Create a new PDF with the captured image
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([canvas.width / 2, canvas.height / 2]); // Divide by 2 due to scale factor
+
+      // Convert canvas to PNG bytes
+      const canvasDataUrl = canvas.toDataURL("image/png");
+      const pngImageBytes = await fetch(canvasDataUrl).then((res) =>
         res.arrayBuffer()
       );
-      const pdfDoc = await PDFDocument.load(existingPdfBytes);
-      const pages = pdfDoc.getPages();
+      const pngImage = await pdfDoc.embedPng(pngImageBytes);
 
-      // Add text fields to PDF
-      for (const field of textFields) {
-        if (field.page <= pages.length && field.value.trim()) {
-          const page = pages[field.page - 1];
-          const { height } = page.getSize();
-
-          // Convert color from hex to RGB
-          const hexColor = field.fontColor.replace("#", "");
-          const r = parseInt(hexColor.substr(0, 2), 16) / 255;
-          const g = parseInt(hexColor.substr(2, 2), 16) / 255;
-          const b = parseInt(hexColor.substr(4, 2), 16) / 255;
-
-          // Add text to page (PDF uses bottom-left origin)
-          page.drawText(field.value, {
-            x: field.x,
-            y: height - field.y - field.height,
-            size: field.fontSize,
-            color: rgb(r, g, b),
-            font: await pdfDoc.embedFont(StandardFonts.Helvetica),
-          });
-        }
-      }
+      // Draw the image on the PDF page
+      page.drawImage(pngImage, {
+        x: 0,
+        y: 0,
+        width: canvas.width / 2,
+        height: canvas.height / 2,
+      });
 
       // Save and download the PDF
       const pdfBytes = await pdfDoc.save();
@@ -1187,9 +1258,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       link.click();
 
       URL.revokeObjectURL(url);
+
+      // Restore the original state
+      setTextFields(originalTextFields);
+      setScale(originalScale);
+      setSelectedFieldId(tempSelectedField);
+      setSettingsPopupFor(tempSettingsPopup);
+      setIsEditMode(tempEditMode);
+      setIsTextSelectionMode(tempTextSelectionMode);
     } catch (error) {
       console.error("Error exporting PDF:", error);
       setError("Failed to export PDF");
+
+      // Restore original state even on error
+      setTextFields(originalTextFields);
+      setScale(originalScale);
+      setSelectedFieldId(tempSelectedField);
+      setSettingsPopupFor(tempSettingsPopup);
+      setIsEditMode(tempEditMode);
+      setIsTextSelectionMode(tempTextSelectionMode);
     } finally {
       setIsLoading(false);
     }
@@ -1449,9 +1536,32 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           />
         )}
 
+        {/* Page Navigation Controls - Always at top */}
+        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-center z-50">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span className="text-gray-700 min-w-[120px] text-center">
+              Page {currentPage} of {numPages}
+            </span>
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage >= numPages}
+              className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </div>
+
         {/* Main Content Area */}
         <div
-          className="h-[85%] bg-gray-200 relative overflow-hidden"
+          className="flex-1 bg-gray-200 relative overflow-hidden"
           ref={containerRef}
         >
           {/* Vertical Zoom Controls - Adobe Acrobat Style */}
@@ -1655,7 +1765,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           )}
           {documentUrl ? (
             <div className="flex flex-col h-full">
-              <div className="flex-1 overflow-auto p-4 max-h-full">
+              <div
+                className="flex-1 overflow-x-scroll overflow-y-auto p-4 max-h-full"
+                style={{ scrollbarWidth: "thin" }}
+              >
                 <div
                   className={`relative bg-white shadow-lg mx-auto ${
                     isTextSelectionMode ? "text-selection-mode" : ""
@@ -2275,30 +2388,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
               </p>
             </div>
           )}
-        </div>
-
-        {/* Bottom Controls - Simplified with Zoom Slider */}
-        <div className="absolute w-full bottom-0 bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between z-[99999999]">
-          <div className="flex items-center space-x-3 w-full">
-            <button
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage <= 1}
-              className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <span className="text-gray-700 min-w-[120px] text-center">
-              Page {currentPage} of {numPages}
-            </span>
-            <button
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage >= numPages}
-              className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
-            >
-              <ChevronRight size={20} />
-            </button>
-          </div>
-          <div className="w-28"></div> {/* Spacer for alignment */}
         </div>
       </div>
     </AnimatePresence>
