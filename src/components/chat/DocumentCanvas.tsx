@@ -78,14 +78,6 @@ interface DocumentCanvasProps {
   conversationId?: string; // Optional for workflow context
 }
 
-interface TextSelection {
-  text: string;
-  position: { top: number; left: number };
-  pagePosition: { x: number; y: number };
-  pageSize?: { width: number; height: number }; // Add dimensions
-}
-
-
 interface TextField {
   id: string;
   x: number;
@@ -129,7 +121,7 @@ interface WorkflowMapping {
   alignment: string;
   bbox_center: { x: number; y: number };
   page_number: number;
-  character_spacing?: number; // Optional for character spacing
+  character_spacing?: number; 
 }
 
 interface WorkflowData {
@@ -166,13 +158,16 @@ interface TextSelectionPopupState {
   };
 }
 
-interface DeletionRectangle {
+interface Rectangles {
   id: string;
   x: number;
   y: number;
   width: number;
   height: number;
   page: number;
+  pagePosition: { x: number; y: number };
+  pageSize: { width: number; height: number };
+  background?: string; // Add this for background color
 }
 
 const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conversationId }) => {
@@ -202,8 +197,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const [mouseDownTime, setMouseDownTime] = useState<number | null>(null);
-  const [deletionRectangles, setDeletionRectangles] = useState<DeletionRectangle[]>([])
+  const [rectangles, setRectangles] = useState<Rectangles[]>([])
+  const [showRectangles, setShowRectangles] = useState(true);
   
+
 
   const styles = `
     .drag-handle:active {
@@ -450,6 +447,31 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     translate_to: "Greek",
     created_at: "2025-06-19T07:44:46.900296Z",
   };
+
+  const capturePageBackground = () => {
+    const canvas = document.querySelector('.react-pdf__Page__canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+    
+    setRectangles(prev => prev.map(rec => {
+      if (rec.page !== currentPage) return rec;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return rec;
+      
+      const canvasX = rec.pagePosition.x * scale;
+      const canvasY = rec.pagePosition.y * scale;
+      const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
+      const bgColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+      
+      return {...rec, background: bgColor};
+    }));
+  };
+
+  useEffect(() => {
+    if (documentUrl) {
+      capturePageBackground();
+    }
+  }, [currentPage, scale, documentUrl]);
 
   // Initialize with demo PDF on mount
   useEffect(() => {
@@ -888,21 +910,42 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     setTextSelectionPopup(null);
   };
 
-  const addDeletionRectangle = (x: number, y: number, width: number, height: number) => {
-    const newDeletion: DeletionRectangle = {
-      id: `del-${Date.now()}-${Math.random()}`,
-      x,
-      y,
-      width,
-      height,
-      page: currentPage,
-    };
+  const addDeletionRectangle = (sel: {
+    pagePosition: { x: number; y: number };
+    pageSize: { width: number; height: number };
+  }) => {
+    // Get background color from PDF at this position
+    const canvas = document.querySelector('.react-pdf__Page__canvas') as HTMLCanvasElement;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Calculate position in canvas coordinates
+    const canvasX = sel.pagePosition.x * scale;
+    const canvasY = sel.pagePosition.y * scale;
     
-    setDeletionRectangles([...deletionRectangles, newDeletion]);
-  };
+    // Get pixel color at center of selection
+    const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
+    const bgColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+
+    const newDeletion: Rectangles = {
+      id: `rec-${Date.now()}-${Math.random()}`,
+      x: sel.pagePosition.x,
+      y: sel.pagePosition.y,
+      width: sel.pageSize.width,
+      height: sel.pageSize.height,
+      page: currentPage,
+      pagePosition: sel.pagePosition,
+      pageSize: sel.pageSize,
+      background: bgColor // Store background color
+    };
+
+    setRectangles([...rectangles, newDeletion]);
+  }
 
   const deleteDeletionRectangle = (id: string) => {
-    setDeletionRectangles(deletionRectangles.filter(del => del.id !== id));
+    setRectangles(rectangles.filter(rec => rec.id !== id));
   };
 
   const deleteTextField = (fieldId: string) => {
@@ -1201,6 +1244,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                           <Type size={20} className="group-hover:scale-110 transition-transform" />
                           <div>Edit Mode</div>
                         </button>
+
+                        <button
+                          onClick={() => setShowRectangles(!showRectangles)}
+                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                            showRectangles
+                              ? "bg-red-500 text-white"
+                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                          }`}
+                          title="Toggle Deletion Rectangles"
+                        >
+                          <Trash2 size={20} className="group-hover:scale-110 transition-transform" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1428,14 +1483,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
               <button
                 onClick={() => {
                   textSelectionPopup.texts.forEach(sel => {
-                    if (sel.pageSize) {
-                      addDeletionRectangle(
-                        sel.pagePosition.x, 
-                        sel.pagePosition.y,
-                        sel.pageSize.width,
-                        sel.pageSize.height
-                      );
-                    }
+                    addDeletionRectangle(sel);
                   });
                   setTextSelectionPopup(null);
                 }}
@@ -1511,20 +1559,31 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                     />
                   </Document>
 
-                  {deletionRectangles
-                    .filter(del => del.page === currentPage)
-                    .map(del => (
+                  {rectangles
+                    .filter(rec => rec.page === currentPage)
+                    .map(rec => (
                       <div
-                        key={del.id}
-                        className="absolute bg-white"
+                        key={rec.id}
+                        className={`absolute bg-white ${showRectangles ? "bg-opacity-90 border border-red-300" : ""}  flex items-center justify-center`}
                         style={{
-                          left: del.x * scale,
-                          top: del.y * scale,
-                          width: del.width * scale,
-                          height: del.height * scale,
+                          left: rec.x * scale,
+                          top: rec.y * scale,
+                          width: rec.width * scale,
+                          height: rec.height * scale,
                           zIndex: 50,
+                          backgroundColor: rec.background || 'white', // Use captured color
+                          border: showRectangles ? '1px dashed red' : 'none'
                         }}
-                      />
+                      >
+                    {showRectangles && (
+                      <button
+                        onClick={() => deleteDeletionRectangle(rec.id)}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
                   ))}
 
                   {/* Text Field Overlays */}
@@ -1660,7 +1719,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                             {/* Settings popup */}
                             {settingsPopupFor === field.id && (
                               <div 
-                                className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-20 border border-gray-200 w-64 settings-popup"
+                                className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className="flex justify-between items-center mb-3 ">
