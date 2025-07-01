@@ -779,7 +779,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     fontFamily: string,
     characterSpacing: number = 0
   ) => {
-    const padding = 7; // Small padding for visual comfort
+    const padding = 5; // Small padding for visual comfort
     const { width, height } = measureText(
       text,
       fontSize,
@@ -1164,7 +1164,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       // Temporarily adjust text field positions upward for better export alignment
       const adjustedTextFields = textFields.map((field) => ({
         ...field,
-        x: field.x - 3, // Raise each text field by 3 pixels
+        x: field.x - 2, // Raise each text field by 3 pixels
         y: field.y - 3, // Raise each text field by 3 pixels
       }));
       setTextFields(adjustedTextFields);
@@ -1357,65 +1357,122 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       >
         <style>{styles}</style>
 
-        {/* Top Header Bar - Clean Red Design */}
-        <div className="bg-white shadow-lg border-b-2 border-red-500">
+        {/* Top Header Bar - Enhanced Red Design */}
+        <div className="bg-gradient-to-r from-red-50 to-white shadow-lg border-b-2 border-red-500">
           <div className="relative max-w-7xl mx-auto">
             {/* Persistent Toolbar - Always visible */}
-            <div className="bg-white">
-              <div className="max-w-7xl mx-auto px-6 py-4">
-                {/* Top Row - Always visible tools */}
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col gap-5">
-                    {/* Views controls */}
-                    <div className="flex">
+            <div className="bg-white/80 backdrop-blur-sm">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+                {/* Top Row */}
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-4">
+                    {/* Views controls - Tab-like design */}
+                    <div className="flex items-center bg-red-50 rounded-xl p-1 border border-red-200">
                       {/* Close button */}
                       <button
                         onClick={onClose}
-                        className="p-2 transition-all duration-200 flex items-center justify-center"
+                        className="p-2 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-all duration-200 flex items-center justify-center group"
                         title="Close Document Editor"
                       >
-                        <X size={20} />
+                        <X
+                          size={18}
+                          className="group-hover:scale-110 transition-transform"
+                        />
                       </button>
 
-                      {/* Show upload */}
+                      <div className="w-px h-6 bg-gray-300 mx-2"></div>
+
+                      {/* Document tabs */}
                       <button
                         onClick={() => {}}
-                        className="p-2 transition-all duration-200 flex items-center justify-center"
-                        title="Close Document Editor"
+                        className="px-4 py-2 bg-white text-red-700 rounded-lg shadow-sm border border-red-200 transition-all duration-200 flex items-center gap-2 hover:shadow-md hover:bg-red-50 group text-sm font-medium"
+                        title="Current Document"
                       >
-                        Document
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="group-hover:scale-110 transition-transform"
+                        >
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14,2 14,8 20,8" />
+                        </svg>
+                        <span className="hidden xl:inline">Document</span>
                       </button>
 
-                      {/* Show original document */}
                       <button
                         onClick={() => {}}
-                        className="p-2 transition-all duration-200 flex items-center justify-center"
-                        title="Close Document Editor"
+                        className="px-4 py-2 text-red-600 hover:text-red-800 hover:bg-white/60 rounded-lg transition-all duration-200 flex items-center gap-2 group text-sm font-medium"
+                        title="Original Template"
                       >
-                        Original Template
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="group-hover:scale-110 transition-transform"
+                        >
+                          <rect
+                            x="3"
+                            y="3"
+                            width="18"
+                            height="18"
+                            rx="2"
+                            ry="2"
+                          />
+                          <circle cx="9" cy="9" r="2" />
+                          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                        </svg>
+                        <span className="hidden xl:inline">
+                          Original Template
+                        </span>
                       </button>
 
-                      {/* Show translated document */}
                       <button
                         onClick={() => {}}
-                        className="p-2 transition-all duration-200 flex items-center justify-center"
-                        title="Close Document Editor"
+                        className="px-4 py-2 text-red-600 hover:text-red-800 hover:bg-white/60 rounded-lg transition-all duration-200 flex items-center gap-2 group text-sm font-medium"
+                        title="Translated Template"
                       >
-                        Translated template
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          className="group-hover:scale-110 transition-transform"
+                        >
+                          <path d="M5 8l6 6" />
+                          <path d="m4 14 6-6 2-3" />
+                          <path d="M2 5h12" />
+                          <path d="M7 2h1" />
+                          <path d="m22 22-5-10-5 10" />
+                          <path d="M14 18h6" />
+                        </svg>
+                        <span className="hidden xl:inline">Translated</span>
                       </button>
                     </div>
 
-                    {/* Controls */}
-                    <div className="flex items-center space-x-4">
+                    {/* Main Controls */}
+                    <div className="flex items-center gap-6">
                       {/* Document Tools */}
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-semibold text-red-500 uppercase tracking-wider hidden xl:block">
+                          Tools
+                        </div>
+
                         {/* Add textbox button */}
                         <button
                           onClick={() => setIsAddTextBoxMode((prev) => !prev)}
-                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                          className={`px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group font-medium text-sm ${
                             isAddTextBoxMode
-                              ? "bg-red-500 text-white"
-                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                              ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                              : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
                           }`}
                           disabled={!documentUrl}
                           title={
@@ -1425,97 +1482,120 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                           }
                         >
                           <Type
-                            size={20}
+                            size={18}
                             className="group-hover:scale-110 transition-transform"
                           />
+                          <span className="hidden xl:inline">
+                            {isAddTextBoxMode ? "Adding Text" : "Add Text"}
+                          </span>
                         </button>
 
                         <button
                           onClick={() =>
                             setIsTextSelectionMode(!isTextSelectionMode)
                           }
-                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                          className={`px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group font-medium text-sm ${
                             isTextSelectionMode
-                              ? "bg-red-500 text-white"
-                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                              ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                              : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
                           }`}
                           disabled={!documentUrl}
                           title="Text Selection Mode"
                         >
                           <MousePointer2
-                            size={20}
+                            size={18}
                             className="group-hover:scale-110 transition-transform"
                           />
+                          <span className="hidden xl:inline">
+                            {isTextSelectionMode ? "Selecting" : "Select Text"}
+                          </span>
                         </button>
                       </div>
 
                       {/* View Options */}
-                      <div className="flex items-center space-x-3">
-                        <div className="w-px h-8 bg-gray-300"></div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-px h-8 bg-red-200 hidden xl:block"></div>
+                        <div className="text-xs font-semibold text-red-500 uppercase tracking-wider hidden xl:block">
+                          View
+                        </div>
+
                         <button
                           onClick={() => setIsEditMode(!isEditMode)}
-                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group gap-2 ${
+                          className={`px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group font-medium text-sm ${
                             isEditMode
-                              ? "bg-red-500 text-white"
-                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                              ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                              : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
                           }`}
                           title={
                             isEditMode ? "Exit Edit Mode" : "Enter Edit Mode"
                           }
                         >
-                          <Type
-                            size={20}
+                          <Edit3
+                            size={18}
                             className="group-hover:scale-110 transition-transform"
                           />
-                          <div>Edit Mode</div>
+                          <span className="hidden xl:inline">
+                            {isEditMode ? "Editing" : "Edit Mode"}
+                          </span>
                         </button>
 
                         <button
                           onClick={() => setShowRectangles(!showRectangles)}
-                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                          className={`px-4 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group font-medium text-sm ${
                             showRectangles
-                              ? "bg-red-500 text-white"
-                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                              ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                              : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
                           }`}
                           title="Toggle Deletion Rectangles"
                         >
                           <Trash2
-                            size={20}
+                            size={18}
                             className="group-hover:scale-110 transition-transform"
                           />
+                          <span className="hidden xl:inline">
+                            {showRectangles ? "Hide Delete" : "Show Delete"}
+                          </span>
                         </button>
                       </div>
                     </div>
                   </div>
 
                   {/* Right side - Export actions */}
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-semibold text-red-500 uppercase tracking-wider hidden xl:block">
+                      Export
+                    </div>
+
                     <button
                       onClick={exportFieldsData}
-                      className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
+                      className="px-4 py-2.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group font-medium text-sm"
                       disabled={!documentUrl}
                       title="Export Field Data"
                     >
                       <Save
-                        size={20}
+                        size={18}
                         className="group-hover:scale-110 transition-transform"
                       />
+                      <span className="hidden xl:inline">Save Data</span>
                     </button>
 
                     <button
                       onClick={exportToPDF}
-                      className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
+                      className="px-4 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-md hover:shadow-lg shadow-red-200 transition-all duration-200 flex items-center gap-2 group font-medium text-sm"
                       disabled={isLoading || !documentUrl}
                       title="Export to PDF"
                     >
                       {isLoading ? (
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <Download
-                          size={20}
+                          size={18}
                           className="group-hover:scale-110 transition-transform"
                         />
                       )}
+                      <span className="hidden xl:inline">
+                        {isLoading ? "Exporting..." : "Export PDF"}
+                      </span>
                     </button>
                   </div>
                 </div>
