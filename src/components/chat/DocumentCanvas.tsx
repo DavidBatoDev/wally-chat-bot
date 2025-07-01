@@ -1,5 +1,11 @@
 // client/src/components/chat/DocumentCanvas.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { Rnd } from "react-rnd";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -21,14 +27,14 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import 'react-pdf/dist/Page/TextLayer.css';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
+import "react-pdf/dist/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
 
 const measureText = (
   text: string,
   fontSize: number,
   fontFamily: string,
-  characterSpacing: number = 0 
+  characterSpacing: number = 0
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -36,9 +42,9 @@ const measureText = (
 
   ctx.font = `${fontSize}px ${fontFamily}`;
   const lines = text.split("\n");
-  
+
   let maxWidth = 0;
-  lines.forEach(line => {
+  lines.forEach((line) => {
     let width = ctx.measureText(line).width;
     if (line.length > 0) {
       // Add extra width for character spacing
@@ -46,13 +52,13 @@ const measureText = (
     }
     if (width > maxWidth) maxWidth = width;
   });
-  
+
   const lineHeight = fontSize * 1.2;
   const height = lines.length * lineHeight;
-  
+
   return {
     width: maxWidth,
-    height
+    height,
   };
 };
 
@@ -92,6 +98,9 @@ interface TextField {
   fieldKey?: string;
   isFromWorkflow?: boolean;
   characterSpacing?: number; // Optional for character spacing
+  fontWeight?: "normal" | "bold";
+  fontStyle?: "normal" | "italic";
+  rotation?: number; // Rotation angle in degrees
 }
 
 interface WorkflowField {
@@ -121,7 +130,7 @@ interface WorkflowMapping {
   alignment: string;
   bbox_center: { x: number; y: number };
   page_number: number;
-  character_spacing?: number; 
+  character_spacing?: number;
 }
 
 interface WorkflowData {
@@ -154,7 +163,7 @@ interface TextSelectionPopupState {
   popupPosition: {
     top: number;
     left: number;
-    position: 'above' | 'below'; 
+    position: "above" | "below";
   };
 }
 
@@ -170,7 +179,11 @@ interface Rectangles {
   background?: string; // Add this for background color
 }
 
-const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conversationId }) => {
+const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
+  isOpen,
+  onClose,
+  conversationId,
+}) => {
   const [documentUrl, setDocumentUrl] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [numPages, setNumPages] = useState<number>(0);
@@ -179,28 +192,36 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [showWorkflowFields, setShowWorkflowFields] = useState<boolean>(true);
-  const [showTextboxBorders, setShowTextboxBorders] = useState<boolean>(true);
-  const [isTextSelectionMode, setIsTextSelectionMode] = useState<boolean>(false);
+  const [isTextSelectionMode, setIsTextSelectionMode] =
+    useState<boolean>(false);
   const [pageWidth, setPageWidth] = useState<number>(612);
   const [pageHeight, setPageHeight] = useState<number>(792);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isAddTextBoxMode, setIsAddTextBoxMode] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [textSelectionPopup, setTextSelectionPopup] = useState<TextSelectionPopupState | null>(null);
-  const [zoomMode, setZoomMode] = useState<'page' | 'width'>('page');
+  const [textSelectionPopup, setTextSelectionPopup] =
+    useState<TextSelectionPopupState | null>(null);
+  const [zoomMode, setZoomMode] = useState<"page" | "width">("page");
   const [containerWidth, setContainerWidth] = useState<number>(0);
-  const [settingsPopupFor, setSettingsPopupFor] = useState<string | null>(null)
-  
+  const [settingsPopupFor, setSettingsPopupFor] = useState<string | null>(null);
+
   const documentRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
+    null
+  );
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const [mouseDownTime, setMouseDownTime] = useState<number | null>(null);
-  const [rectangles, setRectangles] = useState<Rectangles[]>([])
+  const [rectangles, setRectangles] = useState<Rectangles[]>([]);
   const [showRectangles, setShowRectangles] = useState(true);
-  
-
+  const [isRotating, setIsRotating] = useState<boolean>(false);
+  const [rotatingFieldId, setRotatingFieldId] = useState<string | null>(null);
+  const [initialRotation, setInitialRotation] = useState<number>(0);
+  const [rotationCenter, setRotationCenter] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const styles = `
     .drag-handle:active {
@@ -385,7 +406,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         translated_status: "pending",
       },
       "{last_name}": {
-        value: "DIONISIO GARCIA Dsadasd",
+        value: "DIONISIO GARCIA",
         value_status: "ocr",
         translated_value: null,
         translated_status: "pending",
@@ -393,93 +414,68 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     },
     origin_template_mappings: {
       "{fe}": {
-        "font": {
-          "name": "ArialMT",
-          "size": 6,
-          "color": "#ee0000",
-          "flags": 0,
-          "style": "normal"
+        font: {
+          name: "ArialMT",
+          size: 6,
+          color: "#ee0000",
+          flags: 0,
+          style: "normal",
         },
-        "position": {
-          "x0": 91.34400177001953,
-          "x1": 99.87519683837891,
-          "y0": 164.989990234375,
-          "y1": 171.6799774169922,
-          "width": 8.53119506835938,
-          "height": 6.6899871826171875
+        position: {
+          x0: 91.34400177001953,
+          x1: 99.87519683837891,
+          y0: 164.989990234375,
+          y1: 171.6799774169922,
+          width: 8.53119506835938,
+          height: 6.6899871826171875,
         },
-        "rotation": 0,
-        "alignment": "left",
-        "bbox_center": {
-          "x": 95.60959930419922,
-          "y": 168.3349838256836
+        rotation: 0,
+        alignment: "left",
+        bbox_center: {
+          x: 95.60959930419922,
+          y: 168.3349838256836,
         },
-        "character_spacing": 0,
-        "page_number": 1
+        character_spacing: 0,
+        page_number: 1,
       },
-    "{last_name}": {
-      "font": {
-        "name": "ArialMT",
-        "size": 8.039999961853027,
-        "color": "#ee0000",
-        "flags": 0,
-        "style": "normal"
+      "{last_name}": {
+        font: {
+          name: "ArialMT",
+          size: 8.039999961853027,
+          color: "#ee0000",
+          flags: 0,
+          style: "normal",
+        },
+        position: {
+          x0: 294.8900146484375,
+          x1: 335.6771774291992,
+          y0: 144.90379333496094,
+          y1: 153.86839294433594,
+          width: 40.78716278076172,
+          height: 8.964599609375,
+        },
+        rotation: 0,
+        alignment: "left",
+        bbox_center: {
+          x: 315.28359603881836,
+          y: 149.38609313964844,
+        },
+        character_spacing: 0,
+        page_number: 1,
       },
-      "position": {
-        "x0": 294.8900146484375,
-        "x1": 335.6771774291992,
-        "y0": 144.90379333496094,
-        "y1": 153.86839294433594,
-        "width": 40.78716278076172,
-        "height": 8.964599609375
-      },
-      "rotation": 0,
-      "alignment": "left",
-      "bbox_center": {
-        "x": 315.28359603881836,
-        "y": 149.38609313964844
-      },
-      "character_spacing": 0,
-      "page_number": 1
-    },
     },
     translated_template_mappings: {},
     translate_to: "Greek",
     created_at: "2025-06-19T07:44:46.900296Z",
   };
 
-  const capturePageBackground = () => {
-    const canvas = document.querySelector('.react-pdf__Page__canvas') as HTMLCanvasElement;
-    if (!canvas) return;
-    
-    setRectangles(prev => prev.map(rec => {
-      if (rec.page !== currentPage) return rec;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return rec;
-      
-      const canvasX = rec.pagePosition.x * scale;
-      const canvasY = rec.pagePosition.y * scale;
-      const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
-      const bgColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
-      
-      return {...rec, background: bgColor};
-    }));
-  };
-
-  useEffect(() => {
-    if (documentUrl) {
-      capturePageBackground();
-    }
-  }, [currentPage, scale, documentUrl]);
-
   // Initialize with demo PDF on mount
   useEffect(() => {
     // Load the demo PDF immediately
     setDocumentUrl(workflowData.base_file_public_url);
-    
+
     // Set initial zoom to fit width
-    setZoomMode('width');
+    setZoomMode("width");
   }, []);
 
   useEffect(() => {
@@ -489,20 +485,23 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       }
     };
 
-    document.addEventListener('contextmenu', handleContextMenu);
-    return () => document.removeEventListener('contextmenu', handleContextMenu);
+    document.addEventListener("contextmenu", handleContextMenu);
+    return () => document.removeEventListener("contextmenu", handleContextMenu);
   }, [isDragging]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (settingsPopupFor && !(e.target as Element).closest('.settings-popup')) {
+      if (
+        settingsPopupFor &&
+        !(e.target as Element).closest(".settings-popup")
+      ) {
         setSettingsPopupFor(null);
       }
     };
-    
-    document.addEventListener('click', handleClickOutside);
+
+    document.addEventListener("click", handleClickOutside);
     return () => {
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener("click", handleClickOutside);
     };
   }, [settingsPopupFor]);
 
@@ -522,30 +521,105 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
     handleResize(); // Initial measurement
-    
-    return () => window.removeEventListener('resize', handleResize);
+
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   // Adjust scale when in width mode
   useEffect(() => {
-    if (zoomMode === 'width' && containerWidth > 0 && pageWidth > 0) {
+    if (zoomMode === "width" && containerWidth > 0 && pageWidth > 0) {
       const calculatedScale = containerWidth / pageWidth;
       setScale(Math.min(calculatedScale, 3.0)); // Max zoom 300%
     }
   }, [containerWidth, pageWidth, zoomMode]);
 
   useEffect(() => {
-  const timer = setTimeout(() => {
-    if (mouseDownTime && !isDragging) {
-      // Mouse has been held for 100ms without moving
-      setMouseDownTime(null);
+    const timer = setTimeout(() => {
+      if (mouseDownTime && !isDragging) {
+        // Mouse has been held for 100ms without moving
+        setMouseDownTime(null);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [mouseDownTime, isDragging]);
+
+  // Handle rotation dragging
+  useEffect(() => {
+    const handleRotationMouseMove = (e: MouseEvent) => {
+      if (!isRotating || !rotatingFieldId || !rotationCenter) return;
+
+      // Calculate angle from field center to mouse position
+      const deltaX = e.clientX - rotationCenter.x;
+      const deltaY = e.clientY - rotationCenter.y;
+      const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+
+      // Normalize angle to 0-360 degrees
+      const normalizedAngle = (angle + 90 + 360) % 360;
+
+      updateTextField(rotatingFieldId, {
+        rotation: Math.round(normalizedAngle),
+      });
+    };
+
+    const handleRotationMouseUp = () => {
+      setIsRotating(false);
+      setRotatingFieldId(null);
+      setRotationCenter(null);
+    };
+
+    if (isRotating) {
+      document.addEventListener("mousemove", handleRotationMouseMove);
+      document.addEventListener("mouseup", handleRotationMouseUp);
     }
-  }, 100);
-  
-  return () => clearTimeout(timer);
-}, [mouseDownTime, isDragging]);
+
+    return () => {
+      document.removeEventListener("mousemove", handleRotationMouseMove);
+      document.removeEventListener("mouseup", handleRotationMouseUp);
+    };
+  }, [isRotating, rotatingFieldId, rotationCenter]);
+
+  // Handle keyboard shortcuts for formatting
+  useEffect(() => {
+    const handleKeydown = (e: KeyboardEvent) => {
+      // Only handle shortcuts when a field is selected and not in text selection mode
+      if (!selectedFieldId || isTextSelectionMode) return;
+
+      // Check for Ctrl+B (Bold) or Cmd+B on Mac
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        const currentField = textFields.find(
+          (field) => field.id === selectedFieldId
+        );
+        if (currentField) {
+          updateTextField(selectedFieldId, {
+            fontWeight: currentField.fontWeight === "bold" ? "normal" : "bold",
+          });
+        }
+      }
+
+      // Check for Ctrl+I (Italic) or Cmd+I on Mac
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        const currentField = textFields.find(
+          (field) => field.id === selectedFieldId
+        );
+        if (currentField) {
+          updateTextField(selectedFieldId, {
+            fontStyle:
+              currentField.fontStyle === "italic" ? "normal" : "italic",
+          });
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeydown);
+    return () => {
+      document.removeEventListener("keydown", handleKeydown);
+    };
+  }, [selectedFieldId, textFields, isTextSelectionMode]);
 
   const loadWorkflowFields = useCallback(() => {
     const fields: TextField[] = [];
@@ -560,23 +634,26 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
             mapping.font.size,
             mapping.font.name || "Arial, sans-serif"
           );
-          
+
           const field: TextField = {
             id: `workflow-${key}`,
             x: mapping.position.x0,
             y: mapping.position.y0,
-            width,   // Use calculated width instead of mapping width
-            height,  // Use calculated height instead of mapping height
+            width, // Use calculated width instead of mapping width
+            height, // Use calculated height instead of mapping height
             value: fieldData.value || "",
             fontSize: mapping.font.size,
-            fontColor: mapping.font.color || "#000000",
+            fontColor: "#000000", // Always default to black, ignore mapping color
             fontFamily: mapping.font.name || "Arial, sans-serif",
             page: mapping.page_number,
             fieldKey: key,
             isFromWorkflow: true,
-            characterSpacing: mapping.character_spacing || 0
+            characterSpacing: mapping.character_spacing || 0,
+            fontWeight: "normal",
+            fontStyle: "normal",
+            rotation: mapping.rotation || 0, // Use mapping rotation or default to 0
           };
-          
+
           fields.push(field);
         }
       }
@@ -587,21 +664,20 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
   const selectionRect = useMemo(() => {
     if (!dragStart || !dragEnd) return null;
-    
+
     const left = Math.min(dragStart.x, dragEnd.x);
     const top = Math.min(dragStart.y, dragEnd.y);
     const width = Math.abs(dragEnd.x - dragStart.x);
     const height = Math.abs(dragEnd.y - dragStart.y);
-    
+
     return { left, top, width, height };
   }, [dragStart, dragEnd]);
-
 
   // Handle mouse down for drag selection
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only respond to right-click (button 2)
     if (!isTextSelectionMode || e.button !== 2) return;
-    
+
     e.preventDefault(); // Prevent context menu
     setMouseDownTime(Date.now());
     setIsDragging(true);
@@ -618,12 +694,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       setDragEnd({ x: e.clientX, y: e.clientY });
       return;
     }
-    
+
     if (!isDragging || !dragStart) return;
-    
+
     e.preventDefault();
     setDragEnd({ x: e.clientX, y: e.clientY });
-  }
+  };
   // Handle mouse up to finalize selection
   const handleMouseUp = (e: React.MouseEvent) => {
     // Only handle right-click release
@@ -632,11 +708,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     setDragEnd(null);
     setMouseDownTime(null);
 
-  if (e.button !== 2 || !selectionRect || !documentRef.current) return;
+    if (e.button !== 2 || !selectionRect || !documentRef.current) return;
 
-  const pdfPage = documentRef.current.querySelector('.react-pdf__Page');
+    const pdfPage = documentRef.current.querySelector(".react-pdf__Page");
     if (!pdfPage) return;
-    
+
     const pageRect = pdfPage.getBoundingClientRect();
     const selectedSpans: {
       text: string;
@@ -644,36 +720,38 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       pagePosition: { x: number; y: number };
       pageSize: { width: number; height: number }; // Add dimensions
     }[] = [];
-    
-    // Find all text spans within the selection rectangle
-    document.querySelectorAll('.react-pdf__Page__textContent span').forEach(span => {
-      const spanRect = span.getBoundingClientRect();
-      
-      if (
-        spanRect.left < selectionRect.left + selectionRect.width &&
-        spanRect.right > selectionRect.left &&
-        spanRect.top < selectionRect.top + selectionRect.height &&
-        spanRect.bottom > selectionRect.top
-      ) {
-        const text = span.textContent || '';
 
-        // Inside the span selection loop:
-        const pageWidth = spanRect.width / scale;
-        const pageHeight = spanRect.height / scale;
-        
-        // Calculate position in PDF coordinates (original scale)
-        const pageX = (spanRect.left - pageRect.left) / scale;
-        const pageY = (spanRect.top - pageRect.top) / scale;
-        
-        selectedSpans.push({
-          text,
-          position: { top: spanRect.top, left: spanRect.left },
-          pagePosition: { x: pageX, y: pageY },
-          pageSize: { width: pageWidth, height: pageHeight }
-        });
-      }
-    });
-    
+    // Find all text spans within the selection rectangle
+    document
+      .querySelectorAll(".react-pdf__Page__textContent span")
+      .forEach((span) => {
+        const spanRect = span.getBoundingClientRect();
+
+        if (
+          spanRect.left < selectionRect.left + selectionRect.width &&
+          spanRect.right > selectionRect.left &&
+          spanRect.top < selectionRect.top + selectionRect.height &&
+          spanRect.bottom > selectionRect.top
+        ) {
+          const text = span.textContent || "";
+
+          // Inside the span selection loop:
+          const pageWidth = spanRect.width / scale;
+          const pageHeight = spanRect.height / scale;
+
+          // Calculate position in PDF coordinates (original scale)
+          const pageX = (spanRect.left - pageRect.left) / scale;
+          const pageY = (spanRect.top - pageRect.top) / scale;
+
+          selectedSpans.push({
+            text,
+            position: { top: spanRect.top, left: spanRect.left },
+            pagePosition: { x: pageX, y: pageY },
+            pageSize: { width: pageWidth, height: pageHeight },
+          });
+        }
+      });
+
     if (selectedSpans.length > 0) {
       const popupPosition = calculatePopupPosition(
         selectionRect.top,
@@ -684,17 +762,16 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         texts: selectedSpans,
         popupPosition: {
           top: popupPosition.top,
-          left: selectionRect.left + (selectionRect.width / 2),
-          position: popupPosition.position
-        }
+          left: selectionRect.left + selectionRect.width / 2,
+          position: popupPosition.position,
+        },
       });
     }
-    
+
     setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
   };
-
 
   const calculateFieldDimensions = (
     text: string,
@@ -703,18 +780,23 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     characterSpacing: number = 0
   ) => {
     const padding = 7; // Small padding for visual comfort
-    const { width, height } = measureText(text, fontSize, fontFamily, characterSpacing );
-    
+    const { width, height } = measureText(
+      text,
+      fontSize,
+      fontFamily,
+      characterSpacing
+    );
+
     return {
-      width: Math.max(width + padding, 30), // Minimum width 30px
-      height: Math.max(height + padding, 12) // Minimum height 12px
+      width: Math.max(width + padding, 5), // Minimum width 30px
+      height: Math.max(height + padding, 1), // Minimum height 12px
     };
   };
 
   const calculatePopupPosition = (
     top: number,
     height: number
-  ): { top: number; position: 'above' | 'below' } => {
+  ): { top: number; position: "above" | "below" } => {
     const windowHeight = window.innerHeight;
     const estimatedPopupHeight = 200; // Estimated max height of popup
 
@@ -722,13 +804,13 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     if (top + height + estimatedPopupHeight > windowHeight) {
       return {
         top: top - estimatedPopupHeight - 5,
-        position: 'above',
+        position: "above",
       };
     }
     // Otherwise show below the selection
     return {
       top: top + height + 5,
-      position: 'below',
+      position: "below",
     };
   };
 
@@ -748,38 +830,30 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     setPageHeight(height);
   };
 
-  // Handle text selection mode
-  const handleTextSelection = useCallback(() => {
-    setIsTextSelectionMode(true);
-    setIsEditMode(true);
-    setSelectedFieldId(null);
-    setTextSelectionPopup(null); // Close any existing popups
-  }, []);
-
   // Handle text span click during selection mode
   const handleTextSpanClick = useCallback(
     (e: React.MouseEvent<HTMLSpanElement>) => {
       if (!isTextSelectionMode) return;
       e.stopPropagation();
-      
+
       const span = e.currentTarget;
-      const textContent = span.textContent || '';
-      
+      const textContent = span.textContent || "";
+
       if (!textContent.trim()) return;
-      
-      const pdfPage = documentRef.current?.querySelector('.react-pdf__Page');
+
+      const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
       if (!pdfPage) return;
-      
+
       const spanRect = span.getBoundingClientRect();
 
       // Calculate dimensions in original scale
       const pageWidth = spanRect.width / scale;
       const pageHeight = spanRect.height / scale;
-      
+
       // Calculate position relative to viewport
       const popupTop = spanRect.bottom + 5;
-      const popupLeft = spanRect.left + (spanRect.width / 2);
-      
+      const popupLeft = spanRect.left + spanRect.width / 2;
+
       // Calculate position relative to PDF page (original scale)
       const pageRect = pdfPage.getBoundingClientRect();
       const pageX = (spanRect.left - pageRect.left) / scale;
@@ -789,31 +863,35 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         spanRect.top,
         spanRect.height
       );
-      
-      setTextSelectionPopup(prev => {
+
+      setTextSelectionPopup((prev) => {
         const newSelection = {
           text: textContent,
           position: { top: spanRect.top, left: spanRect.left },
           pagePosition: { x: pageX, y: pageY },
-          pageSize: { width: pageWidth, height: pageHeight }
+          pageSize: { width: pageWidth, height: pageHeight },
         };
-        
+
         // If shift key is pressed, add to existing selections
         if (e.shiftKey && prev) {
           return {
             texts: [...prev.texts, newSelection],
-            popupPosition: { top: popupTop, left: popupLeft, position: "below" } // Explicitly set position
+            popupPosition: {
+              top: popupTop,
+              left: popupLeft,
+              position: "below",
+            }, // Explicitly set position
           };
         }
-        
+
         // Otherwise, create new selection
         return {
           texts: [newSelection],
           popupPosition: {
             top: popupPosition.top,
             left: popupLeft,
-            position: popupPosition.position || "below" // Ensure position is always set
-          }
+            position: popupPosition.position || "below", // Ensure position is always set
+          },
         };
       });
       console.log("Text selected", textSelectionPopup);
@@ -821,20 +899,19 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     [isTextSelectionMode, scale]
   );
 
-
   // Attach click handlers to text spans
   useEffect(() => {
     if (!isTextSelectionMode || !documentUrl) return;
 
     const attachHandlers = () => {
       const textSpans = document.querySelectorAll(
-        '.react-pdf__Page__textContent span'
+        ".react-pdf__Page__textContent span"
       );
 
-      textSpans.forEach(span => {
+      textSpans.forEach((span) => {
         // Only attach handler once
         if (!(span as any).hasListener) {
-          span.addEventListener('click', handleTextSpanClick as any);
+          span.addEventListener("click", handleTextSpanClick as any);
           (span as any).hasListener = true;
         }
       });
@@ -842,11 +919,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
     // Create a mutation observer to detect when text layer updates
     const observer = new MutationObserver(attachHandlers);
-    
+
     if (documentRef.current) {
       const config = { childList: true, subtree: true };
       observer.observe(documentRef.current, config);
-      
+
       // Initial attachment
       attachHandlers();
     }
@@ -854,10 +931,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     return () => {
       observer.disconnect();
       const textSpans = document.querySelectorAll(
-        '.react-pdf__Page__textContent span'
+        ".react-pdf__Page__textContent span"
       );
-      textSpans.forEach(span => {
-        span.removeEventListener('click', handleTextSpanClick as any);
+      textSpans.forEach((span) => {
+        span.removeEventListener("click", handleTextSpanClick as any);
         delete (span as any).hasListener;
       });
     };
@@ -866,14 +943,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (textSelectionPopup && !(e.target as Element).closest('.text-selection-popup')) {
+      if (
+        textSelectionPopup &&
+        !(e.target as Element).closest(".text-selection-popup")
+      ) {
         setTextSelectionPopup(null);
       }
     };
-    
-    document.addEventListener('click', handleClickOutside);
+
+    document.addEventListener("click", handleClickOutside);
     return () => {
-      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener("click", handleClickOutside);
     };
   }, [textSelectionPopup]);
 
@@ -881,7 +961,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     const value = "New Text Field";
     const fontSize = 14;
     const fontFamily = "Arial, sans-serif";
-    
+
     const { width, height } = calculateFieldDimensions(
       value,
       fontSize,
@@ -890,8 +970,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
     const newField: TextField = {
       id: `field-${Date.now()}`,
-      x: x,  // Use provided x coordinate
-      y: y,  // Use provided y coordinate
+      x: x, // Use provided x coordinate
+      y: y, // Use provided y coordinate
       width,
       height,
       value,
@@ -900,9 +980,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       fontFamily,
       page: currentPage,
       isFromWorkflow: false,
-      characterSpacing: 0 // Default character spacing
+      characterSpacing: 0, // Default character spacing
+      fontWeight: "normal",
+      fontStyle: "normal",
+      rotation: 0, // Default no rotation
     };
-    
+
     setTextFields([...textFields, newField]);
     setSelectedFieldId(newField.id);
     setIsAddTextBoxMode(false);
@@ -914,38 +997,76 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     pagePosition: { x: number; y: number };
     pageSize: { width: number; height: number };
   }) => {
-    // Get background color from PDF at this position
-    const canvas = document.querySelector('.react-pdf__Page__canvas') as HTMLCanvasElement;
-    if (!canvas) return;
+    // Capture background color only once when rectangle is created
+    // Use a consistent reference scale to avoid color changes when zooming
+    const canvas = document.querySelector(
+      ".react-pdf__Page__canvas"
+    ) as HTMLCanvasElement;
+    let bgColor = "white"; // Default fallback color
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        try {
+          // Calculate the canvas scale factor (current canvas size vs natural PDF size)
+          const canvasScale = canvas.width / pageWidth;
 
-    // Calculate position in canvas coordinates
-    const canvasX = sel.pagePosition.x * scale;
-    const canvasY = sel.pagePosition.y * scale;
-    
-    // Get pixel color at center of selection
-    const pixel = ctx.getImageData(canvasX, canvasY, 1, 1).data;
-    const bgColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+          // Use the canvas scale to get consistent pixel coordinates
+          const centerX = Math.floor(sel.pagePosition.x * canvasScale);
+          const centerY = Math.floor(sel.pagePosition.y * canvasScale);
+
+          // Sample a 3x3 area around the center point
+          let totalR = 0,
+            totalG = 0,
+            totalB = 0;
+          let validSamples = 0;
+
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              const x = centerX + dx;
+              const y = centerY + dy;
+
+              // Make sure we're within canvas bounds
+              if (x >= 0 && y >= 0 && x < canvas.width && y < canvas.height) {
+                const pixel = ctx.getImageData(x, y, 1, 1).data;
+                totalR += pixel[0];
+                totalG += pixel[1];
+                totalB += pixel[2];
+                validSamples++;
+              }
+            }
+          }
+
+          if (validSamples > 0) {
+            const avgR = Math.round(totalR / validSamples);
+            const avgG = Math.round(totalG / validSamples);
+            const avgB = Math.round(totalB / validSamples);
+            bgColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
+          }
+        } catch (error) {
+          console.warn("Failed to capture background color:", error);
+          // Keep default white color
+        }
+      }
+    }
 
     const newDeletion: Rectangles = {
       id: `rec-${Date.now()}-${Math.random()}`,
       x: sel.pagePosition.x,
       y: sel.pagePosition.y,
-      width: sel.pageSize.width,
-      height: sel.pageSize.height,
+      width: sel.pageSize.width + 1,
+      height: sel.pageSize.height + 1,
       page: currentPage,
       pagePosition: sel.pagePosition,
       pageSize: sel.pageSize,
-      background: bgColor // Store background color
+      background: bgColor, // Store the captured color permanently
     };
 
-    setRectangles([...rectangles, newDeletion]);
-  }
+    setRectangles((prev) => [...prev, newDeletion]);
+  };
 
   const deleteDeletionRectangle = (id: string) => {
-    setRectangles(rectangles.filter(rec => rec.id !== id));
+    setRectangles(rectangles.filter((rec) => rec.id !== id));
   };
 
   const deleteTextField = (fieldId: string) => {
@@ -959,22 +1080,32 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     if (isAddTextBoxMode && documentRef.current) {
       const container = documentRef.current;
       const rect = container.getBoundingClientRect();
-      
+
       // Calculate click position relative to document container
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
-      
+
       // Convert to original scale coordinates
       const originalX = clickX / scale;
       const originalY = clickY / scale;
-      
+
       addTextField(originalX, originalY);
+      return; // Don't deselect when adding a new field
     }
-    
-    if (e.target === e.currentTarget) {
+
+    // Check if click target is the document container or PDF page (not a text field)
+    const isEmptyAreaClick =
+      e.target === e.currentTarget ||
+      (e.target as Element).closest(".react-pdf__Page") === e.target ||
+      (e.target as Element).classList.contains("react-pdf__Page__canvas") ||
+      (e.target as Element).classList.contains("react-pdf__Page__textContent");
+
+    if (isEmptyAreaClick) {
+      // Deselect any selected field when clicking on empty areas
       setSelectedFieldId(null);
       setIsTextSelectionMode(false);
       setIsAddTextBoxMode(false);
+      setSettingsPopupFor(null); // Also close any open settings popup
     }
   };
 
@@ -982,26 +1113,29 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     setTextFields(
       textFields.map((field) => {
         if (field.id !== fieldId) return field;
-        
+
         const newField = { ...field, ...updates };
-        
+
         // Recalculate dimensions when text/font/spacing changes
-        if (updates.value !== undefined || 
-            updates.fontSize !== undefined || 
-            updates.fontFamily !== undefined ||
-            updates.characterSpacing !== undefined) { // Add this condition
-          
+        if (
+          updates.value !== undefined ||
+          updates.fontSize !== undefined ||
+          updates.fontFamily !== undefined ||
+          updates.characterSpacing !== undefined
+        ) {
+          // Add this condition
+
           const { width, height } = calculateFieldDimensions(
             updates.value ?? field.value,
             updates.fontSize ?? field.fontSize,
             updates.fontFamily ?? field.fontFamily,
             updates.characterSpacing ?? field.characterSpacing ?? 0 // Pass character spacing
           );
-          
+
           newField.width = width;
           newField.height = height;
         }
-        
+
         return newField;
       })
     );
@@ -1101,7 +1235,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
   // Zoom to fit width
   const zoomToFitWidth = useCallback(() => {
-    setZoomMode('width');
+    setZoomMode("width");
     if (containerRef.current && pageWidth) {
       const rect = containerRef.current.getBoundingClientRect();
       const calculatedScale = rect.width / pageWidth;
@@ -1111,39 +1245,39 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
   // Zoom to actual size
   const zoomToActualSize = useCallback(() => {
-    setZoomMode('page');
+    setZoomMode("page");
     setScale(1.0);
   }, []);
 
   // Zoom in
   const zoomIn = useCallback(() => {
-    setZoomMode('page');
-    setScale(prev => Math.min(3.0, prev + 0.1));
+    setZoomMode("page");
+    setScale((prev) => Math.min(3.0, prev + 0.1));
   }, []);
 
   // Zoom out
   const zoomOut = useCallback(() => {
-    setZoomMode('page');
-    setScale(prev => Math.max(0.25, prev - 0.1));
+    setZoomMode("page");
+    setScale((prev) => Math.max(0.25, prev - 0.1));
   }, []);
 
   return (
     <AnimatePresence>
-
-      <div 
-        className={`${isOpen ? "flex" : "hidden"} relative w-full transition-all duration-300 ease-in-out  h-screen flex flex-col bg-gray-100 shadow-2xl`}>
+      <div
+        className={`${
+          isOpen ? "flex" : "hidden"
+        } relative w-full transition-all duration-300 ease-in-out  h-screen flex flex-col bg-gray-100 shadow-2xl`}
+      >
         <style>{styles}</style>
-        
+
         {/* Top Header Bar - Clean Red Design */}
         <div className="bg-white shadow-lg border-b-2 border-red-500">
           <div className="relative max-w-7xl mx-auto">
-            
             {/* Persistent Toolbar - Always visible */}
             <div className="bg-white">
               <div className="max-w-7xl mx-auto px-6 py-4">
                 {/* Top Row - Always visible tools */}
                 <div className="flex items-center justify-between">
-
                   <div className="flex flex-col gap-5">
                     {/* Views controls */}
                     <div className="flex">
@@ -1182,56 +1316,55 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                       >
                         Translated template
                       </button>
-
                     </div>
-                    
+
                     {/* Controls */}
                     <div className="flex items-center space-x-4">
                       {/* Document Tools */}
                       <div className="flex items-center space-x-3">
                         {/* Add textbox button */}
                         <button
-                          onClick={() => setIsAddTextBoxMode(prev => !prev)}
+                          onClick={() => setIsAddTextBoxMode((prev) => !prev)}
                           className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
-                            isAddTextBoxMode 
-                              ? "bg-red-500 text-white" 
+                            isAddTextBoxMode
+                              ? "bg-red-500 text-white"
                               : "bg-gray-100 hover:bg-gray-200 text-gray-700"
                           }`}
                           disabled={!documentUrl}
-                          title={isAddTextBoxMode ? "Click on document to place text field" : "Add Text Field"}
+                          title={
+                            isAddTextBoxMode
+                              ? "Click on document to place text field"
+                              : "Add Text Field"
+                          }
                         >
-                          <Type size={20} className="group-hover:scale-110 transition-transform" />
+                          <Type
+                            size={20}
+                            className="group-hover:scale-110 transition-transform"
+                          />
                         </button>
-                        
+
                         <button
-                          onClick={handleTextSelection}
+                          onClick={() =>
+                            setIsTextSelectionMode(!isTextSelectionMode)
+                          }
                           className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
-                            isTextSelectionMode 
-                              ? "bg-red-500 text-white" 
+                            isTextSelectionMode
+                              ? "bg-red-500 text-white"
                               : "bg-gray-100 hover:bg-gray-200 text-gray-700"
                           }`}
                           disabled={!documentUrl}
                           title="Text Selection Mode"
                         >
-                          <MousePointer2 size={20} className="group-hover:scale-110 transition-transform" />
+                          <MousePointer2
+                            size={20}
+                            className="group-hover:scale-110 transition-transform"
+                          />
                         </button>
                       </div>
-                      
+
                       {/* View Options */}
                       <div className="flex items-center space-x-3">
                         <div className="w-px h-8 bg-gray-300"></div>
-                        <button
-                          onClick={() => setShowTextboxBorders(!showTextboxBorders)}
-                          className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
-                            showTextboxBorders
-                              ? "bg-red-500 text-white"
-                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                          }`}
-                          title="Toggle Field Borders"
-                        >
-                          <Layout size={20} className="group-hover:scale-110 transition-transform" />
-                        </button>
-                        
                         <button
                           onClick={() => setIsEditMode(!isEditMode)}
                           className={`p-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group gap-2 ${
@@ -1239,9 +1372,14 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                               ? "bg-red-500 text-white"
                               : "bg-gray-100 hover:bg-gray-200 text-gray-700"
                           }`}
-                          title={isEditMode ? "Exit Edit Mode" : "Enter Edit Mode"}
+                          title={
+                            isEditMode ? "Exit Edit Mode" : "Enter Edit Mode"
+                          }
                         >
-                          <Type size={20} className="group-hover:scale-110 transition-transform" />
+                          <Type
+                            size={20}
+                            className="group-hover:scale-110 transition-transform"
+                          />
                           <div>Edit Mode</div>
                         </button>
 
@@ -1254,12 +1392,15 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                           }`}
                           title="Toggle Deletion Rectangles"
                         >
-                          <Trash2 size={20} className="group-hover:scale-110 transition-transform" />
+                          <Trash2
+                            size={20}
+                            className="group-hover:scale-110 transition-transform"
+                          />
                         </button>
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Right side - Export actions */}
                   <div className="flex items-center space-x-3">
                     <button
@@ -1268,9 +1409,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                       disabled={!documentUrl}
                       title="Export Field Data"
                     >
-                      <Save size={20} className="group-hover:scale-110 transition-transform" />
+                      <Save
+                        size={20}
+                        className="group-hover:scale-110 transition-transform"
+                      />
                     </button>
-                    
+
                     <button
                       onClick={exportToPDF}
                       className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group"
@@ -1280,20 +1424,21 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                       {isLoading ? (
                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <Download size={20} className="group-hover:scale-110 transition-transform" />
+                        <Download
+                          size={20}
+                          className="group-hover:scale-110 transition-transform"
+                        />
                       )}
                     </button>
                   </div>
                 </div>
-                
               </div>
             </div>
-
           </div>
         </div>
 
         {isDragging && selectionRect && (
-          <div 
+          <div
             className="fixed border-2 border-blue-500 bg-blue-100 bg-opacity-20 z-[999] pointer-events-none"
             style={{
               left: `${selectionRect.left}px`,
@@ -1303,103 +1448,109 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
             }}
           />
         )}
-              
+
         {/* Main Content Area */}
-        <div 
+        <div
           className="h-[85%] bg-gray-200 relative overflow-hidden"
           ref={containerRef}
         >
-
-        {/* Vertical Zoom Controls - Adobe Acrobat Style */}
-        {documentUrl && (
-          <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
-            
-            {/* Auto Fit Button */}
-            <button
-              onClick={zoomToFitWidth}
-              className="p-2 hover:bg-gray-50 border-b border-gray-200 rounded-t-lg transition-colors group flex items-center justify-center"
-              title="Fit to Width"
-            >
-              <Maximize2 size={16} className="text-gray-600 group-hover:text-gray-800" />
-            </button>
-            
-            {/* Zoom In Button */}
-            <button
-              onClick={zoomIn}
-              className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
-              title="Zoom In"
-            >
-              <Plus size={16} className="text-gray-600 group-hover:text-gray-800" />
-            </button>
-            
-            {/* 300% Label */}
-            <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
-              300%
-            </div>
-            
-            {/* Vertical Slider Container */}
-            <div className="relative py-4 px-3 flex flex-col items-center">
-              <div className="relative h-32 w-6 flex items-center justify-center">
-                {/* Slider Track */}
-                <div className="absolute w-1 h-full bg-gray-300 rounded-full"></div>
-                
-                {/* Progress Track */}
-                <div 
-                  className="absolute w-1 bg-blue-500 rounded-full bottom-0"
-                  style={{
-                    height: `${((scale * 100 - 25) / 275) * 100}%`
-                  }}
-                ></div>
-                
-                {/* Slider Input - Fixed positioning */}
-                <input
-                  type="range"
-                  min="25"
-                  max="300"
-                  value={Math.round(scale * 100)}
-                  onChange={(e) => {
-                    setZoomMode('page');
-                    setScale(parseInt(e.target.value) / 100);
-                  }}
-                  className="absolute w-32 h-6 opacity-0 cursor-pointer origin-center"
-                  style={{
-                    transform: 'rotate(-90deg)',
-                    transformOrigin: 'center'
-                  }}
+          {/* Vertical Zoom Controls - Adobe Acrobat Style */}
+          {documentUrl && (
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
+              {/* Auto Fit Button */}
+              <button
+                onClick={zoomToFitWidth}
+                className="p-2 hover:bg-gray-50 border-b border-gray-200 rounded-t-lg transition-colors group flex items-center justify-center"
+                title="Fit to Width"
+              >
+                <Maximize2
+                  size={16}
+                  className="text-gray-600 group-hover:text-gray-800"
                 />
-                
-                {/* Custom Handle */}
-                <div 
-                  className="absolute w-4 h-3 bg-white border-2 border-blue-500 rounded-sm shadow-sm pointer-events-none"
-                  style={{
-                    bottom: `${((scale * 100 - 25) / 275) * 100}%`,
-                    transform: 'translateY(50%)'
-                  }}
-                ></div>
+              </button>
+
+              {/* Zoom In Button */}
+              <button
+                onClick={zoomIn}
+                className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
+                title="Zoom In"
+              >
+                <Plus
+                  size={16}
+                  className="text-gray-600 group-hover:text-gray-800"
+                />
+              </button>
+
+              {/* 300% Label */}
+              <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
+                300%
+              </div>
+
+              {/* Vertical Slider Container */}
+              <div className="relative py-4 px-3 flex flex-col items-center">
+                <div className="relative h-32 w-6 flex items-center justify-center">
+                  {/* Slider Track */}
+                  <div className="absolute w-1 h-full bg-gray-300 rounded-full"></div>
+
+                  {/* Progress Track */}
+                  <div
+                    className="absolute w-1 bg-blue-500 rounded-full bottom-0"
+                    style={{
+                      height: `${((scale * 100 - 25) / 275) * 100}%`,
+                    }}
+                  ></div>
+
+                  {/* Slider Input - Fixed positioning */}
+                  <input
+                    type="range"
+                    min="25"
+                    max="300"
+                    value={Math.round(scale * 100)}
+                    onChange={(e) => {
+                      setZoomMode("page");
+                      setScale(parseInt(e.target.value) / 100);
+                    }}
+                    className="absolute w-32 h-6 opacity-0 cursor-pointer origin-center"
+                    style={{
+                      transform: "rotate(-90deg)",
+                      transformOrigin: "center",
+                    }}
+                  />
+
+                  {/* Custom Handle */}
+                  <div
+                    className="absolute w-4 h-3 bg-white border-2 border-blue-500 rounded-sm shadow-sm pointer-events-none"
+                    style={{
+                      bottom: `${((scale * 100 - 25) / 275) * 100}%`,
+                      transform: "translateY(50%)",
+                    }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* 25% Label */}
+              <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
+                25%
+              </div>
+
+              {/* Zoom Out Button */}
+              <button
+                onClick={zoomOut}
+                className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
+                title="Zoom Out"
+              >
+                <Minus
+                  size={16}
+                  className="text-gray-600 group-hover:text-gray-800"
+                />
+              </button>
+
+              {/* Current Zoom Display */}
+              <div className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-50 rounded-b-lg border-t border-gray-200 min-w-[60px] text-center">
+                {Math.round(scale * 100)}%
               </div>
             </div>
-            
-            {/* 25% Label */}
-            <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
-              25%
-            </div>
-            
-            {/* Zoom Out Button */}
-            <button
-              onClick={zoomOut}
-              className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
-              title="Zoom Out"
-            >
-              <Minus size={16} className="text-gray-600 group-hover:text-gray-800" />
-            </button>
-            
-            {/* Current Zoom Display */}
-            <div className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-50 rounded-b-lg border-t border-gray-200 min-w-[60px] text-center">
-              {Math.round(scale * 100)}%
-            </div>
-            
-          </div>
-        )}
+          )}
 
           {error && (
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 rounded px-4 py-2 z-[60]">
@@ -1407,39 +1558,31 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
             </div>
           )}
 
-          {isTextSelectionMode && (
-            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg z-[60] flex items-center space-x-2">
-              <MousePointer2 size={18} />
-              <span>Click on any text in the document to inspect it</span>
-              <button 
-                onClick={() => setIsTextSelectionMode(false)}
-                className="ml-4 p-1 bg-blue-800 rounded-full hover:bg-blue-900"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
           {/* Text Selection Popup */}
           {textSelectionPopup && (
-            <div 
+            <div
               className={`fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex flex-col max-h-60 overflow-y-auto text-selection-popup max-w-xs ${
-                textSelectionPopup.popupPosition.position === 'above' 
-                  ? 'bottom-auto' 
-                  : 'top-auto'
+                textSelectionPopup.popupPosition.position === "above"
+                  ? "bottom-auto"
+                  : "top-auto"
               }`}
               style={{
-                top: textSelectionPopup.popupPosition.position === 'below' 
-                  ? `${textSelectionPopup.popupPosition.top}px` 
-                  : undefined,
-                bottom: textSelectionPopup.popupPosition.position === 'above' 
-                  ? `${window.innerHeight - textSelectionPopup.popupPosition.top}px`
-                  : undefined,
+                top:
+                  textSelectionPopup.popupPosition.position === "below"
+                    ? `${textSelectionPopup.popupPosition.top}px`
+                    : undefined,
+                bottom:
+                  textSelectionPopup.popupPosition.position === "above"
+                    ? `${
+                        window.innerHeight -
+                        textSelectionPopup.popupPosition.top
+                      }px`
+                    : undefined,
                 left: `${textSelectionPopup.popupPosition.left}px`,
-                transform: 'translateX(-50%)',
-                maxWidth: '300px'
+                transform: "translateX(-50%)",
+                maxWidth: "300px",
               }}
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center mb-2 pb-2 border-b">
                 <span className="text-sm font-medium">
@@ -1452,22 +1595,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                   <X size={16} />
                 </button>
               </div>
-              
+
               {textSelectionPopup.texts.map((sel, index) => (
-                <div key={index} className="flex items-center justify-between py-1">
+                <div
+                  key={index}
+                  className="flex items-center justify-between py-1"
+                >
                   <span className="text-sm truncate flex-1">{sel.text}</span>
                   <div className="flex space-x-1 ml-2">
                     <button
                       onClick={() => {
                         const newSelections = [...textSelectionPopup.texts];
                         newSelections.splice(index, 1);
-                        
+
                         if (newSelections.length === 0) {
                           setTextSelectionPopup(null);
                         } else {
                           setTextSelectionPopup({
                             texts: newSelections,
-                            popupPosition: textSelectionPopup.popupPosition
+                            popupPosition: textSelectionPopup.popupPosition,
                           });
                         }
                       }}
@@ -1482,7 +1628,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
 
               <button
                 onClick={() => {
-                  textSelectionPopup.texts.forEach(sel => {
+                  textSelectionPopup.texts.forEach((sel) => {
                     addDeletionRectangle(sel);
                   });
                   setTextSelectionPopup(null);
@@ -1492,10 +1638,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                 <Trash2 size={14} className="mr-1" />
                 <span>Delete Selected Text</span>
               </button>
-              
+
               <button
                 onClick={() => {
-                  textSelectionPopup.texts.forEach(sel => {
+                  textSelectionPopup.texts.forEach((sel) => {
                     console.log("Text coordinates:", sel.pagePosition);
                   });
                   setTextSelectionPopup(null);
@@ -1508,7 +1654,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
             </div>
           )}
           {documentUrl ? (
-            <div className="flex flex-col h-full">            
+            <div className="flex flex-col h-full">
               <div className="flex-1 overflow-auto p-4 max-h-full">
                 <div
                   className={`relative bg-white shadow-lg mx-auto ${
@@ -1547,7 +1693,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                     file={documentUrl}
                     onLoadSuccess={handleDocumentLoadSuccess}
                     onLoadError={handleDocumentLoadError}
-                    loading={<div className="p-8 text-center">Loading PDF...</div>}
+                    loading={
+                      <div className="p-8 text-center">Loading PDF...</div>
+                    }
                   >
                     <Page
                       pageNumber={currentPage}
@@ -1560,51 +1708,60 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                   </Document>
 
                   {rectangles
-                    .filter(rec => rec.page === currentPage)
-                    .map(rec => (
+                    .filter((rec) => rec.page === currentPage)
+                    .map((rec) => (
                       <div
                         key={rec.id}
-                        className={`absolute bg-white ${showRectangles ? "bg-opacity-90 border border-red-300" : ""}  flex items-center justify-center`}
+                        className={`absolute bg-white ${
+                          showRectangles
+                            ? "bg-opacity-90 border border-red-300"
+                            : ""
+                        }  flex items-center justify-center`}
                         style={{
                           left: rec.x * scale,
                           top: rec.y * scale,
                           width: rec.width * scale,
                           height: rec.height * scale,
                           zIndex: 50,
-                          backgroundColor: rec.background || 'white', // Use captured color
-                          border: showRectangles ? '1px dashed red' : 'none'
+                          backgroundColor: rec.background || "white", // Use captured color
+                          border: showRectangles ? "1px dashed red" : "none",
                         }}
                       >
-                    {showRectangles && (
-                      <button
-                        onClick={() => deleteDeletionRectangle(rec.id)}
-                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                  ))}
+                        {showRectangles && (
+                          <button
+                            onClick={() => deleteDeletionRectangle(rec.id)}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
 
                   {/* Text Field Overlays */}
                   {textFields
                     .filter((field) => field.page === currentPage)
-                    .filter((field) => !field.isFromWorkflow || showWorkflowFields)
+                    .filter(
+                      (field) => !field.isFromWorkflow || showWorkflowFields
+                    )
                     .map((field) => (
                       <Rnd
                         key={field.id}
-                        size={{ width: field.width * scale, height: field.height * scale }}
+                        size={{
+                          width: field.width * scale,
+                          height: field.height * scale,
+                        }}
                         position={{ x: field.x * scale, y: field.y * scale }}
                         onDrag={(e, d) => {
-                          updateTextField(field.id, { 
-                            x: d.x / scale, 
-                            y: d.y / scale 
+                          updateTextField(field.id, {
+                            x: d.x / scale,
+                            y: d.y / scale,
                           });
                         }}
                         onDragStop={(e, d) => {
-                          updateTextField(field.id, { 
-                            x: d.x / scale, 
-                            y: d.y / scale 
+                          updateTextField(field.id, {
+                            x: d.x / scale,
+                            y: d.y / scale,
                           });
                         }}
                         onResizeStop={(e, direction, ref, delta, position) => {
@@ -1613,10 +1770,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                             width: parseInt(ref.style.width) / scale,
                             height: parseInt(ref.style.height) / scale,
                             x: position.x / scale,
-                            y: position.y / scale
+                            y: position.y / scale,
                           });
                         }}
-                        disableDragging={!isEditMode}
+                        disableDragging={!isEditMode || isRotating}
                         enableResizing={false}
                         bounds="parent"
                         onClick={(e: { stopPropagation: () => void }) => {
@@ -1628,9 +1785,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                         dragAxis="both"
                         dragGrid={[1, 1]}
                         resizeGrid={[1, 1]}
-                        className={`${showTextboxBorders ? 'border border-blue-500' : 'border'} ${field.isFromWorkflow ? ' hover:border-purple-400' : 'border-gray-300 hover:border-blue-400'} ${
-                          selectedFieldId === field.id
-                            ? ""
+                        className={`${
+                          isEditMode
+                            ? "border-2 border-blue-500"
+                            : "border-2 border-transparent"
+                        } ${
+                          field.isFromWorkflow
+                            ? " hover:border-purple-400"
+                            : "border-gray-300 hover:border-blue-400"
+                        } ${selectedFieldId === field.id ? "" : ""} ${
+                          isRotating && rotatingFieldId === field.id
+                            ? "border-yellow-500 border-2"
                             : ""
                         } transition-all duration-200 ease-in-out`}
                         style={{
@@ -1638,6 +1803,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                           transition: "transform 0.1s ease-out",
                           zIndex: selectedFieldId === field.id ? 1000 : 100,
                           transform: "none", // Ensure no additional scaling
+                          cursor:
+                            isRotating && rotatingFieldId === field.id
+                              ? "grabbing"
+                              : "auto",
                         }}
                       >
                         <div className="w-full h-full relative group">
@@ -1648,15 +1817,15 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                               <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                                 <Move size={10} />
                               </div>
-                              
+
                               {/* Font size controls */}
                               <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    updateTextField(field.id, { 
+                                    updateTextField(field.id, {
                                       // Adjust font size in original scale
-                                      fontSize: Math.max(6, field.fontSize - 1) 
+                                      fontSize: Math.max(6, field.fontSize - 1),
                                     });
                                   }}
                                   className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
@@ -1671,9 +1840,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    updateTextField(field.id, { 
+                                    updateTextField(field.id, {
                                       // Adjust font size in original scale
-                                      fontSize: Math.min(72, field.fontSize + 1) 
+                                      fontSize: Math.min(
+                                        72,
+                                        field.fontSize + 1
+                                      ),
                                     });
                                   }}
                                   className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
@@ -1698,176 +1870,393 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                               >
                                 <Trash2 size={10} />
                               </button>
+                            )}
+
+                          {/* Rotation handle - positioned at bottom-right corner */}
+                          {isEditMode && selectedFieldId === field.id && (
+                            <div
+                              className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full flex items-center justify-center cursor-grab shadow-lg z-20"
+                              style={{
+                                cursor:
+                                  isRotating && rotatingFieldId === field.id
+                                    ? "grabbing"
+                                    : "grab",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setIsRotating(true);
+                                setRotatingFieldId(field.id);
+                                setInitialRotation(field.rotation || 0);
+
+                                // Calculate field center for rotation
+                                const fieldRect =
+                                  e.currentTarget.parentElement?.getBoundingClientRect();
+                                if (fieldRect) {
+                                  const centerX =
+                                    fieldRect.left + fieldRect.width / 2;
+                                  const centerY =
+                                    fieldRect.top + fieldRect.height / 2;
+                                  setRotationCenter({ x: centerX, y: centerY });
+                                }
+                              }}
+                              title="Hold and drag to rotate"
+                            >
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                className="text-white"
+                              >
+                                <path d="M12 2v20M2 12h20" />
+                                <path d="m19 9-3 3 3 3" />
+                                <path d="m5 15 3-3-3-3" />
+                              </svg>
+                            </div>
+                          )}
+
+                          {/* Rotation degree indicator - shows during rotation */}
+                          {isRotating && rotatingFieldId === field.id && (
+                            <div
+                              className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-3 py-1 rounded-lg text-sm font-semibold shadow-lg z-30 pointer-events-none"
+                              style={{
+                                backdropFilter: "blur(4px)",
+                              }}
+                            >
+                              {field.rotation || 0}°
+                            </div>
                           )}
 
                           {/* Field properties */}
                           {isEditMode && selectedFieldId === field.id && (
-                          <>
-                            {/* Settings button */}
-                            <button
+                            <>
+                              {/* Settings button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSettingsPopupFor(field.id);
+                                }}
+                                className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
+                                  settingsPopupFor === field.id
+                                    ? "bg-gray-100 border-gray-400"
+                                    : ""
+                                }`}
+                              >
+                                <MoreHorizontal
+                                  size={14}
+                                  className="text-gray-600"
+                                />
+                              </button>
+
+                              {/* Settings popup */}
+                              {settingsPopupFor === field.id && (
+                                <div
+                                  className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
+                                  style={{
+                                    transform: `translate(0.25rem, 2rem) scale(${Math.max(
+                                      0.6,
+                                      1 / scale
+                                    )})`,
+                                    transformOrigin: "top right",
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="flex justify-between items-center mb-3 ">
+                                    <h3 className="font-semibold text-gray-800">
+                                      Field Settings
+                                    </h3>
+                                    <button
+                                      onClick={() => setSettingsPopupFor(null)}
+                                      className="text-gray-500 hover:text-gray-800"
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+
+                                  <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-3">
+                                      {/* Position X */}
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                                          X Position
+                                        </label>
+                                        <input
+                                          type="number"
+                                          value={Math.round(field.x)}
+                                          onChange={(e) =>
+                                            updateTextField(field.id, {
+                                              x: parseInt(e.target.value) || 0,
+                                            })
+                                          }
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                          min="0"
+                                        />
+                                      </div>
+
+                                      {/* Position Y */}
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                                          Y Position
+                                        </label>
+                                        <input
+                                          type="number"
+                                          value={Math.round(field.y)}
+                                          onChange={(e) =>
+                                            updateTextField(field.id, {
+                                              y: parseInt(e.target.value) || 0,
+                                            })
+                                          }
+                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                          min="0"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Font Family */}
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Font Family
+                                      </label>
+                                      <select
+                                        value={field.fontFamily}
+                                        onChange={(e) =>
+                                          updateTextField(field.id, {
+                                            fontFamily: e.target.value,
+                                          })
+                                        }
+                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                      >
+                                        <option value="Arial, sans-serif">
+                                          Arial
+                                        </option>
+                                        <option value="Helvetica, sans-serif">
+                                          Helvetica
+                                        </option>
+                                        <option value="Times New Roman, serif">
+                                          Times New Roman
+                                        </option>
+                                        <option value="Georgia, serif">
+                                          Georgia
+                                        </option>
+                                        <option value="Courier New, monospace">
+                                          Courier New
+                                        </option>
+                                        <option value="Verdana, sans-serif">
+                                          Verdana
+                                        </option>
+                                        <option value="Tahoma, sans-serif">
+                                          Tahoma
+                                        </option>
+                                        <option value="Trebuchet MS, sans-serif">
+                                          Trebuchet MS
+                                        </option>
+                                        <option value="Palatino, serif">
+                                          Palatino
+                                        </option>
+                                        <option value="Lucida Console, monospace">
+                                          Lucida Console
+                                        </option>
+                                      </select>
+                                    </div>
+
+                                    {/* Font Color */}
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Font Color
+                                      </label>
+                                      <div className="flex items-center space-x-2">
+                                        <input
+                                          type="color"
+                                          value={field.fontColor}
+                                          onChange={(e) =>
+                                            updateTextField(field.id, {
+                                              fontColor: e.target.value,
+                                            })
+                                          }
+                                          className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={field.fontColor}
+                                          onChange={(e) =>
+                                            updateTextField(field.id, {
+                                              fontColor: e.target.value,
+                                            })
+                                          }
+                                          className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                          placeholder="#000000"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Bold and Italic */}
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-2">
+                                        Text Style
+                                      </label>
+                                      <div className="flex items-center space-x-2">
+                                        <button
+                                          onClick={() =>
+                                            updateTextField(field.id, {
+                                              fontWeight:
+                                                field.fontWeight === "bold"
+                                                  ? "normal"
+                                                  : "bold",
+                                            })
+                                          }
+                                          className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center font-bold text-lg transition-all duration-200 ${
+                                            field.fontWeight === "bold"
+                                              ? "bg-red-500 text-white border-red-500"
+                                              : "bg-white text-gray-700 hover:bg-gray-50"
+                                          }`}
+                                          title="Bold"
+                                        >
+                                          B
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            updateTextField(field.id, {
+                                              fontStyle:
+                                                field.fontStyle === "italic"
+                                                  ? "normal"
+                                                  : "italic",
+                                            })
+                                          }
+                                          className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center italic text-lg transition-all duration-200 ${
+                                            field.fontStyle === "italic"
+                                              ? "bg-red-500 text-white border-red-500"
+                                              : "bg-white text-gray-700 hover:bg-gray-50"
+                                          }`}
+                                          title="Italic"
+                                        >
+                                          I
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Chracter Spacing */}
+                                    <div className="mt-3">
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Character Spacing
+                                      </label>
+                                      <div className="flex items-center">
+                                        <button
+                                          onClick={() => {
+                                            const current =
+                                              field.characterSpacing || 0;
+                                            updateTextField(field.id, {
+                                              characterSpacing: Math.max(
+                                                0,
+                                                current - 0.5
+                                              ),
+                                            });
+                                          }}
+                                          className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
+                                        >
+                                          <Minus size={14} />
+                                        </button>
+
+                                        <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
+                                          {field.characterSpacing || 0}px
+                                        </div>
+
+                                        <button
+                                          onClick={() => {
+                                            const current =
+                                              field.characterSpacing || 0;
+                                            updateTextField(field.id, {
+                                              characterSpacing: Math.min(
+                                                20,
+                                                current + 0.5
+                                              ),
+                                            });
+                                          }}
+                                          className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
+                                        >
+                                          <Plus size={14} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Rotation */}
+                                    <div className="mt-3">
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Rotation
+                                      </label>
+                                      <div className="flex items-center space-x-2">
+                                        <input
+                                          type="range"
+                                          min="0"
+                                          max="360"
+                                          step="5"
+                                          value={field.rotation || 0}
+                                          onChange={(e) =>
+                                            updateTextField(field.id, {
+                                              rotation: parseInt(
+                                                e.target.value
+                                              ),
+                                            })
+                                          }
+                                          className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb:bg-red-500"
+                                        />
+                                        <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
+                                          {field.rotation || 0}°
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {/* Text content - wrapped in rotating container */}
+                          <div
+                            className="w-full h-full absolute"
+                            style={{
+                              transform: field.rotation
+                                ? `rotate(${field.rotation}deg)`
+                                : "none",
+                              transformOrigin: "center center",
+                            }}
+                          >
+                            <textarea
+                              value={field.value}
+                              onChange={(e) =>
+                                updateTextField(field.id, {
+                                  value: e.target.value,
+                                })
+                              }
+                              readOnly={!isEditMode}
+                              className="w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
+                              style={{
+                                fontSize: `${field.fontSize * scale}px`,
+                                color: field.fontColor,
+                                fontFamily: field.fontFamily,
+                                fontWeight: field.fontWeight || "normal",
+                                fontStyle: field.fontStyle || "normal",
+                                cursor: "text",
+                                padding: "1px",
+                                lineHeight: "1.1",
+                                wordWrap: "break-word",
+                                wordBreak: "break-all",
+                                whiteSpace: "pre-wrap",
+                                boxSizing: "border-box",
+                                overflow: "hidden",
+                                letterSpacing: field.characterSpacing
+                                  ? `${field.characterSpacing}px`
+                                  : "normal",
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSettingsPopupFor(field.id);
+                                setSelectedFieldId(field.id);
+                                setIsTextSelectionMode(false);
                               }}
-                              className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                                settingsPopupFor === field.id ? 'bg-gray-100 border-gray-400' : ''
-                              }`}
-                            >
-                              <MoreHorizontal size={14} className="text-gray-600" />
-                            </button>
-
-                            {/* Settings popup */}
-                            {settingsPopupFor === field.id && (
-                              <div 
-                                className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="flex justify-between items-center mb-3 ">
-                                  <h3 className="font-semibold text-gray-800">Field Settings</h3>
-                                  <button 
-                                    onClick={() => setSettingsPopupFor(null)}
-                                    className="text-gray-500 hover:text-gray-800"
-                                  >
-                                    <X size={16} />
-                                  </button>
-                                </div>
-                                
-                                <div className="space-y-4">
-                                  <div className="grid grid-cols-2 gap-3">
-                                    
-                                    {/* Position X */}
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                                        X Position
-                                      </label>
-                                      <input
-                                        type="number"
-                                        value={Math.round(field.x)}
-                                        onChange={(e) =>
-                                          updateTextField(field.id, {
-                                            x: parseInt(e.target.value) || 0,
-                                          })
-                                        }
-                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                        min="0"
-                                      />
-                                    </div>
-                                    
-                                    {/* Position Y */}
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                                        Y Position
-                                      </label>
-                                      <input
-                                        type="number"
-                                        value={Math.round(field.y)}
-                                        onChange={(e) =>
-                                          updateTextField(field.id, {
-                                            y: parseInt(e.target.value) || 0,
-                                          })
-                                        }
-                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                        min="0"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* Font Color */}
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                                      Font Color
-                                    </label>
-                                    <div className="flex items-center space-x-2">
-                                      <input
-                                        type="color"
-                                        value={field.fontColor}
-                                        onChange={(e) =>
-                                          updateTextField(field.id, { fontColor: e.target.value })
-                                        }
-                                        className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
-                                      />
-                                      <input
-                                        type="text"
-                                        value={field.fontColor}
-                                        onChange={(e) =>
-                                          updateTextField(field.id, { fontColor: e.target.value })
-                                        }
-                                        className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                        placeholder="#000000"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {/* Chracter Spacing */}
-                                  <div className="mt-3">
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                                      Character Spacing
-                                    </label>
-                                    <div className="flex items-center">
-                                      <button
-                                        onClick={() => {
-                                          const current = field.characterSpacing || 0;
-                                          updateTextField(field.id, {
-                                            characterSpacing: Math.max(0, current - 0.5)
-                                          });
-                                        }}
-                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
-                                      >
-                                        <Minus size={14} />
-                                      </button>
-                                      
-                                      <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
-                                        {field.characterSpacing || 0}px
-                                      </div>
-                                      
-                                      <button
-                                        onClick={() => {
-                                          const current = field.characterSpacing || 0;
-                                          updateTextField(field.id, {
-                                            characterSpacing: Math.min(20, current + 0.5)
-                                          });
-                                        }}
-                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
-                                      >
-                                        <Plus size={14} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-
-
-                          {/* Text content */}
-                          <textarea
-                            value={field.value}
-                            onChange={(e) =>
-                              updateTextField(field.id, { value: e.target.value })
-                            }
-                            className="w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200 absolute"
-                            style={{
-                              fontSize: `${field.fontSize * scale}px`,
-                              color: field.fontColor,
-                              fontFamily: field.fontFamily,
-                              cursor: "text",
-                              padding: "1px",
-                              lineHeight: "1.1",
-                              wordWrap: "break-word",
-                              wordBreak: "break-all",
-                              whiteSpace: "pre-wrap",
-                              boxSizing: "border-box",
-                              overflow: "hidden",
-                              letterSpacing: field.characterSpacing ? `${field.characterSpacing}px` : 'normal',
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedFieldId(field.id);
-                              setIsTextSelectionMode(false);
-                            }}
-                          />
-                          
+                            />
+                          </div>
                         </div>
                       </Rnd>
                     ))}
@@ -1877,15 +2266,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <Edit3 size={64} className="mb-4 text-gray-300" />
-              <h2 className="text-xl font-semibold mb-2">PDF Document Editor</h2>
+              <h2 className="text-xl font-semibold mb-2">
+                PDF Document Editor
+              </h2>
               <p className="text-center mb-6 max-w-md">
-                Upload a PDF document to start adding and editing text fields. You
-                can drag, resize, and customize text overlays.
+                Upload a PDF document to start adding and editing text fields.
+                You can drag, resize, and customize text overlays.
               </p>
             </div>
           )}
         </div>
-        
+
         {/* Bottom Controls - Simplified with Zoom Slider */}
         <div className="absolute w-full bottom-0 bg-white border-t border-gray-200 px-4 py-2 flex items-center justify-between z-[99999999]">
           <div className="flex items-center space-x-3 w-full">
@@ -1907,14 +2298,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
               <ChevronRight size={20} />
             </button>
           </div>
-          
-
-          
           <div className="w-28"></div> {/* Spacer for alignment */}
         </div>
-      
       </div>
-
     </AnimatePresence>
   );
 };
