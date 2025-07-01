@@ -27,7 +27,8 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 const measureText = (
   text: string,
   fontSize: number,
-  fontFamily: string
+  fontFamily: string,
+  characterSpacing: number = 0 
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -38,7 +39,11 @@ const measureText = (
   
   let maxWidth = 0;
   lines.forEach(line => {
-    const width = ctx.measureText(line).width;
+    let width = ctx.measureText(line).width;
+    if (line.length > 0) {
+      // Add extra width for character spacing
+      width += characterSpacing * (line.length - 1);
+    }
     if (width > maxWidth) maxWidth = width;
   });
   
@@ -73,6 +78,14 @@ interface DocumentCanvasProps {
   conversationId?: string; // Optional for workflow context
 }
 
+interface TextSelection {
+  text: string;
+  position: { top: number; left: number };
+  pagePosition: { x: number; y: number };
+  pageSize?: { width: number; height: number }; // Add dimensions
+}
+
+
 interface TextField {
   id: string;
   x: number;
@@ -86,6 +99,7 @@ interface TextField {
   page: number;
   fieldKey?: string;
   isFromWorkflow?: boolean;
+  characterSpacing?: number; // Optional for character spacing
 }
 
 interface WorkflowField {
@@ -115,6 +129,7 @@ interface WorkflowMapping {
   alignment: string;
   bbox_center: { x: number; y: number };
   page_number: number;
+  character_spacing?: number; // Optional for character spacing
 }
 
 interface WorkflowData {
@@ -139,6 +154,7 @@ interface WorkflowData {
 
 interface TextSelectionPopupState {
   texts: {
+    pageSize: any;
     text: string;
     position: { top: number; left: number };
     pagePosition: { x: number; y: number };
@@ -146,8 +162,17 @@ interface TextSelectionPopupState {
   popupPosition: {
     top: number;
     left: number;
-    position: 'above' | 'below'; // Add position type
+    position: 'above' | 'below'; 
   };
+}
+
+interface DeletionRectangle {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
 }
 
 const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conversationId }) => {
@@ -177,6 +202,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const [mouseDownTime, setMouseDownTime] = useState<number | null>(null);
+  const [deletionRectangles, setDeletionRectangles] = useState<DeletionRectangle[]>([])
   
 
   const styles = `
@@ -391,6 +417,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
           "x": 95.60959930419922,
           "y": 168.3349838256836
         },
+        "character_spacing": 0,
         "page_number": 1
       },
     "{last_name}": {
@@ -415,6 +442,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         "x": 315.28359603881836,
         "y": 149.38609313964844
       },
+      "character_spacing": 0,
       "page_number": 1
     },
     },
@@ -524,6 +552,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
             page: mapping.page_number,
             fieldKey: key,
             isFromWorkflow: true,
+            characterSpacing: mapping.character_spacing || 0
           };
           
           fields.push(field);
@@ -591,6 +620,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       text: string;
       position: { top: number; left: number };
       pagePosition: { x: number; y: number };
+      pageSize: { width: number; height: number }; // Add dimensions
     }[] = [];
     
     // Find all text spans within the selection rectangle
@@ -604,6 +634,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         spanRect.bottom > selectionRect.top
       ) {
         const text = span.textContent || '';
+
+        // Inside the span selection loop:
+        const pageWidth = spanRect.width / scale;
+        const pageHeight = spanRect.height / scale;
         
         // Calculate position in PDF coordinates (original scale)
         const pageX = (spanRect.left - pageRect.left) / scale;
@@ -612,7 +646,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         selectedSpans.push({
           text,
           position: { top: spanRect.top, left: spanRect.left },
-          pagePosition: { x: pageX, y: pageY }
+          pagePosition: { x: pageX, y: pageY },
+          pageSize: { width: pageWidth, height: pageHeight }
         });
       }
     });
@@ -642,10 +677,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
   const calculateFieldDimensions = (
     text: string,
     fontSize: number,
-    fontFamily: string
+    fontFamily: string,
+    characterSpacing: number = 0
   ) => {
     const padding = 7; // Small padding for visual comfort
-    const { width, height } = measureText(text, fontSize, fontFamily);
+    const { width, height } = measureText(text, fontSize, fontFamily, characterSpacing );
     
     return {
       width: Math.max(width + padding, 30), // Minimum width 30px
@@ -713,6 +749,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       if (!pdfPage) return;
       
       const spanRect = span.getBoundingClientRect();
+
+      // Calculate dimensions in original scale
+      const pageWidth = spanRect.width / scale;
+      const pageHeight = spanRect.height / scale;
       
       // Calculate position relative to viewport
       const popupTop = spanRect.bottom + 5;
@@ -732,7 +772,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         const newSelection = {
           text: textContent,
           position: { top: spanRect.top, left: spanRect.left },
-          pagePosition: { x: pageX, y: pageY }
+          pagePosition: { x: pageX, y: pageY },
+          pageSize: { width: pageWidth, height: pageHeight }
         };
         
         // If shift key is pressed, add to existing selections
@@ -837,6 +878,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
       fontFamily,
       page: currentPage,
       isFromWorkflow: false,
+      characterSpacing: 0 // Default character spacing
     };
     
     setTextFields([...textFields, newField]);
@@ -844,6 +886,23 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
     setIsAddTextBoxMode(false);
     setIsTextSelectionMode(false);
     setTextSelectionPopup(null);
+  };
+
+  const addDeletionRectangle = (x: number, y: number, width: number, height: number) => {
+    const newDeletion: DeletionRectangle = {
+      id: `del-${Date.now()}-${Math.random()}`,
+      x,
+      y,
+      width,
+      height,
+      page: currentPage,
+    };
+    
+    setDeletionRectangles([...deletionRectangles, newDeletion]);
+  };
+
+  const deleteDeletionRectangle = (id: string) => {
+    setDeletionRectangles(deletionRectangles.filter(del => del.id !== id));
   };
 
   const deleteTextField = (fieldId: string) => {
@@ -883,14 +942,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
         
         const newField = { ...field, ...updates };
         
-        // Recalculate dimensions when text/font changes
+        // Recalculate dimensions when text/font/spacing changes
         if (updates.value !== undefined || 
             updates.fontSize !== undefined || 
-            updates.fontFamily !== undefined) {
+            updates.fontFamily !== undefined ||
+            updates.characterSpacing !== undefined) { // Add this condition
+          
           const { width, height } = calculateFieldDimensions(
             updates.value ?? field.value,
             updates.fontSize ?? field.fontSize,
-            updates.fontFamily ?? field.fontFamily
+            updates.fontFamily ?? field.fontFamily,
+            updates.characterSpacing ?? field.characterSpacing ?? 0 // Pass character spacing
           );
           
           newField.width = width;
@@ -1341,13 +1403,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                   <span className="text-sm truncate flex-1">{sel.text}</span>
                   <div className="flex space-x-1 ml-2">
                     <button
-                      onClick={() => console.log("Position:", sel.pagePosition)}
-                      className="p-1 text-gray-500 hover:text-blue-500"
-                      title="Log position"
-                    >
-                      <Move size={14} />
-                    </button>
-                    <button
                       onClick={() => {
                         const newSelections = [...textSelectionPopup.texts];
                         newSelections.splice(index, 1);
@@ -1362,13 +1417,33 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                         }
                       }}
                       className="p-1 text-gray-500 hover:text-red-500"
-                      title="Remove"
+                      title="Remove from selection"
                     >
                       <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
               ))}
+
+              <button
+                onClick={() => {
+                  textSelectionPopup.texts.forEach(sel => {
+                    if (sel.pageSize) {
+                      addDeletionRectangle(
+                        sel.pagePosition.x, 
+                        sel.pagePosition.y,
+                        sel.pageSize.width,
+                        sel.pageSize.height
+                      );
+                    }
+                  });
+                  setTextSelectionPopup(null);
+                }}
+                className="mt-2 p-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center"
+              >
+                <Trash2 size={14} className="mr-1" />
+                <span>Delete Selected Text</span>
+              </button>
               
               <button
                 onClick={() => {
@@ -1435,6 +1510,22 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                       renderMode="canvas"
                     />
                   </Document>
+
+                  {deletionRectangles
+                    .filter(del => del.page === currentPage)
+                    .map(del => (
+                      <div
+                        key={del.id}
+                        className="absolute bg-white"
+                        style={{
+                          left: del.x * scale,
+                          top: del.y * scale,
+                          width: del.width * scale,
+                          height: del.height * scale,
+                          zIndex: 50,
+                        }}
+                      />
+                  ))}
 
                   {/* Text Field Overlays */}
                   {textFields
@@ -1572,7 +1663,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                                 className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-20 border border-gray-200 w-64 settings-popup"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <div className="flex justify-between items-center mb-3">
+                                <div className="flex justify-between items-center mb-3 ">
                                   <h3 className="font-semibold text-gray-800">Field Settings</h3>
                                   <button 
                                     onClick={() => setSettingsPopupFor(null)}
@@ -1584,6 +1675,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                                 
                                 <div className="space-y-4">
                                   <div className="grid grid-cols-2 gap-3">
+                                    
                                     {/* Position X */}
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -1646,6 +1738,42 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                                       />
                                     </div>
                                   </div>
+
+                                  {/* Chracter Spacing */}
+                                  <div className="mt-3">
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                      Character Spacing
+                                    </label>
+                                    <div className="flex items-center">
+                                      <button
+                                        onClick={() => {
+                                          const current = field.characterSpacing || 0;
+                                          updateTextField(field.id, {
+                                            characterSpacing: Math.max(0, current - 0.5)
+                                          });
+                                        }}
+                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
+                                      >
+                                        <Minus size={14} />
+                                      </button>
+                                      
+                                      <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
+                                        {field.characterSpacing || 0}px
+                                      </div>
+                                      
+                                      <button
+                                        onClick={() => {
+                                          const current = field.characterSpacing || 0;
+                                          updateTextField(field.id, {
+                                            characterSpacing: Math.min(20, current + 0.5)
+                                          });
+                                        }}
+                                        className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
+                                      >
+                                        <Plus size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             )}
@@ -1672,6 +1800,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({ isOpen, onClose, conver
                               whiteSpace: "pre-wrap",
                               boxSizing: "border-box",
                               overflow: "hidden",
+                              letterSpacing: field.characterSpacing ? `${field.characterSpacing}px` : 'normal',
                             }}
                             onClick={(e) => {
                               e.stopPropagation();
