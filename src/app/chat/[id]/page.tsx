@@ -20,7 +20,7 @@ export default function ChatPage() {
   const [isDocumentCanvasOpen, setIsDocumentCanvasOpen] = useState(false);
   const [showWorkflowButton, setShowWorkflowButton] = useState(false);
   const [hasAutoOpened, setHasAutoOpened] = useState(false);
-  const [docCanvasWidth, setDocCanvasWidth] = useState(500); // Default width
+  const [docCanvasWidth, setDocCanvasWidth] = useState(700); // Default width
 
   // Initialize chat with the conversation ID from the URL
   const {
