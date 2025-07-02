@@ -46,6 +46,7 @@ import {
 // Add the useWorkflowData hook import
 import { useWorkflowData } from "./DocumentCanvas/hooks/useWorkflowData";
 import { WorkflowData, TemplateMapping } from "./DocumentCanvas/types/workflow";
+import api from "@/lib/api";
 
 // Helper function to generate UUID
 const generateUUID = (): string => {
@@ -304,6 +305,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     useState<WorkflowData | null>(null);
   const [showSaveConfirmation, setShowSaveConfirmation] =
     useState<boolean>(false);
+  const [showSavedIndicator, setShowSavedIndicator] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Status color mapping
   const getStatusColor = (status: string): string => {
@@ -366,6 +369,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     height: number;
   } | null>(null);
   const [isFileTypeDetected, setIsFileTypeDetected] = useState<boolean>(false);
+  const [isDocumentLoaded, setIsDocumentLoaded] = useState<boolean>(false);
 
   // Add drag state for smooth dragging - using refs instead of state for performance
   const dragStatesRef = useRef<
@@ -846,26 +850,73 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   // Initialize local workflow data from original data
   useEffect(() => {
-    if (originalWorkflowData && !localWorkflowData) {
+    if (originalWorkflowData) {
       const localCopy = JSON.parse(JSON.stringify(originalWorkflowData));
-      // Initialize shapes and deletion_rectangles if they don't exist
-      if (!localCopy.shapes) {
+      // Ensure shapes and deletion_rectangles are proper objects
+      if (!localCopy.shapes || typeof localCopy.shapes !== "object") {
         localCopy.shapes = {};
       }
-      if (!localCopy.deletion_rectangles) {
+      if (
+        !localCopy.deletion_rectangles ||
+        typeof localCopy.deletion_rectangles !== "object"
+      ) {
         localCopy.deletion_rectangles = {};
       }
+
+      // Convert arrays to objects if needed (backend might send arrays)
+      if (Array.isArray(localCopy.shapes)) {
+        const shapesObj: Record<string, any> = {};
+        localCopy.shapes.forEach((shape: any) => {
+          if (shape && shape.id) {
+            shapesObj[shape.id] = shape;
+          }
+        });
+        localCopy.shapes = shapesObj;
+      }
+
+      if (Array.isArray(localCopy.deletion_rectangles)) {
+        const rectanglesObj: Record<string, any> = {};
+        localCopy.deletion_rectangles.forEach((rect: any) => {
+          if (rect && rect.id) {
+            rectanglesObj[rect.id] = rect;
+          }
+        });
+        localCopy.deletion_rectangles = rectanglesObj;
+      }
+
+      console.log("Initializing local workflow data:", {
+        shapes: localCopy.shapes,
+        shapesCount: Object.keys(localCopy.shapes).length,
+        deletion_rectangles: localCopy.deletion_rectangles,
+        rectanglesCount: Object.keys(localCopy.deletion_rectangles).length,
+      });
+
       setLocalWorkflowData(localCopy);
+      setHasUnsavedChanges(false); // Reset unsaved changes when loading fresh data
     }
   }, [originalWorkflowData]);
 
   // Store initial workflow data for change detection
   useEffect(() => {
-    if (localWorkflowData && !initialWorkflowData) {
-      setInitialWorkflowData(JSON.parse(JSON.stringify(localWorkflowData)));
-      setHasUnsavedChanges(false);
+    if (localWorkflowData) {
+      // Always update initial data when local data changes (to handle fresh loads)
+      const currentDataString = JSON.stringify(localWorkflowData);
+      const initialDataString = initialWorkflowData
+        ? JSON.stringify(initialWorkflowData)
+        : null;
+
+      // Only update if the data actually changed or if we don't have initial data
+      if (!initialWorkflowData || currentDataString !== initialDataString) {
+        setInitialWorkflowData(JSON.parse(JSON.stringify(localWorkflowData)));
+
+        // Only reset unsaved changes if this is the first time setting initial data
+        // or if we're loading fresh data from the backend
+        if (!initialWorkflowData) {
+          setHasUnsavedChanges(false);
+        }
+      }
     }
-  }, [localWorkflowData, initialWorkflowData]);
+  }, [localWorkflowData]);
 
   // Debug: Log localWorkflowData changes
   useEffect(() => {
@@ -1086,7 +1137,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           fontFamily: mapping.font.name || "Arial, sans-serif",
           page: mapping.page_number,
           fieldKey: key,
-          isFromWorkflow: true,
+          isFromWorkflow: !fieldData.isCustomField, // Custom fields are NOT from workflow
           characterSpacing: mapping.character_spacing || 0,
           fontWeight: mapping.font_weight || "normal",
           fontStyle: mapping.font_style || "normal",
@@ -1339,7 +1390,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   // Handle keyboard shortcuts for formatting
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
-      // Only handle shortcuts when a field is selected and not in text selection mode
+      // Handle Escape key to deselect
+      if (e.key === "Escape") {
+        setSelectedFieldId(null);
+        setSelectedShapeId(null);
+        setIsTextSelectionMode(false);
+        setIsAddTextBoxMode(false);
+        setShapeDrawingMode(null);
+        setSettingsPopupFor(null);
+        return;
+      }
+
+      // Only handle other shortcuts when a field is selected and not in text selection mode
       if (!selectedFieldId || isTextSelectionMode) return;
 
       const textFields = getTextFieldsFromWorkflowData();
@@ -1552,6 +1614,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const handleDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setError("");
+    setIsDocumentLoaded(true);
   };
 
   const handleDocumentLoadError = (error: Error) => {
@@ -1563,6 +1626,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     const { width, height } = page.getViewport({ scale: 1 });
     setPageWidth(width);
     setPageHeight(height);
+    setIsDocumentLoaded(true);
   };
 
   const handleImageLoadSuccess = (
@@ -1577,6 +1641,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     setNumPages(1); // Images only have 1 "page"
     setCurrentPage(1);
     setError("");
+    setIsDocumentLoaded(true);
   };
 
   const handleImageLoadError = (
@@ -1739,6 +1804,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         translated_value: currentTab === "translated" ? value : "",
         value_status: "edited",
         translated_status: "edited",
+        isCustomField: true, // Mark as custom field for deletion logic
       };
       updatedData.fields = updatedFields;
 
@@ -2118,7 +2184,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         scale: 1, // Use 1x scale since we already scaled the content to 300%
         useCORS: true,
         allowTaint: true,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#ef4444", // Always red background
         logging: false,
         foreignObjectRendering: false, // Disable for better PDF.js compatibility
         ignoreElements: (element) => {
@@ -2370,22 +2436,123 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   };
 
   const saveChanges = async () => {
-    if (!localWorkflowData || !hasUnsavedChanges) return;
+    if (!localWorkflowData || !hasUnsavedChanges || !conversationId) return;
 
+    setIsSaving(true);
     try {
-      // Update workflow data with current state
-      // For now, we'll just update the local state and mark as saved
-      // In the future, this would make an API call to save to the backend
+      // Transform fields to match backend FieldMetadataDict format
+      const transformedFields: Record<string, any> = {};
+      if (localWorkflowData.fields) {
+        for (const [fieldKey, fieldData] of Object.entries(
+          localWorkflowData.fields
+        )) {
+          transformedFields[fieldKey] = {
+            value: fieldData.value || null,
+            value_status: fieldData.value_status || "pending",
+            translated_value: fieldData.translated_value || null,
+            translated_status: fieldData.translated_status || "pending",
+          };
+        }
+      }
 
-      // Update the initial workflow data to current state
-      setInitialWorkflowData(JSON.parse(JSON.stringify(localWorkflowData)));
-      setHasUnsavedChanges(false);
+      // Transform shapes from object to array
+      const transformedShapes = localWorkflowData.shapes
+        ? Object.values(localWorkflowData.shapes)
+        : null;
 
-      // Show success feedback (you could add a toast here)
-      console.log("Changes saved successfully!");
-    } catch (error) {
-      console.error("Error saving changes:", error);
-      setError("Failed to save changes");
+      // Transform deletion_rectangles from object to array
+      const transformedDeletionRectangles =
+        localWorkflowData.deletion_rectangles
+          ? Object.values(localWorkflowData.deletion_rectangles)
+          : null;
+
+      // Transform localWorkflowData to match ReplaceWorkflowRequest format
+      const requestData = {
+        file_id: localWorkflowData.file_id,
+        base_file_public_url: localWorkflowData.base_file_public_url || null,
+        template_id: localWorkflowData.template_id,
+        template_file_public_url:
+          localWorkflowData.template_file_public_url || null,
+        origin_template_mappings:
+          localWorkflowData.origin_template_mappings || null,
+        fields:
+          Object.keys(transformedFields).length > 0 ? transformedFields : null,
+        template_translated_id: localWorkflowData.template_translated_id,
+        template_translated_file_public_url:
+          localWorkflowData.template_translated_file_public_url || null,
+        translated_template_mappings:
+          localWorkflowData.translated_template_mappings || null,
+        translate_to: localWorkflowData.translate_to,
+        translate_from: localWorkflowData.translate_from,
+        shapes: transformedShapes,
+        deletion_rectangles: transformedDeletionRectangles,
+      };
+
+      console.log("Sending workflow data:", requestData);
+
+      // Call the new replace workflow API endpoint
+      const response = await api.put(
+        `/api/workflow/${conversationId}/replace`,
+        requestData
+      );
+
+      if (response.data.success) {
+        // Update the initial workflow data to current state
+        setInitialWorkflowData(JSON.parse(JSON.stringify(localWorkflowData)));
+        setHasUnsavedChanges(false);
+
+        // Show brief "Saved" confirmation like in Word
+        setShowSavedIndicator(true);
+        setTimeout(() => {
+          setShowSavedIndicator(false);
+        }, 2000); // Show for 2 seconds
+
+        // Show success feedback
+        console.log("Changes saved successfully!");
+      } else {
+        throw new Error(response.data.message || "Failed to save changes");
+      }
+    } catch (err) {
+      console.error("Error saving changes:", err);
+
+      let errorMessage = "Failed to save changes to the server";
+
+      // Type guard for axios errors
+      if (err && typeof err === "object" && "response" in err) {
+        const error = err as { response?: { data?: any } };
+        console.error("Full error response:", error.response);
+
+        if (error.response?.data) {
+          const errorData = error.response.data;
+          console.error("Error data:", errorData);
+
+          if (typeof errorData.detail === "string") {
+            errorMessage = `Failed to save: ${errorData.detail}`;
+          } else if (Array.isArray(errorData.detail)) {
+            // Handle Pydantic validation errors
+            const validationErrors = errorData.detail
+              .map((validationErr: any) => {
+                const location = validationErr.loc
+                  ? validationErr.loc.join(".")
+                  : "unknown";
+                const message = validationErr.msg || "validation error";
+                return `${location}: ${message}`;
+              })
+              .join(", ");
+            errorMessage = `Validation errors: ${validationErrors}`;
+          } else if (errorData.detail && typeof errorData.detail === "object") {
+            errorMessage = `Failed to save: ${JSON.stringify(
+              errorData.detail
+            )}`;
+          } else if (errorData.message) {
+            errorMessage = `Failed to save: ${errorData.message}`;
+          }
+        }
+      }
+
+      setError(errorMessage);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -2726,6 +2893,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
     // Immediately reset file detection to prevent race conditions
     setIsFileTypeDetected(false);
+    setIsDocumentLoaded(false);
     setDocumentUrl("");
     setFileType(null);
     setError("");
@@ -3172,24 +3340,59 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                       <div className="flex items-center gap-2">
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <button
+                            <motion.button
                               onClick={saveChanges}
-                              className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
+                              disabled={
+                                !documentUrl || !hasUnsavedChanges || isSaving
+                              }
+                              className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group relative overflow-hidden ${
                                 hasUnsavedChanges
-                                  ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-green-200 hover:from-green-600 hover:to-green-700"
+                                  ? isSaving
+                                    ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-blue-200"
+                                    : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-green-200 hover:from-green-600 hover:to-green-700"
                                   : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
                               }`}
-                              disabled={!documentUrl || !hasUnsavedChanges}
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
                             >
-                              <Save
-                                size={18}
-                                className="group-hover:scale-110 transition-transform"
-                              />
-                            </button>
+                              {isSaving ? (
+                                <motion.div
+                                  animate={{ rotate: 360 }}
+                                  transition={{
+                                    duration: 1,
+                                    repeat: Infinity,
+                                    ease: "linear",
+                                  }}
+                                  className="w-[18px] h-[18px] border-2 border-white border-t-transparent rounded-full"
+                                />
+                              ) : (
+                                <Save
+                                  size={18}
+                                  className="group-hover:scale-110 transition-transform"
+                                />
+                              )}
+
+                              {/* Saving shimmer effect */}
+                              {isSaving && (
+                                <motion.div
+                                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                                  animate={{
+                                    x: ["-100%", "100%"],
+                                  }}
+                                  transition={{
+                                    duration: 1.5,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                  }}
+                                />
+                              )}
+                            </motion.button>
                           </TooltipTrigger>
                           <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
                             <p>
-                              {hasUnsavedChanges
+                              {isSaving
+                                ? "Saving changes..."
+                                : hasUnsavedChanges
                                 ? "Save Changes"
                                 : "No changes to save"}
                             </p>
@@ -3200,20 +3403,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                           <TooltipTrigger asChild>
                             <button
                               onClick={exportToPDF}
-                              className={`px-3 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
-                                hasUnsavedChanges
-                                  ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-200"
-                                  : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 shadow-gray-100"
-                              }`}
+                              className="px-3 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 shadow-gray-100"
                               disabled={isLoading || !documentUrl}
                             >
                               {isLoading ? (
                                 <div
-                                  className={`w-4 h-4 border-2 ${
-                                    hasUnsavedChanges
-                                      ? "border-white"
-                                      : "border-gray-400"
-                                  } border-t-transparent rounded-full animate-spin`}
+                                  className={`w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin`}
                                 />
                               ) : (
                                 <Download
@@ -3244,10 +3439,189 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           {/* Show loading state */}
           {workflowLoading && (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                <p className="text-gray-600">Loading workflow data...</p>
-              </div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center justify-center p-8 text-center"
+              >
+                {/* Workflow Icon Animation */}
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.1, type: "spring", stiffness: 200 }}
+                  className="relative mb-6"
+                >
+                  {/* Workflow Document Stack */}
+                  <motion.div className="relative">
+                    {/* Background documents */}
+                    <motion.div
+                      animate={{
+                        scale: [1, 1.02, 1],
+                        rotate: [0, 2, 0],
+                      }}
+                      transition={{
+                        duration: 3,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                        delay: 0.2,
+                      }}
+                      className="absolute top-1 left-1 w-12 h-14 bg-gradient-to-br from-gray-400 to-gray-500 rounded-lg shadow-md"
+                    />
+                    <motion.div
+                      animate={{
+                        scale: [1, 1.03, 1],
+                        rotate: [0, -1, 0],
+                      }}
+                      transition={{
+                        duration: 2.5,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                        delay: 0.1,
+                      }}
+                      className="absolute top-0.5 left-0.5 w-12 h-14 bg-gradient-to-br from-blue-400 to-blue-500 rounded-lg shadow-md"
+                    />
+
+                    {/* Front document */}
+                    <motion.div
+                      animate={{
+                        scale: [1, 1.05, 1],
+                        rotateY: [0, 3, 0],
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
+                      className="relative w-12 h-14 bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg overflow-hidden"
+                    >
+                      {/* Document content lines */}
+                      <div className="absolute top-2 left-1.5 right-1.5 space-y-0.5">
+                        {[...Array(4)].map((_, i) => (
+                          <motion.div
+                            key={i}
+                            initial={{ width: 0 }}
+                            animate={{ width: "100%" }}
+                            transition={{
+                              delay: 0.5 + i * 0.15,
+                              duration: 0.6,
+                              ease: "easeOut",
+                            }}
+                            className="h-0.5 bg-white/50 rounded"
+                            style={{ width: i === 3 ? "70%" : "100%" }}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Workflow badge */}
+                      <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 text-white text-[8px] font-bold">
+                        WF
+                      </div>
+                    </motion.div>
+                  </motion.div>
+
+                  {/* Workflow connection lines */}
+                  <div className="absolute inset-0">
+                    {[...Array(3)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className="absolute w-8 h-0.5 bg-red-400/60"
+                        initial={{ scaleX: 0, opacity: 0 }}
+                        animate={{
+                          scaleX: [0, 1, 0],
+                          opacity: [0, 1, 0],
+                          x: [20, 30, 40],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          delay: i * 0.3,
+                          ease: "easeInOut",
+                        }}
+                        style={{
+                          left: "50%",
+                          top: `${50 + (i - 1) * 15}%`,
+                          transformOrigin: "left center",
+                        }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+
+                {/* Loading Progress Indicator */}
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: "100%", opacity: 1 }}
+                  transition={{ delay: 0.3, duration: 0.8 }}
+                  className="w-24 h-1 bg-gray-200 rounded-full overflow-hidden mb-4"
+                >
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-red-500 to-blue-500 rounded-full"
+                    animate={{
+                      x: ["-100%", "100%"],
+                    }}
+                    transition={{
+                      duration: 1.8,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                  />
+                </motion.div>
+
+                {/* Loading Text */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="space-y-1"
+                >
+                  <motion.h3
+                    animate={{
+                      opacity: [0.7, 1, 0.7],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                    className="text-lg font-semibold text-gray-700"
+                  >
+                    Loading Workflow
+                  </motion.h3>
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.7 }}
+                    className="text-sm text-gray-500"
+                  >
+                    Setting up your document workflow...
+                  </motion.p>
+                </motion.div>
+
+                {/* Pulsing Dots */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                  className="flex space-x-1 mt-4"
+                >
+                  {[...Array(3)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      className="w-2 h-2 bg-red-500 rounded-full"
+                      animate={{
+                        scale: [1, 1.4, 1],
+                        opacity: [0.4, 1, 0.4],
+                      }}
+                      transition={{
+                        duration: 1.5,
+                        repeat: Infinity,
+                        delay: i * 0.25,
+                        ease: "easeInOut",
+                      }}
+                    />
+                  ))}
+                </motion.div>
+              </motion.div>
             </div>
           )}
 
@@ -3429,6 +3803,99 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                     {error}
                   </div>
                 )}
+
+                {/* Beautiful Saved Indicator */}
+                <AnimatePresence>
+                  {showSavedIndicator && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -50, scale: 0.8 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -20, scale: 0.9 }}
+                      transition={{
+                        type: "spring",
+                        damping: 15,
+                        stiffness: 300,
+                      }}
+                      className="absolute top-4 right-4 z-[70] bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl border border-green-400/20"
+                    >
+                      <div className="flex items-center gap-3">
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{
+                            delay: 0.2,
+                            type: "spring",
+                            stiffness: 500,
+                          }}
+                          className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center"
+                        >
+                          <motion.svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            initial={{ pathLength: 0 }}
+                            animate={{ pathLength: 1 }}
+                            transition={{
+                              delay: 0.3,
+                              duration: 0.5,
+                              ease: "easeOut",
+                            }}
+                          >
+                            <motion.path d="m9 12 2 2 4-4" />
+                          </motion.svg>
+                        </motion.div>
+                        <div className="flex flex-col">
+                          <motion.span
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.1 }}
+                            className="font-semibold text-sm"
+                          >
+                            Changes Saved
+                          </motion.span>
+                          <motion.span
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.15 }}
+                            className="text-xs text-green-100"
+                          >
+                            All changes have been saved successfully
+                          </motion.span>
+                        </div>
+                      </div>
+
+                      {/* Confetti particles */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        {[...Array(8)].map((_, i) => (
+                          <motion.div
+                            key={i}
+                            className="absolute w-1 h-1 bg-white/60 rounded-full"
+                            initial={{
+                              x: "50%",
+                              y: "50%",
+                              scale: 0,
+                            }}
+                            animate={{
+                              x: `${50 + (Math.random() - 0.5) * 200}%`,
+                              y: `${50 + (Math.random() - 0.5) * 200}%`,
+                              scale: [0, 1, 0],
+                            }}
+                            transition={{
+                              delay: 0.5 + i * 0.1,
+                              duration: 1,
+                              ease: "easeOut",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Text Selection Popup */}
                 {textSelectionPopup && (
@@ -3623,10 +4090,170 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                             onLoadSuccess={handleDocumentLoadSuccess}
                             onLoadError={handleDocumentLoadError}
                             loading={
-                              <div className="p-8 text-center">
-                                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                                Loading PDF document...
-                              </div>
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className="flex flex-col items-center justify-center p-12 text-center"
+                              >
+                                {/* PDF Icon Animation */}
+                                <motion.div
+                                  initial={{ scale: 0.8, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={{
+                                    delay: 0.1,
+                                    type: "spring",
+                                    stiffness: 200,
+                                  }}
+                                  className="relative mb-6"
+                                >
+                                  {/* PDF Document Icon */}
+                                  <motion.div
+                                    animate={{
+                                      scale: [1, 1.05, 1],
+                                      rotateY: [0, 5, 0],
+                                    }}
+                                    transition={{
+                                      duration: 2,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                    }}
+                                    className="w-16 h-20 bg-gradient-to-br from-red-500 to-red-600 rounded-lg shadow-lg relative overflow-hidden"
+                                  >
+                                    {/* PDF Text */}
+                                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white text-xs font-bold">
+                                      PDF
+                                    </div>
+
+                                    {/* Document Lines */}
+                                    <div className="absolute top-3 left-2 right-2 space-y-1">
+                                      {[...Array(3)].map((_, i) => (
+                                        <motion.div
+                                          key={i}
+                                          initial={{ width: 0 }}
+                                          animate={{ width: "100%" }}
+                                          transition={{
+                                            delay: 0.5 + i * 0.2,
+                                            duration: 0.8,
+                                            ease: "easeOut",
+                                          }}
+                                          className="h-0.5 bg-white/40 rounded"
+                                        />
+                                      ))}
+                                    </div>
+
+                                    {/* Corner Fold */}
+                                    <div className="absolute top-0 right-0 w-3 h-3 bg-red-400 transform rotate-45 translate-x-1.5 -translate-y-1.5" />
+                                  </motion.div>
+
+                                  {/* Floating Loading Particles */}
+                                  <div className="absolute inset-0">
+                                    {[...Array(6)].map((_, i) => (
+                                      <motion.div
+                                        key={i}
+                                        className="absolute w-1 h-1 bg-red-400 rounded-full"
+                                        animate={{
+                                          y: [-20, -40, -20],
+                                          x: [
+                                            Math.cos((i * 60 * Math.PI) / 180) *
+                                              30,
+                                            Math.cos((i * 60 * Math.PI) / 180) *
+                                              40,
+                                            Math.cos((i * 60 * Math.PI) / 180) *
+                                              30,
+                                          ],
+                                          opacity: [0.3, 0.8, 0.3],
+                                          scale: [0.5, 1, 0.5],
+                                        }}
+                                        transition={{
+                                          duration: 2 + i * 0.2,
+                                          repeat: Infinity,
+                                          ease: "easeInOut",
+                                          delay: i * 0.3,
+                                        }}
+                                        style={{
+                                          left: "50%",
+                                          top: "50%",
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                </motion.div>
+
+                                {/* Loading Progress Bar */}
+                                <motion.div
+                                  initial={{ width: 0, opacity: 0 }}
+                                  animate={{ width: "100%", opacity: 1 }}
+                                  transition={{ delay: 0.3, duration: 0.8 }}
+                                  className="w-32 h-1 bg-gray-200 rounded-full overflow-hidden mb-4"
+                                >
+                                  <motion.div
+                                    className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full"
+                                    animate={{
+                                      x: ["-100%", "100%"],
+                                    }}
+                                    transition={{
+                                      duration: 1.5,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                    }}
+                                  />
+                                </motion.div>
+
+                                {/* Loading Text */}
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: 0.5 }}
+                                  className="space-y-1"
+                                >
+                                  <motion.h3
+                                    animate={{
+                                      opacity: [0.7, 1, 0.7],
+                                    }}
+                                    transition={{
+                                      duration: 2,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                    }}
+                                    className="text-lg font-semibold text-gray-700"
+                                  >
+                                    Loading PDF Document
+                                  </motion.h3>
+                                  <motion.p
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 0.7 }}
+                                    className="text-sm text-gray-500"
+                                  >
+                                    Preparing your document for editing...
+                                  </motion.p>
+                                </motion.div>
+
+                                {/* Loading Dots */}
+                                <motion.div
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.8 }}
+                                  className="flex space-x-1 mt-4"
+                                >
+                                  {[...Array(3)].map((_, i) => (
+                                    <motion.div
+                                      key={i}
+                                      className="w-2 h-2 bg-red-500 rounded-full"
+                                      animate={{
+                                        scale: [1, 1.3, 1],
+                                        opacity: [0.5, 1, 0.5],
+                                      }}
+                                      transition={{
+                                        duration: 1.2,
+                                        repeat: Infinity,
+                                        delay: i * 0.2,
+                                        ease: "easeInOut",
+                                      }}
+                                    />
+                                  ))}
+                                </motion.div>
+                              </motion.div>
                             }
                           >
                             <Page
@@ -3651,435 +4278,79 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                           </div>
                         )}
 
-                        {visibleRectangles.map((rec) => (
-                          <div
-                            key={rec.id}
-                            className={`absolute bg-white ${
-                              showRectangles
-                                ? "bg-opacity-90 border border-red-300"
-                                : ""
-                            }  flex items-center justify-center`}
-                            style={{
-                              left: rec.x * scale,
-                              top: rec.y * scale,
-                              width: rec.width * scale,
-                              height: rec.height * scale,
-                              zIndex: 50,
-                              backgroundColor: rec.background || "white", // Use captured color
-                              border: showRectangles
-                                ? "1px dashed red"
-                                : "none",
-                            }}
-                          >
-                            {showRectangles && (
-                              <button
-                                onClick={() => deleteDeletionRectangle(rec.id)}
-                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                              >
-                                <X size={12} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-
-                        {/* Shape Preview during drawing */}
-                        {shapePreview && shapeDrawingMode && (
-                          <div
-                            className="absolute border-2 border-dashed border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none"
-                            style={{
-                              left: shapePreview.x * scale,
-                              top: shapePreview.y * scale,
-                              width: shapePreview.width * scale,
-                              height: shapePreview.height * scale,
-                              borderRadius:
-                                shapeDrawingMode === "circle" ? "50%" : "0",
-                              zIndex: 1000,
-                            }}
-                          />
-                        )}
-
-                        {/* Shape Overlays */}
-                        {visibleShapes.map((shape) => (
-                          <Rnd
-                            key={shape.id}
-                            size={{
-                              width: shape.width * scale,
-                              height: shape.height * scale,
-                            }}
-                            position={{
-                              x: shape.x * scale,
-                              y: shape.y * scale,
-                            }}
-                            onDrag={(e, d) => {
-                              // Use currentTarget directly - it's the Rnd element
-                              const element = e.currentTarget as HTMLElement;
-                              handleShapeDrag(shape.id, d.x, d.y, element);
-                            }}
-                            onDragStop={(e, d) => {
-                              handleShapeDragStop(shape.id, d.x, d.y);
-                            }}
-                            onResizeStop={(
-                              e,
-                              direction,
-                              ref,
-                              delta,
-                              position
-                            ) => {
-                              updateShape(shape.id, {
-                                width: parseInt(ref.style.width) / scale,
-                                height: parseInt(ref.style.height) / scale,
-                                x: position.x / scale,
-                                y: position.y / scale,
-                              });
-                            }}
-                            disableDragging={!isEditMode}
-                            enableResizing={
-                              isEditMode && selectedShapeId === shape.id
-                            }
-                            bounds="parent"
-                            onClick={(e: { stopPropagation: () => void }) => {
-                              e.stopPropagation();
-                              setSelectedShapeId(shape.id);
-                              setSelectedFieldId(null);
-                              setIsTextSelectionMode(false);
-                            }}
-                            dragHandleClassName="shape-drag-handle"
-                            className={`${
-                              isEditMode && selectedShapeId === shape.id
-                                ? "border-2 border-blue-500"
-                                : "border-2 border-transparent hover:border-blue-400"
-                            } transition-all duration-200 ease-in-out`}
-                            style={{
-                              zIndex: selectedShapeId === shape.id ? 1000 : 200,
-                              cursor: isEditMode ? "move" : "default",
-                            }}
-                          >
-                            <div className="w-full h-full relative group">
-                              {/* Shape Element */}
-                              <div
-                                className="w-full h-full shape-drag-handle"
-                                style={{
-                                  backgroundColor: hexToRgba(
-                                    shape.fillColor,
-                                    shape.fillOpacity
-                                  ),
-                                  border: `${shape.borderWidth}px solid ${shape.borderColor}`,
-                                  borderRadius:
-                                    shape.type === "circle" ? "50%" : "0",
-                                  transform: shape.rotation
-                                    ? `rotate(${shape.rotation}deg)`
-                                    : "none",
-                                  transformOrigin: "center center",
-                                }}
-                              />
-
-                              {/* Shape Controls */}
-                              {isEditMode && selectedShapeId === shape.id && (
-                                <>
-                                  {/* Delete button */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      deleteShape(shape.id);
-                                    }}
-                                    className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
-                                  >
-                                    <Trash2 size={10} />
-                                  </button>
-
-                                  {/* Settings button */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSettingsPopupFor(shape.id);
-                                    }}
-                                    className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                                      settingsPopupFor === shape.id
-                                        ? "bg-gray-100 border-gray-400"
-                                        : ""
-                                    }`}
-                                  >
-                                    <Palette
-                                      size={14}
-                                      className="text-gray-600"
-                                    />
-                                  </button>
-
-                                  {/* Shape Settings popup */}
-                                  {settingsPopupFor === shape.id && (
-                                    <div
-                                      className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-72 settings-popup"
-                                      style={{
-                                        transform: `translate(0.25rem, 2rem) scale(${Math.max(
-                                          0.6,
-                                          1 / scale
-                                        )})`,
-                                        transformOrigin: "top right",
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-semibold text-gray-800">
-                                          {shape.type === "circle"
-                                            ? "Circle"
-                                            : "Rectangle"}{" "}
-                                          Settings
-                                        </h3>
-                                        <button
-                                          onClick={() =>
-                                            setSettingsPopupFor(null)
-                                          }
-                                          className="text-gray-500 hover:text-gray-800"
-                                        >
-                                          <X size={16} />
-                                        </button>
-                                      </div>
-
-                                      <div className="space-y-4">
-                                        {/* Position Controls */}
-                                        <div className="grid grid-cols-2 gap-3">
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              X Position
-                                            </label>
-                                            <input
-                                              type="number"
-                                              value={Math.round(shape.x)}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  x:
-                                                    parseInt(e.target.value) ||
-                                                    0,
-                                                })
-                                              }
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                              min="0"
-                                            />
-                                          </div>
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Y Position
-                                            </label>
-                                            <input
-                                              type="number"
-                                              value={Math.round(shape.y)}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  y:
-                                                    parseInt(e.target.value) ||
-                                                    0,
-                                                })
-                                              }
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                              min="0"
-                                            />
-                                          </div>
-                                        </div>
-
-                                        {/* Size Controls */}
-                                        <div className="grid grid-cols-2 gap-3">
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Width
-                                            </label>
-                                            <input
-                                              type="number"
-                                              value={Math.round(shape.width)}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  width:
-                                                    parseInt(e.target.value) ||
-                                                    1,
-                                                })
-                                              }
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                              min="1"
-                                            />
-                                          </div>
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Height
-                                            </label>
-                                            <input
-                                              type="number"
-                                              value={Math.round(shape.height)}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  height:
-                                                    parseInt(e.target.value) ||
-                                                    1,
-                                                })
-                                              }
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                              min="1"
-                                            />
-                                          </div>
-                                        </div>
-
-                                        {/* Border Settings */}
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-2">
-                                            Border
-                                          </label>
-                                          <div className="flex items-center space-x-2 mb-2">
-                                            <input
-                                              type="color"
-                                              value={shape.borderColor}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  borderColor: e.target.value,
-                                                })
-                                              }
-                                              className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
-                                            />
-                                            <input
-                                              type="text"
-                                              value={shape.borderColor}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  borderColor: e.target.value,
-                                                })
-                                              }
-                                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
-                                              placeholder="#000000"
-                                            />
-                                          </div>
-                                          <div className="flex items-center space-x-2">
-                                            <span className="text-xs text-gray-600 min-w-[40px]">
-                                              Width:
-                                            </span>
-                                            <input
-                                              type="range"
-                                              min="0"
-                                              max="10"
-                                              step="1"
-                                              value={shape.borderWidth}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  borderWidth: parseInt(
-                                                    e.target.value
-                                                  ),
-                                                })
-                                              }
-                                              className="flex-1 shape-slider"
-                                            />
-                                            <span className="text-xs font-medium text-gray-700 min-w-[25px] text-center">
-                                              {shape.borderWidth}px
-                                            </span>
-                                          </div>
-                                        </div>
-
-                                        {/* Fill Settings */}
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-2">
-                                            Fill
-                                          </label>
-                                          <div className="flex items-center space-x-2 mb-2">
-                                            <input
-                                              type="color"
-                                              value={shape.fillColor}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  fillColor: e.target.value,
-                                                })
-                                              }
-                                              className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
-                                            />
-                                            <input
-                                              type="text"
-                                              value={shape.fillColor}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  fillColor: e.target.value,
-                                                })
-                                              }
-                                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
-                                              placeholder="#ffffff"
-                                            />
-                                          </div>
-                                          <div className="flex items-center space-x-2">
-                                            <span className="text-xs text-gray-600 min-w-[50px]">
-                                              Opacity:
-                                            </span>
-                                            <input
-                                              type="range"
-                                              min="0"
-                                              max="1"
-                                              step="0.01"
-                                              value={shape.fillOpacity}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  fillOpacity: parseFloat(
-                                                    e.target.value
-                                                  ),
-                                                })
-                                              }
-                                              className="flex-1 shape-slider"
-                                            />
-                                            <span className="text-xs font-medium text-gray-700 min-w-[35px] text-center">
-                                              {Math.round(
-                                                shape.fillOpacity * 100
-                                              )}
-                                              %
-                                            </span>
-                                          </div>
-                                        </div>
-
-                                        {/* Rotation */}
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            Rotation
-                                          </label>
-                                          <div className="flex items-center space-x-2">
-                                            <input
-                                              type="range"
-                                              min="0"
-                                              max="360"
-                                              step="5"
-                                              value={shape.rotation || 0}
-                                              onChange={(e) =>
-                                                updateShape(shape.id, {
-                                                  rotation: parseInt(
-                                                    e.target.value
-                                                  ),
-                                                })
-                                              }
-                                              className="flex-1 shape-slider"
-                                            />
-                                            <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
-                                              {shape.rotation || 0}°
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
+                        {/* Deletion Rectangle Overlays - Only show when document is fully loaded */}
+                        {isDocumentLoaded &&
+                          visibleRectangles.map((rec) => (
+                            <div
+                              key={rec.id}
+                              className={`absolute bg-white ${
+                                showRectangles
+                                  ? "bg-opacity-90 border border-red-300"
+                                  : ""
+                              }  flex items-center justify-center`}
+                              style={{
+                                left: rec.x * scale,
+                                top: rec.y * scale,
+                                width: rec.width * scale,
+                                height: rec.height * scale,
+                                zIndex: 50,
+                                backgroundColor: rec.background || "white", // Use captured color
+                                border: showRectangles
+                                  ? "1px dashed red"
+                                  : "none",
+                              }}
+                            >
+                              {showRectangles && (
+                                <button
+                                  onClick={() =>
+                                    deleteDeletionRectangle(rec.id)
+                                  }
+                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                                >
+                                  <X size={12} />
+                                </button>
                               )}
                             </div>
-                          </Rnd>
-                        ))}
+                          ))}
 
-                        {/* Text Field Overlays */}
-                        {visibleTextFields.map((field) => {
-                          return (
+                        {/* Shape Preview during drawing - Only show when document is fully loaded */}
+                        {isDocumentLoaded &&
+                          shapePreview &&
+                          shapeDrawingMode && (
+                            <div
+                              className="absolute border-2 border-dashed border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none"
+                              style={{
+                                left: shapePreview.x * scale,
+                                top: shapePreview.y * scale,
+                                width: shapePreview.width * scale,
+                                height: shapePreview.height * scale,
+                                borderRadius:
+                                  shapeDrawingMode === "circle" ? "50%" : "0",
+                                zIndex: 1000,
+                              }}
+                            />
+                          )}
+
+                        {/* Shape Overlays - Only show when document is fully loaded */}
+                        {isDocumentLoaded &&
+                          visibleShapes.map((shape) => (
                             <Rnd
-                              key={field.id}
+                              key={shape.id}
                               size={{
-                                width: field.width * scale,
-                                height: field.height * scale,
+                                width: shape.width * scale,
+                                height: shape.height * scale,
                               }}
                               position={{
-                                x: field.x * scale,
-                                y: field.y * scale,
+                                x: shape.x * scale,
+                                y: shape.y * scale,
                               }}
                               onDrag={(e, d) => {
                                 // Use currentTarget directly - it's the Rnd element
                                 const element = e.currentTarget as HTMLElement;
-                                handleFieldDrag(field.id, d.x, d.y, element);
+                                handleShapeDrag(shape.id, d.x, d.y, element);
                               }}
                               onDragStop={(e, d) => {
-                                handleFieldDragStop(field.id, d.x, d.y);
+                                handleShapeDragStop(shape.id, d.x, d.y);
                               }}
                               onResizeStop={(
                                 e,
@@ -4088,153 +4359,91 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                 delta,
                                 position
                               ) => {
-                                // Convert scaled dimensions back to original scale
-                                updateTextField(field.id, {
+                                updateShape(shape.id, {
                                   width: parseInt(ref.style.width) / scale,
                                   height: parseInt(ref.style.height) / scale,
                                   x: position.x / scale,
                                   y: position.y / scale,
                                 });
                               }}
-                              disableDragging={!isEditMode || isRotating}
-                              enableResizing={false}
+                              disableDragging={!isEditMode}
+                              enableResizing={
+                                isEditMode && selectedShapeId === shape.id
+                              }
                               bounds="parent"
                               onClick={(e: { stopPropagation: () => void }) => {
                                 e.stopPropagation();
-                                setSelectedFieldId(field.id);
+                                setSelectedShapeId(shape.id);
+                                setSelectedFieldId(null);
                                 setIsTextSelectionMode(false);
                               }}
-                              dragHandleClassName="drag-handle"
-                              dragAxis="both"
-                              dragGrid={[1, 1]}
-                              resizeGrid={[1, 1]}
-                              className={`border-2 ${
-                                isEditMode &&
-                                field.isFromWorkflow &&
-                                field.status
-                                  ? `hover:border-opacity-80`
-                                  : isEditMode
-                                  ? "border-gray-300 hover:border-blue-400"
-                                  : "border-transparent"
-                              } ${
-                                isEditMode && selectedFieldId === field.id
-                                  ? "border-blue-500"
-                                  : ""
-                              } ${
-                                isEditMode &&
-                                isRotating &&
-                                rotatingFieldId === field.id
-                                  ? "border-yellow-500 border-2"
-                                  : ""
+                              dragHandleClassName="shape-drag-handle"
+                              className={`${
+                                isEditMode && selectedShapeId === shape.id
+                                  ? "border-2 border-blue-500"
+                                  : "border-2 border-transparent hover:border-blue-400"
                               } transition-all duration-200 ease-in-out`}
                               style={{
-                                backgroundColor: isEditMode
-                                  ? "rgba(255, 255, 255, 0.1)"
-                                  : "transparent",
-                                transition: "transform 0.1s ease-out",
                                 zIndex:
-                                  selectedFieldId === field.id ? 1000 : 100,
-                                transform: "none", // Ensure no additional scaling
-                                cursor:
-                                  isRotating && rotatingFieldId === field.id
-                                    ? "grabbing"
-                                    : "auto",
-                                // Add status-based border color only in edit mode
-                                borderColor:
-                                  isEditMode &&
-                                  field.isFromWorkflow &&
-                                  field.status &&
-                                  selectedFieldId !== field.id &&
-                                  !isRotating
-                                    ? getStatusColor(field.status)
-                                    : undefined,
+                                  selectedShapeId === shape.id ? 1000 : 200,
+                                cursor: isEditMode ? "move" : "default",
                               }}
                             >
                               <div className="w-full h-full relative group">
-                                {/* Move handle */}
-                                {isEditMode && selectedFieldId === field.id && (
-                                  <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
-                                    {/* Move handle */}
-                                    <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
-                                      <Move size={10} />
-                                    </div>
+                                {/* Shape Element */}
+                                <div
+                                  className="w-full h-full shape-drag-handle"
+                                  style={{
+                                    backgroundColor: hexToRgba(
+                                      shape.fillColor,
+                                      shape.fillOpacity
+                                    ),
+                                    border: `${shape.borderWidth}px solid ${shape.borderColor}`,
+                                    borderRadius:
+                                      shape.type === "circle" ? "50%" : "0",
+                                    transform: shape.rotation
+                                      ? `rotate(${shape.rotation}deg)`
+                                      : "none",
+                                    transformOrigin: "center center",
+                                  }}
+                                />
 
-                                    {/* Font size input */}
-                                    <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
-                                      <input
-                                        type="number"
-                                        value={
-                                          Math.round(field.fontSize * 10) / 10
-                                        }
-                                        onChange={(e) => {
-                                          e.stopPropagation();
-                                          const newSize =
-                                            parseFloat(e.target.value) || 5;
-                                          updateTextField(field.id, {
-                                            fontSize: Math.max(
-                                              5,
-                                              Math.min(72, newSize)
-                                            ),
-                                          });
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onFocus={(e) => {
-                                          e.stopPropagation();
-                                          e.target.select();
-                                        }}
-                                        className="text-black text-xs font-medium px-2 py-1 w-12 text-center border-none outline-none bg-transparent"
-                                        min="5"
-                                        max="72"
-                                        step="0.1"
-                                        title="Font size"
-                                      />
-                                      <span className="text-gray-500 text-xs pr-1">
-                                        px
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Delete button */}
-                                {isEditMode &&
-                                  selectedFieldId === field.id &&
-                                  !field.isFromWorkflow && (
+                                {/* Shape Controls */}
+                                {isEditMode && selectedShapeId === shape.id && (
+                                  <>
+                                    {/* Delete button */}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        deleteTextField(field.id);
+                                        deleteShape(shape.id);
                                       }}
                                       className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
                                     >
                                       <Trash2 size={10} />
                                     </button>
-                                  )}
 
-                                {/* Field properties */}
-                                {isEditMode && selectedFieldId === field.id && (
-                                  <>
                                     {/* Settings button */}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSettingsPopupFor(field.id);
+                                        setSettingsPopupFor(shape.id);
                                       }}
                                       className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                                        settingsPopupFor === field.id
+                                        settingsPopupFor === shape.id
                                           ? "bg-gray-100 border-gray-400"
                                           : ""
                                       }`}
                                     >
-                                      <MoreHorizontal
+                                      <Palette
                                         size={14}
                                         className="text-gray-600"
                                       />
                                     </button>
 
-                                    {/* Settings popup */}
-                                    {settingsPopupFor === field.id && (
+                                    {/* Shape Settings popup */}
+                                    {settingsPopupFor === shape.id && (
                                       <div
-                                        className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
+                                        className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-72 settings-popup"
                                         style={{
                                           transform: `translate(0.25rem, 2rem) scale(${Math.max(
                                             0.6,
@@ -4246,7 +4455,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                       >
                                         <div className="flex justify-between items-center mb-3">
                                           <h3 className="font-semibold text-gray-800">
-                                            Field Settings
+                                            {shape.type === "circle"
+                                              ? "Circle"
+                                              : "Rectangle"}{" "}
+                                            Settings
                                           </h3>
                                           <button
                                             onClick={() =>
@@ -4259,405 +4471,222 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                         </div>
 
                                         <div className="space-y-4">
-                                          {/* Field Values - Only show for workflow fields */}
-                                          {field.isFromWorkflow &&
-                                            field.fieldKey &&
-                                            localWorkflowData?.fields?.[
-                                              field.fieldKey
-                                            ] && (
-                                              <div className="grid grid-cols-1 mb-4">
-                                                {/* Original Value */}
-                                                <div>
-                                                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                    Original Value
-                                                    {currentTab ===
-                                                      "translated" && (
-                                                      <span className="text-xs text-gray-500 ml-1">
-                                                        (read-only)
-                                                      </span>
-                                                    )}
-                                                  </label>
-                                                  {currentTab === "original" ? (
-                                                    <textarea
-                                                      value={
-                                                        localWorkflowData
-                                                          ?.fields?.[
-                                                          field.fieldKey || ""
-                                                        ]?.value || ""
-                                                      }
-                                                      onChange={(e) => {
-                                                        // Update workflow data and text field
-                                                        const newValue =
-                                                          e.target.value;
-                                                        const fieldKey =
-                                                          field.fieldKey;
-                                                        if (
-                                                          localWorkflowData.fields &&
-                                                          fieldKey
-                                                        ) {
-                                                          setLocalWorkflowData(
-                                                            (prev) => {
-                                                              if (!prev)
-                                                                return prev;
-                                                              const updatedFields =
-                                                                {
-                                                                  ...prev.fields,
-                                                                };
-                                                              if (
-                                                                updatedFields[
-                                                                  fieldKey
-                                                                ]
-                                                              ) {
-                                                                updatedFields[
-                                                                  fieldKey
-                                                                ] = {
-                                                                  ...updatedFields[
-                                                                    fieldKey
-                                                                  ],
-                                                                  value:
-                                                                    newValue,
-                                                                };
-                                                              }
-                                                              return {
-                                                                ...prev,
-                                                                fields:
-                                                                  updatedFields,
-                                                              } as WorkflowData;
-                                                            }
-                                                          );
-                                                        }
-                                                        updateTextField(
-                                                          field.id,
-                                                          {
-                                                            value: newValue,
-                                                          }
-                                                        );
-                                                        markAsUnsaved();
-                                                      }}
-                                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
-                                                      placeholder="Enter original value..."
-                                                      rows={2}
-                                                    />
-                                                  ) : (
-                                                    <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
-                                                      {localWorkflowData
-                                                        ?.fields?.[
-                                                        field.fieldKey || ""
-                                                      ]?.value || (
-                                                        <span className="text-gray-400 italic">
-                                                          No original value
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </div>
-
-                                                {/* Translated Value */}
-                                                <div>
-                                                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                    Translated Value
-                                                    {currentTab ===
-                                                      "original" && (
-                                                      <span className="text-xs text-gray-500 ml-1">
-                                                        (read-only)
-                                                      </span>
-                                                    )}
-                                                  </label>
-                                                  {currentTab ===
-                                                  "translated" ? (
-                                                    <textarea
-                                                      value={
-                                                        localWorkflowData
-                                                          ?.fields?.[
-                                                          field.fieldKey || ""
-                                                        ]?.translated_value ||
-                                                        ""
-                                                      }
-                                                      onChange={(e) => {
-                                                        // Update workflow data and text field
-                                                        const newValue =
-                                                          e.target.value;
-                                                        const fieldKey =
-                                                          field.fieldKey;
-                                                        if (
-                                                          localWorkflowData?.fields &&
-                                                          fieldKey
-                                                        ) {
-                                                          setLocalWorkflowData(
-                                                            (prev) => {
-                                                              if (!prev)
-                                                                return prev;
-                                                              const updatedFields =
-                                                                {
-                                                                  ...prev.fields,
-                                                                };
-                                                              if (
-                                                                updatedFields[
-                                                                  fieldKey
-                                                                ]
-                                                              ) {
-                                                                updatedFields[
-                                                                  fieldKey
-                                                                ] = {
-                                                                  ...updatedFields[
-                                                                    fieldKey
-                                                                  ],
-                                                                  translated_value:
-                                                                    newValue,
-                                                                };
-                                                              }
-                                                              return {
-                                                                ...prev,
-                                                                fields:
-                                                                  updatedFields,
-                                                              } as WorkflowData;
-                                                            }
-                                                          );
-                                                        }
-                                                        // Update text field value since we're on translated tab
-                                                        updateTextField(
-                                                          field.id,
-                                                          {
-                                                            value: newValue,
-                                                          }
-                                                        );
-                                                        markAsUnsaved();
-                                                      }}
-                                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
-                                                      placeholder="Enter translated value..."
-                                                      rows={2}
-                                                    />
-                                                  ) : (
-                                                    <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
-                                                      {localWorkflowData
-                                                        ?.fields?.[
-                                                        field.fieldKey || ""
-                                                      ]?.translated_value || (
-                                                        <span className="text-gray-400 italic">
-                                                          No translated value
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            )}
-
-                                          {/* Font Family */}
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Font Family
-                                            </label>
-                                            <select
-                                              value={field.fontFamily}
-                                              onChange={(e) =>
-                                                updateTextField(field.id, {
-                                                  fontFamily: e.target.value,
-                                                })
-                                              }
-                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            >
-                                              <option value="Arial, sans-serif">
-                                                Arial
-                                              </option>
-                                              <option value="Helvetica, sans-serif">
-                                                Helvetica
-                                              </option>
-                                              <option value="Times New Roman, serif">
-                                                Times New Roman
-                                              </option>
-                                              <option value="Georgia, serif">
-                                                Georgia
-                                              </option>
-                                              <option value="Courier New, monospace">
-                                                Courier New
-                                              </option>
-                                              <option value="Verdana, sans-serif">
-                                                Verdana
-                                              </option>
-                                              <option value="Tahoma, sans-serif">
-                                                Tahoma
-                                              </option>
-                                              <option value="Trebuchet MS, sans-serif">
-                                                Trebuchet MS
-                                              </option>
-                                              <option value="Palatino, serif">
-                                                Palatino
-                                              </option>
-                                              <option value="Lucida Console, monospace">
-                                                Lucida Console
-                                              </option>
-                                            </select>
-                                          </div>
-
-                                          {/* Font Color */}
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Font Color
-                                            </label>
-                                            <div className="flex items-center space-x-2">
+                                          {/* Position Controls */}
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                X Position
+                                              </label>
                                               <input
-                                                type="color"
-                                                value={field.fontColor}
+                                                type="number"
+                                                value={Math.round(shape.x)}
                                                 onChange={(e) =>
-                                                  updateTextField(field.id, {
-                                                    fontColor: e.target.value,
+                                                  updateShape(shape.id, {
+                                                    x:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 0,
                                                   })
                                                 }
-                                                className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="0"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Y Position
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.y)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    y:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 0,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="0"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Size Controls */}
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Width
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.width)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    width:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 1,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="1"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Height
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.height)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    height:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 1,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="1"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Border Settings */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-2">
+                                              Border
+                                            </label>
+                                            <div className="flex items-center space-x-2 mb-2">
+                                              <input
+                                                type="color"
+                                                value={shape.borderColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    borderColor: e.target.value,
+                                                  })
+                                                }
+                                                className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
                                               />
                                               <input
                                                 type="text"
-                                                value={field.fontColor}
+                                                value={shape.borderColor}
                                                 onChange={(e) =>
-                                                  updateTextField(field.id, {
-                                                    fontColor: e.target.value,
+                                                  updateShape(shape.id, {
+                                                    borderColor: e.target.value,
                                                   })
                                                 }
-                                                className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
                                                 placeholder="#000000"
                                               />
                                             </div>
-                                          </div>
-
-                                          {/* Bold and Italic */}
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">
-                                              Text Style
-                                            </label>
                                             <div className="flex items-center space-x-2">
-                                              <button
-                                                onClick={() =>
-                                                  updateTextField(field.id, {
-                                                    fontWeight:
-                                                      field.fontWeight ===
-                                                      "bold"
-                                                        ? "normal"
-                                                        : "bold",
+                                              <span className="text-xs text-gray-600 min-w-[40px]">
+                                                Width:
+                                              </span>
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max="10"
+                                                step="1"
+                                                value={shape.borderWidth}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    borderWidth: parseInt(
+                                                      e.target.value
+                                                    ),
                                                   })
                                                 }
-                                                className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center font-bold text-lg transition-all duration-200 ${
-                                                  field.fontWeight === "bold"
-                                                    ? "bg-red-500 text-white border-red-500"
-                                                    : "bg-white text-gray-700 hover:bg-gray-50"
-                                                }`}
-                                                title="Bold"
-                                              >
-                                                B
-                                              </button>
-                                              <button
-                                                onClick={() =>
-                                                  updateTextField(field.id, {
-                                                    fontStyle:
-                                                      field.fontStyle ===
-                                                      "italic"
-                                                        ? "normal"
-                                                        : "italic",
-                                                  })
-                                                }
-                                                className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center italic text-lg transition-all duration-200 ${
-                                                  field.fontStyle === "italic"
-                                                    ? "bg-red-500 text-white border-red-500"
-                                                    : "bg-white text-gray-700 hover:bg-gray-50"
-                                                }`}
-                                                title="Italic"
-                                              >
-                                                I
-                                              </button>
+                                                className="flex-1 shape-slider"
+                                              />
+                                              <span className="text-xs font-medium text-gray-700 min-w-[25px] text-center">
+                                                {shape.borderWidth}px
+                                              </span>
                                             </div>
                                           </div>
 
-                                          {/* Chracter Spacing */}
-                                          <div className="mt-3">
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Character Spacing
+                                          {/* Fill Settings */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-2">
+                                              Fill
                                             </label>
-                                            <div className="flex items-center">
-                                              <button
-                                                onClick={() => {
-                                                  const current =
-                                                    field.characterSpacing || 0;
-                                                  updateTextField(field.id, {
-                                                    characterSpacing: Math.max(
-                                                      0,
-                                                      current - 0.5
+                                            <div className="flex items-center space-x-2 mb-2">
+                                              <input
+                                                type="color"
+                                                value={shape.fillColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    fillColor: e.target.value,
+                                                  })
+                                                }
+                                                className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={shape.fillColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    fillColor: e.target.value,
+                                                  })
+                                                }
+                                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
+                                                placeholder="#ffffff"
+                                              />
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                              <span className="text-xs text-gray-600 min-w-[50px]">
+                                                Opacity:
+                                              </span>
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max="1"
+                                                step="0.01"
+                                                value={shape.fillOpacity}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    fillOpacity: parseFloat(
+                                                      e.target.value
                                                     ),
-                                                  });
-                                                }}
-                                                className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
-                                              >
-                                                <Minus size={14} />
-                                              </button>
-
-                                              <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
-                                                {field.characterSpacing || 0}
-                                                px
-                                              </div>
-
-                                              <button
-                                                onClick={() => {
-                                                  const current =
-                                                    field.characterSpacing || 0;
-                                                  updateTextField(field.id, {
-                                                    characterSpacing: Math.min(
-                                                      20,
-                                                      current + 0.5
-                                                    ),
-                                                  });
-                                                }}
-                                                className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
-                                              >
-                                                <Plus size={14} />
-                                              </button>
+                                                  })
+                                                }
+                                                className="flex-1 shape-slider"
+                                              />
+                                              <span className="text-xs font-medium text-gray-700 min-w-[35px] text-center">
+                                                {Math.round(
+                                                  shape.fillOpacity * 100
+                                                )}
+                                                %
+                                              </span>
                                             </div>
                                           </div>
 
                                           {/* Rotation */}
-                                          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                            <label className=" text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                              <svg
-                                                width="16"
-                                                height="16"
-                                                viewBox="0 0 24 24"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                strokeWidth="2"
-                                                className="text-red-500"
-                                              >
-                                                <path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9" />
-                                                <path d="M9 12l2 2 4-4" />
-                                              </svg>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
                                               Rotation
                                             </label>
-                                            <div className="flex items-center space-x-3">
+                                            <div className="flex items-center space-x-2">
                                               <input
                                                 type="range"
                                                 min="0"
                                                 max="360"
                                                 step="5"
-                                                value={field.rotation || 0}
+                                                value={shape.rotation || 0}
                                                 onChange={(e) =>
-                                                  updateTextField(field.id, {
+                                                  updateShape(shape.id, {
                                                     rotation: parseInt(
                                                       e.target.value
                                                     ),
                                                   })
                                                 }
-                                                className="flex-1 rotation-slider"
-                                                style={{
-                                                  background: `linear-gradient(to right, #fee2e2 0%, #fecaca ${
-                                                    ((field.rotation || 0) /
-                                                      360) *
-                                                    100
-                                                  }%, #f3f4f6 ${
-                                                    ((field.rotation || 0) /
-                                                      360) *
-                                                    100
-                                                  }%, #f3f4f6 100%)`,
-                                                }}
+                                                className="flex-1 shape-slider"
                                               />
-                                              <span className="text-sm font-bold text-red-600 min-w-[40px] text-center bg-white px-2 py-1 rounded border border-red-200 shadow-sm">
-                                                {field.rotation || 0}°
+                                              <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
+                                                {shape.rotation || 0}°
                                               </span>
                                             </div>
                                           </div>
@@ -4666,55 +4695,754 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                     )}
                                   </>
                                 )}
-
-                                {/* Text content - wrapped in rotating container */}
-                                <div
-                                  className="w-full h-full absolute"
-                                  style={{
-                                    transform: field.rotation
-                                      ? `rotate(${field.rotation}deg)`
-                                      : "none",
-                                    transformOrigin: "center center",
-                                  }}
-                                >
-                                  <textarea
-                                    value={field.value}
-                                    onChange={(e) =>
-                                      updateTextField(field.id, {
-                                        value: e.target.value,
-                                      })
-                                    }
-                                    readOnly={!isEditMode}
-                                    className="absolute w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
-                                    style={{
-                                      fontSize: `${field.fontSize * scale}px`,
-                                      color: field.fontColor,
-                                      fontFamily: field.fontFamily,
-                                      fontWeight: field.fontWeight || "normal",
-                                      fontStyle: field.fontStyle || "normal",
-                                      cursor: "text",
-                                      padding: "2px",
-                                      lineHeight: "1.1",
-                                      wordWrap: "break-word",
-                                      wordBreak: "break-all",
-                                      whiteSpace: "pre-wrap",
-                                      boxSizing: "border-box",
-                                      overflow: "hidden", // Keep hidden during editing to prevent scrollbars
-                                      letterSpacing: field.characterSpacing
-                                        ? `${field.characterSpacing}px`
-                                        : "normal",
-                                    }}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedFieldId(field.id);
-                                      setIsTextSelectionMode(false);
-                                    }}
-                                  />
-                                </div>
                               </div>
                             </Rnd>
-                          );
-                        })}
+                          ))}
+
+                        {/* Text Field Overlays - Only show when document is fully loaded */}
+                        {isDocumentLoaded &&
+                          visibleTextFields.map((field) => {
+                            return (
+                              <Rnd
+                                key={field.id}
+                                size={{
+                                  width: field.width * scale,
+                                  height: field.height * scale,
+                                }}
+                                position={{
+                                  x: field.x * scale,
+                                  y: field.y * scale,
+                                }}
+                                onDrag={(e, d) => {
+                                  // Use currentTarget directly - it's the Rnd element
+                                  const element =
+                                    e.currentTarget as HTMLElement;
+                                  handleFieldDrag(field.id, d.x, d.y, element);
+                                }}
+                                onDragStop={(e, d) => {
+                                  handleFieldDragStop(field.id, d.x, d.y);
+                                }}
+                                onResizeStop={(
+                                  e,
+                                  direction,
+                                  ref,
+                                  delta,
+                                  position
+                                ) => {
+                                  // Convert scaled dimensions back to original scale
+                                  updateTextField(field.id, {
+                                    width: parseInt(ref.style.width) / scale,
+                                    height: parseInt(ref.style.height) / scale,
+                                    x: position.x / scale,
+                                    y: position.y / scale,
+                                  });
+                                }}
+                                disableDragging={!isEditMode || isRotating}
+                                enableResizing={false}
+                                bounds="parent"
+                                onClick={(e: {
+                                  stopPropagation: () => void;
+                                }) => {
+                                  e.stopPropagation();
+                                  setSelectedFieldId(field.id);
+                                  setIsTextSelectionMode(false);
+                                }}
+                                dragHandleClassName="drag-handle"
+                                dragAxis="both"
+                                dragGrid={[1, 1]}
+                                resizeGrid={[1, 1]}
+                                className={`border-2 ${
+                                  isEditMode &&
+                                  field.isFromWorkflow &&
+                                  field.status
+                                    ? `hover:border-opacity-80`
+                                    : isEditMode
+                                    ? "border-gray-300 hover:border-blue-400"
+                                    : "border-transparent"
+                                } ${
+                                  isEditMode && selectedFieldId === field.id
+                                    ? "border-blue-500"
+                                    : ""
+                                } ${
+                                  isEditMode &&
+                                  isRotating &&
+                                  rotatingFieldId === field.id
+                                    ? "border-yellow-500 border-2"
+                                    : ""
+                                } transition-all duration-200 ease-in-out`}
+                                style={{
+                                  backgroundColor: isEditMode
+                                    ? "rgba(255, 255, 255, 0.1)"
+                                    : "transparent",
+                                  transition: "transform 0.1s ease-out",
+                                  zIndex:
+                                    selectedFieldId === field.id ? 1000 : 100,
+                                  transform: "none", // Ensure no additional scaling
+                                  cursor:
+                                    isRotating && rotatingFieldId === field.id
+                                      ? "grabbing"
+                                      : "auto",
+                                  // Add status-based border color only in edit mode
+                                  borderColor:
+                                    isEditMode &&
+                                    field.isFromWorkflow &&
+                                    field.status &&
+                                    selectedFieldId !== field.id &&
+                                    !isRotating
+                                      ? getStatusColor(field.status)
+                                      : undefined,
+                                }}
+                              >
+                                <div className="w-full h-full relative group">
+                                  {/* Move handle */}
+                                  {isEditMode &&
+                                    selectedFieldId === field.id && (
+                                      <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+                                        {/* Move handle */}
+                                        <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                                          <Move size={10} />
+                                        </div>
+
+                                        {/* Font size input */}
+                                        <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
+                                          <input
+                                            type="number"
+                                            value={
+                                              Math.round(field.fontSize * 10) /
+                                              10
+                                            }
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              const newSize =
+                                                parseFloat(e.target.value) || 5;
+                                              updateTextField(field.id, {
+                                                fontSize: Math.max(
+                                                  5,
+                                                  Math.min(72, newSize)
+                                                ),
+                                              });
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            onFocus={(e) => {
+                                              e.stopPropagation();
+                                              e.target.select();
+                                            }}
+                                            className="text-black text-xs font-medium px-2 py-1 w-12 text-center border-none outline-none bg-transparent"
+                                            min="5"
+                                            max="72"
+                                            step="0.1"
+                                            title="Font size"
+                                          />
+                                          <span className="text-gray-500 text-xs pr-1">
+                                            px
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                  {/* Delete button */}
+                                  {isEditMode &&
+                                    selectedFieldId === field.id && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (field.isFromWorkflow) {
+                                            // Show confirmation for workflow fields
+                                            if (
+                                              confirm(
+                                                `Are you sure you want to delete the "${field.fieldKey}" field?\n\nThis will remove the field from both the form data and template mappings.`
+                                              )
+                                            ) {
+                                              deleteTextField(field.id);
+                                            }
+                                          } else {
+                                            // Direct delete for regular text fields
+                                            deleteTextField(field.id);
+                                          }
+                                        }}
+                                        className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                                        title={
+                                          field.isFromWorkflow
+                                            ? "Delete workflow field and remove from template mappings"
+                                            : "Delete text field"
+                                        }
+                                      >
+                                        <Trash2 size={10} />
+                                      </button>
+                                    )}
+
+                                  {/* Field properties */}
+                                  {isEditMode &&
+                                    selectedFieldId === field.id && (
+                                      <>
+                                        {/* Settings button */}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSettingsPopupFor(field.id);
+                                          }}
+                                          className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
+                                            settingsPopupFor === field.id
+                                              ? "bg-gray-100 border-gray-400"
+                                              : ""
+                                          }`}
+                                        >
+                                          <MoreHorizontal
+                                            size={14}
+                                            className="text-gray-600"
+                                          />
+                                        </button>
+
+                                        {/* Settings popup */}
+                                        {settingsPopupFor === field.id && (
+                                          <div
+                                            className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
+                                            style={{
+                                              transform: `translate(0.25rem, 2rem) scale(${Math.max(
+                                                0.6,
+                                                1 / scale
+                                              )})`,
+                                              transformOrigin: "top right",
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <div className="flex justify-between items-center mb-3">
+                                              <h3 className="font-semibold text-gray-800">
+                                                Field Settings
+                                              </h3>
+                                              <button
+                                                onClick={() =>
+                                                  setSettingsPopupFor(null)
+                                                }
+                                                className="text-gray-500 hover:text-gray-800"
+                                              >
+                                                <X size={16} />
+                                              </button>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                              {/* Field Values - Only show for workflow fields */}
+                                              {field.isFromWorkflow &&
+                                                field.fieldKey &&
+                                                localWorkflowData?.fields?.[
+                                                  field.fieldKey
+                                                ] && (
+                                                  <div className="grid grid-cols-1 mb-4">
+                                                    {/* Original Value */}
+                                                    <div>
+                                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                        Original Value
+                                                        {currentTab ===
+                                                          "translated" && (
+                                                          <span className="text-xs text-gray-500 ml-1">
+                                                            (read-only)
+                                                          </span>
+                                                        )}
+                                                      </label>
+                                                      {currentTab ===
+                                                      "original" ? (
+                                                        <textarea
+                                                          value={
+                                                            localWorkflowData
+                                                              ?.fields?.[
+                                                              field.fieldKey ||
+                                                                ""
+                                                            ]?.value || ""
+                                                          }
+                                                          onChange={(e) => {
+                                                            // Update workflow data and text field
+                                                            const newValue =
+                                                              e.target.value;
+                                                            const fieldKey =
+                                                              field.fieldKey;
+                                                            if (
+                                                              localWorkflowData.fields &&
+                                                              fieldKey
+                                                            ) {
+                                                              setLocalWorkflowData(
+                                                                (prev) => {
+                                                                  if (!prev)
+                                                                    return prev;
+                                                                  const updatedFields =
+                                                                    {
+                                                                      ...prev.fields,
+                                                                    };
+                                                                  if (
+                                                                    updatedFields[
+                                                                      fieldKey
+                                                                    ]
+                                                                  ) {
+                                                                    updatedFields[
+                                                                      fieldKey
+                                                                    ] = {
+                                                                      ...updatedFields[
+                                                                        fieldKey
+                                                                      ],
+                                                                      value:
+                                                                        newValue,
+                                                                    };
+                                                                  }
+                                                                  return {
+                                                                    ...prev,
+                                                                    fields:
+                                                                      updatedFields,
+                                                                  } as WorkflowData;
+                                                                }
+                                                              );
+                                                            }
+                                                            updateTextField(
+                                                              field.id,
+                                                              {
+                                                                value: newValue,
+                                                              }
+                                                            );
+                                                            markAsUnsaved();
+                                                          }}
+                                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
+                                                          placeholder="Enter original value..."
+                                                          rows={2}
+                                                        />
+                                                      ) : (
+                                                        <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
+                                                          {localWorkflowData
+                                                            ?.fields?.[
+                                                            field.fieldKey || ""
+                                                          ]?.value || (
+                                                            <span className="text-gray-400 italic">
+                                                              No original value
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      )}
+                                                    </div>
+
+                                                    {/* Translated Value */}
+                                                    <div>
+                                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                        Translated Value
+                                                        {currentTab ===
+                                                          "original" && (
+                                                          <span className="text-xs text-gray-500 ml-1">
+                                                            (read-only)
+                                                          </span>
+                                                        )}
+                                                      </label>
+                                                      {currentTab ===
+                                                      "translated" ? (
+                                                        <textarea
+                                                          value={
+                                                            localWorkflowData
+                                                              ?.fields?.[
+                                                              field.fieldKey ||
+                                                                ""
+                                                            ]
+                                                              ?.translated_value ||
+                                                            ""
+                                                          }
+                                                          onChange={(e) => {
+                                                            // Update workflow data and text field
+                                                            const newValue =
+                                                              e.target.value;
+                                                            const fieldKey =
+                                                              field.fieldKey;
+                                                            if (
+                                                              localWorkflowData?.fields &&
+                                                              fieldKey
+                                                            ) {
+                                                              setLocalWorkflowData(
+                                                                (prev) => {
+                                                                  if (!prev)
+                                                                    return prev;
+                                                                  const updatedFields =
+                                                                    {
+                                                                      ...prev.fields,
+                                                                    };
+                                                                  if (
+                                                                    updatedFields[
+                                                                      fieldKey
+                                                                    ]
+                                                                  ) {
+                                                                    updatedFields[
+                                                                      fieldKey
+                                                                    ] = {
+                                                                      ...updatedFields[
+                                                                        fieldKey
+                                                                      ],
+                                                                      translated_value:
+                                                                        newValue,
+                                                                    };
+                                                                  }
+                                                                  return {
+                                                                    ...prev,
+                                                                    fields:
+                                                                      updatedFields,
+                                                                  } as WorkflowData;
+                                                                }
+                                                              );
+                                                            }
+                                                            // Update text field value since we're on translated tab
+                                                            updateTextField(
+                                                              field.id,
+                                                              {
+                                                                value: newValue,
+                                                              }
+                                                            );
+                                                            markAsUnsaved();
+                                                          }}
+                                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
+                                                          placeholder="Enter translated value..."
+                                                          rows={2}
+                                                        />
+                                                      ) : (
+                                                        <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
+                                                          {localWorkflowData
+                                                            ?.fields?.[
+                                                            field.fieldKey || ""
+                                                          ]
+                                                            ?.translated_value || (
+                                                            <span className="text-gray-400 italic">
+                                                              No translated
+                                                              value
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                              {/* Font Family */}
+                                              <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                  Font Family
+                                                </label>
+                                                <select
+                                                  value={field.fontFamily}
+                                                  onChange={(e) =>
+                                                    updateTextField(field.id, {
+                                                      fontFamily:
+                                                        e.target.value,
+                                                    })
+                                                  }
+                                                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                >
+                                                  <option value="Arial, sans-serif">
+                                                    Arial
+                                                  </option>
+                                                  <option value="Helvetica, sans-serif">
+                                                    Helvetica
+                                                  </option>
+                                                  <option value="Times New Roman, serif">
+                                                    Times New Roman
+                                                  </option>
+                                                  <option value="Georgia, serif">
+                                                    Georgia
+                                                  </option>
+                                                  <option value="Courier New, monospace">
+                                                    Courier New
+                                                  </option>
+                                                  <option value="Verdana, sans-serif">
+                                                    Verdana
+                                                  </option>
+                                                  <option value="Tahoma, sans-serif">
+                                                    Tahoma
+                                                  </option>
+                                                  <option value="Trebuchet MS, sans-serif">
+                                                    Trebuchet MS
+                                                  </option>
+                                                  <option value="Palatino, serif">
+                                                    Palatino
+                                                  </option>
+                                                  <option value="Lucida Console, monospace">
+                                                    Lucida Console
+                                                  </option>
+                                                </select>
+                                              </div>
+
+                                              {/* Font Color */}
+                                              <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                  Font Color
+                                                </label>
+                                                <div className="flex items-center space-x-2">
+                                                  <input
+                                                    type="color"
+                                                    value={field.fontColor}
+                                                    onChange={(e) =>
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          fontColor:
+                                                            e.target.value,
+                                                        }
+                                                      )
+                                                    }
+                                                    className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                                                  />
+                                                  <input
+                                                    type="text"
+                                                    value={field.fontColor}
+                                                    onChange={(e) =>
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          fontColor:
+                                                            e.target.value,
+                                                        }
+                                                      )
+                                                    }
+                                                    className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                    placeholder="#000000"
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              {/* Bold and Italic */}
+                                              <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                  Text Style
+                                                </label>
+                                                <div className="flex items-center space-x-2">
+                                                  <button
+                                                    onClick={() =>
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          fontWeight:
+                                                            field.fontWeight ===
+                                                            "bold"
+                                                              ? "normal"
+                                                              : "bold",
+                                                        }
+                                                      )
+                                                    }
+                                                    className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center font-bold text-lg transition-all duration-200 ${
+                                                      field.fontWeight ===
+                                                      "bold"
+                                                        ? "bg-red-500 text-white border-red-500"
+                                                        : "bg-white text-gray-700 hover:bg-gray-50"
+                                                    }`}
+                                                    title="Bold"
+                                                  >
+                                                    B
+                                                  </button>
+                                                  <button
+                                                    onClick={() =>
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          fontStyle:
+                                                            field.fontStyle ===
+                                                            "italic"
+                                                              ? "normal"
+                                                              : "italic",
+                                                        }
+                                                      )
+                                                    }
+                                                    className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center italic text-lg transition-all duration-200 ${
+                                                      field.fontStyle ===
+                                                      "italic"
+                                                        ? "bg-red-500 text-white border-red-500"
+                                                        : "bg-white text-gray-700 hover:bg-gray-50"
+                                                    }`}
+                                                    title="Italic"
+                                                  >
+                                                    I
+                                                  </button>
+                                                </div>
+                                              </div>
+
+                                              {/* Chracter Spacing */}
+                                              <div className="mt-3">
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                  Character Spacing
+                                                </label>
+                                                <div className="flex items-center">
+                                                  <button
+                                                    onClick={() => {
+                                                      const current =
+                                                        field.characterSpacing ||
+                                                        0;
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          characterSpacing:
+                                                            Math.max(
+                                                              0,
+                                                              current - 0.5
+                                                            ),
+                                                        }
+                                                      );
+                                                    }}
+                                                    className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
+                                                  >
+                                                    <Minus size={14} />
+                                                  </button>
+
+                                                  <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
+                                                    {field.characterSpacing ||
+                                                      0}
+                                                    px
+                                                  </div>
+
+                                                  <button
+                                                    onClick={() => {
+                                                      const current =
+                                                        field.characterSpacing ||
+                                                        0;
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          characterSpacing:
+                                                            Math.min(
+                                                              20,
+                                                              current + 0.5
+                                                            ),
+                                                        }
+                                                      );
+                                                    }}
+                                                    className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
+                                                  >
+                                                    <Plus size={14} />
+                                                  </button>
+                                                </div>
+                                              </div>
+
+                                              {/* Rotation */}
+                                              <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                <label className=" text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                                  <svg
+                                                    width="16"
+                                                    height="16"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="2"
+                                                    className="text-red-500"
+                                                  >
+                                                    <path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9" />
+                                                    <path d="M9 12l2 2 4-4" />
+                                                  </svg>
+                                                  Rotation
+                                                </label>
+                                                <div className="flex items-center space-x-3">
+                                                  <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="360"
+                                                    step="5"
+                                                    value={field.rotation || 0}
+                                                    onChange={(e) =>
+                                                      updateTextField(
+                                                        field.id,
+                                                        {
+                                                          rotation: parseInt(
+                                                            e.target.value
+                                                          ),
+                                                        }
+                                                      )
+                                                    }
+                                                    className="flex-1 rotation-slider"
+                                                    style={{
+                                                      background: `linear-gradient(to right, #fee2e2 0%, #fecaca ${
+                                                        ((field.rotation || 0) /
+                                                          360) *
+                                                        100
+                                                      }%, #f3f4f6 ${
+                                                        ((field.rotation || 0) /
+                                                          360) *
+                                                        100
+                                                      }%, #f3f4f6 100%)`,
+                                                    }}
+                                                  />
+                                                  <span className="text-sm font-bold text-red-600 min-w-[40px] text-center bg-white px-2 py-1 rounded border border-red-200 shadow-sm">
+                                                    {field.rotation || 0}°
+                                                  </span>
+                                                </div>
+                                              </div>
+
+                                              {/* Delete Field */}
+                                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                                <button
+                                                  onClick={() => {
+                                                    setSettingsPopupFor(null);
+                                                    if (field.isFromWorkflow) {
+                                                      // Show confirmation for workflow fields
+                                                      if (
+                                                        confirm(
+                                                          `Are you sure you want to delete the "${field.fieldKey}" field?\n\nThis will remove the field from both the form data and template mappings.`
+                                                        )
+                                                      ) {
+                                                        deleteTextField(
+                                                          field.id
+                                                        );
+                                                      }
+                                                    } else {
+                                                      // Direct delete for regular text fields
+                                                      deleteTextField(field.id);
+                                                    }
+                                                  }}
+                                                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 font-medium"
+                                                >
+                                                  <Trash2 size={16} />
+                                                  Delete Field
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+
+                                  {/* Text content - wrapped in rotating container */}
+                                  <div
+                                    className="w-full h-full absolute"
+                                    style={{
+                                      transform: field.rotation
+                                        ? `rotate(${field.rotation}deg)`
+                                        : "none",
+                                      transformOrigin: "center center",
+                                    }}
+                                  >
+                                    <textarea
+                                      value={field.value}
+                                      onChange={(e) =>
+                                        updateTextField(field.id, {
+                                          value: e.target.value,
+                                        })
+                                      }
+                                      readOnly={!isEditMode}
+                                      className="absolute w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
+                                      style={{
+                                        fontSize: `${field.fontSize * scale}px`,
+                                        color: field.fontColor,
+                                        fontFamily: field.fontFamily,
+                                        fontWeight:
+                                          field.fontWeight || "normal",
+                                        fontStyle: field.fontStyle || "normal",
+                                        cursor: "text",
+                                        padding: "2px",
+                                        lineHeight: "1.1",
+                                        wordWrap: "break-word",
+                                        wordBreak: "break-all",
+                                        whiteSpace: "pre-wrap",
+                                        boxSizing: "border-box",
+                                        overflow: "hidden", // Keep hidden during editing to prevent scrollbars
+                                        letterSpacing: field.characterSpacing
+                                          ? `${field.characterSpacing}px`
+                                          : "normal",
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedFieldId(field.id);
+                                        setIsTextSelectionMode(false);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </Rnd>
+                            );
+                          })}
                       </div>
                     </div>
                   </div>
