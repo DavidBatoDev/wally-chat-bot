@@ -48,6 +48,8 @@ export interface WorkflowData {
   translated_template_mappings?: Record<string, TemplateMapping>;
   translate_to: string;
   translate_from: string;
+  shapes?: any[];
+  deletion_rectangles?: any[];
 }
 
 export type ViewType = 'original' | 'template' | 'translated_template';

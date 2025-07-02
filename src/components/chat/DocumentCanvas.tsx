@@ -47,6 +47,19 @@ import {
 import { useWorkflowData } from "./DocumentCanvas/hooks/useWorkflowData";
 import { WorkflowData, TemplateMapping } from "./DocumentCanvas/types/workflow";
 
+// Helper function to generate UUID
+const generateUUID = (): string => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback UUID generation
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 // Helper function to extract clean file extension from URL (handles query parameters)
 const getCleanExtension = (url: string): string => {
   if (!url) return "";
@@ -137,7 +150,8 @@ const measureText = (
     if (width > maxWidth) maxWidth = width;
   });
 
-  const lineHeight = fontSize * 1.2;
+  // Match the textarea's lineHeight: "1.1" instead of 1.2
+  const lineHeight = fontSize * 1.1;
   const height = lines.length * lineHeight;
 
   return {
@@ -177,19 +191,6 @@ const hexToRgba = (hex: string, opacity: number): string => {
   return `rgba(${r}, ${g}, ${b}, ${clampedOpacity})`;
 };
 
-// Add polyfill for Promise.withResolvers if not available
-// if (!Promise.withResolvers) {
-//   Promise.withResolvers = function <T>() {
-//     let resolve!: (value: T | PromiseLike<T>) => void;
-//     let reject!: (reason?: any) => void;
-//     const promise = new Promise<T>((res, rej) => {
-//       resolve = res;
-//       reject = rej;
-//     });
-//     return { promise, resolve, reject };
-//   };
-// }
-
 // Set up PDF.js worker with unpkg CDN (more reliable)
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -217,6 +218,15 @@ interface TextField {
   fontStyle?: "normal" | "italic";
   rotation?: number; // Rotation angle in degrees
   status?: string; // Field status for styling
+}
+
+// Extended TemplateMapping interface for new fields
+interface ExtendedTemplateMapping extends TemplateMapping {
+  character_spacing?: number;
+  font_weight?: "normal" | "bold";
+  font_style?: "normal" | "italic";
+  rotation?: number;
+  font_color?: string;
 }
 
 // Use imported WorkflowData and TemplateMapping types from the workflow types file
@@ -275,7 +285,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 }) => {
   // Add workflow data state
   const {
-    workflowData,
+    workflowData: originalWorkflowData,
     loading: workflowLoading,
     error: workflowError,
     fetchWorkflowData,
@@ -283,6 +293,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   // Add tab state
   const [currentTab, setCurrentTab] = useState<TabType>("document");
+
+  // Local editable copy of workflow data
+  const [localWorkflowData, setLocalWorkflowData] =
+    useState<WorkflowData | null>(null);
+
+  // Add unsaved changes tracking
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [initialWorkflowData, setInitialWorkflowData] =
+    useState<WorkflowData | null>(null);
+  const [showSaveConfirmation, setShowSaveConfirmation] =
+    useState<boolean>(false);
 
   // Status color mapping
   const getStatusColor = (status: string): string => {
@@ -324,7 +345,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState<number>(1.0);
-  const [textFields, setTextFields] = useState<TextField[]>([]);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState<boolean>(true);
   const [showWorkflowFields, setShowWorkflowFields] = useState<boolean>(true);
@@ -444,7 +464,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   }, []);
 
   // Add new shape-related state
-  const [shapes, setShapes] = useState<Shape[]>([]);
   const [isDrawingShape, setIsDrawingShape] = useState<boolean>(false);
   const [shapeDrawingMode, setShapeDrawingMode] = useState<
     "circle" | "rectangle" | null
@@ -477,7 +496,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   );
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const [mouseDownTime, setMouseDownTime] = useState<number | null>(null);
-  const [rectangles, setRectangles] = useState<Rectangles[]>([]);
   const [showRectangles, setShowRectangles] = useState(true);
   const [isRotating, setIsRotating] = useState<boolean>(false);
   const [rotatingFieldId, setRotatingFieldId] = useState<string | null>(null);
@@ -826,19 +844,47 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   }, [conversationId, fetchWorkflowData]);
 
+  // Initialize local workflow data from original data
+  useEffect(() => {
+    if (originalWorkflowData && !localWorkflowData) {
+      const localCopy = JSON.parse(JSON.stringify(originalWorkflowData));
+      // Initialize shapes and deletion_rectangles if they don't exist
+      if (!localCopy.shapes) {
+        localCopy.shapes = {};
+      }
+      if (!localCopy.deletion_rectangles) {
+        localCopy.deletion_rectangles = {};
+      }
+      setLocalWorkflowData(localCopy);
+    }
+  }, [originalWorkflowData]);
+
+  // Store initial workflow data for change detection
+  useEffect(() => {
+    if (localWorkflowData && !initialWorkflowData) {
+      setInitialWorkflowData(JSON.parse(JSON.stringify(localWorkflowData)));
+      setHasUnsavedChanges(false);
+    }
+  }, [localWorkflowData, initialWorkflowData]);
+
+  // Debug: Log localWorkflowData changes
+  useEffect(() => {
+    console.log("localWorkflowData state changed:", localWorkflowData);
+  }, [localWorkflowData]);
+
   // Set document URL based on current tab and workflow data
   useEffect(() => {
-    if (workflowData) {
+    if (localWorkflowData) {
       let url = "";
       switch (currentTab) {
         case "document":
-          url = workflowData.base_file_public_url || "";
+          url = localWorkflowData.base_file_public_url || "";
           break;
         case "original":
-          url = workflowData.template_file_public_url || "";
+          url = localWorkflowData.template_file_public_url || "";
           break;
         case "translated":
-          url = workflowData.template_translated_file_public_url || "";
+          url = localWorkflowData.template_translated_file_public_url || "";
           break;
         default:
           url = "";
@@ -876,7 +922,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         setIsFileTypeDetected(true);
       }
     }
-  }, [currentTab, workflowData]);
+  }, [
+    currentTab,
+    localWorkflowData?.base_file_public_url,
+    localWorkflowData?.template_file_public_url,
+    localWorkflowData?.template_translated_file_public_url,
+  ]);
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
@@ -921,12 +972,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     };
   }, [settingsPopupFor, shapeDropdownOpen, fieldStatusDropdownOpen]);
 
-  // Load workflow fields when page dimensions are available
-  useEffect(() => {
-    if (pageWidth && pageHeight) {
-      loadWorkflowFields();
-    }
-  }, [pageWidth, pageHeight]);
+  // Note: Workflow fields are now automatically derived from getTextFieldsFromWorkflowData
 
   // Calculate container width on resize
   useEffect(() => {
@@ -962,36 +1008,229 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     return () => clearTimeout(timer);
   }, [mouseDownTime, isDragging]);
 
+  // Helper functions to work with shapes and rectangles
+  const getShapesAsArray = useCallback((): Shape[] => {
+    if (!localWorkflowData?.shapes) return [];
+    return Object.values(localWorkflowData.shapes) as Shape[];
+  }, [localWorkflowData?.shapes]);
+
+  const getRectanglesAsArray = useCallback((): Rectangles[] => {
+    if (!localWorkflowData?.deletion_rectangles) return [];
+    return Object.values(localWorkflowData.deletion_rectangles) as Rectangles[];
+  }, [localWorkflowData?.deletion_rectangles]);
+
+  // Helper function to get current template mappings based on tab
+  const getCurrentTemplateMappings = useCallback((): Record<
+    string,
+    ExtendedTemplateMapping
+  > => {
+    if (!localWorkflowData) return {};
+
+    switch (currentTab) {
+      case "original":
+        return (localWorkflowData.origin_template_mappings || {}) as Record<
+          string,
+          ExtendedTemplateMapping
+        >;
+      case "translated":
+        return (localWorkflowData.translated_template_mappings || {}) as Record<
+          string,
+          ExtendedTemplateMapping
+        >;
+      default:
+        return {};
+    }
+  }, [localWorkflowData, currentTab]);
+
+  // Helper function to derive text fields from workflow data
+  const getTextFieldsFromWorkflowData = useCallback((): TextField[] => {
+    if (!localWorkflowData || !pageWidth || !pageHeight) return [];
+
+    const fields: TextField[] = [];
+    const mappings = getCurrentTemplateMappings();
+
+    Object.entries(mappings).forEach(([key, mapping]) => {
+      const fieldData = localWorkflowData.fields?.[key];
+      if (fieldData && mapping) {
+        // Determine which value and status to use based on current tab
+        let fieldValue = "";
+        let fieldStatus = "pending";
+        switch (currentTab) {
+          case "original":
+            fieldValue = fieldData.value || "";
+            fieldStatus = fieldData.value_status || "pending";
+            break;
+          case "translated":
+            fieldValue = fieldData.translated_value || "";
+            fieldStatus = fieldData.translated_status || "pending";
+            break;
+        }
+
+        // Calculate dimensions based on the value and font from mapping
+        const { width, height } = calculateFieldDimensions(
+          fieldValue,
+          mapping.font.size,
+          mapping.font.name || "Arial, sans-serif",
+          mapping.character_spacing || 0
+        );
+
+        const field: TextField = {
+          id: key, // Use the field key as ID
+          x: mapping.position.x0,
+          y: mapping.position.y0,
+          width,
+          height,
+          value: fieldValue,
+          fontSize: mapping.font.size,
+          fontColor: mapping.font_color || "#000000", // Use font color from mapping or default to black
+          fontFamily: mapping.font.name || "Arial, sans-serif",
+          page: mapping.page_number,
+          fieldKey: key,
+          isFromWorkflow: true,
+          characterSpacing: mapping.character_spacing || 0,
+          fontWeight: mapping.font_weight || "normal",
+          fontStyle: mapping.font_style || "normal",
+          rotation: mapping.rotation || 0,
+          status: fieldStatus,
+        };
+
+        fields.push(field);
+      }
+    });
+
+    return fields;
+  }, [
+    localWorkflowData,
+    pageHeight,
+    pageWidth,
+    currentTab,
+    getCurrentTemplateMappings,
+  ]);
+
+  // Change tracking functions
+  const markAsUnsaved = useCallback(() => {
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const checkForChanges = useCallback(() => {
+    if (!localWorkflowData || !initialWorkflowData) return false;
+
+    // Deep comparison of workflow data
+    const currentDataString = JSON.stringify({
+      fields: localWorkflowData.fields,
+      origin_template_mappings: localWorkflowData.origin_template_mappings,
+      translated_template_mappings:
+        localWorkflowData.translated_template_mappings,
+      shapes: localWorkflowData.shapes,
+      deletion_rectangles: localWorkflowData.deletion_rectangles,
+    });
+
+    const initialDataString = JSON.stringify({
+      fields: initialWorkflowData.fields,
+      origin_template_mappings: initialWorkflowData.origin_template_mappings,
+      translated_template_mappings:
+        initialWorkflowData.translated_template_mappings,
+      shapes: initialWorkflowData.shapes,
+      deletion_rectangles: initialWorkflowData.deletion_rectangles,
+    });
+
+    return currentDataString !== initialDataString;
+  }, [localWorkflowData, initialWorkflowData]);
+
   const updateTextField = useCallback(
     (fieldId: string, updates: Partial<TextField>) => {
-      setTextFields((prevFields) =>
-        prevFields.map((field) => {
-          if (field.id !== fieldId) return field;
+      if (!localWorkflowData) return;
 
-          const newField = { ...field, ...updates };
+      setLocalWorkflowData((prev) => {
+        if (!prev) return prev;
 
-          // Recalculate dimensions when text/font changes (but not character spacing)
-          if (
-            updates.value !== undefined ||
-            updates.fontSize !== undefined ||
-            updates.fontFamily !== undefined
-          ) {
-            const { width, height } = calculateFieldDimensions(
-              updates.value ?? field.value,
-              updates.fontSize ?? field.fontSize,
-              updates.fontFamily ?? field.fontFamily,
-              updates.characterSpacing ?? field.characterSpacing ?? 0 // Pass character spacing
-            );
+        const updatedData = { ...prev };
 
-            newField.width = width;
-            newField.height = height;
+        // Update the appropriate template mapping
+        const mappingKey =
+          currentTab === "original"
+            ? "origin_template_mappings"
+            : "translated_template_mappings";
+        const mappings = { ...(updatedData[mappingKey] || {}) };
+
+        if (mappings[fieldId]) {
+          const currentMapping = mappings[fieldId] as ExtendedTemplateMapping;
+
+          // Update template mapping with positioning and styling info
+          const positionUpdates: any = {};
+          if (updates.x !== undefined || updates.y !== undefined) {
+            const currentWidth =
+              currentMapping.position.x1 - currentMapping.position.x0;
+            const currentHeight =
+              currentMapping.position.y1 - currentMapping.position.y0;
+            const newX =
+              updates.x !== undefined ? updates.x : currentMapping.position.x0;
+            const newY =
+              updates.y !== undefined ? updates.y : currentMapping.position.y0;
+
+            positionUpdates.position = {
+              ...currentMapping.position,
+              x0: newX,
+              x1: newX + currentWidth,
+              y0: newY,
+              y1: newY + currentHeight,
+            };
+
+            // Update bbox_center as well
+            positionUpdates.bbox_center = {
+              x: newX + currentWidth / 2,
+              y: newY + currentHeight / 2,
+            };
           }
 
-          return newField;
-        })
-      );
+          mappings[fieldId] = {
+            ...currentMapping,
+            ...positionUpdates,
+            ...(updates.fontSize !== undefined && {
+              font: { ...currentMapping.font, size: updates.fontSize },
+            }),
+            ...(updates.fontFamily !== undefined && {
+              font: { ...currentMapping.font, name: updates.fontFamily },
+            }),
+            ...(updates.fontColor !== undefined && {
+              font_color: updates.fontColor,
+            }),
+            ...(updates.characterSpacing !== undefined && {
+              character_spacing: updates.characterSpacing,
+            }),
+            ...(updates.fontWeight !== undefined && {
+              font_weight: updates.fontWeight,
+            }),
+            ...(updates.fontStyle !== undefined && {
+              font_style: updates.fontStyle,
+            }),
+            ...(updates.rotation !== undefined && {
+              rotation: updates.rotation,
+            }),
+          };
+
+          updatedData[mappingKey] = mappings;
+        }
+
+        // Update field value if provided
+        if (updates.value !== undefined && updatedData.fields?.[fieldId]) {
+          const updatedFields = { ...updatedData.fields };
+          const valueKey =
+            currentTab === "original" ? "value" : "translated_value";
+          updatedFields[fieldId] = {
+            ...updatedFields[fieldId],
+            [valueKey]: updates.value,
+          };
+          updatedData.fields = updatedFields;
+        }
+
+        return updatedData as WorkflowData;
+      });
+
+      // Mark as unsaved when text field is updated
+      markAsUnsaved();
     },
-    []
+    [localWorkflowData, currentTab, markAsUnsaved]
   );
 
   // Handle rotation dragging
@@ -1082,11 +1321,28 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     };
   }, []);
 
+  // Add beforeunload event listener to warn about unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
   // Handle keyboard shortcuts for formatting
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       // Only handle shortcuts when a field is selected and not in text selection mode
       if (!selectedFieldId || isTextSelectionMode) return;
+
+      const textFields = getTextFieldsFromWorkflowData();
 
       // Check for Ctrl+B (Bold) or Cmd+B on Mac
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
@@ -1120,7 +1376,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     return () => {
       document.removeEventListener("keydown", handleKeydown);
     };
-  }, [selectedFieldId, textFields, isTextSelectionMode]);
+  }, [selectedFieldId, getTextFieldsFromWorkflowData, isTextSelectionMode]);
 
   // Deactivate all tool modes when switching to view mode
   useEffect(() => {
@@ -1135,77 +1391,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   }, [isEditMode]);
 
-  // Update loadWorkflowFields to use the appropriate mappings and values based on tab
-  const loadWorkflowFields = useCallback(() => {
-    if (!workflowData || !pageWidth || !pageHeight) return;
-
-    const fields: TextField[] = [];
-    let mappings: Record<string, TemplateMapping> = {};
-
-    // Determine which mappings to use based on current tab
-    switch (currentTab) {
-      case "original":
-        mappings = workflowData.origin_template_mappings || {};
-        break;
-      case "translated":
-        mappings = workflowData.translated_template_mappings || {};
-        break;
-      default:
-        // For document tab, don't show any fields
-        setTextFields([]);
-        return;
-    }
-
-    Object.entries(mappings).forEach(([key, mapping]) => {
-      const fieldData = workflowData.fields?.[key];
-      if (fieldData && mapping) {
-        // Determine which value and status to use based on current tab
-        let fieldValue = "";
-        let fieldStatus = "pending";
-        switch (currentTab) {
-          case "original":
-            fieldValue = fieldData.value || "";
-            fieldStatus = fieldData.value_status || "pending";
-            break;
-          case "translated":
-            fieldValue = fieldData.translated_value || "";
-            fieldStatus = fieldData.translated_status || "pending";
-            break;
-        }
-
-        // Calculate dimensions based on the value and font from mapping
-        const { width, height } = calculateFieldDimensions(
-          fieldValue,
-          mapping.font.size,
-          mapping.font.name || "Arial, sans-serif"
-        );
-
-        const field: TextField = {
-          id: `workflow-${key}`,
-          x: mapping.position.x0,
-          y: mapping.position.y0,
-          width, // Use calculated width instead of mapping width
-          height, // Use calculated height instead of mapping height
-          value: fieldValue,
-          fontSize: mapping.font.size,
-          fontColor: "#000000", // Always default to black, ignore mapping color
-          fontFamily: mapping.font.name || "Arial, sans-serif",
-          page: mapping.page_number,
-          fieldKey: key,
-          isFromWorkflow: true,
-          characterSpacing: 0, // Default character spacing since TemplateMapping doesn't have this
-          fontWeight: "normal",
-          fontStyle: "normal",
-          rotation: 0, // Default rotation since TemplateMapping doesn't have this
-          status: fieldStatus, // Add status for styling
-        };
-
-        fields.push(field);
-      }
-    });
-
-    setTextFields(fields);
-  }, [workflowData, pageHeight, pageWidth, currentTab]);
+  // Note: loadWorkflowFields is now replaced by getTextFieldsFromWorkflowData
 
   const selectionRect = useMemo(() => {
     if (!dragStart || !dragEnd) return null;
@@ -1332,10 +1518,13 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       characterSpacing
     );
 
+    // Add more generous padding for height to prevent clipping
+    // Especially important for descenders (g, j, p, q, y) and to match textarea rendering
+    const heightPadding = Math.max(fontSize * 0.2, 4); // At least 20% of font size or 4px
+
     return {
       width: Math.max(width + padding, 5),
-      // height: Math.max(height + padding, 1),
-      height: Math.max(height + 2, 1),
+      height: Math.max(height + heightPadding, fontSize), // Ensure minimum height is at least font size
     };
   };
 
@@ -1525,9 +1714,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   }, [textSelectionPopup]);
 
   const addTextField = (x: number, y: number) => {
+    if (!localWorkflowData) return;
+
     const value = "New Text Field";
     const fontSize = 8;
     const fontFamily = "Arial, sans-serif";
+    const fieldId = generateUUID();
 
     const { width, height } = calculateFieldDimensions(
       value,
@@ -1535,29 +1727,53 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       fontFamily
     );
 
-    const newField: TextField = {
-      id: `field-${Date.now()}`,
-      x: x, // Use provided x coordinate
-      y: y, // Use provided y coordinate
-      width,
-      height,
-      value,
-      fontSize,
-      fontColor: "#000000",
-      fontFamily,
-      page: currentPage,
-      isFromWorkflow: false,
-      characterSpacing: 0, // Default character spacing
-      fontWeight: "normal",
-      fontStyle: "normal",
-      rotation: 0, // Default no rotation
-    };
+    setLocalWorkflowData((prev) => {
+      if (!prev) return prev;
 
-    setTextFields([...textFields, newField]);
-    setSelectedFieldId(newField.id);
+      const updatedData = { ...prev };
+
+      // Add to fields
+      const updatedFields = { ...(updatedData.fields || {}) };
+      updatedFields[fieldId] = {
+        value: currentTab === "original" ? value : "",
+        translated_value: currentTab === "translated" ? value : "",
+        value_status: "edited",
+        translated_status: "edited",
+      };
+      updatedData.fields = updatedFields;
+
+      // Add to appropriate template mapping
+      const mappingKey =
+        currentTab === "original"
+          ? "origin_template_mappings"
+          : "translated_template_mappings";
+      const updatedMappings = { ...(updatedData[mappingKey] || {}) };
+
+      const newMapping: ExtendedTemplateMapping = {
+        position: { x0: x, y0: y, x1: x + width, y1: y + height },
+        font: { size: fontSize, name: fontFamily, color: "#000000" },
+        page_number: currentPage,
+        label: "New Text Field",
+        bbox_center: { x: x + width / 2, y: y + height / 2 },
+        alignment: "left",
+        font_color: "#000000",
+        character_spacing: 0,
+        font_weight: "normal",
+        font_style: "normal",
+        rotation: 0,
+      };
+
+      updatedMappings[fieldId] = newMapping;
+      updatedData[mappingKey] = updatedMappings;
+
+      return updatedData as WorkflowData;
+    });
+
+    setSelectedFieldId(fieldId);
     setIsAddTextBoxMode(false);
     setIsTextSelectionMode(false);
     setTextSelectionPopup(null);
+    markAsUnsaved();
   };
 
   const addDeletionRectangle = (sel: {
@@ -1630,18 +1846,76 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       background: bgColor, // Store the captured color permanently
     };
 
-    setRectangles((prev) => [...prev, newDeletion]);
+    if (localWorkflowData) {
+      setLocalWorkflowData((prev) => {
+        if (!prev) return prev;
+        const updatedRectangles: Record<string, any> = {
+          ...(prev.deletion_rectangles || {}),
+        };
+        updatedRectangles[newDeletion.id] = newDeletion;
+        return {
+          ...prev,
+          deletion_rectangles: updatedRectangles,
+        } as WorkflowData;
+      });
+    }
+    markAsUnsaved();
   };
 
   const deleteDeletionRectangle = (id: string) => {
-    setRectangles(rectangles.filter((rec) => rec.id !== id));
+    if (localWorkflowData) {
+      setLocalWorkflowData((prev) => {
+        if (!prev) return prev;
+        const updatedRectangles: Record<string, any> = {
+          ...(prev.deletion_rectangles || {}),
+        };
+        delete updatedRectangles[id];
+        return {
+          ...prev,
+          deletion_rectangles: updatedRectangles,
+        } as WorkflowData;
+      });
+    }
+    markAsUnsaved();
   };
 
   const deleteTextField = (fieldId: string) => {
-    setTextFields(textFields.filter((field) => field.id !== fieldId));
+    if (!localWorkflowData) return;
+
+    setLocalWorkflowData((prev) => {
+      if (!prev) return prev;
+
+      const updatedData = { ...prev };
+
+      // Remove from fields
+      const updatedFields = { ...(updatedData.fields || {}) };
+      delete updatedFields[fieldId];
+      updatedData.fields = updatedFields;
+
+      // Remove from both template mappings (in case it exists in both)
+      if (updatedData.origin_template_mappings) {
+        const updatedOriginMappings = {
+          ...updatedData.origin_template_mappings,
+        };
+        delete updatedOriginMappings[fieldId];
+        updatedData.origin_template_mappings = updatedOriginMappings;
+      }
+
+      if (updatedData.translated_template_mappings) {
+        const updatedTranslatedMappings = {
+          ...updatedData.translated_template_mappings,
+        };
+        delete updatedTranslatedMappings[fieldId];
+        updatedData.translated_template_mappings = updatedTranslatedMappings;
+      }
+
+      return updatedData as WorkflowData;
+    });
+
     if (selectedFieldId === fieldId) {
       setSelectedFieldId(null);
     }
+    markAsUnsaved();
   };
 
   const handleDocumentContainerClick = (e: React.MouseEvent) => {
@@ -1771,6 +2045,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       delete isDraggingRef.current[fieldId];
 
       // Update the actual field position in React state
+      // Note: x and y from onDragStop are already pixel positions, so we need to convert to PDF coordinates
       updateTextField(fieldId, {
         x: x / scale,
         y: y / scale,
@@ -1790,8 +2065,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     const tempEditMode = isEditMode;
     const tempTextSelectionMode = isTextSelectionMode;
     const tempShowRectangles = showRectangles;
-    const originalTextFields = [...textFields];
-    const originalShapes = [...shapes];
+    const originalTextFields = getTextFieldsFromWorkflowData();
+    const originalShapes = getShapesAsArray();
 
     setIsLoading(true);
 
@@ -1808,13 +2083,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setFieldStatusDropdownOpen(false);
       setShowRectangles(false); // Hide deletion rectangles during export
 
-      // Temporarily add padding back to text field heights and raise text position for better export appearance
-      const adjustedTextFields = textFields.map((field) => ({
-        ...field,
-        y: field.y - 2, // Raise text by 2px (subtract from y position)
-        height: field.height + 10, // Add 5px padding back for export
-      }));
-      setTextFields(adjustedTextFields);
+      // No text field adjustments needed - export exactly what user sees (WYSIWYG)
 
       // Set zoom to 300% for maximum quality
       setScale(3.0);
@@ -1894,16 +2163,78 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                 rnd.style.outline = "none";
                 rnd.style.cursor = "default";
 
-                // Clean up textareas in text fields
+                // Check if this is a text field container and raise it for better export appearance
                 const textarea = rnd.querySelector("textarea");
                 if (textarea && textarea instanceof HTMLElement) {
+                  // Raise ALL text field containers by adjusting position
+                  const currentTop = parseFloat(rnd.style.top || "0");
+                  rnd.style.top = `${currentTop - 5 * scale}px`; // Raise by 5px scaled (increased from 3px)
+
+                  // Clean up textarea styling
                   textarea.style.border = "none";
                   textarea.style.outline = "none";
                   textarea.style.resize = "none";
-                  textarea.style.padding = "0";
+                  textarea.style.padding = "2px"; // Match live editor padding
                   textarea.style.margin = "0";
                   textarea.style.backgroundColor = "transparent";
                   textarea.style.cursor = "default";
+                  textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
+                  textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
+                  textarea.style.wordWrap = "break-word"; // Ensure long words break properly
+                  textarea.style.wordBreak = "break-word"; // Additional word breaking support
+
+                  // Ensure adequate height for wrapped text during export
+                  const textContent = textarea.value || "";
+                  if (textContent.length > 0) {
+                    // Force explicit text wrapping styles
+                    textarea.style.whiteSpace = "pre-wrap";
+                    textarea.style.wordWrap = "break-word";
+                    textarea.style.wordBreak = "break-word";
+                    textarea.style.overflowWrap = "break-word";
+
+                    // Calculate estimated height based on content
+                    const fontSize = parseFloat(
+                      textarea.style.fontSize || "12"
+                    );
+                    const lineHeight = fontSize * 1.1;
+
+                    // Count explicit line breaks and estimate wrapped lines
+                    const explicitLines =
+                      (textContent.match(/\n/g) || []).length + 1;
+                    const avgCharsPerLine = Math.max(
+                      20,
+                      Math.floor(
+                        parseFloat(rnd.style.width || "200") / (fontSize * 0.6)
+                      )
+                    );
+                    const estimatedWrappedLines = Math.ceil(
+                      textContent.replace(/\n/g, " ").length / avgCharsPerLine
+                    );
+                    const totalEstimatedLines = Math.max(
+                      explicitLines,
+                      estimatedWrappedLines
+                    );
+
+                    // Apply generous height to ensure all text is visible
+                    const generousHeight =
+                      totalEstimatedLines * lineHeight + 20; // Extra 20px buffer
+                    const currentHeight = parseFloat(rnd.style.height || "0");
+
+                    // Always expand if we have multi-line content
+                    if (
+                      totalEstimatedLines > 1 ||
+                      generousHeight > currentHeight
+                    ) {
+                      rnd.style.height = `${generousHeight}px`;
+                      textarea.style.height = `${generousHeight - 8}px`; // Slightly smaller than container
+                    }
+
+                    // Ensure no text overflow
+                    textarea.style.overflow = "visible";
+                    textarea.style.textOverflow = "clip";
+                  }
+
+                  // No position adjustments - keep exactly what user sees in live editor
                 }
 
                 // Ensure shapes are visible and properly styled for export
@@ -1991,9 +2322,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
       URL.revokeObjectURL(url);
 
-      // Restore the original state
-      setTextFields(originalTextFields);
-      setShapes(originalShapes);
+      // Note: Text fields are now derived from workflow data, so no restoration needed
+      // Restore original shapes in localWorkflowData
+      if (localWorkflowData) {
+        setLocalWorkflowData((prev) => {
+          if (!prev) return prev;
+          const shapesAsRecord: Record<string, any> = {};
+          originalShapes.forEach((shape) => {
+            shapesAsRecord[shape.id] = shape;
+          });
+          return { ...prev, shapes: shapesAsRecord } as WorkflowData;
+        });
+      }
       setScale(originalScale);
       setSelectedFieldId(tempSelectedField);
       setSelectedShapeId(tempSelectedShape);
@@ -2005,9 +2345,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       console.error("Error exporting PDF:", error);
       setError("Failed to export PDF");
 
-      // Restore original state even on error
-      setTextFields(originalTextFields);
-      setShapes(originalShapes);
+      // Note: Text fields are now derived from workflow data, so no restoration needed
+      // Restore original shapes in localWorkflowData
+      if (localWorkflowData) {
+        setLocalWorkflowData((prev) => {
+          if (!prev) return prev;
+          const shapesAsRecord: Record<string, any> = {};
+          originalShapes.forEach((shape) => {
+            shapesAsRecord[shape.id] = shape;
+          });
+          return { ...prev, shapes: shapesAsRecord } as WorkflowData;
+        });
+      }
       setScale(originalScale);
       setSelectedFieldId(tempSelectedField);
       setSelectedShapeId(tempSelectedShape);
@@ -2020,16 +2369,61 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   };
 
+  const saveChanges = async () => {
+    if (!localWorkflowData || !hasUnsavedChanges) return;
+
+    try {
+      // Update workflow data with current state
+      // For now, we'll just update the local state and mark as saved
+      // In the future, this would make an API call to save to the backend
+
+      // Update the initial workflow data to current state
+      setInitialWorkflowData(JSON.parse(JSON.stringify(localWorkflowData)));
+      setHasUnsavedChanges(false);
+
+      // Show success feedback (you could add a toast here)
+      console.log("Changes saved successfully!");
+    } catch (error) {
+      console.error("Error saving changes:", error);
+      setError("Failed to save changes");
+    }
+  };
+
+  const handleClose = () => {
+    if (hasUnsavedChanges) {
+      setShowSaveConfirmation(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const confirmClose = () => {
+    setShowSaveConfirmation(false);
+    setHasUnsavedChanges(false);
+    onClose();
+  };
+
+  const cancelClose = () => {
+    setShowSaveConfirmation(false);
+  };
+
+  const saveAndClose = async () => {
+    await saveChanges();
+    setShowSaveConfirmation(false);
+    onClose();
+  };
+
   const exportFieldsData = () => {
     const exportData = {
       documentUrl,
-      fields: textFields,
-      shapes: shapes,
+      fields: getTextFieldsFromWorkflowData(),
+      shapes: getShapesAsArray(),
+      rectangles: getRectanglesAsArray(),
       scale,
       pageWidth,
       pageHeight,
       numPages,
-      workflowId: workflowData?.template_id || "unknown",
+      workflowId: localWorkflowData?.template_id || "unknown",
     };
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -2150,8 +2544,22 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         rotation: 0,
       };
 
-      setShapes((prev) => [...prev, newShape]);
+      if (localWorkflowData) {
+        setLocalWorkflowData((prev) => {
+          if (!prev) return prev;
+          const updatedShapes = { ...(prev.shapes || {}) } as Record<
+            string,
+            any
+          >;
+          updatedShapes[newShape.id] = newShape;
+          return {
+            ...prev,
+            shapes: updatedShapes,
+          } as WorkflowData;
+        });
+      }
       setSelectedShapeId(newShape.id);
+      markAsUnsaved();
     }
 
     setIsDrawingInProgress(false);
@@ -2162,19 +2570,39 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   // Add shape update function
   const updateShape = (shapeId: string, updates: Partial<Shape>) => {
-    setShapes((prev) =>
-      prev.map((shape) =>
-        shape.id === shapeId ? { ...shape, ...updates } : shape
-      )
-    );
+    if (localWorkflowData) {
+      setLocalWorkflowData((prev) => {
+        if (!prev) return prev;
+        const updatedShapes = { ...(prev.shapes || {}) } as Record<string, any>;
+        if (updatedShapes[shapeId]) {
+          updatedShapes[shapeId] = { ...updatedShapes[shapeId], ...updates };
+        }
+        return {
+          ...prev,
+          shapes: updatedShapes,
+        } as WorkflowData;
+      });
+    }
+    markAsUnsaved();
   };
 
   // Add shape deletion function
   const deleteShape = (shapeId: string) => {
-    setShapes((prev) => prev.filter((shape) => shape.id !== shapeId));
+    if (localWorkflowData) {
+      setLocalWorkflowData((prev) => {
+        if (!prev) return prev;
+        const updatedShapes = { ...(prev.shapes || {}) } as Record<string, any>;
+        delete updatedShapes[shapeId];
+        return {
+          ...prev,
+          shapes: updatedShapes,
+        } as WorkflowData;
+      });
+    }
     if (selectedShapeId === shapeId) {
       setSelectedShapeId(null);
     }
+    markAsUnsaved();
   };
 
   // Optimized shape drag handlers using direct DOM manipulation
@@ -2291,6 +2719,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   // Add tab switching function
   const handleTabChange = (tab: TabType) => {
+    if (hasUnsavedChanges) {
+      // Show a warning but allow the switch (user can save later if needed)
+      console.warn("Switching tabs with unsaved changes");
+    }
+
     // Immediately reset file detection to prevent race conditions
     setIsFileTypeDetected(false);
     setDocumentUrl("");
@@ -2309,24 +2742,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   // Memoize filtered text fields to avoid unnecessary re-computations
   const visibleTextFields = useMemo(() => {
+    const textFields = getTextFieldsFromWorkflowData();
     return textFields
       .filter((field) => field.page === currentPage)
       .filter((field) => !field.isFromWorkflow || showWorkflowFields);
-  }, [textFields, currentPage, showWorkflowFields]);
+  }, [getTextFieldsFromWorkflowData, currentPage, showWorkflowFields]);
 
   // Memoize filtered shapes to avoid unnecessary re-computations
   const visibleShapes = useMemo(() => {
-    return shapes.filter(
+    return getShapesAsArray().filter(
       (shape) => shape.page === currentPage && shape.tab === currentTab
     );
-  }, [shapes, currentPage, currentTab]);
+  }, [getShapesAsArray, currentPage, currentTab]);
 
   // Memoize filtered rectangles to avoid unnecessary re-computations
   const visibleRectangles = useMemo(() => {
-    return rectangles.filter(
+    return getRectanglesAsArray().filter(
       (rec) => rec.page === currentPage && rec.tab === currentTab
     );
-  }, [rectangles, currentPage, currentTab]);
+  }, [getRectanglesAsArray, currentPage, currentTab]);
 
   return (
     <AnimatePresence>
@@ -2353,17 +2787,26 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={onClose}
-                              className="p-2 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-all duration-200 flex items-center justify-center group"
+                              onClick={handleClose}
+                              className={`p-2 hover:bg-red-100 text-gray-600 hover:text-red-600 rounded-lg transition-all duration-200 flex items-center justify-center group relative ${
+                                hasUnsavedChanges ? "ring-2 ring-amber-400" : ""
+                              }`}
                             >
                               <X
                                 size={18}
                                 className="group-hover:scale-110 transition-transform"
                               />
+                              {hasUnsavedChanges && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full animate-pulse" />
+                              )}
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                            <p>Close Document Editor</p>
+                            <p>
+                              {hasUnsavedChanges
+                                ? "Close (You have unsaved changes)"
+                                : "Close Document Editor"}
+                            </p>
                           </TooltipContent>
                         </Tooltip>
 
@@ -2665,7 +3108,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                               </Tooltip>
 
                               {/* Field Status Button - Only show for template tabs with workflow fields */}
-                              {textFields.some(
+                              {getTextFieldsFromWorkflowData().some(
                                 (field) => field.isFromWorkflow && field.status
                               ) && (
                                 <div className="relative field-status-dropdown">
@@ -2730,9 +3173,13 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={exportFieldsData}
-                              className="px-3 py-2.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group"
-                              disabled={!documentUrl}
+                              onClick={saveChanges}
+                              className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
+                                hasUnsavedChanges
+                                  ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-green-200 hover:from-green-600 hover:to-green-700"
+                                  : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                              }`}
+                              disabled={!documentUrl || !hasUnsavedChanges}
                             >
                               <Save
                                 size={18}
@@ -2741,7 +3188,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                            <p>Export Field Data</p>
+                            <p>
+                              {hasUnsavedChanges
+                                ? "Save Changes"
+                                : "No changes to save"}
+                            </p>
                           </TooltipContent>
                         </Tooltip>
 
@@ -2749,11 +3200,21 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                           <TooltipTrigger asChild>
                             <button
                               onClick={exportToPDF}
-                              className="px-3 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-md hover:shadow-lg shadow-red-200 transition-all duration-200 flex items-center justify-center group"
+                              className={`px-3 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                                hasUnsavedChanges
+                                  ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-red-200"
+                                  : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 shadow-gray-100"
+                              }`}
                               disabled={isLoading || !documentUrl}
                             >
                               {isLoading ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                <div
+                                  className={`w-4 h-4 border-2 ${
+                                    hasUnsavedChanges
+                                      ? "border-white"
+                                      : "border-gray-400"
+                                  } border-t-transparent rounded-full animate-spin`}
+                                />
                               ) : (
                                 <Download
                                   size={18}
@@ -2764,7 +3225,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                           </TooltipTrigger>
                           <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
                             <p>
-                              {isLoading ? "Exporting PDF..." : "Export to PDF"}
+                              {isLoading
+                                ? "Exporting PDF..."
+                                : hasUnsavedChanges
+                                ? "Export to PDF (You have unsaved changes)"
+                                : "Export to PDF"}
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -2802,7 +3267,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           )}
 
           {/* Show no workflow state */}
-          {!workflowLoading && !workflowError && !workflowData && (
+          {!workflowLoading && !workflowError && !localWorkflowData && (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
                 <Edit3 size={64} className="mb-4 text-gray-300 mx-auto" />
@@ -2817,7 +3282,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           )}
 
           {/* Main content - only show when workflow data is available */}
-          {!workflowLoading && !workflowError && workflowData && (
+          {!workflowLoading && !workflowError && localWorkflowData && (
             <>
               {isDragging && selectionRect && (
                 <div
@@ -3797,7 +4262,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                           {/* Field Values - Only show for workflow fields */}
                                           {field.isFromWorkflow &&
                                             field.fieldKey &&
-                                            workflowData?.fields?.[
+                                            localWorkflowData?.fields?.[
                                               field.fieldKey
                                             ] && (
                                               <div className="grid grid-cols-1 mb-4">
@@ -3815,21 +4280,51 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                   {currentTab === "original" ? (
                                                     <textarea
                                                       value={
-                                                        workflowData.fields[
-                                                          field.fieldKey
-                                                        ].value || ""
+                                                        localWorkflowData
+                                                          ?.fields?.[
+                                                          field.fieldKey || ""
+                                                        ]?.value || ""
                                                       }
                                                       onChange={(e) => {
                                                         // Update workflow data and text field
                                                         const newValue =
                                                           e.target.value;
+                                                        const fieldKey =
+                                                          field.fieldKey;
                                                         if (
-                                                          workflowData.fields &&
-                                                          field.fieldKey
+                                                          localWorkflowData.fields &&
+                                                          fieldKey
                                                         ) {
-                                                          workflowData.fields[
-                                                            field.fieldKey
-                                                          ].value = newValue;
+                                                          setLocalWorkflowData(
+                                                            (prev) => {
+                                                              if (!prev)
+                                                                return prev;
+                                                              const updatedFields =
+                                                                {
+                                                                  ...prev.fields,
+                                                                };
+                                                              if (
+                                                                updatedFields[
+                                                                  fieldKey
+                                                                ]
+                                                              ) {
+                                                                updatedFields[
+                                                                  fieldKey
+                                                                ] = {
+                                                                  ...updatedFields[
+                                                                    fieldKey
+                                                                  ],
+                                                                  value:
+                                                                    newValue,
+                                                                };
+                                                              }
+                                                              return {
+                                                                ...prev,
+                                                                fields:
+                                                                  updatedFields,
+                                                              } as WorkflowData;
+                                                            }
+                                                          );
                                                         }
                                                         updateTextField(
                                                           field.id,
@@ -3837,6 +4332,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                             value: newValue,
                                                           }
                                                         );
+                                                        markAsUnsaved();
                                                       }}
                                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
                                                       placeholder="Enter original value..."
@@ -3844,9 +4340,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                     />
                                                   ) : (
                                                     <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
-                                                      {workflowData.fields[
-                                                        field.fieldKey
-                                                      ].value || (
+                                                      {localWorkflowData
+                                                        ?.fields?.[
+                                                        field.fieldKey || ""
+                                                      ]?.value || (
                                                         <span className="text-gray-400 italic">
                                                           No original value
                                                         </span>
@@ -3870,22 +4367,52 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                   "translated" ? (
                                                     <textarea
                                                       value={
-                                                        workflowData.fields[
-                                                          field.fieldKey
-                                                        ].translated_value || ""
+                                                        localWorkflowData
+                                                          ?.fields?.[
+                                                          field.fieldKey || ""
+                                                        ]?.translated_value ||
+                                                        ""
                                                       }
                                                       onChange={(e) => {
                                                         // Update workflow data and text field
                                                         const newValue =
                                                           e.target.value;
+                                                        const fieldKey =
+                                                          field.fieldKey;
                                                         if (
-                                                          workflowData.fields &&
-                                                          field.fieldKey
+                                                          localWorkflowData?.fields &&
+                                                          fieldKey
                                                         ) {
-                                                          workflowData.fields[
-                                                            field.fieldKey
-                                                          ].translated_value =
-                                                            newValue;
+                                                          setLocalWorkflowData(
+                                                            (prev) => {
+                                                              if (!prev)
+                                                                return prev;
+                                                              const updatedFields =
+                                                                {
+                                                                  ...prev.fields,
+                                                                };
+                                                              if (
+                                                                updatedFields[
+                                                                  fieldKey
+                                                                ]
+                                                              ) {
+                                                                updatedFields[
+                                                                  fieldKey
+                                                                ] = {
+                                                                  ...updatedFields[
+                                                                    fieldKey
+                                                                  ],
+                                                                  translated_value:
+                                                                    newValue,
+                                                                };
+                                                              }
+                                                              return {
+                                                                ...prev,
+                                                                fields:
+                                                                  updatedFields,
+                                                              } as WorkflowData;
+                                                            }
+                                                          );
                                                         }
                                                         // Update text field value since we're on translated tab
                                                         updateTextField(
@@ -3894,6 +4421,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                             value: newValue,
                                                           }
                                                         );
+                                                        markAsUnsaved();
                                                       }}
                                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
                                                       placeholder="Enter translated value..."
@@ -3901,9 +4429,10 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                     />
                                                   ) : (
                                                     <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
-                                                      {workflowData.fields[
-                                                        field.fieldKey
-                                                      ].translated_value || (
+                                                      {localWorkflowData
+                                                        ?.fields?.[
+                                                        field.fieldKey || ""
+                                                      ]?.translated_value || (
                                                         <span className="text-gray-400 italic">
                                                           No translated value
                                                         </span>
@@ -4164,13 +4693,13 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                       fontWeight: field.fontWeight || "normal",
                                       fontStyle: field.fontStyle || "normal",
                                       cursor: "text",
-                                      padding: "1px",
+                                      padding: "2px",
                                       lineHeight: "1.1",
                                       wordWrap: "break-word",
                                       wordBreak: "break-all",
                                       whiteSpace: "pre-wrap",
                                       boxSizing: "border-box",
-                                      overflow: "hidden",
+                                      overflow: "hidden", // Keep hidden during editing to prevent scrollbars
                                       letterSpacing: field.characterSpacing
                                         ? `${field.characterSpacing}px`
                                         : "normal",
@@ -4267,13 +4796,13 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                       {/* Get unique statuses from current fields */}
                       {Array.from(
                         new Set(
-                          textFields
+                          getTextFieldsFromWorkflowData()
                             .filter(
                               (field) => field.isFromWorkflow && field.status
                             )
                             .map((field) => field.status!)
                         )
-                      ).map((status) => (
+                      ).map((status: string) => (
                         <div
                           key={status}
                           className="flex items-center gap-3 py-1"
@@ -4300,6 +4829,52 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                 </div>
               )}
             </>
+          )}
+
+          {/* Save Confirmation Dialog */}
+          {showSaveConfirmation && (
+            <div className="fixed inset-0 z-[999999999999] flex items-center justify-center bg-black bg-opacity-50">
+              <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full mx-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                    <Save className="text-amber-600" size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Unsaved Changes
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      You have unsaved changes in this document.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-gray-700 mb-6">
+                  Would you like to save your changes before closing?
+                </p>
+
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={cancelClose}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmClose}
+                    className="px-4 py-2 text-red-700 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    Discard Changes
+                  </button>
+                  <button
+                    onClick={saveAndClose}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    Save & Close
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </TooltipProvider>
