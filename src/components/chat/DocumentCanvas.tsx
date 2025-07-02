@@ -216,6 +216,7 @@ interface TextField {
   fontWeight?: "normal" | "bold";
   fontStyle?: "normal" | "italic";
   rotation?: number; // Rotation angle in degrees
+  status?: string; // Field status for styling
 }
 
 // Use imported WorkflowData and TemplateMapping types from the workflow types file
@@ -281,6 +282,42 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   // Add tab state
   const [currentTab, setCurrentTab] = useState<TabType>("document");
 
+  // Status color mapping
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case "pending":
+        return "#f59e0b"; // amber
+      case "ocr":
+        return "#3b82f6"; // blue
+      case "translated":
+        return "#10b981"; // emerald
+      case "edited":
+        return "#f97316"; // orange
+      case "confirmed":
+        return "#22c55e"; // green
+      default:
+        return "#6b7280"; // gray
+    }
+  };
+
+  // Get status label
+  const getStatusLabel = (status: string): string => {
+    switch (status) {
+      case "pending":
+        return "Pending";
+      case "ocr":
+        return "OCR Extracted";
+      case "translated":
+        return "Translated";
+      case "edited":
+        return "Edited";
+      case "confirmed":
+        return "Confirmed";
+      default:
+        return "Unknown";
+    }
+  };
+
   const [documentUrl, setDocumentUrl] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [numPages, setNumPages] = useState<number>(0);
@@ -320,6 +357,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [shapeDropdownOpen, setShapeDropdownOpen] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const shapeButtonRef = useRef<HTMLButtonElement>(null);
+  const [fieldStatusDropdownOpen, setFieldStatusDropdownOpen] = useState(false);
+  const fieldStatusButtonRef = useRef<HTMLButtonElement>(null);
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null);
   const [isDrawingInProgress, setIsDrawingInProgress] =
     useState<boolean>(false);
@@ -603,6 +642,78 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4), 0 0 0 3px rgba(59, 130, 246, 0.3);
     }
 
+    /* Rotation Slider Styling */
+    .rotation-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 12px;
+      border-radius: 6px;
+      outline: none;
+      transition: all 0.2s ease;
+      border: 2px solid #ef4444;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+    }
+
+    .rotation-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border: 3px solid white;
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4), 0 0 0 2px rgba(239, 68, 68, 0.2);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .rotation-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5), 0 0 0 3px rgba(239, 68, 68, 0.3);
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+
+    .rotation-slider::-webkit-slider-thumb:active {
+      transform: scale(1.25);
+      box-shadow: 0 8px 20px rgba(239, 68, 68, 0.6), 0 0 0 4px rgba(239, 68, 68, 0.4);
+    }
+
+    .rotation-slider::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border: 3px solid white;
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4), 0 0 0 2px rgba(239, 68, 68, 0.2);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      -moz-appearance: none;
+    }
+
+    .rotation-slider::-moz-range-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5), 0 0 0 3px rgba(239, 68, 68, 0.3);
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+
+    .rotation-slider::-moz-range-track {
+      background: transparent;
+      border: none;
+      height: 12px;
+    }
+
+    .rotation-slider:focus {
+      outline: none;
+      border-color: #dc2626;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(239, 68, 68, 0.2);
+    }
+
+    .rotation-slider:focus::-webkit-slider-thumb {
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5), 0 0 0 4px rgba(239, 68, 68, 0.3);
+    }
+
   `;
 
   // Initialize with workflow data when available
@@ -691,13 +802,21 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       ) {
         setShapeDropdownOpen(false);
       }
+
+      // Close field status dropdown when clicking outside
+      if (
+        fieldStatusDropdownOpen &&
+        !(e.target as Element).closest(".field-status-dropdown")
+      ) {
+        setFieldStatusDropdownOpen(false);
+      }
     };
 
     document.addEventListener("click", handleClickOutside);
     return () => {
       document.removeEventListener("click", handleClickOutside);
     };
-  }, [settingsPopupFor, shapeDropdownOpen]);
+  }, [settingsPopupFor, shapeDropdownOpen, fieldStatusDropdownOpen]);
 
   // Load workflow fields when page dimensions are available
   useEffect(() => {
@@ -852,14 +971,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     Object.entries(mappings).forEach(([key, mapping]) => {
       const fieldData = workflowData.fields?.[key];
       if (fieldData && mapping) {
-        // Determine which value to use based on current tab
+        // Determine which value and status to use based on current tab
         let fieldValue = "";
+        let fieldStatus = "pending";
         switch (currentTab) {
           case "original":
             fieldValue = fieldData.value || "";
+            fieldStatus = fieldData.value_status || "pending";
             break;
           case "translated":
             fieldValue = fieldData.translated_value || "";
+            fieldStatus = fieldData.translated_status || "pending";
             break;
         }
 
@@ -887,6 +1009,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           fontWeight: "normal",
           fontStyle: "normal",
           rotation: 0, // Default rotation since TemplateMapping doesn't have this
+          status: fieldStatus, // Add status for styling
         };
 
         fields.push(field);
@@ -1022,8 +1145,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     );
 
     return {
-      width: Math.max(width + padding, 5), // Minimum width 30px
-      height: Math.max(height + padding, 1), // Minimum height 12px
+      width: Math.max(width + padding, 5),
+      // height: Math.max(height + padding, 1),
+      height: Math.max(height + 2, 1),
     };
   };
 
@@ -1379,15 +1503,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
         const newField = { ...field, ...updates };
 
-        // Recalculate dimensions when text/font/spacing changes
+        // Recalculate dimensions when text/font changes (but not character spacing)
         if (
           updates.value !== undefined ||
           updates.fontSize !== undefined ||
-          updates.fontFamily !== undefined ||
-          updates.characterSpacing !== undefined
+          updates.fontFamily !== undefined
         ) {
-          // Add this condition
-
           const { width, height } = calculateFieldDimensions(
             updates.value ?? field.value,
             updates.fontSize ?? field.fontSize,
@@ -1420,19 +1541,22 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     setIsLoading(true);
 
     try {
-      // Turn off all editing controls and modes for clean export
+      // Turn off edit mode and all editing controls for clean export
       setSelectedFieldId(null);
       setSelectedShapeId(null);
       setSettingsPopupFor(null);
       setIsEditMode(false);
       setIsTextSelectionMode(false);
       setShapeDrawingMode(null);
+      setTextSelectionPopup(null);
+      setShapeDropdownOpen(false);
+      setFieldStatusDropdownOpen(false);
 
-      // Temporarily adjust text field positions upward for better export alignment
+      // Temporarily add padding back to text field heights and raise text position for better export appearance
       const adjustedTextFields = textFields.map((field) => ({
         ...field,
-        x: field.x - 2, // Raise each text field by 3 pixels
-        y: field.y - 3, // Raise each text field by 3 pixels
+        y: field.y - 2, // Raise text by 2px (subtract from y position)
+        height: field.height + 10, // Add 5px padding back for export
       }));
       setTextFields(adjustedTextFields);
 
@@ -1441,85 +1565,133 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setZoomMode("page");
 
       // Wait for zoom and controls to update
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // Find the PDF page element
+      // Find the PDF page element and canvas
       const pdfPageElement =
         documentRef.current.querySelector(".react-pdf__Page");
-      if (!pdfPageElement) {
-        throw new Error("PDF page not found");
+      const pdfCanvas = documentRef.current.querySelector(
+        ".react-pdf__Page__canvas"
+      ) as HTMLCanvasElement;
+
+      if (!pdfPageElement || !pdfCanvas) {
+        throw new Error("PDF page or canvas not found");
       }
+
+      console.log("PDF Canvas found:", {
+        width: pdfCanvas.width,
+        height: pdfCanvas.height,
+        clientWidth: pdfCanvas.clientWidth,
+        clientHeight: pdfCanvas.clientHeight,
+      });
 
       // Use html2canvas to capture the rendered PDF with all styling
       const html2canvas = (await import("html2canvas")).default;
 
       // Capture the entire document container which includes text fields
       const canvas = await html2canvas(documentRef.current, {
-        scale: 2, // Higher resolution
+        scale: 1, // Use 1x scale since we already scaled the content to 300%
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
+        foreignObjectRendering: false, // Disable for better PDF.js compatibility
+        ignoreElements: (element) => {
+          // Ignore all control elements for clean export
+          return (
+            element.classList.contains("drag-handle") ||
+            element.classList.contains("shape-drag-handle") ||
+            element.tagName === "BUTTON" ||
+            element.classList.contains("settings-popup") ||
+            element.classList.contains("text-selection-popup") ||
+            element.classList.contains("shape-dropdown") ||
+            element.classList.contains("field-status-dropdown") ||
+            element.classList.contains("fixed") ||
+            element.closest(".fixed") !== null
+          );
+        },
         onclone: (clonedDoc) => {
-          // Remove editing controls but keep text content
-          const clonedContainer =
-            clonedDoc.querySelector('[data-testid="document-container"]') ||
-            clonedDoc.querySelector('div[style*="relative"]');
+          console.log("Cloning document for export...");
+
+          // Find the cloned document container
+          const clonedContainer = clonedDoc.querySelector(
+            'div[style*="relative"]'
+          );
 
           if (clonedContainer) {
-            // Remove control buttons and handles, but keep text fields and shapes
+            // Remove all control elements for clean export
             clonedContainer
-              .querySelectorAll("button")
-              .forEach((btn) => btn.remove());
-            clonedContainer
-              .querySelectorAll(".drag-handle, .shape-drag-handle")
-              .forEach((handle) => handle.remove());
+              .querySelectorAll(
+                "button, .drag-handle, .shape-drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed"
+              )
+              .forEach((el) => el.remove());
 
-            // Remove all borders and backgrounds from text field and shape containers
+            // Clean up text field containers for clean export
             clonedContainer.querySelectorAll(".rnd").forEach((rnd) => {
               if (rnd instanceof HTMLElement) {
-                // For text fields, remove the container styling
-                if (rnd.querySelector("textarea")) {
-                  rnd.style.border = "none";
-                  rnd.style.backgroundColor = "transparent";
-                  rnd.style.boxShadow = "none";
-                }
-                // For shapes, keep the shape styling but remove container borders
-                else if (rnd.querySelector(".shape-drag-handle")) {
-                  rnd.style.border = "none";
-                  rnd.style.boxShadow = "none";
+                rnd.style.border = "none";
+                rnd.style.backgroundColor = "transparent";
+                rnd.style.boxShadow = "none";
+                rnd.style.outline = "none";
+
+                // Clean up textareas
+                const textarea = rnd.querySelector("textarea");
+                if (textarea && textarea instanceof HTMLElement) {
+                  textarea.style.border = "none";
+                  textarea.style.outline = "none";
+                  textarea.style.resize = "none";
+                  textarea.style.padding = "0";
+                  textarea.style.margin = "0";
+                  textarea.style.backgroundColor = "transparent";
+                  textarea.style.cursor = "default";
                 }
               }
             });
 
-            // Clean up text areas for better appearance
-            clonedContainer.querySelectorAll("textarea").forEach((textarea) => {
-              if (textarea instanceof HTMLElement) {
-                textarea.style.padding = "0px";
-                textarea.style.margin = "0px";
-              }
-            });
+            // Ensure the PDF canvas is visible in the clone
+            const clonedCanvas = clonedContainer.querySelector(
+              ".react-pdf__Page__canvas"
+            ) as HTMLCanvasElement;
+            if (clonedCanvas) {
+              clonedCanvas.style.display = "block";
+              clonedCanvas.style.position = "relative";
+              clonedCanvas.style.zIndex = "1";
+              console.log("Cloned canvas configured:", {
+                width: clonedCanvas.width,
+                height: clonedCanvas.height,
+              });
+            }
           }
         },
       });
 
-      // Create a new PDF with the captured image
-      const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([canvas.width / 2, canvas.height / 2]); // Divide by 2 due to scale factor
+      console.log("Captured canvas:", {
+        width: canvas.width,
+        height: canvas.height,
+      });
 
-      // Convert canvas to PNG bytes
-      const canvasDataUrl = canvas.toDataURL("image/png");
+      // Create a new PDF document
+      const pdfDoc = await PDFDocument.create();
+
+      // Use the actual canvas dimensions for the PDF page
+      const pageWidth = canvas.width * 0.75; // Convert pixels to points (1 point = 1.33 pixels)
+      const pageHeight = canvas.height * 0.75;
+
+      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+
+      // Convert canvas to PNG
+      const canvasDataUrl = canvas.toDataURL("image/png", 1.0);
       const pngImageBytes = await fetch(canvasDataUrl).then((res) =>
         res.arrayBuffer()
       );
       const pngImage = await pdfDoc.embedPng(pngImageBytes);
 
-      // Draw the image on the PDF page
+      // Draw the full captured image on the PDF page
       page.drawImage(pngImage, {
         x: 0,
         y: 0,
-        width: canvas.width / 2,
-        height: canvas.height / 2,
+        width: pageWidth,
+        height: pageHeight,
       });
 
       // Save and download the PDF
@@ -1529,7 +1701,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
       const link = document.createElement("a");
       link.href = url;
-      link.download = "edited-document.pdf";
+      link.download = `${currentTab}-template-filled.pdf`;
       link.click();
 
       URL.revokeObjectURL(url);
@@ -2088,6 +2260,61 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
+
+                              {/* Field Status Button - Only show for template tabs with workflow fields */}
+                              {textFields.some(
+                                (field) => field.isFromWorkflow && field.status
+                              ) && (
+                                <div className="relative field-status-dropdown">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        ref={fieldStatusButtonRef}
+                                        onClick={() => {
+                                          if (
+                                            !fieldStatusDropdownOpen &&
+                                            fieldStatusButtonRef.current
+                                          ) {
+                                            const rect =
+                                              fieldStatusButtonRef.current.getBoundingClientRect();
+                                            setDropdownPosition({
+                                              top: rect.bottom + 4,
+                                              left: rect.left,
+                                            });
+                                          }
+                                          setFieldStatusDropdownOpen(
+                                            !fieldStatusDropdownOpen
+                                          );
+                                        }}
+                                        className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group ${
+                                          fieldStatusDropdownOpen
+                                            ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                                            : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                                        }`}
+                                      >
+                                        <Palette
+                                          size={18}
+                                          className="group-hover:scale-110 transition-transform"
+                                        />
+                                        <span className="text-sm font-medium">
+                                          Field Status
+                                        </span>
+                                        <ChevronDown
+                                          size={14}
+                                          className={`transition-transform ${
+                                            fieldStatusDropdownOpen
+                                              ? "rotate-180"
+                                              : ""
+                                          }`}
+                                        />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                                      <p>View Field Status Legend</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -2233,7 +2460,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
               >
                 {/* Vertical Zoom Controls - Adobe Acrobat Style */}
                 {documentUrl && (
-                  <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
+                  <div className="fixed bottom-6 right-6 z-[99999999999] flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
                     {/* Auto Fit Button */}
                     <button
                       onClick={zoomToFitWidth}
@@ -3037,21 +3264,29 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                               dragAxis="both"
                               dragGrid={[1, 1]}
                               resizeGrid={[1, 1]}
-                              className={`${
-                                isEditMode
-                                  ? "border-2 border-blue-500"
-                                  : "border-2 border-transparent"
+                              className={`border-2 ${
+                                isEditMode &&
+                                field.isFromWorkflow &&
+                                field.status
+                                  ? `hover:border-opacity-80`
+                                  : isEditMode
+                                  ? "border-gray-300 hover:border-blue-400"
+                                  : "border-transparent"
                               } ${
-                                field.isFromWorkflow
-                                  ? " hover:border-purple-400"
-                                  : "border-gray-300 hover:border-blue-400"
-                              } ${selectedFieldId === field.id ? "" : ""} ${
-                                isRotating && rotatingFieldId === field.id
+                                isEditMode && selectedFieldId === field.id
+                                  ? "border-blue-500"
+                                  : ""
+                              } ${
+                                isEditMode &&
+                                isRotating &&
+                                rotatingFieldId === field.id
                                   ? "border-yellow-500 border-2"
                                   : ""
                               } transition-all duration-200 ease-in-out`}
                               style={{
-                                backgroundColor: "rgba(255, 255, 255, 0.1)",
+                                backgroundColor: isEditMode
+                                  ? "rgba(255, 255, 255, 0.1)"
+                                  : "transparent",
                                 transition: "transform 0.1s ease-out",
                                 zIndex:
                                   selectedFieldId === field.id ? 1000 : 100,
@@ -3060,6 +3295,15 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                   isRotating && rotatingFieldId === field.id
                                     ? "grabbing"
                                     : "auto",
+                                // Add status-based border color only in edit mode
+                                borderColor:
+                                  isEditMode &&
+                                  field.isFromWorkflow &&
+                                  field.status &&
+                                  selectedFieldId !== field.id &&
+                                  !isRotating
+                                    ? getStatusColor(field.status)
+                                    : undefined,
                               }}
                             >
                               <div className="w-full h-full relative group">
@@ -3071,44 +3315,38 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                       <Move size={10} />
                                     </div>
 
-                                    {/* Font size controls */}
+                                    {/* Font size input */}
                                     <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
-                                      <button
-                                        onClick={(e) => {
+                                      <input
+                                        type="number"
+                                        value={
+                                          Math.round(field.fontSize * 10) / 10
+                                        }
+                                        onChange={(e) => {
                                           e.stopPropagation();
+                                          const newSize =
+                                            parseFloat(e.target.value) || 5;
                                           updateTextField(field.id, {
-                                            // Adjust font size in original scale
                                             fontSize: Math.max(
-                                              6,
-                                              field.fontSize - 1
+                                              5,
+                                              Math.min(72, newSize)
                                             ),
                                           });
                                         }}
-                                        className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
-                                        title="Decrease font size"
-                                      >
-                                        <Minus size={10} />
-                                      </button>
-                                      <span className="text-black text-xs font-medium px-2 min-w-[20px] text-center">
-                                        {/* Display original font size, not scaled */}
-                                        {field.fontSize.toFixed(2)}
-                                      </span>
-                                      <button
-                                        onClick={(e) => {
+                                        onClick={(e) => e.stopPropagation()}
+                                        onFocus={(e) => {
                                           e.stopPropagation();
-                                          updateTextField(field.id, {
-                                            // Adjust font size in original scale
-                                            fontSize: Math.min(
-                                              72,
-                                              field.fontSize + 1
-                                            ),
-                                          });
+                                          e.target.select();
                                         }}
-                                        className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
-                                        title="Increase font size"
-                                      >
-                                        <Plus size={10} />
-                                      </button>
+                                        className="text-black text-xs font-medium px-2 py-1 w-12 text-center border-none outline-none bg-transparent"
+                                        min="5"
+                                        max="72"
+                                        step="0.1"
+                                        title="Font size"
+                                      />
+                                      <span className="text-gray-500 text-xs pr-1">
+                                        px
+                                      </span>
                                     </div>
                                   </div>
                                 )}
@@ -3127,68 +3365,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                       <Trash2 size={10} />
                                     </button>
                                   )}
-
-                                {/* Rotation handle - positioned at bottom-right corner */}
-                                {isEditMode && selectedFieldId === field.id && (
-                                  <div
-                                    className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full flex items-center justify-center cursor-grab shadow-lg z-20"
-                                    style={{
-                                      cursor:
-                                        isRotating &&
-                                        rotatingFieldId === field.id
-                                          ? "grabbing"
-                                          : "grab",
-                                    }}
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      setIsRotating(true);
-                                      setRotatingFieldId(field.id);
-                                      setInitialRotation(field.rotation || 0);
-
-                                      // Calculate field center for rotation
-                                      const fieldRect =
-                                        e.currentTarget.parentElement?.getBoundingClientRect();
-                                      if (fieldRect) {
-                                        const centerX =
-                                          fieldRect.left + fieldRect.width / 2;
-                                        const centerY =
-                                          fieldRect.top + fieldRect.height / 2;
-                                        setRotationCenter({
-                                          x: centerX,
-                                          y: centerY,
-                                        });
-                                      }
-                                    }}
-                                    title="Hold and drag to rotate"
-                                  >
-                                    <svg
-                                      width="12"
-                                      height="12"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      className="text-white"
-                                    >
-                                      <path d="M12 2v20M2 12h20" />
-                                      <path d="m19 9-3 3 3 3" />
-                                      <path d="m5 15 3-3-3-3" />
-                                    </svg>
-                                  </div>
-                                )}
-
-                                {/* Rotation degree indicator - shows during rotation */}
-                                {isRotating && rotatingFieldId === field.id && (
-                                  <div
-                                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-3 py-1 rounded-lg text-sm font-semibold shadow-lg z-30 pointer-events-none"
-                                    style={{
-                                      backdropFilter: "blur(4px)",
-                                    }}
-                                  >
-                                    {field.rotation || 0}°
-                                  </div>
-                                )}
 
                                 {/* Field properties */}
                                 {isEditMode && selectedFieldId === field.id && (
@@ -3239,49 +3415,121 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                         </div>
 
                                         <div className="space-y-4">
-                                          <div className="grid grid-cols-2 gap-3">
-                                            {/* Position X */}
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                X Position
-                                              </label>
-                                              <input
-                                                type="number"
-                                                value={Math.round(field.x)}
-                                                onChange={(e) =>
-                                                  updateTextField(field.id, {
-                                                    x:
-                                                      parseInt(
-                                                        e.target.value
-                                                      ) || 0,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                                min="0"
-                                              />
-                                            </div>
+                                          {/* Field Values - Only show for workflow fields */}
+                                          {field.isFromWorkflow &&
+                                            field.fieldKey &&
+                                            workflowData?.fields?.[
+                                              field.fieldKey
+                                            ] && (
+                                              <div className="grid grid-cols-1 mb-4">
+                                                {/* Original Value */}
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                    Original Value
+                                                    {currentTab ===
+                                                      "translated" && (
+                                                      <span className="text-xs text-gray-500 ml-1">
+                                                        (read-only)
+                                                      </span>
+                                                    )}
+                                                  </label>
+                                                  {currentTab === "original" ? (
+                                                    <textarea
+                                                      value={
+                                                        workflowData.fields[
+                                                          field.fieldKey
+                                                        ].value || ""
+                                                      }
+                                                      onChange={(e) => {
+                                                        // Update workflow data and text field
+                                                        const newValue =
+                                                          e.target.value;
+                                                        if (
+                                                          workflowData.fields &&
+                                                          field.fieldKey
+                                                        ) {
+                                                          workflowData.fields[
+                                                            field.fieldKey
+                                                          ].value = newValue;
+                                                        }
+                                                        updateTextField(
+                                                          field.id,
+                                                          { value: newValue }
+                                                        );
+                                                      }}
+                                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
+                                                      placeholder="Enter original value..."
+                                                      rows={2}
+                                                    />
+                                                  ) : (
+                                                    <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
+                                                      {workflowData.fields[
+                                                        field.fieldKey
+                                                      ].value || (
+                                                        <span className="text-gray-400 italic">
+                                                          No original value
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
 
-                                            {/* Position Y */}
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                Y Position
-                                              </label>
-                                              <input
-                                                type="number"
-                                                value={Math.round(field.y)}
-                                                onChange={(e) =>
-                                                  updateTextField(field.id, {
-                                                    y:
-                                                      parseInt(
-                                                        e.target.value
-                                                      ) || 0,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                                min="0"
-                                              />
-                                            </div>
-                                          </div>
+                                                {/* Translated Value */}
+                                                <div>
+                                                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                    Translated Value
+                                                    {currentTab ===
+                                                      "original" && (
+                                                      <span className="text-xs text-gray-500 ml-1">
+                                                        (read-only)
+                                                      </span>
+                                                    )}
+                                                  </label>
+                                                  {currentTab ===
+                                                  "translated" ? (
+                                                    <textarea
+                                                      value={
+                                                        workflowData.fields[
+                                                          field.fieldKey
+                                                        ].translated_value || ""
+                                                      }
+                                                      onChange={(e) => {
+                                                        // Update workflow data and text field
+                                                        const newValue =
+                                                          e.target.value;
+                                                        if (
+                                                          workflowData.fields &&
+                                                          field.fieldKey
+                                                        ) {
+                                                          workflowData.fields[
+                                                            field.fieldKey
+                                                          ].translated_value =
+                                                            newValue;
+                                                        }
+                                                        // Update text field value since we're on translated tab
+                                                        updateTextField(
+                                                          field.id,
+                                                          { value: newValue }
+                                                        );
+                                                      }}
+                                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
+                                                      placeholder="Enter translated value..."
+                                                      rows={2}
+                                                    />
+                                                  ) : (
+                                                    <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
+                                                      {workflowData.fields[
+                                                        field.fieldKey
+                                                      ].translated_value || (
+                                                        <span className="text-gray-400 italic">
+                                                          No translated value
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
 
                                           {/* Font Family */}
                                           <div>
@@ -3452,11 +3700,23 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                           </div>
 
                                           {/* Rotation */}
-                                          <div className="mt-3">
-                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                          <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                            <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                              <svg
+                                                width="16"
+                                                height="16"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                className="text-red-500"
+                                              >
+                                                <path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9" />
+                                                <path d="M9 12l2 2 4-4" />
+                                              </svg>
                                               Rotation
                                             </label>
-                                            <div className="flex items-center space-x-2">
+                                            <div className="flex items-center space-x-3">
                                               <input
                                                 type="range"
                                                 min="0"
@@ -3470,9 +3730,20 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                     ),
                                                   })
                                                 }
-                                                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb:bg-red-500"
+                                                className="flex-1 rotation-slider"
+                                                style={{
+                                                  background: `linear-gradient(to right, #fee2e2 0%, #fecaca ${
+                                                    ((field.rotation || 0) /
+                                                      360) *
+                                                    100
+                                                  }%, #f3f4f6 ${
+                                                    ((field.rotation || 0) /
+                                                      360) *
+                                                    100
+                                                  }%, #f3f4f6 100%)`,
+                                                }}
                                               />
-                                              <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
+                                              <span className="text-sm font-bold text-red-600 min-w-[40px] text-center bg-white px-2 py-1 rounded border border-red-200 shadow-sm">
                                                 {field.rotation || 0}°
                                               </span>
                                             </div>
@@ -3590,6 +3861,57 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                     <Circle size={16} />
                     Circle
                   </button>
+                </div>
+              )}
+
+              {/* Field Status Dropdown - Rendered outside clipping containers */}
+              {fieldStatusDropdownOpen && (
+                <div
+                  className="fixed bg-white border border-gray-200 rounded-lg shadow-lg z-[9999999999] min-w-[200px] max-w-[280px]"
+                  style={{
+                    top: `${dropdownPosition.top}px`,
+                    left: `${dropdownPosition.left}px`,
+                  }}
+                >
+                  <div className="p-4">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-green-500"></div>
+                      Field Status Legend
+                    </h3>
+                    <div className="space-y-2">
+                      {/* Get unique statuses from current fields */}
+                      {Array.from(
+                        new Set(
+                          textFields
+                            .filter(
+                              (field) => field.isFromWorkflow && field.status
+                            )
+                            .map((field) => field.status!)
+                        )
+                      ).map((status) => (
+                        <div
+                          key={status}
+                          className="flex items-center gap-3 py-1"
+                        >
+                          <div
+                            className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                            style={{
+                              backgroundColor: getStatusColor(status),
+                            }}
+                          ></div>
+                          <span className="text-sm text-gray-700 font-medium">
+                            {getStatusLabel(status)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-200">
+                      <p className="text-xs text-gray-500">
+                        {currentTab === "original" ? "Original" : "Translated"}{" "}
+                        field statuses
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </>
