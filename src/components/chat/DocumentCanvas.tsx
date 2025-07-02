@@ -242,6 +242,7 @@ interface Rectangles {
   width: number;
   height: number;
   page: number;
+  tab: TabType; // Add tab property to make rectangles tab-specific
   pagePosition: { x: number; y: number };
   pageSize: { width: number; height: number };
   background?: string; // Add this for background color
@@ -256,6 +257,7 @@ interface Shape {
   width: number;
   height: number;
   page: number;
+  tab: TabType;
   borderColor: string;
   borderWidth: number;
   fillColor: string;
@@ -344,6 +346,102 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     height: number;
   } | null>(null);
   const [isFileTypeDetected, setIsFileTypeDetected] = useState<boolean>(false);
+
+  // Add drag state for smooth dragging - using refs instead of state for performance
+  const dragStatesRef = useRef<
+    Record<string, { x: number; y: number; element: HTMLElement | null }>
+  >({});
+  const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dragRafRef = useRef<number | null>(null);
+  const isDraggingRef = useRef<Record<string, boolean>>({});
+
+  // Add shape drag state for smooth shape dragging
+  const shapeDragStatesRef = useRef<
+    Record<string, { x: number; y: number; element: HTMLElement | null }>
+  >({});
+  const shapeDragRafRef = useRef<number | null>(null);
+  const isShapeDraggingRef = useRef<Record<string, boolean>>({});
+
+  // Global mouse event handlers to ensure drag stops work properly
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      // Clear all active field drags on global mouse up
+      Object.keys(isDraggingRef.current).forEach((fieldId) => {
+        if (isDraggingRef.current[fieldId]) {
+          try {
+            const dragState = dragStatesRef.current[fieldId];
+            if (dragState?.element) {
+              const element = dragState.element;
+              if (
+                element &&
+                typeof element === "object" &&
+                element.isConnected &&
+                element.style &&
+                typeof element.style === "object"
+              ) {
+                element.style.transform = "";
+                element.style.willChange = "auto";
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "Error cleaning up field transform on global mouse up:",
+              error
+            );
+          }
+          delete dragStatesRef.current[fieldId];
+          delete isDraggingRef.current[fieldId];
+        }
+      });
+
+      // Clear all active shape drags on global mouse up
+      Object.keys(isShapeDraggingRef.current).forEach((shapeId) => {
+        if (isShapeDraggingRef.current[shapeId]) {
+          try {
+            const dragState = shapeDragStatesRef.current[shapeId];
+            if (dragState?.element) {
+              const element = dragState.element;
+              if (
+                element &&
+                typeof element === "object" &&
+                element.isConnected &&
+                element.style &&
+                typeof element.style === "object"
+              ) {
+                element.style.transform = "";
+                element.style.willChange = "auto";
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "Error cleaning up shape transform on global mouse up:",
+              error
+            );
+          }
+          delete shapeDragStatesRef.current[shapeId];
+          delete isShapeDraggingRef.current[shapeId];
+        }
+      });
+
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
+
+      if (shapeDragRafRef.current) {
+        cancelAnimationFrame(shapeDragRafRef.current);
+        shapeDragRafRef.current = null;
+      }
+    };
+
+    document.addEventListener("mouseup", handleGlobalMouseUp);
+    document.addEventListener("mouseleave", handleGlobalMouseUp); // Also handle when mouse leaves window
+
+    return () => {
+      document.removeEventListener("mouseup", handleGlobalMouseUp);
+      document.removeEventListener("mouseleave", handleGlobalMouseUp);
+    };
+  }, []);
 
   // Add new shape-related state
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -547,10 +645,15 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     /* Shape drag handle styling */
     .shape-drag-handle {
       cursor: move;
+      transition: transform 0.1s ease-out;
     }
 
     .shape-drag-handle:hover {
       cursor: move;
+    }
+
+    .shape-drag-handle:active {
+      transform: scale(0.98) !important;
     }
 
     /* Shape resizing handles - customize for shapes */
@@ -859,6 +962,38 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     return () => clearTimeout(timer);
   }, [mouseDownTime, isDragging]);
 
+  const updateTextField = useCallback(
+    (fieldId: string, updates: Partial<TextField>) => {
+      setTextFields((prevFields) =>
+        prevFields.map((field) => {
+          if (field.id !== fieldId) return field;
+
+          const newField = { ...field, ...updates };
+
+          // Recalculate dimensions when text/font changes (but not character spacing)
+          if (
+            updates.value !== undefined ||
+            updates.fontSize !== undefined ||
+            updates.fontFamily !== undefined
+          ) {
+            const { width, height } = calculateFieldDimensions(
+              updates.value ?? field.value,
+              updates.fontSize ?? field.fontSize,
+              updates.fontFamily ?? field.fontFamily,
+              updates.characterSpacing ?? field.characterSpacing ?? 0 // Pass character spacing
+            );
+
+            newField.width = width;
+            newField.height = height;
+          }
+
+          return newField;
+        })
+      );
+    },
+    []
+  );
+
   // Handle rotation dragging
   useEffect(() => {
     const handleRotationMouseMove = (e: MouseEvent) => {
@@ -893,6 +1028,59 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       document.removeEventListener("mouseup", handleRotationMouseUp);
     };
   }, [isRotating, rotatingFieldId, rotationCenter]);
+
+  // Cleanup drag timeout and animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (dragTimeoutRef.current) {
+        clearTimeout(dragTimeoutRef.current);
+      }
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
+      if (shapeDragRafRef.current) {
+        cancelAnimationFrame(shapeDragRafRef.current);
+      }
+      // Reset any lingering field transforms with safety checks
+      Object.values(dragStatesRef.current).forEach(({ element }) => {
+        try {
+          if (
+            element &&
+            typeof element === "object" &&
+            element.isConnected &&
+            element.style &&
+            typeof element.style === "object"
+          ) {
+            element.style.transform = "";
+            element.style.willChange = "auto";
+          }
+        } catch (error) {
+          console.warn("Error cleaning up field transform on unmount:", error);
+        }
+      });
+      // Reset any lingering shape transforms with safety checks
+      Object.values(shapeDragStatesRef.current).forEach(({ element }) => {
+        try {
+          if (
+            element &&
+            typeof element === "object" &&
+            element.isConnected &&
+            element.style &&
+            typeof element.style === "object"
+          ) {
+            element.style.transform = "";
+            element.style.willChange = "auto";
+          }
+        } catch (error) {
+          console.warn("Error cleaning up shape transform on unmount:", error);
+        }
+      });
+      dragStatesRef.current = {};
+      isDraggingRef.current = {};
+      shapeDragStatesRef.current = {};
+      isShapeDraggingRef.current = {};
+    };
+  }, []);
 
   // Handle keyboard shortcuts for formatting
   useEffect(() => {
@@ -1338,7 +1526,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   const addTextField = (x: number, y: number) => {
     const value = "New Text Field";
-    const fontSize = 14;
+    const fontSize = 8;
     const fontFamily = "Arial, sans-serif";
 
     const { width, height } = calculateFieldDimensions(
@@ -1436,6 +1624,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       width: sel.pageSize.width + 1,
       height: sel.pageSize.height + 1,
       page: currentPage,
+      tab: currentTab, // Associate deletion rectangle with current tab
       pagePosition: sel.pagePosition,
       pageSize: sel.pageSize,
       background: bgColor, // Store the captured color permanently
@@ -1496,34 +1685,99 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   };
 
-  const updateTextField = (fieldId: string, updates: Partial<TextField>) => {
-    setTextFields(
-      textFields.map((field) => {
-        if (field.id !== fieldId) return field;
+  // Optimized drag handlers using direct DOM manipulation
+  const handleFieldDrag = useCallback(
+    (fieldId: string, x: number, y: number, element: HTMLElement | null) => {
+      // Comprehensive element validation
+      if (
+        !element ||
+        typeof element !== "object" ||
+        !element.isConnected ||
+        !element.style ||
+        typeof element.style !== "object"
+      ) {
+        return;
+      }
 
-        const newField = { ...field, ...updates };
+      // Store drag state in ref
+      dragStatesRef.current[fieldId] = {
+        x: x / scale,
+        y: y / scale,
+        element,
+      };
+      isDraggingRef.current[fieldId] = true;
 
-        // Recalculate dimensions when text/font changes (but not character spacing)
-        if (
-          updates.value !== undefined ||
-          updates.fontSize !== undefined ||
-          updates.fontFamily !== undefined
-        ) {
-          const { width, height } = calculateFieldDimensions(
-            updates.value ?? field.value,
-            updates.fontSize ?? field.fontSize,
-            updates.fontFamily ?? field.fontFamily,
-            updates.characterSpacing ?? field.characterSpacing ?? 0 // Pass character spacing
-          );
+      // Cancel previous animation frame if it exists
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+      }
 
-          newField.width = width;
-          newField.height = height;
+      // Use requestAnimationFrame for smooth 60fps visual updates
+      dragRafRef.current = requestAnimationFrame(() => {
+        try {
+          // Triple-check element still exists and is valid before manipulating
+          if (
+            element &&
+            typeof element === "object" &&
+            element.isConnected &&
+            element.style &&
+            typeof element.style === "object"
+          ) {
+            element.style.transform = `translate(${x}px, ${y}px)`;
+            element.style.willChange = "transform";
+          }
+        } catch (error) {
+          console.warn("Error updating element transform during drag:", error);
+          // Clean up this drag state if there's an error
+          delete dragStatesRef.current[fieldId];
+          delete isDraggingRef.current[fieldId];
         }
+      });
+    },
+    [scale]
+  );
 
-        return newField;
-      })
-    );
-  };
+  const handleFieldDragStop = useCallback(
+    (fieldId: string, x: number, y: number) => {
+      // Cancel any pending animation frames
+      if (dragRafRef.current) {
+        cancelAnimationFrame(dragRafRef.current);
+        dragRafRef.current = null;
+      }
+
+      // Clear drag state and reset transform with comprehensive safety checks
+      try {
+        const dragState = dragStatesRef.current[fieldId];
+        if (dragState?.element) {
+          const element = dragState.element;
+          // Multiple safety checks before manipulating the element
+          if (
+            element &&
+            typeof element === "object" &&
+            element.isConnected &&
+            element.style &&
+            typeof element.style === "object"
+          ) {
+            element.style.transform = "";
+            element.style.willChange = "auto";
+          }
+        }
+      } catch (error) {
+        console.warn("Error resetting element transform on drag stop:", error);
+      }
+
+      // Clean up all drag-related state
+      delete dragStatesRef.current[fieldId];
+      delete isDraggingRef.current[fieldId];
+
+      // Update the actual field position in React state
+      updateTextField(fieldId, {
+        x: x / scale,
+        y: y / scale,
+      });
+    },
+    [scale, updateTextField]
+  );
 
   const exportToPDF = async () => {
     if (!documentUrl || !documentRef.current) return;
@@ -1535,6 +1789,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     const tempSettingsPopup = settingsPopupFor;
     const tempEditMode = isEditMode;
     const tempTextSelectionMode = isTextSelectionMode;
+    const tempShowRectangles = showRectangles;
     const originalTextFields = [...textFields];
     const originalShapes = [...shapes];
 
@@ -1551,6 +1806,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setTextSelectionPopup(null);
       setShapeDropdownOpen(false);
       setFieldStatusDropdownOpen(false);
+      setShowRectangles(false); // Hide deletion rectangles during export
 
       // Temporarily add padding back to text field heights and raise text position for better export appearance
       const adjustedTextFields = textFields.map((field) => ({
@@ -1588,7 +1844,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       // Use html2canvas to capture the rendered PDF with all styling
       const html2canvas = (await import("html2canvas")).default;
 
-      // Capture the entire document container which includes text fields
+      // Capture the entire document container which includes text fields and shapes
       const canvas = await html2canvas(documentRef.current, {
         scale: 1, // Use 1x scale since we already scaled the content to 300%
         useCORS: true,
@@ -1597,17 +1853,18 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         logging: false,
         foreignObjectRendering: false, // Disable for better PDF.js compatibility
         ignoreElements: (element) => {
-          // Ignore all control elements for clean export
+          // Only ignore control elements, NOT shapes themselves
           return (
             element.classList.contains("drag-handle") ||
-            element.classList.contains("shape-drag-handle") ||
             element.tagName === "BUTTON" ||
             element.classList.contains("settings-popup") ||
             element.classList.contains("text-selection-popup") ||
             element.classList.contains("shape-dropdown") ||
             element.classList.contains("field-status-dropdown") ||
             element.classList.contains("fixed") ||
-            element.closest(".fixed") !== null
+            element.closest(".fixed") !== null ||
+            // Ignore resize handles but not the shapes themselves
+            element.classList.contains("react-resizable-handle")
           );
         },
         onclone: (clonedDoc) => {
@@ -1619,22 +1876,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           );
 
           if (clonedContainer) {
-            // Remove all control elements for clean export
+            // Remove control elements but keep shapes
+            // Remove buttons and control elements, but NOT shape-drag-handle (which are the actual shapes)
             clonedContainer
               .querySelectorAll(
-                "button, .drag-handle, .shape-drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed"
+                "button, .drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
               )
               .forEach((el) => el.remove());
 
-            // Clean up text field containers for clean export
+            // Clean up Rnd containers (both text fields and shapes)
             clonedContainer.querySelectorAll(".rnd").forEach((rnd) => {
               if (rnd instanceof HTMLElement) {
+                // Remove border and controls but keep the content
                 rnd.style.border = "none";
                 rnd.style.backgroundColor = "transparent";
                 rnd.style.boxShadow = "none";
                 rnd.style.outline = "none";
+                rnd.style.cursor = "default";
 
-                // Clean up textareas
+                // Clean up textareas in text fields
                 const textarea = rnd.querySelector("textarea");
                 if (textarea && textarea instanceof HTMLElement) {
                   textarea.style.border = "none";
@@ -1645,8 +1905,33 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                   textarea.style.backgroundColor = "transparent";
                   textarea.style.cursor = "default";
                 }
+
+                // Ensure shapes are visible and properly styled for export
+                const shapeElement = rnd.querySelector(".shape-drag-handle");
+                if (shapeElement && shapeElement instanceof HTMLElement) {
+                  // Keep the shape but remove interactive styling for export
+                  shapeElement.style.cursor = "default";
+                  shapeElement.style.pointerEvents = "none";
+                  // Ensure the shape maintains its visual properties
+                  shapeElement.style.display = "block";
+                  shapeElement.style.visibility = "visible";
+                  shapeElement.style.opacity = "1";
+                }
               }
             });
+
+            // Also clean up any standalone shape elements that might not be in Rnd containers
+            clonedContainer
+              .querySelectorAll(".shape-drag-handle")
+              .forEach((shape) => {
+                if (shape instanceof HTMLElement) {
+                  shape.style.cursor = "default";
+                  shape.style.pointerEvents = "none";
+                  shape.style.display = "block";
+                  shape.style.visibility = "visible";
+                  shape.style.opacity = "1";
+                }
+              });
 
             // Ensure the PDF canvas is visible in the clone
             const clonedCanvas = clonedContainer.querySelector(
@@ -1715,6 +2000,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setSettingsPopupFor(tempSettingsPopup);
       setIsEditMode(tempEditMode);
       setIsTextSelectionMode(tempTextSelectionMode);
+      setShowRectangles(tempShowRectangles); // Restore deletion rectangles visibility
     } catch (error) {
       console.error("Error exporting PDF:", error);
       setError("Failed to export PDF");
@@ -1728,6 +2014,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setSettingsPopupFor(tempSettingsPopup);
       setIsEditMode(tempEditMode);
       setIsTextSelectionMode(tempTextSelectionMode);
+      setShowRectangles(tempShowRectangles); // Restore deletion rectangles visibility
     } finally {
       setIsLoading(false);
     }
@@ -1855,6 +2142,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         width,
         height,
         page: currentPage,
+        tab: currentTab, // Associate shape with current tab/view
         borderColor: "#000000",
         borderWidth: 2,
         fillColor: "#ffffff",
@@ -1889,6 +2177,106 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   };
 
+  // Optimized shape drag handlers using direct DOM manipulation
+  const handleShapeDrag = useCallback(
+    (shapeId: string, x: number, y: number, element: HTMLElement | null) => {
+      // Comprehensive element validation
+      if (
+        !element ||
+        typeof element !== "object" ||
+        !element.isConnected ||
+        !element.style ||
+        typeof element.style !== "object"
+      ) {
+        return;
+      }
+
+      // Store drag state in ref
+      shapeDragStatesRef.current[shapeId] = {
+        x: x / scale,
+        y: y / scale,
+        element,
+      };
+      isShapeDraggingRef.current[shapeId] = true;
+
+      // Cancel previous animation frame if it exists
+      if (shapeDragRafRef.current) {
+        cancelAnimationFrame(shapeDragRafRef.current);
+      }
+
+      // Use requestAnimationFrame for smooth 60fps visual updates
+      shapeDragRafRef.current = requestAnimationFrame(() => {
+        try {
+          // Triple-check element still exists and is valid before manipulating
+          if (
+            element &&
+            typeof element === "object" &&
+            element.isConnected &&
+            element.style &&
+            typeof element.style === "object"
+          ) {
+            element.style.transform = `translate(${x}px, ${y}px)`;
+            element.style.willChange = "transform";
+          }
+        } catch (error) {
+          console.warn(
+            "Error updating element transform during shape drag:",
+            error
+          );
+          // Clean up this drag state if there's an error
+          delete shapeDragStatesRef.current[shapeId];
+          delete isShapeDraggingRef.current[shapeId];
+        }
+      });
+    },
+    [scale]
+  );
+
+  const handleShapeDragStop = useCallback(
+    (shapeId: string, x: number, y: number) => {
+      // Cancel any pending animation frames
+      if (shapeDragRafRef.current) {
+        cancelAnimationFrame(shapeDragRafRef.current);
+        shapeDragRafRef.current = null;
+      }
+
+      // Clear drag state and reset transform with comprehensive safety checks
+      try {
+        const dragState = shapeDragStatesRef.current[shapeId];
+        if (dragState?.element) {
+          const element = dragState.element;
+          // Multiple safety checks before manipulating the element
+          if (
+            element &&
+            typeof element === "object" &&
+            element.isConnected &&
+            element.style &&
+            typeof element.style === "object"
+          ) {
+            element.style.transform = "";
+            element.style.willChange = "auto";
+          }
+        }
+      } catch (error) {
+        console.warn(
+          "Error resetting element transform on shape drag stop:",
+          error
+        );
+      }
+
+      // Clean up all drag-related state
+      delete shapeDragStatesRef.current[shapeId];
+      delete isShapeDraggingRef.current[shapeId];
+
+      // Update the actual shape position in React state
+      updateShape(shapeId, {
+        x: x / scale,
+        y: y / scale,
+      });
+    },
+    [scale, updateShape]
+  );
+
   // Update the drawing preview rendering
   const shapePreview = useMemo(() => {
     if (!isDrawingInProgress || !shapeDrawStart || !shapeDrawEnd) return null;
@@ -1911,13 +2299,34 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
     setCurrentTab(tab);
     setSelectedFieldId(null);
-    setSelectedShapeId(null);
+    setSelectedShapeId(null); // Deselect shapes when switching tabs
     setSettingsPopupFor(null);
     setTextSelectionPopup(null);
   };
 
   // Determine if controls should be shown based on current tab
   const showControls = currentTab !== "document";
+
+  // Memoize filtered text fields to avoid unnecessary re-computations
+  const visibleTextFields = useMemo(() => {
+    return textFields
+      .filter((field) => field.page === currentPage)
+      .filter((field) => !field.isFromWorkflow || showWorkflowFields);
+  }, [textFields, currentPage, showWorkflowFields]);
+
+  // Memoize filtered shapes to avoid unnecessary re-computations
+  const visibleShapes = useMemo(() => {
+    return shapes.filter(
+      (shape) => shape.page === currentPage && shape.tab === currentTab
+    );
+  }, [shapes, currentPage, currentTab]);
+
+  // Memoize filtered rectangles to avoid unnecessary re-computations
+  const visibleRectangles = useMemo(() => {
+    return rectangles.filter(
+      (rec) => rec.page === currentPage && rec.tab === currentTab
+    );
+  }, [rectangles, currentPage, currentTab]);
 
   return (
     <AnimatePresence>
@@ -2120,7 +2529,25 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                   <TooltipTrigger asChild>
                                     <button
                                       ref={shapeButtonRef}
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+
+                                        if (
+                                          !shapeDropdownOpen &&
+                                          shapeButtonRef.current
+                                        ) {
+                                          const rect =
+                                            shapeButtonRef.current.getBoundingClientRect();
+                                          setDropdownPosition({
+                                            top: rect.bottom + 4,
+                                            left: rect.left,
+                                          });
+                                        }
+
+                                        setShapeDropdownOpen(
+                                          !shapeDropdownOpen
+                                        );
+
                                         // If drawing mode is active, deactivate it
                                         if (shapeDrawingMode) {
                                           setShapeDrawingMode(null);
@@ -2151,38 +2578,14 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                             className="group-hover:scale-110 transition-transform"
                                           />
                                         )}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-
-                                            if (
-                                              !shapeDropdownOpen &&
-                                              shapeButtonRef.current
-                                            ) {
-                                              const rect =
-                                                shapeButtonRef.current.getBoundingClientRect();
-                                              setDropdownPosition({
-                                                top: rect.bottom + 4,
-                                                left: rect.left,
-                                              });
-                                            }
-
-                                            setShapeDropdownOpen(
-                                              !shapeDropdownOpen
-                                            );
-                                          }}
-                                          className="hover:bg-black hover:bg-opacity-10 rounded p-1 transition-colors"
-                                          disabled={!isEditMode}
-                                        >
-                                          <ChevronDown
-                                            size={14}
-                                            className={`transition-transform ${
-                                              shapeDropdownOpen
-                                                ? "rotate-180"
-                                                : ""
-                                            }`}
-                                          />
-                                        </button>
+                                        <ChevronDown
+                                          size={14}
+                                          className={`transition-transform ml-1 ${
+                                            shapeDropdownOpen
+                                              ? "rotate-180"
+                                              : ""
+                                          }`}
+                                        />
                                       </div>
                                     </button>
                                   </TooltipTrigger>
@@ -2783,40 +3186,36 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                           </div>
                         )}
 
-                        {rectangles
-                          .filter((rec) => rec.page === currentPage)
-                          .map((rec) => (
-                            <div
-                              key={rec.id}
-                              className={`absolute bg-white ${
-                                showRectangles
-                                  ? "bg-opacity-90 border border-red-300"
-                                  : ""
-                              }  flex items-center justify-center`}
-                              style={{
-                                left: rec.x * scale,
-                                top: rec.y * scale,
-                                width: rec.width * scale,
-                                height: rec.height * scale,
-                                zIndex: 50,
-                                backgroundColor: rec.background || "white", // Use captured color
-                                border: showRectangles
-                                  ? "1px dashed red"
-                                  : "none",
-                              }}
-                            >
-                              {showRectangles && (
-                                <button
-                                  onClick={() =>
-                                    deleteDeletionRectangle(rec.id)
-                                  }
-                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                                >
-                                  <X size={12} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                        {visibleRectangles.map((rec) => (
+                          <div
+                            key={rec.id}
+                            className={`absolute bg-white ${
+                              showRectangles
+                                ? "bg-opacity-90 border border-red-300"
+                                : ""
+                            }  flex items-center justify-center`}
+                            style={{
+                              left: rec.x * scale,
+                              top: rec.y * scale,
+                              width: rec.width * scale,
+                              height: rec.height * scale,
+                              zIndex: 50,
+                              backgroundColor: rec.background || "white", // Use captured color
+                              border: showRectangles
+                                ? "1px dashed red"
+                                : "none",
+                            }}
+                          >
+                            {showRectangles && (
+                              <button
+                                onClick={() => deleteDeletionRectangle(rec.id)}
+                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
 
                         {/* Shape Preview during drawing */}
                         {shapePreview && shapeDrawingMode && (
@@ -2835,386 +3234,370 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         )}
 
                         {/* Shape Overlays */}
-                        {shapes
-                          .filter((shape) => shape.page === currentPage)
-                          .map((shape) => (
-                            <Rnd
-                              key={shape.id}
-                              size={{
-                                width: shape.width * scale,
-                                height: shape.height * scale,
-                              }}
-                              position={{
-                                x: shape.x * scale,
-                                y: shape.y * scale,
-                              }}
-                              onDrag={(e, d) => {
-                                updateShape(shape.id, {
-                                  x: d.x / scale,
-                                  y: d.y / scale,
-                                });
-                              }}
-                              onDragStop={(e, d) => {
-                                updateShape(shape.id, {
-                                  x: d.x / scale,
-                                  y: d.y / scale,
-                                });
-                              }}
-                              onResizeStop={(
-                                e,
-                                direction,
-                                ref,
-                                delta,
-                                position
-                              ) => {
-                                updateShape(shape.id, {
-                                  width: parseInt(ref.style.width) / scale,
-                                  height: parseInt(ref.style.height) / scale,
-                                  x: position.x / scale,
-                                  y: position.y / scale,
-                                });
-                              }}
-                              disableDragging={!isEditMode}
-                              enableResizing={
-                                isEditMode && selectedShapeId === shape.id
-                              }
-                              bounds="parent"
-                              onClick={(e: { stopPropagation: () => void }) => {
-                                e.stopPropagation();
-                                setSelectedShapeId(shape.id);
-                                setSelectedFieldId(null);
-                                setIsTextSelectionMode(false);
-                              }}
-                              dragHandleClassName="shape-drag-handle"
-                              className={`${
-                                isEditMode && selectedShapeId === shape.id
-                                  ? "border-2 border-blue-500"
-                                  : "border-2 border-transparent hover:border-blue-400"
-                              } transition-all duration-200 ease-in-out`}
-                              style={{
-                                zIndex:
-                                  selectedShapeId === shape.id ? 1000 : 200,
-                                cursor: isEditMode ? "move" : "default",
-                              }}
-                            >
-                              <div className="w-full h-full relative group">
-                                {/* Shape Element */}
-                                <div
-                                  className="w-full h-full shape-drag-handle"
-                                  style={{
-                                    backgroundColor: hexToRgba(
-                                      shape.fillColor,
-                                      shape.fillOpacity
-                                    ),
-                                    border: `${shape.borderWidth}px solid ${shape.borderColor}`,
-                                    borderRadius:
-                                      shape.type === "circle" ? "50%" : "0",
-                                    transform: shape.rotation
-                                      ? `rotate(${shape.rotation}deg)`
-                                      : "none",
-                                    transformOrigin: "center center",
-                                  }}
-                                />
+                        {visibleShapes.map((shape) => (
+                          <Rnd
+                            key={shape.id}
+                            size={{
+                              width: shape.width * scale,
+                              height: shape.height * scale,
+                            }}
+                            position={{
+                              x: shape.x * scale,
+                              y: shape.y * scale,
+                            }}
+                            onDrag={(e, d) => {
+                              // Use currentTarget directly - it's the Rnd element
+                              const element = e.currentTarget as HTMLElement;
+                              handleShapeDrag(shape.id, d.x, d.y, element);
+                            }}
+                            onDragStop={(e, d) => {
+                              handleShapeDragStop(shape.id, d.x, d.y);
+                            }}
+                            onResizeStop={(
+                              e,
+                              direction,
+                              ref,
+                              delta,
+                              position
+                            ) => {
+                              updateShape(shape.id, {
+                                width: parseInt(ref.style.width) / scale,
+                                height: parseInt(ref.style.height) / scale,
+                                x: position.x / scale,
+                                y: position.y / scale,
+                              });
+                            }}
+                            disableDragging={!isEditMode}
+                            enableResizing={
+                              isEditMode && selectedShapeId === shape.id
+                            }
+                            bounds="parent"
+                            onClick={(e: { stopPropagation: () => void }) => {
+                              e.stopPropagation();
+                              setSelectedShapeId(shape.id);
+                              setSelectedFieldId(null);
+                              setIsTextSelectionMode(false);
+                            }}
+                            dragHandleClassName="shape-drag-handle"
+                            className={`${
+                              isEditMode && selectedShapeId === shape.id
+                                ? "border-2 border-blue-500"
+                                : "border-2 border-transparent hover:border-blue-400"
+                            } transition-all duration-200 ease-in-out`}
+                            style={{
+                              zIndex: selectedShapeId === shape.id ? 1000 : 200,
+                              cursor: isEditMode ? "move" : "default",
+                            }}
+                          >
+                            <div className="w-full h-full relative group">
+                              {/* Shape Element */}
+                              <div
+                                className="w-full h-full shape-drag-handle"
+                                style={{
+                                  backgroundColor: hexToRgba(
+                                    shape.fillColor,
+                                    shape.fillOpacity
+                                  ),
+                                  border: `${shape.borderWidth}px solid ${shape.borderColor}`,
+                                  borderRadius:
+                                    shape.type === "circle" ? "50%" : "0",
+                                  transform: shape.rotation
+                                    ? `rotate(${shape.rotation}deg)`
+                                    : "none",
+                                  transformOrigin: "center center",
+                                }}
+                              />
 
-                                {/* Shape Controls */}
-                                {isEditMode && selectedShapeId === shape.id && (
-                                  <>
-                                    {/* Delete button */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        deleteShape(shape.id);
+                              {/* Shape Controls */}
+                              {isEditMode && selectedShapeId === shape.id && (
+                                <>
+                                  {/* Delete button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteShape(shape.id);
+                                    }}
+                                    className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+
+                                  {/* Settings button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSettingsPopupFor(shape.id);
+                                    }}
+                                    className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
+                                      settingsPopupFor === shape.id
+                                        ? "bg-gray-100 border-gray-400"
+                                        : ""
+                                    }`}
+                                  >
+                                    <Palette
+                                      size={14}
+                                      className="text-gray-600"
+                                    />
+                                  </button>
+
+                                  {/* Shape Settings popup */}
+                                  {settingsPopupFor === shape.id && (
+                                    <div
+                                      className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-72 settings-popup"
+                                      style={{
+                                        transform: `translate(0.25rem, 2rem) scale(${Math.max(
+                                          0.6,
+                                          1 / scale
+                                        )})`,
+                                        transformOrigin: "top right",
                                       }}
-                                      className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <Trash2 size={10} />
-                                    </button>
+                                      <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-semibold text-gray-800">
+                                          {shape.type === "circle"
+                                            ? "Circle"
+                                            : "Rectangle"}{" "}
+                                          Settings
+                                        </h3>
+                                        <button
+                                          onClick={() =>
+                                            setSettingsPopupFor(null)
+                                          }
+                                          className="text-gray-500 hover:text-gray-800"
+                                        >
+                                          <X size={16} />
+                                        </button>
+                                      </div>
 
-                                    {/* Settings button */}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSettingsPopupFor(shape.id);
-                                      }}
-                                      className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                                        settingsPopupFor === shape.id
-                                          ? "bg-gray-100 border-gray-400"
-                                          : ""
-                                      }`}
-                                    >
-                                      <Palette
-                                        size={14}
-                                        className="text-gray-600"
-                                      />
-                                    </button>
-
-                                    {/* Shape Settings popup */}
-                                    {settingsPopupFor === shape.id && (
-                                      <div
-                                        className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-72 settings-popup"
-                                        style={{
-                                          transform: `translate(0.25rem, 2rem) scale(${Math.max(
-                                            0.6,
-                                            1 / scale
-                                          )})`,
-                                          transformOrigin: "top right",
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <div className="flex justify-between items-center mb-3">
-                                          <h3 className="font-semibold text-gray-800">
-                                            {shape.type === "circle"
-                                              ? "Circle"
-                                              : "Rectangle"}{" "}
-                                            Settings
-                                          </h3>
-                                          <button
-                                            onClick={() =>
-                                              setSettingsPopupFor(null)
-                                            }
-                                            className="text-gray-500 hover:text-gray-800"
-                                          >
-                                            <X size={16} />
-                                          </button>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                          {/* Position Controls */}
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                X Position
-                                              </label>
-                                              <input
-                                                type="number"
-                                                value={Math.round(shape.x)}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    x:
-                                                      parseInt(
-                                                        e.target.value
-                                                      ) || 0,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                                min="0"
-                                              />
-                                            </div>
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                Y Position
-                                              </label>
-                                              <input
-                                                type="number"
-                                                value={Math.round(shape.y)}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    y:
-                                                      parseInt(
-                                                        e.target.value
-                                                      ) || 0,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                                min="0"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          {/* Size Controls */}
-                                          <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                Width
-                                              </label>
-                                              <input
-                                                type="number"
-                                                value={Math.round(shape.width)}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    width:
-                                                      parseInt(
-                                                        e.target.value
-                                                      ) || 1,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                                min="1"
-                                              />
-                                            </div>
-                                            <div>
-                                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                Height
-                                              </label>
-                                              <input
-                                                type="number"
-                                                value={Math.round(shape.height)}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    height:
-                                                      parseInt(
-                                                        e.target.value
-                                                      ) || 1,
-                                                  })
-                                                }
-                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                                min="1"
-                                              />
-                                            </div>
-                                          </div>
-
-                                          {/* Border Settings */}
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">
-                                              Border
-                                            </label>
-                                            <div className="flex items-center space-x-2 mb-2">
-                                              <input
-                                                type="color"
-                                                value={shape.borderColor}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    borderColor: e.target.value,
-                                                  })
-                                                }
-                                                className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
-                                              />
-                                              <input
-                                                type="text"
-                                                value={shape.borderColor}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    borderColor: e.target.value,
-                                                  })
-                                                }
-                                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
-                                                placeholder="#000000"
-                                              />
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                              <span className="text-xs text-gray-600 min-w-[40px]">
-                                                Width:
-                                              </span>
-                                              <input
-                                                type="range"
-                                                min="0"
-                                                max="10"
-                                                step="1"
-                                                value={shape.borderWidth}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    borderWidth: parseInt(
-                                                      e.target.value
-                                                    ),
-                                                  })
-                                                }
-                                                className="flex-1 shape-slider"
-                                              />
-                                              <span className="text-xs font-medium text-gray-700 min-w-[25px] text-center">
-                                                {shape.borderWidth}px
-                                              </span>
-                                            </div>
-                                          </div>
-
-                                          {/* Fill Settings */}
-                                          <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">
-                                              Fill
-                                            </label>
-                                            <div className="flex items-center space-x-2 mb-2">
-                                              <input
-                                                type="color"
-                                                value={shape.fillColor}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    fillColor: e.target.value,
-                                                  })
-                                                }
-                                                className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
-                                              />
-                                              <input
-                                                type="text"
-                                                value={shape.fillColor}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    fillColor: e.target.value,
-                                                  })
-                                                }
-                                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
-                                                placeholder="#ffffff"
-                                              />
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                              <span className="text-xs text-gray-600 min-w-[50px]">
-                                                Opacity:
-                                              </span>
-                                              <input
-                                                type="range"
-                                                min="0"
-                                                max="1"
-                                                step="0.01"
-                                                value={shape.fillOpacity}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    fillOpacity: parseFloat(
-                                                      e.target.value
-                                                    ),
-                                                  })
-                                                }
-                                                className="flex-1 shape-slider"
-                                              />
-                                              <span className="text-xs font-medium text-gray-700 min-w-[35px] text-center">
-                                                {Math.round(
-                                                  shape.fillOpacity * 100
-                                                )}
-                                                %
-                                              </span>
-                                            </div>
-                                          </div>
-
-                                          {/* Rotation */}
+                                      <div className="space-y-4">
+                                        {/* Position Controls */}
+                                        <div className="grid grid-cols-2 gap-3">
                                           <div>
                                             <label className="block text-xs font-medium text-gray-700 mb-1">
-                                              Rotation
+                                              X Position
                                             </label>
-                                            <div className="flex items-center space-x-2">
-                                              <input
-                                                type="range"
-                                                min="0"
-                                                max="360"
-                                                step="5"
-                                                value={shape.rotation || 0}
-                                                onChange={(e) =>
-                                                  updateShape(shape.id, {
-                                                    rotation: parseInt(
-                                                      e.target.value
-                                                    ),
-                                                  })
-                                                }
-                                                className="flex-1 shape-slider"
-                                              />
-                                              <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
-                                                {shape.rotation || 0}°
-                                              </span>
-                                            </div>
+                                            <input
+                                              type="number"
+                                              value={Math.round(shape.x)}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  x:
+                                                    parseInt(e.target.value) ||
+                                                    0,
+                                                })
+                                              }
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                              min="0"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Y Position
+                                            </label>
+                                            <input
+                                              type="number"
+                                              value={Math.round(shape.y)}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  y:
+                                                    parseInt(e.target.value) ||
+                                                    0,
+                                                })
+                                              }
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                              min="0"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        {/* Size Controls */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Width
+                                            </label>
+                                            <input
+                                              type="number"
+                                              value={Math.round(shape.width)}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  width:
+                                                    parseInt(e.target.value) ||
+                                                    1,
+                                                })
+                                              }
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                              min="1"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Height
+                                            </label>
+                                            <input
+                                              type="number"
+                                              value={Math.round(shape.height)}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  height:
+                                                    parseInt(e.target.value) ||
+                                                    1,
+                                                })
+                                              }
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                              min="1"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        {/* Border Settings */}
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-2">
+                                            Border
+                                          </label>
+                                          <div className="flex items-center space-x-2 mb-2">
+                                            <input
+                                              type="color"
+                                              value={shape.borderColor}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  borderColor: e.target.value,
+                                                })
+                                              }
+                                              className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
+                                            />
+                                            <input
+                                              type="text"
+                                              value={shape.borderColor}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  borderColor: e.target.value,
+                                                })
+                                              }
+                                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
+                                              placeholder="#000000"
+                                            />
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <span className="text-xs text-gray-600 min-w-[40px]">
+                                              Width:
+                                            </span>
+                                            <input
+                                              type="range"
+                                              min="0"
+                                              max="10"
+                                              step="1"
+                                              value={shape.borderWidth}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  borderWidth: parseInt(
+                                                    e.target.value
+                                                  ),
+                                                })
+                                              }
+                                              className="flex-1 shape-slider"
+                                            />
+                                            <span className="text-xs font-medium text-gray-700 min-w-[25px] text-center">
+                                              {shape.borderWidth}px
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Fill Settings */}
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-2">
+                                            Fill
+                                          </label>
+                                          <div className="flex items-center space-x-2 mb-2">
+                                            <input
+                                              type="color"
+                                              value={shape.fillColor}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  fillColor: e.target.value,
+                                                })
+                                              }
+                                              className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
+                                            />
+                                            <input
+                                              type="text"
+                                              value={shape.fillColor}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  fillColor: e.target.value,
+                                                })
+                                              }
+                                              className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
+                                              placeholder="#ffffff"
+                                            />
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <span className="text-xs text-gray-600 min-w-[50px]">
+                                              Opacity:
+                                            </span>
+                                            <input
+                                              type="range"
+                                              min="0"
+                                              max="1"
+                                              step="0.01"
+                                              value={shape.fillOpacity}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  fillOpacity: parseFloat(
+                                                    e.target.value
+                                                  ),
+                                                })
+                                              }
+                                              className="flex-1 shape-slider"
+                                            />
+                                            <span className="text-xs font-medium text-gray-700 min-w-[35px] text-center">
+                                              {Math.round(
+                                                shape.fillOpacity * 100
+                                              )}
+                                              %
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        {/* Rotation */}
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                                            Rotation
+                                          </label>
+                                          <div className="flex items-center space-x-2">
+                                            <input
+                                              type="range"
+                                              min="0"
+                                              max="360"
+                                              step="5"
+                                              value={shape.rotation || 0}
+                                              onChange={(e) =>
+                                                updateShape(shape.id, {
+                                                  rotation: parseInt(
+                                                    e.target.value
+                                                  ),
+                                                })
+                                              }
+                                              className="flex-1 shape-slider"
+                                            />
+                                            <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
+                                              {shape.rotation || 0}°
+                                            </span>
                                           </div>
                                         </div>
                                       </div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </Rnd>
-                          ))}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </Rnd>
+                        ))}
 
                         {/* Text Field Overlays */}
-                        {textFields
-                          .filter((field) => field.page === currentPage)
-                          .filter(
-                            (field) =>
-                              !field.isFromWorkflow || showWorkflowFields
-                          )
-                          .map((field) => (
+                        {visibleTextFields.map((field) => {
+                          return (
                             <Rnd
                               key={field.id}
                               size={{
@@ -3226,16 +3609,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                 y: field.y * scale,
                               }}
                               onDrag={(e, d) => {
-                                updateTextField(field.id, {
-                                  x: d.x / scale,
-                                  y: d.y / scale,
-                                });
+                                // Use currentTarget directly - it's the Rnd element
+                                const element = e.currentTarget as HTMLElement;
+                                handleFieldDrag(field.id, d.x, d.y, element);
                               }}
                               onDragStop={(e, d) => {
-                                updateTextField(field.id, {
-                                  x: d.x / scale,
-                                  y: d.y / scale,
-                                });
+                                handleFieldDragStop(field.id, d.x, d.y);
                               }}
                               onResizeStop={(
                                 e,
@@ -3454,7 +3833,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                         }
                                                         updateTextField(
                                                           field.id,
-                                                          { value: newValue }
+                                                          {
+                                                            value: newValue,
+                                                          }
                                                         );
                                                       }}
                                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
@@ -3509,7 +3890,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                         // Update text field value since we're on translated tab
                                                         updateTextField(
                                                           field.id,
-                                                          { value: newValue }
+                                                          {
+                                                            value: newValue,
+                                                          }
                                                         );
                                                       }}
                                                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
@@ -3678,7 +4061,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                               </button>
 
                                               <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
-                                                {field.characterSpacing || 0}px
+                                                {field.characterSpacing || 0}
+                                                px
                                               </div>
 
                                               <button
@@ -3701,7 +4085,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
                                           {/* Rotation */}
                                           <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                            <label className="block text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                                            <label className=" text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
                                               <svg
                                                 width="16"
                                                 height="16"
@@ -3800,7 +4184,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                 </div>
                               </div>
                             </Rnd>
-                          ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

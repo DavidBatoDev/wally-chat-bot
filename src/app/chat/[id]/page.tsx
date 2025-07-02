@@ -154,7 +154,7 @@ export default function ChatPage() {
     
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const newWidth = startWidth + (startX - moveEvent.clientX);
-setDocCanvasWidth(Math.max(350, Math.min(window.innerWidth * 0.7, newWidth)));
+setDocCanvasWidth(Math.max(700, Math.min(window.innerWidth * 0.7, newWidth)));
     };
     
     const handleMouseUp = () => {
