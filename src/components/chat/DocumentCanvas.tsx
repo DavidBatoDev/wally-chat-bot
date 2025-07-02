@@ -29,6 +29,9 @@ import {
   Circle,
   Square,
   Palette,
+  File,
+  FileText,
+  Languages,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -39,6 +42,77 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+// Add the useWorkflowData hook import
+import { useWorkflowData } from "./DocumentCanvas/hooks/useWorkflowData";
+import { WorkflowData, TemplateMapping } from "./DocumentCanvas/types/workflow";
+
+// Helper function to extract clean file extension from URL (handles query parameters)
+const getCleanExtension = (url: string): string => {
+  if (!url) return "";
+
+  // Remove query parameters first (everything after ?)
+  const urlWithoutQuery = url.split("?")[0];
+
+  // Extract extension
+  const extension = urlWithoutQuery.split(".").pop()?.toLowerCase() || "";
+
+  return extension;
+};
+
+// Helper function to detect file type from URL
+const getFileType = (url: string): "pdf" | "image" => {
+  if (!url) return "image"; // Changed default to image to be safer
+
+  const extension = getCleanExtension(url);
+  const imageExtensions = [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "webp",
+    "svg",
+    "tiff",
+    "tif",
+  ];
+  const pdfExtensions = ["pdf"];
+
+  if (imageExtensions.includes(extension)) {
+    return "image";
+  }
+
+  if (pdfExtensions.includes(extension)) {
+    return "pdf";
+  }
+
+  // Default to image for unknown extensions to be safe
+  return "image";
+};
+
+// Additional helper to absolutely ensure we never load images in PDF.js
+const isPdfFile = (url: string): boolean => {
+  if (!url) return false;
+  const extension = getCleanExtension(url);
+  return extension === "pdf";
+};
+
+const isImageFile = (url: string): boolean => {
+  if (!url) return false;
+  const extension = getCleanExtension(url);
+  const imageExtensions = [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "webp",
+    "svg",
+    "tiff",
+    "tif",
+  ];
+  return imageExtensions.includes(extension);
+};
 
 const measureText = (
   text: string,
@@ -144,55 +218,7 @@ interface TextField {
   rotation?: number; // Rotation angle in degrees
 }
 
-interface WorkflowField {
-  value: string;
-  value_status: string;
-  translated_value: string | null;
-  translated_status: string;
-}
-
-interface WorkflowMapping {
-  font: {
-    name: string;
-    size: number;
-    color: string;
-    flags: number;
-    style: string;
-  };
-  position: {
-    x0: number;
-    y0: number;
-    x1: number;
-    y1: number;
-    width: number;
-    height: number;
-  };
-  rotation: number;
-  alignment: string;
-  bbox_center: { x: number; y: number };
-  page_number: number;
-  character_spacing?: number;
-}
-
-interface WorkflowData {
-  id: string;
-  template_id: string;
-  conversation_id: string;
-  base_file_public_url: string;
-  template_file_public_url: string;
-  template_required_fields: Record<
-    string,
-    {
-      label: string;
-      description: string;
-    }
-  >;
-  fields: Record<string, WorkflowField>;
-  origin_template_mappings: Record<string, WorkflowMapping>;
-  translated_template_mappings: Record<string, WorkflowMapping>;
-  translate_to: string;
-  created_at: string;
-}
+// Use imported WorkflowData and TemplateMapping types from the workflow types file
 
 interface TextSelectionPopupState {
   texts: {
@@ -236,11 +262,25 @@ interface Shape {
   rotation?: number;
 }
 
+// Add tab type
+type TabType = "document" | "original" | "translated";
+
 const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   isOpen,
   onClose,
   conversationId,
 }) => {
+  // Add workflow data state
+  const {
+    workflowData,
+    loading: workflowLoading,
+    error: workflowError,
+    fetchWorkflowData,
+  } = useWorkflowData(conversationId || "");
+
+  // Add tab state
+  const [currentTab, setCurrentTab] = useState<TabType>("document");
+
   const [documentUrl, setDocumentUrl] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [numPages, setNumPages] = useState<number>(0);
@@ -261,6 +301,12 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   const [zoomMode, setZoomMode] = useState<"page" | "width">("page");
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const [settingsPopupFor, setSettingsPopupFor] = useState<string | null>(null);
+  const [fileType, setFileType] = useState<"pdf" | "image" | null>(null);
+  const [imageDimensions, setImageDimensions] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  const [isFileTypeDetected, setIsFileTypeDetected] = useState<boolean>(false);
 
   // Add new shape-related state
   const [shapes, setShapes] = useState<Shape[]>([]);
@@ -559,104 +605,64 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   `;
 
-  // Hardcoded workflow data for demo
-  const workflowData: WorkflowData = {
-    id: "5eb24566-ddd6-48ae-ab32-80574e0875a3",
-    template_id: "9fc0c5fc-2885-4d58-ba0f-4711244eb7df",
-    conversation_id: "e6cdbca2-c538-4f5f-8e7f-278840645bb3",
-    base_file_public_url:
-      "https://ylvmwrvyiamecvnydwvj.supabase.co/storage/v1/object/public/templates/templates/PSA%20Birth%20Cert%201993%20ENG%20blank%20w%202nd%20page.pdf",
-    template_file_public_url:
-      "https://ylvmwrvyiamecvnydwvj.supabase.co/storage/v1/object/public/templates/templates/PSA%20Birth%20Cert%201993%20ENG%20blank%20w%202nd%20page.pdf",
-    template_required_fields: {
-      "{fe}": {
-        label: "Sex: Female",
-        description: "Checkbox to mark with 'X' if the child is female.",
-      },
-      "{last_name}": {
-        label: "Child's Last Name",
-        description: "Text input field for the child's last name.",
-      },
-    },
-    fields: {
-      "{fe}": {
-        value: "X",
-        value_status: "ocr",
-        translated_value: null,
-        translated_status: "pending",
-      },
-      "{last_name}": {
-        value: "DIONISIO GARCIA",
-        value_status: "ocr",
-        translated_value: null,
-        translated_status: "pending",
-      },
-    },
-    origin_template_mappings: {
-      "{fe}": {
-        font: {
-          name: "ArialMT",
-          size: 6,
-          color: "#ee0000",
-          flags: 0,
-          style: "normal",
-        },
-        position: {
-          x0: 91.34400177001953,
-          x1: 99.87519683837891,
-          y0: 164.989990234375,
-          y1: 171.6799774169922,
-          width: 8.53119506835938,
-          height: 6.6899871826171875,
-        },
-        rotation: 0,
-        alignment: "left",
-        bbox_center: {
-          x: 95.60959930419922,
-          y: 168.3349838256836,
-        },
-        character_spacing: 0,
-        page_number: 1,
-      },
-      "{last_name}": {
-        font: {
-          name: "ArialMT",
-          size: 8.039999961853027,
-          color: "#ee0000",
-          flags: 0,
-          style: "normal",
-        },
-        position: {
-          x0: 294.8900146484375,
-          x1: 335.6771774291992,
-          y0: 144.90379333496094,
-          y1: 153.86839294433594,
-          width: 40.78716278076172,
-          height: 8.964599609375,
-        },
-        rotation: 0,
-        alignment: "left",
-        bbox_center: {
-          x: 315.28359603881836,
-          y: 149.38609313964844,
-        },
-        character_spacing: 0,
-        page_number: 1,
-      },
-    },
-    translated_template_mappings: {},
-    translate_to: "Greek",
-    created_at: "2025-06-19T07:44:46.900296Z",
-  };
-
-  // Initialize with demo PDF on mount
+  // Initialize with workflow data when available
   useEffect(() => {
-    // Load the demo PDF immediately
-    setDocumentUrl(workflowData.base_file_public_url);
+    if (conversationId) {
+      fetchWorkflowData();
+    }
+  }, [conversationId, fetchWorkflowData]);
 
-    // Set initial zoom to fit width
-    setZoomMode("width");
-  }, []);
+  // Set document URL based on current tab and workflow data
+  useEffect(() => {
+    if (workflowData) {
+      let url = "";
+      switch (currentTab) {
+        case "document":
+          url = workflowData.base_file_public_url || "";
+          break;
+        case "original":
+          url = workflowData.template_file_public_url || "";
+          break;
+        case "translated":
+          url = workflowData.template_translated_file_public_url || "";
+          break;
+        default:
+          url = "";
+      }
+
+      // Completely reset all states first
+      setDocumentUrl("");
+      setFileType(null);
+      setError("");
+      setIsFileTypeDetected(false);
+      setNumPages(0);
+      setCurrentPage(1);
+
+      if (url) {
+        // Detect file type synchronously and set everything at once
+        const detectedFileType = getFileType(url);
+
+        // Debug logging
+        console.log("DocumentCanvas: File type detection", {
+          url,
+          detectedFileType,
+          isImage: isImageFile(url),
+          isPdf: isPdfFile(url),
+          extension: getCleanExtension(url),
+          originalUrl: url,
+        });
+
+        // Set all states together to prevent race conditions
+        setTimeout(() => {
+          setFileType(detectedFileType);
+          setDocumentUrl(url);
+          setIsFileTypeDetected(true);
+        }, 100);
+      } else {
+        setIsFileTypeDetected(true);
+      }
+    }
+  }, [currentTab, workflowData]);
 
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
@@ -822,46 +828,73 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   }, [isEditMode]);
 
+  // Update loadWorkflowFields to use the appropriate mappings and values based on tab
   const loadWorkflowFields = useCallback(() => {
+    if (!workflowData || !pageWidth || !pageHeight) return;
+
     const fields: TextField[] = [];
+    let mappings: Record<string, TemplateMapping> = {};
 
-    Object.entries(workflowData.origin_template_mappings).forEach(
-      ([key, mapping]) => {
-        const fieldData = workflowData.fields[key];
-        if (fieldData && mapping) {
-          // Calculate dimensions based on the value and font from mapping
-          const { width, height } = calculateFieldDimensions(
-            fieldData.value || "",
-            mapping.font.size,
-            mapping.font.name || "Arial, sans-serif"
-          );
+    // Determine which mappings to use based on current tab
+    switch (currentTab) {
+      case "original":
+        mappings = workflowData.origin_template_mappings || {};
+        break;
+      case "translated":
+        mappings = workflowData.translated_template_mappings || {};
+        break;
+      default:
+        // For document tab, don't show any fields
+        setTextFields([]);
+        return;
+    }
 
-          const field: TextField = {
-            id: `workflow-${key}`,
-            x: mapping.position.x0,
-            y: mapping.position.y0,
-            width, // Use calculated width instead of mapping width
-            height, // Use calculated height instead of mapping height
-            value: fieldData.value || "",
-            fontSize: mapping.font.size,
-            fontColor: "#000000", // Always default to black, ignore mapping color
-            fontFamily: mapping.font.name || "Arial, sans-serif",
-            page: mapping.page_number,
-            fieldKey: key,
-            isFromWorkflow: true,
-            characterSpacing: mapping.character_spacing || 0,
-            fontWeight: "normal",
-            fontStyle: "normal",
-            rotation: mapping.rotation || 0, // Use mapping rotation or default to 0
-          };
-
-          fields.push(field);
+    Object.entries(mappings).forEach(([key, mapping]) => {
+      const fieldData = workflowData.fields?.[key];
+      if (fieldData && mapping) {
+        // Determine which value to use based on current tab
+        let fieldValue = "";
+        switch (currentTab) {
+          case "original":
+            fieldValue = fieldData.value || "";
+            break;
+          case "translated":
+            fieldValue = fieldData.translated_value || "";
+            break;
         }
+
+        // Calculate dimensions based on the value and font from mapping
+        const { width, height } = calculateFieldDimensions(
+          fieldValue,
+          mapping.font.size,
+          mapping.font.name || "Arial, sans-serif"
+        );
+
+        const field: TextField = {
+          id: `workflow-${key}`,
+          x: mapping.position.x0,
+          y: mapping.position.y0,
+          width, // Use calculated width instead of mapping width
+          height, // Use calculated height instead of mapping height
+          value: fieldValue,
+          fontSize: mapping.font.size,
+          fontColor: "#000000", // Always default to black, ignore mapping color
+          fontFamily: mapping.font.name || "Arial, sans-serif",
+          page: mapping.page_number,
+          fieldKey: key,
+          isFromWorkflow: true,
+          characterSpacing: 0, // Default character spacing since TemplateMapping doesn't have this
+          fontWeight: "normal",
+          fontStyle: "normal",
+          rotation: 0, // Default rotation since TemplateMapping doesn't have this
+        };
+
+        fields.push(field);
       }
-    );
+    });
 
     setTextFields(fields);
-  }, [pageHeight]);
+  }, [workflowData, pageHeight, pageWidth, currentTab]);
 
   const selectionRect = useMemo(() => {
     if (!dragStart || !dragEnd) return null;
@@ -1021,14 +1054,35 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   };
 
   const handleDocumentLoadError = (error: Error) => {
-    setError(`Failed to load PDF: ${error.message}`);
-    console.error("PDF loading error:", error);
+    setError(`Failed to load document: ${error.message}`);
+    console.error("Document loading error:", error);
   };
 
   const handlePageLoadSuccess = (page: any) => {
     const { width, height } = page.getViewport({ scale: 1 });
     setPageWidth(width);
     setPageHeight(height);
+  };
+
+  const handleImageLoadSuccess = (
+    event: React.SyntheticEvent<HTMLImageElement>
+  ) => {
+    const img = event.currentTarget;
+    const { naturalWidth, naturalHeight } = img;
+
+    setPageWidth(naturalWidth);
+    setPageHeight(naturalHeight);
+    setImageDimensions({ width: naturalWidth, height: naturalHeight });
+    setNumPages(1); // Images only have 1 "page"
+    setCurrentPage(1);
+    setError("");
+  };
+
+  const handleImageLoadError = (
+    error: React.SyntheticEvent<HTMLImageElement>
+  ) => {
+    setError("Failed to load image");
+    console.error("Image loading error:", error);
   };
 
   // Handle text span click during selection mode
@@ -1516,7 +1570,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       pageWidth,
       pageHeight,
       numPages,
-      workflowId: workflowData.id,
+      workflowId: workflowData?.template_id || "unknown",
     };
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -1675,6 +1729,24 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     return { x: startX, y: startY, width, height };
   }, [isDrawingInProgress, shapeDrawStart, shapeDrawEnd]);
 
+  // Add tab switching function
+  const handleTabChange = (tab: TabType) => {
+    // Immediately reset file detection to prevent race conditions
+    setIsFileTypeDetected(false);
+    setDocumentUrl("");
+    setFileType(null);
+    setError("");
+
+    setCurrentTab(tab);
+    setSelectedFieldId(null);
+    setSelectedShapeId(null);
+    setSettingsPopupFor(null);
+    setTextSelectionPopup(null);
+  };
+
+  // Determine if controls should be shown based on current tab
+  const showControls = currentTab !== "document";
+
   return (
     <AnimatePresence>
       <TooltipProvider>
@@ -1720,57 +1792,41 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={() => {}}
-                              className="px-3 py-2 bg-white text-red-700 rounded-lg shadow-sm border border-red-200 transition-all duration-200 flex items-center gap-2 hover:shadow-md hover:bg-red-50 group"
+                              onClick={() => handleTabChange("document")}
+                              className={`px-3 py-2 rounded-lg shadow-sm border transition-all duration-200 flex items-center gap-2 hover:shadow-md group ${
+                                currentTab === "document"
+                                  ? "bg-white text-red-700 border-red-200 hover:bg-red-50"
+                                  : "text-red-600 hover:text-red-800 hover:bg-white/60 border-transparent"
+                              }`}
                             >
-                              <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
+                              <File
+                                size={18}
                                 className="group-hover:scale-110 transition-transform"
-                              >
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                                <polyline points="14,2 14,8 20,8" />
-                              </svg>
+                              />
                               <span className="text-sm font-medium">
                                 Document
                               </span>
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                            <p>Current Document</p>
+                            <p>Original Document</p>
                           </TooltipContent>
                         </Tooltip>
 
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={() => {}}
-                              className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-white/60 rounded-lg transition-all duration-200 flex items-center gap-2 group"
+                              onClick={() => handleTabChange("original")}
+                              className={`px-3 py-2 rounded-lg shadow-sm border transition-all duration-200 flex items-center gap-2 hover:shadow-md group ${
+                                currentTab === "original"
+                                  ? "bg-white text-red-700 border-red-200 hover:bg-red-50"
+                                  : "text-red-600 hover:text-red-800 hover:bg-white/60 border-transparent"
+                              }`}
                             >
-                              <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
+                              <FileText
+                                size={18}
                                 className="group-hover:scale-110 transition-transform"
-                              >
-                                <rect
-                                  x="3"
-                                  y="3"
-                                  width="18"
-                                  height="18"
-                                  rx="2"
-                                  ry="2"
-                                />
-                                <circle cx="9" cy="9" r="2" />
-                                <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-                              </svg>
+                              />
                               <span className="text-sm font-medium">
                                 Original Template
                               </span>
@@ -1784,25 +1840,17 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={() => {}}
-                              className="px-3 py-2 text-red-600 hover:text-red-800 hover:bg-white/60 rounded-lg transition-all duration-200 flex items-center gap-2 group"
+                              onClick={() => handleTabChange("translated")}
+                              className={`px-3 py-2 rounded-lg shadow-sm border transition-all duration-200 flex items-center gap-2 hover:shadow-md group ${
+                                currentTab === "translated"
+                                  ? "bg-white text-red-700 border-red-200 hover:bg-red-50"
+                                  : "text-red-600 hover:text-red-800 hover:bg-white/60 border-transparent"
+                              }`}
                             >
-                              <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
+                              <Languages
+                                size={18}
                                 className="group-hover:scale-110 transition-transform"
-                              >
-                                <path d="M5 8l6 6" />
-                                <path d="m4 14 6-6 2-3" />
-                                <path d="M2 5h12" />
-                                <path d="M7 2h1" />
-                                <path d="m22 22-5-10-5 10" />
-                                <path d="M14 18h6" />
-                              </svg>
+                              />
                               <span className="text-sm font-medium">
                                 Translated Template
                               </span>
@@ -1814,103 +1862,26 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         </Tooltip>
                       </div>
 
-                      {/* Main Controls */}
-                      <div className="flex items-center gap-6">
-                        {/* Tools Section */}
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-medium text-gray-600">
-                            Tools
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {/* Add textbox button */}
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => {
-                                    setIsAddTextBoxMode((prev) => !prev);
-                                    setShapeDrawingMode(null);
-                                    setIsTextSelectionMode(false);
-                                  }}
-                                  className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
-                                    isAddTextBoxMode
-                                      ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
-                                      : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
-                                  } ${
-                                    !isEditMode
-                                      ? "opacity-50 cursor-not-allowed"
-                                      : ""
-                                  }`}
-                                  disabled={!documentUrl || !isEditMode}
-                                >
-                                  <Type
-                                    size={18}
-                                    className="group-hover:scale-110 transition-transform"
-                                  />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                                <p>
-                                  {isAddTextBoxMode
-                                    ? "Click to place text field"
-                                    : "Add Text Field"}
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-
-
-
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => {
-                                    setIsTextSelectionMode(
-                                      !isTextSelectionMode
-                                    );
-                                    setShapeDrawingMode(null);
-                                    setIsAddTextBoxMode(false);
-                                  }}
-                                  className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
-                                    isTextSelectionMode
-                                      ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
-                                      : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
-                                  } ${
-                                    !isEditMode
-                                      ? "opacity-50 cursor-not-allowed"
-                                      : ""
-                                  }`}
-                                  disabled={!documentUrl || !isEditMode}
-                                >
-                                  <MousePointer2
-                                    size={18}
-                                    className="group-hover:scale-110 transition-transform"
-                                  />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                                <p>
-                                  {isTextSelectionMode
-                                    ? "Text Selection Active"
-                                    : "Select Text"}
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-
-                            {/* Draw Shape Dropdown */}
-                            <div className="relative shape-dropdown">
+                      {/* Main Controls - Only show for template tabs */}
+                      {showControls && (
+                        <div className="flex items-center gap-6">
+                          {/* Tools Section */}
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium text-gray-600">
+                              Tools
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {/* Add textbox button */}
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
-                                    ref={shapeButtonRef}
                                     onClick={() => {
-                                      // If drawing mode is active, deactivate it
-                                      if (shapeDrawingMode) {
-                                        setShapeDrawingMode(null);
-                                      }
-                                      setIsAddTextBoxMode(false);
+                                      setIsAddTextBoxMode((prev) => !prev);
+                                      setShapeDrawingMode(null);
                                       setIsTextSelectionMode(false);
                                     }}
                                     className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
-                                      shapeDrawingMode
+                                      isAddTextBoxMode
                                         ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
                                         : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
                                     } ${
@@ -1920,1508 +1891,1708 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                     }`}
                                     disabled={!documentUrl || !isEditMode}
                                   >
-                                    <div className="flex items-center gap-1">
-                                      {selectedShapeType === "rectangle" ? (
-                                        <Square
-                                          size={18}
-                                          className="group-hover:scale-110 transition-transform"
-                                        />
-                                      ) : (
-                                        <Circle
-                                          size={18}
-                                          className="group-hover:scale-110 transition-transform"
-                                        />
-                                      )}
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-
-                                          if (
-                                            !shapeDropdownOpen &&
-                                            shapeButtonRef.current
-                                          ) {
-                                            const rect =
-                                              shapeButtonRef.current.getBoundingClientRect();
-                                            setDropdownPosition({
-                                              top: rect.bottom + 4,
-                                              left: rect.left,
-                                            });
-                                          }
-
-                                          setShapeDropdownOpen(
-                                            !shapeDropdownOpen
-                                          );
-                                        }}
-                                        className="hover:bg-black hover:bg-opacity-10 rounded p-1 transition-colors"
-                                        disabled={!isEditMode}
-                                      >
-                                        <ChevronDown
-                                          size={14}
-                                          className={`transition-transform ${
-                                            shapeDropdownOpen
-                                              ? "rotate-180"
-                                              : ""
-                                          }`}
-                                        />
-                                      </button>
-                                    </div>
+                                    <Type
+                                      size={18}
+                                      className="group-hover:scale-110 transition-transform"
+                                    />
                                   </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
                                   <p>
-                                    {shapeDrawingMode
-                                      ? `Drawing ${
-                                          selectedShapeType === "rectangle"
-                                            ? "Rectangle"
-                                            : "Circle"
-                                        }`
-                                      : "Draw Shapes"}
+                                    {isAddTextBoxMode
+                                      ? "Click to place text field"
+                                      : "Add Text Field"}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => {
+                                      setIsTextSelectionMode(
+                                        !isTextSelectionMode
+                                      );
+                                      setShapeDrawingMode(null);
+                                      setIsAddTextBoxMode(false);
+                                    }}
+                                    className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
+                                      isTextSelectionMode
+                                        ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                                        : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                                    } ${
+                                      !isEditMode
+                                        ? "opacity-50 cursor-not-allowed"
+                                        : ""
+                                    }`}
+                                    disabled={!documentUrl || !isEditMode}
+                                  >
+                                    <MousePointer2
+                                      size={18}
+                                      className="group-hover:scale-110 transition-transform"
+                                    />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                                  <p>
+                                    {isTextSelectionMode
+                                      ? "Text Selection Active"
+                                      : "Select Text"}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              {/* Draw Shape Dropdown */}
+                              <div className="relative shape-dropdown">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      ref={shapeButtonRef}
+                                      onClick={() => {
+                                        // If drawing mode is active, deactivate it
+                                        if (shapeDrawingMode) {
+                                          setShapeDrawingMode(null);
+                                        }
+                                        setIsAddTextBoxMode(false);
+                                        setIsTextSelectionMode(false);
+                                      }}
+                                      className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
+                                        shapeDrawingMode
+                                          ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                                          : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                                      } ${
+                                        !isEditMode
+                                          ? "opacity-50 cursor-not-allowed"
+                                          : ""
+                                      }`}
+                                      disabled={!documentUrl || !isEditMode}
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        {selectedShapeType === "rectangle" ? (
+                                          <Square
+                                            size={18}
+                                            className="group-hover:scale-110 transition-transform"
+                                          />
+                                        ) : (
+                                          <Circle
+                                            size={18}
+                                            className="group-hover:scale-110 transition-transform"
+                                          />
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+
+                                            if (
+                                              !shapeDropdownOpen &&
+                                              shapeButtonRef.current
+                                            ) {
+                                              const rect =
+                                                shapeButtonRef.current.getBoundingClientRect();
+                                              setDropdownPosition({
+                                                top: rect.bottom + 4,
+                                                left: rect.left,
+                                              });
+                                            }
+
+                                            setShapeDropdownOpen(
+                                              !shapeDropdownOpen
+                                            );
+                                          }}
+                                          className="hover:bg-black hover:bg-opacity-10 rounded p-1 transition-colors"
+                                          disabled={!isEditMode}
+                                        >
+                                          <ChevronDown
+                                            size={14}
+                                            className={`transition-transform ${
+                                              shapeDropdownOpen
+                                                ? "rotate-180"
+                                                : ""
+                                            }`}
+                                          />
+                                        </button>
+                                      </div>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                                    <p>
+                                      {shapeDrawingMode
+                                        ? `Drawing ${
+                                            selectedShapeType === "rectangle"
+                                              ? "Rectangle"
+                                              : "Circle"
+                                          }`
+                                        : "Draw Shapes"}
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* View Section */}
+                          <div className="flex items-center gap-3">
+                            <div className="w-px h-8 bg-red-200"></div>
+                            <span className="text-sm font-medium text-gray-600">
+                              View
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => setIsEditMode(!isEditMode)}
+                                    className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group ${
+                                      isEditMode
+                                        ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                                        : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                                    }`}
+                                  >
+                                    <Edit3
+                                      size={18}
+                                      className="group-hover:scale-110 transition-transform"
+                                    />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                                  <p>
+                                    {isEditMode
+                                      ? "Exit Edit Mode"
+                                      : "Enter Edit Mode"}
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() =>
+                                      setShowRectangles(!showRectangles)
+                                    }
+                                    className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
+                                      showRectangles
+                                        ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
+                                        : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                                    }`}
+                                  >
+                                    <Trash2
+                                      size={18}
+                                      className="group-hover:scale-110 transition-transform"
+                                    />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                                  <p>
+                                    {showRectangles
+                                      ? "Hide Deletion Rectangles"
+                                      : "Show Deletion Rectangles"}
                                   </p>
                                 </TooltipContent>
                               </Tooltip>
                             </div>
                           </div>
                         </div>
-
-                        {/* View Section */}
-                        <div className="flex items-center gap-3">
-                          <div className="w-px h-8 bg-red-200"></div>
-                          <span className="text-sm font-medium text-gray-600">
-                            View
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() => setIsEditMode(!isEditMode)}
-                                  className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 group ${
-                                    isEditMode
-                                      ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
-                                      : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
-                                  }`}
-                                >
-                                  <Edit3
-                                    size={18}
-                                    className="group-hover:scale-110 transition-transform"
-                                  />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                                <p>
-                                  {isEditMode
-                                    ? "Exit Edit Mode"
-                                    : "Enter Edit Mode"}
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  onClick={() =>
-                                    setShowRectangles(!showRectangles)
-                                  }
-                                  className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group ${
-                                    showRectangles
-                                      ? "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-red-200"
-                                      : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
-                                  }`}
-                                >
-                                  <Trash2
-                                    size={18}
-                                    className="group-hover:scale-110 transition-transform"
-                                  />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                                <p>
-                                  {showRectangles
-                                    ? "Hide Deletion Rectangles"
-                                    : "Show Deletion Rectangles"}
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </div>
-                      </div>
+                      )}
                     </div>
 
-                    {/* Right side - Export actions */}
-                    <div className="flex items-center gap-2">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={exportFieldsData}
-                            className="px-3 py-2.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group"
-                            disabled={!documentUrl}
-                          >
-                            <Save
-                              size={18}
-                              className="group-hover:scale-110 transition-transform"
-                            />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                          <p>Export Field Data</p>
-                        </TooltipContent>
-                      </Tooltip>
-
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={exportToPDF}
-                            className="px-3 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-md hover:shadow-lg shadow-red-200 transition-all duration-200 flex items-center justify-center group"
-                            disabled={isLoading || !documentUrl}
-                          >
-                            {isLoading ? (
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Download
+                    {/* Right side - Export actions - Only show for template tabs */}
+                    {showControls && (
+                      <div className="flex items-center gap-2">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={exportFieldsData}
+                              className="px-3 py-2.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group"
+                              disabled={!documentUrl}
+                            >
+                              <Save
                                 size={18}
                                 className="group-hover:scale-110 transition-transform"
                               />
-                            )}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                          <p>
-                            {isLoading ? "Exporting PDF..." : "Export to PDF"}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                            <p>Export Field Data</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={exportToPDF}
+                              className="px-3 py-2.5 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-md hover:shadow-lg shadow-red-200 transition-all duration-200 flex items-center justify-center group"
+                              disabled={isLoading || !documentUrl}
+                            >
+                              {isLoading ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Download
+                                  size={18}
+                                  className="group-hover:scale-110 transition-transform"
+                                />
+                              )}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                            <p>
+                              {isLoading ? "Exporting PDF..." : "Export to PDF"}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {isDragging && selectionRect && (
-            <div
-              className="fixed border-2 border-blue-500 bg-blue-100 bg-opacity-20 z-[999] pointer-events-none"
-              style={{
-                left: `${selectionRect.left}px`,
-                top: `${selectionRect.top}px`,
-                width: `${selectionRect.width}px`,
-                height: `${selectionRect.height}px`,
-              }}
-            />
+          {/* Show loading state */}
+          {workflowLoading && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-gray-600">Loading workflow data...</p>
+              </div>
+            </div>
           )}
 
-          {/* Page Navigation Controls - Always at top */}
-          <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-center z-10">
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => goToPage(currentPage - 1)}
-                disabled={currentPage <= 1}
-                className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <span className="text-gray-700 min-w-[120px] text-center">
-                Page {currentPage} of {numPages}
-              </span>
-              <button
-                onClick={() => goToPage(currentPage + 1)}
-                disabled={currentPage >= numPages}
-                className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
-              >
-                <ChevronRight size={20} />
-              </button>
+          {/* Show error state */}
+          {workflowError && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-red-600 mb-4">{workflowError}</p>
+                <button
+                  onClick={fetchWorkflowData}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Main Content Area */}
-          <div
-            className="flex-1 bg-gray-200 relative overflow-hidden"
-            ref={containerRef}
-          >
-            {/* Vertical Zoom Controls - Adobe Acrobat Style */}
-            {documentUrl && (
-              <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
-                {/* Auto Fit Button */}
-                <button
-                  onClick={zoomToFitWidth}
-                  className="p-2 hover:bg-gray-50 border-b border-gray-200 rounded-t-lg transition-colors group flex items-center justify-center"
-                  title="Fit to Width"
-                >
-                  <Maximize2
-                    size={16}
-                    className="text-gray-600 group-hover:text-gray-800"
-                  />
-                </button>
-
-                {/* Zoom In Button */}
-                <button
-                  onClick={zoomIn}
-                  className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
-                  title="Zoom In"
-                >
-                  <Plus
-                    size={16}
-                    className="text-gray-600 group-hover:text-gray-800"
-                  />
-                </button>
-
-                {/* 300% Label */}
-                <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
-                  300%
-                </div>
-
-                {/* Vertical Slider Container */}
-                <div className="relative py-4 px-3 flex flex-col items-center">
-                  <div className="relative h-32 w-6 flex items-center justify-center">
-                    {/* Slider Track */}
-                    <div className="absolute w-1 h-full bg-gray-300 rounded-full"></div>
-
-                    {/* Progress Track */}
-                    <div
-                      className="absolute w-1 bg-blue-500 rounded-full bottom-0"
-                      style={{
-                        height: `${((scale * 100 - 25) / 275) * 100}%`,
-                      }}
-                    ></div>
-
-                    {/* Slider Input - Fixed positioning */}
-                    <input
-                      type="range"
-                      min="25"
-                      max="300"
-                      value={Math.round(scale * 100)}
-                      onChange={(e) => {
-                        setZoomMode("page");
-                        setScale(parseInt(e.target.value) / 100);
-                      }}
-                      className="absolute w-32 h-6 opacity-0 cursor-pointer origin-center"
-                      style={{
-                        transform: "rotate(-90deg)",
-                        transformOrigin: "center",
-                      }}
-                    />
-
-                    {/* Custom Handle */}
-                    <div
-                      className="absolute w-4 h-3 bg-white border-2 border-blue-500 rounded-sm shadow-sm pointer-events-none"
-                      style={{
-                        bottom: `${((scale * 100 - 25) / 275) * 100}%`,
-                        transform: "translateY(50%)",
-                      }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* 25% Label */}
-                <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
-                  25%
-                </div>
-
-                {/* Zoom Out Button */}
-                <button
-                  onClick={zoomOut}
-                  className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
-                  title="Zoom Out"
-                >
-                  <Minus
-                    size={16}
-                    className="text-gray-600 group-hover:text-gray-800"
-                  />
-                </button>
-
-                {/* Current Zoom Display */}
-                <div className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-50 rounded-b-lg border-t border-gray-200 min-w-[60px] text-center">
-                  {Math.round(scale * 100)}%
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 rounded px-4 py-2 z-[60]">
-                {error}
-              </div>
-            )}
-
-            {/* Text Selection Popup */}
-            {textSelectionPopup && (
-              <div
-                className={`fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex flex-col max-h-60 overflow-y-auto text-selection-popup max-w-xs ${
-                  textSelectionPopup.popupPosition.position === "above"
-                    ? "bottom-auto"
-                    : "top-auto"
-                }`}
-                style={{
-                  top:
-                    textSelectionPopup.popupPosition.position === "below"
-                      ? `${textSelectionPopup.popupPosition.top}px`
-                      : undefined,
-                  bottom:
-                    textSelectionPopup.popupPosition.position === "above"
-                      ? `${
-                          window.innerHeight -
-                          textSelectionPopup.popupPosition.top
-                        }px`
-                      : undefined,
-                  left: `${textSelectionPopup.popupPosition.left}px`,
-                  transform: "translateX(-50%)",
-                  maxWidth: "300px",
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex justify-between items-center mb-2 pb-2 border-b">
-                  <span className="text-sm font-medium">
-                    {textSelectionPopup.texts.length} selected
-                  </span>
-                  <button
-                    onClick={() => setTextSelectionPopup(null)}
-                    className="text-gray-500 hover:text-gray-800"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                {textSelectionPopup.texts.map((sel, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between py-1"
-                  >
-                    <span className="text-sm truncate flex-1">{sel.text}</span>
-                    <div className="flex space-x-1 ml-2">
-                      <button
-                        onClick={() => {
-                          const newSelections = [...textSelectionPopup.texts];
-                          newSelections.splice(index, 1);
-
-                          if (newSelections.length === 0) {
-                            setTextSelectionPopup(null);
-                          } else {
-                            setTextSelectionPopup({
-                              texts: newSelections,
-                              popupPosition: textSelectionPopup.popupPosition,
-                            });
-                          }
-                        }}
-                        className="p-1 text-gray-500 hover:text-red-500"
-                        title="Remove from selection"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-                <button
-                  onClick={() => {
-                    textSelectionPopup.texts.forEach((sel) => {
-                      addDeletionRectangle(sel);
-                    });
-                    setTextSelectionPopup(null);
-                  }}
-                  className="mt-2 p-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center"
-                >
-                  <Trash2 size={14} className="mr-1" />
-                  <span>Delete Selected Text</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    textSelectionPopup.texts.forEach((sel) => {
-                      console.log("Text coordinates:", sel.pagePosition);
-                    });
-                    setTextSelectionPopup(null);
-                  }}
-                  className="mt-2 p-1 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center"
-                >
-                  <Trash2 size={14} className="mr-1" />
-                  <span>Log all positions</span>
-                </button>
-              </div>
-            )}
-            {documentUrl ? (
-              <div className="flex flex-col h-full">
-                <div
-                  className="flex-1 overflow-x-scroll overflow-y-auto p-4 max-h-full"
-                  style={{ scrollbarWidth: "thin" }}
-                >
-                  <div
-                    className={`relative bg-white shadow-lg mx-auto ${
-                      isTextSelectionMode ? "text-selection-mode" : ""
-                    }`}
-                    ref={documentRef}
-                    style={{
-                      // transform: `scale(${scale})`,
-                      // transformOrigin: 'top left',
-                      width: pageWidth * scale,
-                      height: pageHeight * scale,
-                      minWidth: pageWidth * scale,
-                      minHeight: pageHeight * scale,
-                    }}
-                    onContextMenu={(e) => {
-                      if (isTextSelectionMode) {
-                        e.preventDefault();
-                      }
-                    }}
-                    onClick={handleDocumentContainerClick}
-                    // Event handlers for text selection and shape drawing
-                    onMouseDown={(e) => {
-                      if (shapeDrawingMode && !isDrawingInProgress) {
-                        handleShapeDrawStart(e);
-                      } else {
-                        handleMouseDown(e);
-                      }
-                    }}
-                    onMouseMove={(e) => {
-                      if (isDrawingInProgress) {
-                        handleShapeDrawMove(e);
-                      } else {
-                        handleMouseMove(e);
-                      }
-                    }}
-                    onMouseUp={(e) => {
-                      if (isDrawingInProgress) {
-                        handleShapeDrawEnd();
-                      } else {
-                        handleMouseUp(e);
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      setMouseDownTime(null);
-                      if (isDragging) {
-                        setIsDragging(false);
-                        setDragStart(null);
-                        setDragEnd(null);
-                      }
-                      if (isDrawingInProgress) {
-                        setIsDrawingInProgress(false);
-                        setShapeDrawStart(null);
-                        setShapeDrawEnd(null);
-                      }
-                    }}
-                  >
-                    {/* Document */}
-                    <Document
-                      file={documentUrl}
-                      onLoadSuccess={handleDocumentLoadSuccess}
-                      onLoadError={handleDocumentLoadError}
-                      loading={
-                        <div className="p-8 text-center">Loading PDF...</div>
-                      }
-                    >
-                      <Page
-                        pageNumber={currentPage}
-                        onLoadSuccess={handlePageLoadSuccess}
-                        renderTextLayer={isTextSelectionMode}
-                        renderAnnotationLayer={false}
-                        width={pageWidth * scale}
-                        renderMode="canvas"
-                      />
-                    </Document>
-
-                    {rectangles
-                      .filter((rec) => rec.page === currentPage)
-                      .map((rec) => (
-                        <div
-                          key={rec.id}
-                          className={`absolute bg-white ${
-                            showRectangles
-                              ? "bg-opacity-90 border border-red-300"
-                              : ""
-                          }  flex items-center justify-center`}
-                          style={{
-                            left: rec.x * scale,
-                            top: rec.y * scale,
-                            width: rec.width * scale,
-                            height: rec.height * scale,
-                            zIndex: 50,
-                            backgroundColor: rec.background || "white", // Use captured color
-                            border: showRectangles ? "1px dashed red" : "none",
-                          }}
-                        >
-                          {showRectangles && (
-                            <button
-                              onClick={() => deleteDeletionRectangle(rec.id)}
-                              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                            >
-                              <X size={12} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-
-                    {/* Shape Preview during drawing */}
-                    {shapePreview && shapeDrawingMode && (
-                      <div
-                        className="absolute border-2 border-dashed border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none"
-                        style={{
-                          left: shapePreview.x * scale,
-                          top: shapePreview.y * scale,
-                          width: shapePreview.width * scale,
-                          height: shapePreview.height * scale,
-                          borderRadius:
-                            shapeDrawingMode === "circle" ? "50%" : "0",
-                          zIndex: 1000,
-                        }}
-                      />
-                    )}
-
-                    {/* Shape Overlays */}
-                    {shapes
-                      .filter((shape) => shape.page === currentPage)
-                      .map((shape) => (
-                        <Rnd
-                          key={shape.id}
-                          size={{
-                            width: shape.width * scale,
-                            height: shape.height * scale,
-                          }}
-                          position={{ x: shape.x * scale, y: shape.y * scale }}
-                          onDrag={(e, d) => {
-                            updateShape(shape.id, {
-                              x: d.x / scale,
-                              y: d.y / scale,
-                            });
-                          }}
-                          onDragStop={(e, d) => {
-                            updateShape(shape.id, {
-                              x: d.x / scale,
-                              y: d.y / scale,
-                            });
-                          }}
-                          onResizeStop={(
-                            e,
-                            direction,
-                            ref,
-                            delta,
-                            position
-                          ) => {
-                            updateShape(shape.id, {
-                              width: parseInt(ref.style.width) / scale,
-                              height: parseInt(ref.style.height) / scale,
-                              x: position.x / scale,
-                              y: position.y / scale,
-                            });
-                          }}
-                          disableDragging={!isEditMode}
-                          enableResizing={
-                            isEditMode && selectedShapeId === shape.id
-                          }
-                          bounds="parent"
-                          onClick={(e: { stopPropagation: () => void }) => {
-                            e.stopPropagation();
-                            setSelectedShapeId(shape.id);
-                            setSelectedFieldId(null);
-                            setIsTextSelectionMode(false);
-                          }}
-                          dragHandleClassName="shape-drag-handle"
-                          className={`${
-                            isEditMode && selectedShapeId === shape.id
-                              ? "border-2 border-blue-500"
-                              : "border-2 border-transparent hover:border-blue-400"
-                          } transition-all duration-200 ease-in-out`}
-                          style={{
-                            zIndex: selectedShapeId === shape.id ? 1000 : 200,
-                            cursor: isEditMode ? "move" : "default",
-                          }}
-                        >
-                          <div className="w-full h-full relative group">
-                            {/* Shape Element */}
-                            <div
-                              className="w-full h-full shape-drag-handle"
-                              style={{
-                                backgroundColor: hexToRgba(
-                                  shape.fillColor,
-                                  shape.fillOpacity
-                                ),
-                                border: `${shape.borderWidth}px solid ${shape.borderColor}`,
-                                borderRadius:
-                                  shape.type === "circle" ? "50%" : "0",
-                                transform: shape.rotation
-                                  ? `rotate(${shape.rotation}deg)`
-                                  : "none",
-                                transformOrigin: "center center",
-                              }}
-                            />
-
-                            {/* Shape Controls */}
-                            {isEditMode && selectedShapeId === shape.id && (
-                              <>
-                                {/* Delete button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteShape(shape.id);
-                                  }}
-                                  className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-
-                                {/* Settings button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSettingsPopupFor(shape.id);
-                                  }}
-                                  className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                                    settingsPopupFor === shape.id
-                                      ? "bg-gray-100 border-gray-400"
-                                      : ""
-                                  }`}
-                                >
-                                  <Palette
-                                    size={14}
-                                    className="text-gray-600"
-                                  />
-                                </button>
-
-                                {/* Shape Settings popup */}
-                                {settingsPopupFor === shape.id && (
-                                  <div
-                                    className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-72 settings-popup"
-                                    style={{
-                                      transform: `translate(0.25rem, 2rem) scale(${Math.max(
-                                        0.6,
-                                        1 / scale
-                                      )})`,
-                                      transformOrigin: "top right",
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <div className="flex justify-between items-center mb-3">
-                                      <h3 className="font-semibold text-gray-800">
-                                        {shape.type === "circle"
-                                          ? "Circle"
-                                          : "Rectangle"}{" "}
-                                        Settings
-                                      </h3>
-                                      <button
-                                        onClick={() =>
-                                          setSettingsPopupFor(null)
-                                        }
-                                        className="text-gray-500 hover:text-gray-800"
-                                      >
-                                        <X size={16} />
-                                      </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                      {/* Position Controls */}
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            X Position
-                                          </label>
-                                          <input
-                                            type="number"
-                                            value={Math.round(shape.x)}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                x:
-                                                  parseInt(e.target.value) || 0,
-                                              })
-                                            }
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            min="0"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            Y Position
-                                          </label>
-                                          <input
-                                            type="number"
-                                            value={Math.round(shape.y)}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                y:
-                                                  parseInt(e.target.value) || 0,
-                                              })
-                                            }
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            min="0"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Size Controls */}
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            Width
-                                          </label>
-                                          <input
-                                            type="number"
-                                            value={Math.round(shape.width)}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                width:
-                                                  parseInt(e.target.value) || 1,
-                                              })
-                                            }
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            min="1"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            Height
-                                          </label>
-                                          <input
-                                            type="number"
-                                            value={Math.round(shape.height)}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                height:
-                                                  parseInt(e.target.value) || 1,
-                                              })
-                                            }
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            min="1"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Border Settings */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-2">
-                                          Border
-                                        </label>
-                                        <div className="flex items-center space-x-2 mb-2">
-                                          <input
-                                            type="color"
-                                            value={shape.borderColor}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                borderColor: e.target.value,
-                                              })
-                                            }
-                                            className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
-                                          />
-                                          <input
-                                            type="text"
-                                            value={shape.borderColor}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                borderColor: e.target.value,
-                                              })
-                                            }
-                                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
-                                            placeholder="#000000"
-                                          />
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                          <span className="text-xs text-gray-600 min-w-[40px]">
-                                            Width:
-                                          </span>
-                                          <input
-                                            type="range"
-                                            min="0"
-                                            max="10"
-                                            step="1"
-                                            value={shape.borderWidth}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                borderWidth: parseInt(
-                                                  e.target.value
-                                                ),
-                                              })
-                                            }
-                                            className="flex-1 shape-slider"
-                                          />
-                                          <span className="text-xs font-medium text-gray-700 min-w-[25px] text-center">
-                                            {shape.borderWidth}px
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      {/* Fill Settings */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-2">
-                                          Fill
-                                        </label>
-                                        <div className="flex items-center space-x-2 mb-2">
-                                          <input
-                                            type="color"
-                                            value={shape.fillColor}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                fillColor: e.target.value,
-                                              })
-                                            }
-                                            className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
-                                          />
-                                          <input
-                                            type="text"
-                                            value={shape.fillColor}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                fillColor: e.target.value,
-                                              })
-                                            }
-                                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
-                                            placeholder="#ffffff"
-                                          />
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                          <span className="text-xs text-gray-600 min-w-[50px]">
-                                            Opacity:
-                                          </span>
-                                          <input
-                                            type="range"
-                                            min="0"
-                                            max="1"
-                                            step="0.01"
-                                            value={shape.fillOpacity}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                fillOpacity: parseFloat(
-                                                  e.target.value
-                                                ),
-                                              })
-                                            }
-                                            className="flex-1 shape-slider"
-                                          />
-                                          <span className="text-xs font-medium text-gray-700 min-w-[35px] text-center">
-                                            {Math.round(
-                                              shape.fillOpacity * 100
-                                            )}
-                                            %
-                                          </span>
-                                        </div>
-                                      </div>
-
-                                      {/* Rotation */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                          Rotation
-                                        </label>
-                                        <div className="flex items-center space-x-2">
-                                          <input
-                                            type="range"
-                                            min="0"
-                                            max="360"
-                                            step="5"
-                                            value={shape.rotation || 0}
-                                            onChange={(e) =>
-                                              updateShape(shape.id, {
-                                                rotation: parseInt(
-                                                  e.target.value
-                                                ),
-                                              })
-                                            }
-                                            className="flex-1 shape-slider"
-                                          />
-                                          <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
-                                            {shape.rotation || 0}°
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </Rnd>
-                      ))}
-
-                    {/* Text Field Overlays */}
-                    {textFields
-                      .filter((field) => field.page === currentPage)
-                      .filter(
-                        (field) => !field.isFromWorkflow || showWorkflowFields
-                      )
-                      .map((field) => (
-                        <Rnd
-                          key={field.id}
-                          size={{
-                            width: field.width * scale,
-                            height: field.height * scale,
-                          }}
-                          position={{ x: field.x * scale, y: field.y * scale }}
-                          onDrag={(e, d) => {
-                            updateTextField(field.id, {
-                              x: d.x / scale,
-                              y: d.y / scale,
-                            });
-                          }}
-                          onDragStop={(e, d) => {
-                            updateTextField(field.id, {
-                              x: d.x / scale,
-                              y: d.y / scale,
-                            });
-                          }}
-                          onResizeStop={(
-                            e,
-                            direction,
-                            ref,
-                            delta,
-                            position
-                          ) => {
-                            // Convert scaled dimensions back to original scale
-                            updateTextField(field.id, {
-                              width: parseInt(ref.style.width) / scale,
-                              height: parseInt(ref.style.height) / scale,
-                              x: position.x / scale,
-                              y: position.y / scale,
-                            });
-                          }}
-                          disableDragging={!isEditMode || isRotating}
-                          enableResizing={false}
-                          bounds="parent"
-                          onClick={(e: { stopPropagation: () => void }) => {
-                            e.stopPropagation();
-                            setSelectedFieldId(field.id);
-                            setIsTextSelectionMode(false);
-                          }}
-                          dragHandleClassName="drag-handle"
-                          dragAxis="both"
-                          dragGrid={[1, 1]}
-                          resizeGrid={[1, 1]}
-                          className={`${
-                            isEditMode
-                              ? "border-2 border-blue-500"
-                              : "border-2 border-transparent"
-                          } ${
-                            field.isFromWorkflow
-                              ? " hover:border-purple-400"
-                              : "border-gray-300 hover:border-blue-400"
-                          } ${selectedFieldId === field.id ? "" : ""} ${
-                            isRotating && rotatingFieldId === field.id
-                              ? "border-yellow-500 border-2"
-                              : ""
-                          } transition-all duration-200 ease-in-out`}
-                          style={{
-                            backgroundColor: "rgba(255, 255, 255, 0.1)",
-                            transition: "transform 0.1s ease-out",
-                            zIndex: selectedFieldId === field.id ? 1000 : 100,
-                            transform: "none", // Ensure no additional scaling
-                            cursor:
-                              isRotating && rotatingFieldId === field.id
-                                ? "grabbing"
-                                : "auto",
-                          }}
-                        >
-                          <div className="w-full h-full relative group">
-                            {/* Move handle */}
-                            {isEditMode && selectedFieldId === field.id && (
-                              <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
-                                {/* Move handle */}
-                                <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
-                                  <Move size={10} />
-                                </div>
-
-                                {/* Font size controls */}
-                                <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      updateTextField(field.id, {
-                                        // Adjust font size in original scale
-                                        fontSize: Math.max(
-                                          6,
-                                          field.fontSize - 1
-                                        ),
-                                      });
-                                    }}
-                                    className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
-                                    title="Decrease font size"
-                                  >
-                                    <Minus size={10} />
-                                  </button>
-                                  <span className="text-black text-xs font-medium px-2 min-w-[20px] text-center">
-                                    {/* Display original font size, not scaled */}
-                                    {field.fontSize.toFixed(2)}
-                                  </span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      updateTextField(field.id, {
-                                        // Adjust font size in original scale
-                                        fontSize: Math.min(
-                                          72,
-                                          field.fontSize + 1
-                                        ),
-                                      });
-                                    }}
-                                    className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
-                                    title="Increase font size"
-                                  >
-                                    <Plus size={10} />
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Delete button */}
-                            {isEditMode &&
-                              selectedFieldId === field.id &&
-                              !field.isFromWorkflow && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteTextField(field.id);
-                                  }}
-                                  className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              )}
-
-                            {/* Rotation handle - positioned at bottom-right corner */}
-                            {isEditMode && selectedFieldId === field.id && (
-                              <div
-                                className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full flex items-center justify-center cursor-grab shadow-lg z-20"
-                                style={{
-                                  cursor:
-                                    isRotating && rotatingFieldId === field.id
-                                      ? "grabbing"
-                                      : "grab",
-                                }}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setIsRotating(true);
-                                  setRotatingFieldId(field.id);
-                                  setInitialRotation(field.rotation || 0);
-
-                                  // Calculate field center for rotation
-                                  const fieldRect =
-                                    e.currentTarget.parentElement?.getBoundingClientRect();
-                                  if (fieldRect) {
-                                    const centerX =
-                                      fieldRect.left + fieldRect.width / 2;
-                                    const centerY =
-                                      fieldRect.top + fieldRect.height / 2;
-                                    setRotationCenter({
-                                      x: centerX,
-                                      y: centerY,
-                                    });
-                                  }
-                                }}
-                                title="Hold and drag to rotate"
-                              >
-                                <svg
-                                  width="12"
-                                  height="12"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  className="text-white"
-                                >
-                                  <path d="M12 2v20M2 12h20" />
-                                  <path d="m19 9-3 3 3 3" />
-                                  <path d="m5 15 3-3-3-3" />
-                                </svg>
-                              </div>
-                            )}
-
-                            {/* Rotation degree indicator - shows during rotation */}
-                            {isRotating && rotatingFieldId === field.id && (
-                              <div
-                                className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-3 py-1 rounded-lg text-sm font-semibold shadow-lg z-30 pointer-events-none"
-                                style={{
-                                  backdropFilter: "blur(4px)",
-                                }}
-                              >
-                                {field.rotation || 0}°
-                              </div>
-                            )}
-
-                            {/* Field properties */}
-                            {isEditMode && selectedFieldId === field.id && (
-                              <>
-                                {/* Settings button */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSettingsPopupFor(field.id);
-                                  }}
-                                  className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                                    settingsPopupFor === field.id
-                                      ? "bg-gray-100 border-gray-400"
-                                      : ""
-                                  }`}
-                                >
-                                  <MoreHorizontal
-                                    size={14}
-                                    className="text-gray-600"
-                                  />
-                                </button>
-
-                                {/* Settings popup */}
-                                {settingsPopupFor === field.id && (
-                                  <div
-                                    className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
-                                    style={{
-                                      transform: `translate(0.25rem, 2rem) scale(${Math.max(
-                                        0.6,
-                                        1 / scale
-                                      )})`,
-                                      transformOrigin: "top right",
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <div className="flex justify-between items-center mb-3">
-                                      <h3 className="font-semibold text-gray-800">
-                                        Field Settings
-                                      </h3>
-                                      <button
-                                        onClick={() =>
-                                          setSettingsPopupFor(null)
-                                        }
-                                        className="text-gray-500 hover:text-gray-800"
-                                      >
-                                        <X size={16} />
-                                      </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                      <div className="grid grid-cols-2 gap-3">
-                                        {/* Position X */}
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            X Position
-                                          </label>
-                                          <input
-                                            type="number"
-                                            value={Math.round(field.x)}
-                                            onChange={(e) =>
-                                              updateTextField(field.id, {
-                                                x:
-                                                  parseInt(e.target.value) || 0,
-                                              })
-                                            }
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            min="0"
-                                          />
-                                        </div>
-
-                                        {/* Position Y */}
-                                        <div>
-                                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                                            Y Position
-                                          </label>
-                                          <input
-                                            type="number"
-                                            value={Math.round(field.y)}
-                                            onChange={(e) =>
-                                              updateTextField(field.id, {
-                                                y:
-                                                  parseInt(e.target.value) || 0,
-                                              })
-                                            }
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            min="0"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Font Family */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                          Font Family
-                                        </label>
-                                        <select
-                                          value={field.fontFamily}
-                                          onChange={(e) =>
-                                            updateTextField(field.id, {
-                                              fontFamily: e.target.value,
-                                            })
-                                          }
-                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                        >
-                                          <option value="Arial, sans-serif">
-                                            Arial
-                                          </option>
-                                          <option value="Helvetica, sans-serif">
-                                            Helvetica
-                                          </option>
-                                          <option value="Times New Roman, serif">
-                                            Times New Roman
-                                          </option>
-                                          <option value="Georgia, serif">
-                                            Georgia
-                                          </option>
-                                          <option value="Courier New, monospace">
-                                            Courier New
-                                          </option>
-                                          <option value="Verdana, sans-serif">
-                                            Verdana
-                                          </option>
-                                          <option value="Tahoma, sans-serif">
-                                            Tahoma
-                                          </option>
-                                          <option value="Trebuchet MS, sans-serif">
-                                            Trebuchet MS
-                                          </option>
-                                          <option value="Palatino, serif">
-                                            Palatino
-                                          </option>
-                                          <option value="Lucida Console, monospace">
-                                            Lucida Console
-                                          </option>
-                                        </select>
-                                      </div>
-
-                                      {/* Font Color */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                          Font Color
-                                        </label>
-                                        <div className="flex items-center space-x-2">
-                                          <input
-                                            type="color"
-                                            value={field.fontColor}
-                                            onChange={(e) =>
-                                              updateTextField(field.id, {
-                                                fontColor: e.target.value,
-                                              })
-                                            }
-                                            className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
-                                          />
-                                          <input
-                                            type="text"
-                                            value={field.fontColor}
-                                            onChange={(e) =>
-                                              updateTextField(field.id, {
-                                                fontColor: e.target.value,
-                                              })
-                                            }
-                                            className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                                            placeholder="#000000"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Bold and Italic */}
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-2">
-                                          Text Style
-                                        </label>
-                                        <div className="flex items-center space-x-2">
-                                          <button
-                                            onClick={() =>
-                                              updateTextField(field.id, {
-                                                fontWeight:
-                                                  field.fontWeight === "bold"
-                                                    ? "normal"
-                                                    : "bold",
-                                              })
-                                            }
-                                            className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center font-bold text-lg transition-all duration-200 ${
-                                              field.fontWeight === "bold"
-                                                ? "bg-red-500 text-white border-red-500"
-                                                : "bg-white text-gray-700 hover:bg-gray-50"
-                                            }`}
-                                            title="Bold"
-                                          >
-                                            B
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              updateTextField(field.id, {
-                                                fontStyle:
-                                                  field.fontStyle === "italic"
-                                                    ? "normal"
-                                                    : "italic",
-                                              })
-                                            }
-                                            className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center italic text-lg transition-all duration-200 ${
-                                              field.fontStyle === "italic"
-                                                ? "bg-red-500 text-white border-red-500"
-                                                : "bg-white text-gray-700 hover:bg-gray-50"
-                                            }`}
-                                            title="Italic"
-                                          >
-                                            I
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Chracter Spacing */}
-                                      <div className="mt-3">
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                          Character Spacing
-                                        </label>
-                                        <div className="flex items-center">
-                                          <button
-                                            onClick={() => {
-                                              const current =
-                                                field.characterSpacing || 0;
-                                              updateTextField(field.id, {
-                                                characterSpacing: Math.max(
-                                                  0,
-                                                  current - 0.5
-                                                ),
-                                              });
-                                            }}
-                                            className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
-                                          >
-                                            <Minus size={14} />
-                                          </button>
-
-                                          <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
-                                            {field.characterSpacing || 0}px
-                                          </div>
-
-                                          <button
-                                            onClick={() => {
-                                              const current =
-                                                field.characterSpacing || 0;
-                                              updateTextField(field.id, {
-                                                characterSpacing: Math.min(
-                                                  20,
-                                                  current + 0.5
-                                                ),
-                                              });
-                                            }}
-                                            className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
-                                          >
-                                            <Plus size={14} />
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Rotation */}
-                                      <div className="mt-3">
-                                        <label className="block text-xs font-medium text-gray-700 mb-1">
-                                          Rotation
-                                        </label>
-                                        <div className="flex items-center space-x-2">
-                                          <input
-                                            type="range"
-                                            min="0"
-                                            max="360"
-                                            step="5"
-                                            value={field.rotation || 0}
-                                            onChange={(e) =>
-                                              updateTextField(field.id, {
-                                                rotation: parseInt(
-                                                  e.target.value
-                                                ),
-                                              })
-                                            }
-                                            className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb:bg-red-500"
-                                          />
-                                          <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
-                                            {field.rotation || 0}°
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </>
-                            )}
-
-                            {/* Text content - wrapped in rotating container */}
-                            <div
-                              className="w-full h-full absolute"
-                              style={{
-                                transform: field.rotation
-                                  ? `rotate(${field.rotation}deg)`
-                                  : "none",
-                                transformOrigin: "center center",
-                              }}
-                            >
-                              <textarea
-                                value={field.value}
-                                onChange={(e) =>
-                                  updateTextField(field.id, {
-                                    value: e.target.value,
-                                  })
-                                }
-                                readOnly={!isEditMode}
-                                className="absolute w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
-                                style={{
-                                  fontSize: `${field.fontSize * scale}px`,
-                                  color: field.fontColor,
-                                  fontFamily: field.fontFamily,
-                                  fontWeight: field.fontWeight || "normal",
-                                  fontStyle: field.fontStyle || "normal",
-                                  cursor: "text",
-                                  padding: "1px",
-                                  lineHeight: "1.1",
-                                  wordWrap: "break-word",
-                                  wordBreak: "break-all",
-                                  whiteSpace: "pre-wrap",
-                                  boxSizing: "border-box",
-                                  overflow: "hidden",
-                                  letterSpacing: field.characterSpacing
-                                    ? `${field.characterSpacing}px`
-                                    : "normal",
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedFieldId(field.id);
-                                  setIsTextSelectionMode(false);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </Rnd>
-                      ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                <Edit3 size={64} className="mb-4 text-gray-300" />
+          {/* Show no workflow state */}
+          {!workflowLoading && !workflowError && !workflowData && (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center">
+                <Edit3 size={64} className="mb-4 text-gray-300 mx-auto" />
                 <h2 className="text-xl font-semibold mb-2">
-                  PDF Document Editor
+                  No Workflow Found
                 </h2>
-                <p className="text-center mb-6 max-w-md">
-                  Upload a PDF document to start adding and editing text fields.
-                  You can drag, resize, and customize text overlays.
+                <p className="text-gray-600">
+                  No workflow data available for this conversation.
                 </p>
               </div>
-            )}
-          </div>
-
-          {/* Shape Dropdown - Rendered outside clipping containers */}
-          {shapeDropdownOpen && (
-            <div
-              className="fixed bg-white border border-gray-200 rounded-lg shadow-lg z-[9999999999] min-w-[140px]"
-              style={{
-                top: `${dropdownPosition.top}px`,
-                left: `${dropdownPosition.left}px`,
-              }}
-            >
-              <button
-                onClick={() => {
-                  setSelectedShapeType("rectangle");
-                  setShapeDropdownOpen(false);
-                  setShapeDrawingMode("rectangle");
-                  setIsAddTextBoxMode(false);
-                  setIsTextSelectionMode(false);
-                }}
-                className={`w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm rounded-t-lg ${
-                  selectedShapeType === "rectangle"
-                    ? "bg-red-50 text-red-700"
-                    : "text-gray-700"
-                }`}
-              >
-                <Square size={16} />
-                Rectangle
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedShapeType("circle");
-                  setShapeDropdownOpen(false);
-                  setShapeDrawingMode("circle");
-                  setIsAddTextBoxMode(false);
-                  setIsTextSelectionMode(false);
-                }}
-                className={`w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm rounded-b-lg ${
-                  selectedShapeType === "circle"
-                    ? "bg-red-50 text-red-700"
-                    : "text-gray-700"
-                }`}
-              >
-                <Circle size={16} />
-                Circle
-              </button>
             </div>
+          )}
+
+          {/* Main content - only show when workflow data is available */}
+          {!workflowLoading && !workflowError && workflowData && (
+            <>
+              {isDragging && selectionRect && (
+                <div
+                  className="fixed border-2 border-blue-500 bg-blue-100 bg-opacity-20 z-[999] pointer-events-none"
+                  style={{
+                    left: `${selectionRect.left}px`,
+                    top: `${selectionRect.top}px`,
+                    width: `${selectionRect.width}px`,
+                    height: `${selectionRect.height}px`,
+                  }}
+                />
+              )}
+
+              {/* Page Navigation Controls - Only show for PDFs with multiple pages */}
+              {isPdfFile(documentUrl) && fileType === "pdf" && numPages > 1 && (
+                <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-center z-10">
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage <= 1}
+                      className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+                    <span className="text-gray-700 min-w-[120px] text-center">
+                      Page {currentPage} of {numPages}
+                    </span>
+                    <button
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage >= numPages}
+                      className="p-1 bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed rounded transition-colors"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Content Area */}
+              <div
+                className="flex-1 bg-gray-200 relative overflow-hidden"
+                ref={containerRef}
+              >
+                {/* Vertical Zoom Controls - Adobe Acrobat Style */}
+                {documentUrl && (
+                  <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center bg-white rounded-lg shadow-xl border border-gray-200">
+                    {/* Auto Fit Button */}
+                    <button
+                      onClick={zoomToFitWidth}
+                      className="p-2 hover:bg-gray-50 border-b border-gray-200 rounded-t-lg transition-colors group flex items-center justify-center"
+                      title="Fit to Width"
+                    >
+                      <Maximize2
+                        size={16}
+                        className="text-gray-600 group-hover:text-gray-800"
+                      />
+                    </button>
+
+                    {/* Zoom In Button */}
+                    <button
+                      onClick={zoomIn}
+                      className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
+                      title="Zoom In"
+                    >
+                      <Plus
+                        size={16}
+                        className="text-gray-600 group-hover:text-gray-800"
+                      />
+                    </button>
+
+                    {/* 300% Label */}
+                    <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
+                      300%
+                    </div>
+
+                    {/* Vertical Slider Container */}
+                    <div className="relative py-4 px-3 flex flex-col items-center">
+                      <div className="relative h-32 w-6 flex items-center justify-center">
+                        {/* Slider Track */}
+                        <div className="absolute w-1 h-full bg-gray-300 rounded-full"></div>
+
+                        {/* Progress Track */}
+                        <div
+                          className="absolute w-1 bg-blue-500 rounded-full bottom-0"
+                          style={{
+                            height: `${((scale * 100 - 25) / 275) * 100}%`,
+                          }}
+                        ></div>
+
+                        {/* Slider Input - Fixed positioning */}
+                        <input
+                          type="range"
+                          min="25"
+                          max="300"
+                          value={Math.round(scale * 100)}
+                          onChange={(e) => {
+                            setZoomMode("page");
+                            setScale(parseInt(e.target.value) / 100);
+                          }}
+                          className="absolute w-32 h-6 opacity-0 cursor-pointer origin-center"
+                          style={{
+                            transform: "rotate(-90deg)",
+                            transformOrigin: "center",
+                          }}
+                        />
+
+                        {/* Custom Handle */}
+                        <div
+                          className="absolute w-4 h-3 bg-white border-2 border-blue-500 rounded-sm shadow-sm pointer-events-none"
+                          style={{
+                            bottom: `${((scale * 100 - 25) / 275) * 100}%`,
+                            transform: "translateY(50%)",
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    {/* 25% Label */}
+                    <div className="px-3 py-1 text-xs text-gray-500 font-medium border-b border-gray-200">
+                      25%
+                    </div>
+
+                    {/* Zoom Out Button */}
+                    <button
+                      onClick={zoomOut}
+                      className="p-2 hover:bg-gray-50 border-b border-gray-200 transition-colors group flex items-center justify-center"
+                      title="Zoom Out"
+                    >
+                      <Minus
+                        size={16}
+                        className="text-gray-600 group-hover:text-gray-800"
+                      />
+                    </button>
+
+                    {/* Current Zoom Display */}
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-700 bg-gray-50 rounded-b-lg border-t border-gray-200 min-w-[60px] text-center">
+                      {Math.round(scale * 100)}%
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-100 border border-red-400 text-red-700 rounded px-4 py-2 z-[60]">
+                    {error}
+                  </div>
+                )}
+
+                {/* Text Selection Popup */}
+                {textSelectionPopup && (
+                  <div
+                    className={`fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex flex-col max-h-60 overflow-y-auto text-selection-popup max-w-xs ${
+                      textSelectionPopup.popupPosition.position === "above"
+                        ? "bottom-auto"
+                        : "top-auto"
+                    }`}
+                    style={{
+                      top:
+                        textSelectionPopup.popupPosition.position === "below"
+                          ? `${textSelectionPopup.popupPosition.top}px`
+                          : undefined,
+                      bottom:
+                        textSelectionPopup.popupPosition.position === "above"
+                          ? `${
+                              window.innerHeight -
+                              textSelectionPopup.popupPosition.top
+                            }px`
+                          : undefined,
+                      left: `${textSelectionPopup.popupPosition.left}px`,
+                      transform: "translateX(-50%)",
+                      maxWidth: "300px",
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-between items-center mb-2 pb-2 border-b">
+                      <span className="text-sm font-medium">
+                        {textSelectionPopup.texts.length} selected
+                      </span>
+                      <button
+                        onClick={() => setTextSelectionPopup(null)}
+                        className="text-gray-500 hover:text-gray-800"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {textSelectionPopup.texts.map((sel, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between py-1"
+                      >
+                        <span className="text-sm truncate flex-1">
+                          {sel.text}
+                        </span>
+                        <div className="flex space-x-1 ml-2">
+                          <button
+                            onClick={() => {
+                              const newSelections = [
+                                ...textSelectionPopup.texts,
+                              ];
+                              newSelections.splice(index, 1);
+
+                              if (newSelections.length === 0) {
+                                setTextSelectionPopup(null);
+                              } else {
+                                setTextSelectionPopup({
+                                  texts: newSelections,
+                                  popupPosition:
+                                    textSelectionPopup.popupPosition,
+                                });
+                              }
+                            }}
+                            className="p-1 text-gray-500 hover:text-red-500"
+                            title="Remove from selection"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={() => {
+                        textSelectionPopup.texts.forEach((sel) => {
+                          addDeletionRectangle(sel);
+                        });
+                        setTextSelectionPopup(null);
+                      }}
+                      className="mt-2 p-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center"
+                    >
+                      <Trash2 size={14} className="mr-1" />
+                      <span>Delete Selected Text</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        textSelectionPopup.texts.forEach((sel) => {
+                          console.log("Text coordinates:", sel.pagePosition);
+                        });
+                        setTextSelectionPopup(null);
+                      }}
+                      className="mt-2 p-1 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center"
+                    >
+                      <Trash2 size={14} className="mr-1" />
+                      <span>Log all positions</span>
+                    </button>
+                  </div>
+                )}
+                {documentUrl ? (
+                  <div className="flex flex-col h-full">
+                    <div
+                      className="flex-1 overflow-x-scroll overflow-y-auto p-4 max-h-full"
+                      style={{ scrollbarWidth: "thin" }}
+                    >
+                      <div
+                        className={`relative bg-white shadow-lg mx-auto ${
+                          isTextSelectionMode ? "text-selection-mode" : ""
+                        }`}
+                        ref={documentRef}
+                        style={{
+                          // transform: `scale(${scale})`,
+                          // transformOrigin: 'top left',
+                          width: pageWidth * scale,
+                          height: pageHeight * scale,
+                          minWidth: pageWidth * scale,
+                          minHeight: pageHeight * scale,
+                        }}
+                        onContextMenu={(e) => {
+                          if (isTextSelectionMode) {
+                            e.preventDefault();
+                          }
+                        }}
+                        onClick={handleDocumentContainerClick}
+                        // Event handlers for text selection and shape drawing
+                        onMouseDown={(e) => {
+                          if (shapeDrawingMode && !isDrawingInProgress) {
+                            handleShapeDrawStart(e);
+                          } else {
+                            handleMouseDown(e);
+                          }
+                        }}
+                        onMouseMove={(e) => {
+                          if (isDrawingInProgress) {
+                            handleShapeDrawMove(e);
+                          } else {
+                            handleMouseMove(e);
+                          }
+                        }}
+                        onMouseUp={(e) => {
+                          if (isDrawingInProgress) {
+                            handleShapeDrawEnd();
+                          } else {
+                            handleMouseUp(e);
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          setMouseDownTime(null);
+                          if (isDragging) {
+                            setIsDragging(false);
+                            setDragStart(null);
+                            setDragEnd(null);
+                          }
+                          if (isDrawingInProgress) {
+                            setIsDrawingInProgress(false);
+                            setShapeDrawStart(null);
+                            setShapeDrawEnd(null);
+                          }
+                        }}
+                      >
+                        {/* Document - Conditional rendering based on file type */}
+                        {!isFileTypeDetected ? (
+                          <div className="p-8 text-center">
+                            <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                            Detecting document type...
+                          </div>
+                        ) : !documentUrl ? (
+                          <div className="p-8 text-center">
+                            No document available for this tab
+                          </div>
+                        ) : isImageFile(documentUrl) ? (
+                          // ALWAYS render images first - never let them reach PDF.js
+                          <img
+                            src={documentUrl}
+                            alt="Document"
+                            onLoad={handleImageLoadSuccess}
+                            onError={handleImageLoadError}
+                            style={{
+                              width: pageWidth * scale,
+                              height: pageHeight * scale,
+                              maxWidth: "none",
+                              display: "block",
+                            }}
+                            className="select-none"
+                          />
+                        ) : isPdfFile(documentUrl) && fileType === "pdf" ? (
+                          // Only render PDF.js if it's definitely a PDF file
+                          <Document
+                            file={documentUrl}
+                            onLoadSuccess={handleDocumentLoadSuccess}
+                            onLoadError={handleDocumentLoadError}
+                            loading={
+                              <div className="p-8 text-center">
+                                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                                Loading PDF document...
+                              </div>
+                            }
+                          >
+                            <Page
+                              pageNumber={currentPage}
+                              onLoadSuccess={handlePageLoadSuccess}
+                              renderTextLayer={isTextSelectionMode}
+                              renderAnnotationLayer={false}
+                              width={pageWidth * scale}
+                              renderMode="canvas"
+                            />
+                          </Document>
+                        ) : (
+                          <div className="p-8 text-center text-red-600">
+                            <p>Unsupported document type</p>
+                            <p className="text-sm text-gray-500 mt-2">
+                              File:{" "}
+                              {documentUrl.split("/").pop()?.split("?")[0]}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              Extension: {getCleanExtension(documentUrl)}
+                            </p>
+                          </div>
+                        )}
+
+                        {rectangles
+                          .filter((rec) => rec.page === currentPage)
+                          .map((rec) => (
+                            <div
+                              key={rec.id}
+                              className={`absolute bg-white ${
+                                showRectangles
+                                  ? "bg-opacity-90 border border-red-300"
+                                  : ""
+                              }  flex items-center justify-center`}
+                              style={{
+                                left: rec.x * scale,
+                                top: rec.y * scale,
+                                width: rec.width * scale,
+                                height: rec.height * scale,
+                                zIndex: 50,
+                                backgroundColor: rec.background || "white", // Use captured color
+                                border: showRectangles
+                                  ? "1px dashed red"
+                                  : "none",
+                              }}
+                            >
+                              {showRectangles && (
+                                <button
+                                  onClick={() =>
+                                    deleteDeletionRectangle(rec.id)
+                                  }
+                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+
+                        {/* Shape Preview during drawing */}
+                        {shapePreview && shapeDrawingMode && (
+                          <div
+                            className="absolute border-2 border-dashed border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none"
+                            style={{
+                              left: shapePreview.x * scale,
+                              top: shapePreview.y * scale,
+                              width: shapePreview.width * scale,
+                              height: shapePreview.height * scale,
+                              borderRadius:
+                                shapeDrawingMode === "circle" ? "50%" : "0",
+                              zIndex: 1000,
+                            }}
+                          />
+                        )}
+
+                        {/* Shape Overlays */}
+                        {shapes
+                          .filter((shape) => shape.page === currentPage)
+                          .map((shape) => (
+                            <Rnd
+                              key={shape.id}
+                              size={{
+                                width: shape.width * scale,
+                                height: shape.height * scale,
+                              }}
+                              position={{
+                                x: shape.x * scale,
+                                y: shape.y * scale,
+                              }}
+                              onDrag={(e, d) => {
+                                updateShape(shape.id, {
+                                  x: d.x / scale,
+                                  y: d.y / scale,
+                                });
+                              }}
+                              onDragStop={(e, d) => {
+                                updateShape(shape.id, {
+                                  x: d.x / scale,
+                                  y: d.y / scale,
+                                });
+                              }}
+                              onResizeStop={(
+                                e,
+                                direction,
+                                ref,
+                                delta,
+                                position
+                              ) => {
+                                updateShape(shape.id, {
+                                  width: parseInt(ref.style.width) / scale,
+                                  height: parseInt(ref.style.height) / scale,
+                                  x: position.x / scale,
+                                  y: position.y / scale,
+                                });
+                              }}
+                              disableDragging={!isEditMode}
+                              enableResizing={
+                                isEditMode && selectedShapeId === shape.id
+                              }
+                              bounds="parent"
+                              onClick={(e: { stopPropagation: () => void }) => {
+                                e.stopPropagation();
+                                setSelectedShapeId(shape.id);
+                                setSelectedFieldId(null);
+                                setIsTextSelectionMode(false);
+                              }}
+                              dragHandleClassName="shape-drag-handle"
+                              className={`${
+                                isEditMode && selectedShapeId === shape.id
+                                  ? "border-2 border-blue-500"
+                                  : "border-2 border-transparent hover:border-blue-400"
+                              } transition-all duration-200 ease-in-out`}
+                              style={{
+                                zIndex:
+                                  selectedShapeId === shape.id ? 1000 : 200,
+                                cursor: isEditMode ? "move" : "default",
+                              }}
+                            >
+                              <div className="w-full h-full relative group">
+                                {/* Shape Element */}
+                                <div
+                                  className="w-full h-full shape-drag-handle"
+                                  style={{
+                                    backgroundColor: hexToRgba(
+                                      shape.fillColor,
+                                      shape.fillOpacity
+                                    ),
+                                    border: `${shape.borderWidth}px solid ${shape.borderColor}`,
+                                    borderRadius:
+                                      shape.type === "circle" ? "50%" : "0",
+                                    transform: shape.rotation
+                                      ? `rotate(${shape.rotation}deg)`
+                                      : "none",
+                                    transformOrigin: "center center",
+                                  }}
+                                />
+
+                                {/* Shape Controls */}
+                                {isEditMode && selectedShapeId === shape.id && (
+                                  <>
+                                    {/* Delete button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteShape(shape.id);
+                                      }}
+                                      className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+
+                                    {/* Settings button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSettingsPopupFor(shape.id);
+                                      }}
+                                      className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
+                                        settingsPopupFor === shape.id
+                                          ? "bg-gray-100 border-gray-400"
+                                          : ""
+                                      }`}
+                                    >
+                                      <Palette
+                                        size={14}
+                                        className="text-gray-600"
+                                      />
+                                    </button>
+
+                                    {/* Shape Settings popup */}
+                                    {settingsPopupFor === shape.id && (
+                                      <div
+                                        className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-72 settings-popup"
+                                        style={{
+                                          transform: `translate(0.25rem, 2rem) scale(${Math.max(
+                                            0.6,
+                                            1 / scale
+                                          )})`,
+                                          transformOrigin: "top right",
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex justify-between items-center mb-3">
+                                          <h3 className="font-semibold text-gray-800">
+                                            {shape.type === "circle"
+                                              ? "Circle"
+                                              : "Rectangle"}{" "}
+                                            Settings
+                                          </h3>
+                                          <button
+                                            onClick={() =>
+                                              setSettingsPopupFor(null)
+                                            }
+                                            className="text-gray-500 hover:text-gray-800"
+                                          >
+                                            <X size={16} />
+                                          </button>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                          {/* Position Controls */}
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                X Position
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.x)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    x:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 0,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="0"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Y Position
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.y)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    y:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 0,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="0"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Size Controls */}
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Width
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.width)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    width:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 1,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="1"
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Height
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(shape.height)}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    height:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 1,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="1"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Border Settings */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-2">
+                                              Border
+                                            </label>
+                                            <div className="flex items-center space-x-2 mb-2">
+                                              <input
+                                                type="color"
+                                                value={shape.borderColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    borderColor: e.target.value,
+                                                  })
+                                                }
+                                                className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={shape.borderColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    borderColor: e.target.value,
+                                                  })
+                                                }
+                                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
+                                                placeholder="#000000"
+                                              />
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                              <span className="text-xs text-gray-600 min-w-[40px]">
+                                                Width:
+                                              </span>
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max="10"
+                                                step="1"
+                                                value={shape.borderWidth}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    borderWidth: parseInt(
+                                                      e.target.value
+                                                    ),
+                                                  })
+                                                }
+                                                className="flex-1 shape-slider"
+                                              />
+                                              <span className="text-xs font-medium text-gray-700 min-w-[25px] text-center">
+                                                {shape.borderWidth}px
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          {/* Fill Settings */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-2">
+                                              Fill
+                                            </label>
+                                            <div className="flex items-center space-x-2 mb-2">
+                                              <input
+                                                type="color"
+                                                value={shape.fillColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    fillColor: e.target.value,
+                                                  })
+                                                }
+                                                className="w-10 h-8 border border-gray-300 rounded cursor-pointer"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={shape.fillColor}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    fillColor: e.target.value,
+                                                  })
+                                                }
+                                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500"
+                                                placeholder="#ffffff"
+                                              />
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                              <span className="text-xs text-gray-600 min-w-[50px]">
+                                                Opacity:
+                                              </span>
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max="1"
+                                                step="0.01"
+                                                value={shape.fillOpacity}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    fillOpacity: parseFloat(
+                                                      e.target.value
+                                                    ),
+                                                  })
+                                                }
+                                                className="flex-1 shape-slider"
+                                              />
+                                              <span className="text-xs font-medium text-gray-700 min-w-[35px] text-center">
+                                                {Math.round(
+                                                  shape.fillOpacity * 100
+                                                )}
+                                                %
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          {/* Rotation */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Rotation
+                                            </label>
+                                            <div className="flex items-center space-x-2">
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max="360"
+                                                step="5"
+                                                value={shape.rotation || 0}
+                                                onChange={(e) =>
+                                                  updateShape(shape.id, {
+                                                    rotation: parseInt(
+                                                      e.target.value
+                                                    ),
+                                                  })
+                                                }
+                                                className="flex-1 shape-slider"
+                                              />
+                                              <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
+                                                {shape.rotation || 0}°
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </Rnd>
+                          ))}
+
+                        {/* Text Field Overlays */}
+                        {textFields
+                          .filter((field) => field.page === currentPage)
+                          .filter(
+                            (field) =>
+                              !field.isFromWorkflow || showWorkflowFields
+                          )
+                          .map((field) => (
+                            <Rnd
+                              key={field.id}
+                              size={{
+                                width: field.width * scale,
+                                height: field.height * scale,
+                              }}
+                              position={{
+                                x: field.x * scale,
+                                y: field.y * scale,
+                              }}
+                              onDrag={(e, d) => {
+                                updateTextField(field.id, {
+                                  x: d.x / scale,
+                                  y: d.y / scale,
+                                });
+                              }}
+                              onDragStop={(e, d) => {
+                                updateTextField(field.id, {
+                                  x: d.x / scale,
+                                  y: d.y / scale,
+                                });
+                              }}
+                              onResizeStop={(
+                                e,
+                                direction,
+                                ref,
+                                delta,
+                                position
+                              ) => {
+                                // Convert scaled dimensions back to original scale
+                                updateTextField(field.id, {
+                                  width: parseInt(ref.style.width) / scale,
+                                  height: parseInt(ref.style.height) / scale,
+                                  x: position.x / scale,
+                                  y: position.y / scale,
+                                });
+                              }}
+                              disableDragging={!isEditMode || isRotating}
+                              enableResizing={false}
+                              bounds="parent"
+                              onClick={(e: { stopPropagation: () => void }) => {
+                                e.stopPropagation();
+                                setSelectedFieldId(field.id);
+                                setIsTextSelectionMode(false);
+                              }}
+                              dragHandleClassName="drag-handle"
+                              dragAxis="both"
+                              dragGrid={[1, 1]}
+                              resizeGrid={[1, 1]}
+                              className={`${
+                                isEditMode
+                                  ? "border-2 border-blue-500"
+                                  : "border-2 border-transparent"
+                              } ${
+                                field.isFromWorkflow
+                                  ? " hover:border-purple-400"
+                                  : "border-gray-300 hover:border-blue-400"
+                              } ${selectedFieldId === field.id ? "" : ""} ${
+                                isRotating && rotatingFieldId === field.id
+                                  ? "border-yellow-500 border-2"
+                                  : ""
+                              } transition-all duration-200 ease-in-out`}
+                              style={{
+                                backgroundColor: "rgba(255, 255, 255, 0.1)",
+                                transition: "transform 0.1s ease-out",
+                                zIndex:
+                                  selectedFieldId === field.id ? 1000 : 100,
+                                transform: "none", // Ensure no additional scaling
+                                cursor:
+                                  isRotating && rotatingFieldId === field.id
+                                    ? "grabbing"
+                                    : "auto",
+                              }}
+                            >
+                              <div className="w-full h-full relative group">
+                                {/* Move handle */}
+                                {isEditMode && selectedFieldId === field.id && (
+                                  <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+                                    {/* Move handle */}
+                                    <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                                      <Move size={10} />
+                                    </div>
+
+                                    {/* Font size controls */}
+                                    <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          updateTextField(field.id, {
+                                            // Adjust font size in original scale
+                                            fontSize: Math.max(
+                                              6,
+                                              field.fontSize - 1
+                                            ),
+                                          });
+                                        }}
+                                        className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
+                                        title="Decrease font size"
+                                      >
+                                        <Minus size={10} />
+                                      </button>
+                                      <span className="text-black text-xs font-medium px-2 min-w-[20px] text-center">
+                                        {/* Display original font size, not scaled */}
+                                        {field.fontSize.toFixed(2)}
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          updateTextField(field.id, {
+                                            // Adjust font size in original scale
+                                            fontSize: Math.min(
+                                              72,
+                                              field.fontSize + 1
+                                            ),
+                                          });
+                                        }}
+                                        className="text-black p-1 hover:bg-gray-100 transition-all duration-200"
+                                        title="Increase font size"
+                                      >
+                                        <Plus size={10} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Delete button */}
+                                {isEditMode &&
+                                  selectedFieldId === field.id &&
+                                  !field.isFromWorkflow && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteTextField(field.id);
+                                      }}
+                                      className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                                    >
+                                      <Trash2 size={10} />
+                                    </button>
+                                  )}
+
+                                {/* Rotation handle - positioned at bottom-right corner */}
+                                {isEditMode && selectedFieldId === field.id && (
+                                  <div
+                                    className="absolute bottom-0 right-0 transform translate-x-1/2 translate-y-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-600 border-2 border-white rounded-full flex items-center justify-center cursor-grab shadow-lg z-20"
+                                    style={{
+                                      cursor:
+                                        isRotating &&
+                                        rotatingFieldId === field.id
+                                          ? "grabbing"
+                                          : "grab",
+                                    }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setIsRotating(true);
+                                      setRotatingFieldId(field.id);
+                                      setInitialRotation(field.rotation || 0);
+
+                                      // Calculate field center for rotation
+                                      const fieldRect =
+                                        e.currentTarget.parentElement?.getBoundingClientRect();
+                                      if (fieldRect) {
+                                        const centerX =
+                                          fieldRect.left + fieldRect.width / 2;
+                                        const centerY =
+                                          fieldRect.top + fieldRect.height / 2;
+                                        setRotationCenter({
+                                          x: centerX,
+                                          y: centerY,
+                                        });
+                                      }
+                                    }}
+                                    title="Hold and drag to rotate"
+                                  >
+                                    <svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      className="text-white"
+                                    >
+                                      <path d="M12 2v20M2 12h20" />
+                                      <path d="m19 9-3 3 3 3" />
+                                      <path d="m5 15 3-3-3-3" />
+                                    </svg>
+                                  </div>
+                                )}
+
+                                {/* Rotation degree indicator - shows during rotation */}
+                                {isRotating && rotatingFieldId === field.id && (
+                                  <div
+                                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black bg-opacity-80 text-white px-3 py-1 rounded-lg text-sm font-semibold shadow-lg z-30 pointer-events-none"
+                                    style={{
+                                      backdropFilter: "blur(4px)",
+                                    }}
+                                  >
+                                    {field.rotation || 0}°
+                                  </div>
+                                )}
+
+                                {/* Field properties */}
+                                {isEditMode && selectedFieldId === field.id && (
+                                  <>
+                                    {/* Settings button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSettingsPopupFor(field.id);
+                                      }}
+                                      className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
+                                        settingsPopupFor === field.id
+                                          ? "bg-gray-100 border-gray-400"
+                                          : ""
+                                      }`}
+                                    >
+                                      <MoreHorizontal
+                                        size={14}
+                                        className="text-gray-600"
+                                      />
+                                    </button>
+
+                                    {/* Settings popup */}
+                                    {settingsPopupFor === field.id && (
+                                      <div
+                                        className=" absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
+                                        style={{
+                                          transform: `translate(0.25rem, 2rem) scale(${Math.max(
+                                            0.6,
+                                            1 / scale
+                                          )})`,
+                                          transformOrigin: "top right",
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <div className="flex justify-between items-center mb-3">
+                                          <h3 className="font-semibold text-gray-800">
+                                            Field Settings
+                                          </h3>
+                                          <button
+                                            onClick={() =>
+                                              setSettingsPopupFor(null)
+                                            }
+                                            className="text-gray-500 hover:text-gray-800"
+                                          >
+                                            <X size={16} />
+                                          </button>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                          <div className="grid grid-cols-2 gap-3">
+                                            {/* Position X */}
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                X Position
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(field.x)}
+                                                onChange={(e) =>
+                                                  updateTextField(field.id, {
+                                                    x:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 0,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="0"
+                                              />
+                                            </div>
+
+                                            {/* Position Y */}
+                                            <div>
+                                              <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                Y Position
+                                              </label>
+                                              <input
+                                                type="number"
+                                                value={Math.round(field.y)}
+                                                onChange={(e) =>
+                                                  updateTextField(field.id, {
+                                                    y:
+                                                      parseInt(
+                                                        e.target.value
+                                                      ) || 0,
+                                                  })
+                                                }
+                                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                min="0"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Font Family */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Font Family
+                                            </label>
+                                            <select
+                                              value={field.fontFamily}
+                                              onChange={(e) =>
+                                                updateTextField(field.id, {
+                                                  fontFamily: e.target.value,
+                                                })
+                                              }
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                            >
+                                              <option value="Arial, sans-serif">
+                                                Arial
+                                              </option>
+                                              <option value="Helvetica, sans-serif">
+                                                Helvetica
+                                              </option>
+                                              <option value="Times New Roman, serif">
+                                                Times New Roman
+                                              </option>
+                                              <option value="Georgia, serif">
+                                                Georgia
+                                              </option>
+                                              <option value="Courier New, monospace">
+                                                Courier New
+                                              </option>
+                                              <option value="Verdana, sans-serif">
+                                                Verdana
+                                              </option>
+                                              <option value="Tahoma, sans-serif">
+                                                Tahoma
+                                              </option>
+                                              <option value="Trebuchet MS, sans-serif">
+                                                Trebuchet MS
+                                              </option>
+                                              <option value="Palatino, serif">
+                                                Palatino
+                                              </option>
+                                              <option value="Lucida Console, monospace">
+                                                Lucida Console
+                                              </option>
+                                            </select>
+                                          </div>
+
+                                          {/* Font Color */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Font Color
+                                            </label>
+                                            <div className="flex items-center space-x-2">
+                                              <input
+                                                type="color"
+                                                value={field.fontColor}
+                                                onChange={(e) =>
+                                                  updateTextField(field.id, {
+                                                    fontColor: e.target.value,
+                                                  })
+                                                }
+                                                className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={field.fontColor}
+                                                onChange={(e) =>
+                                                  updateTextField(field.id, {
+                                                    fontColor: e.target.value,
+                                                  })
+                                                }
+                                                className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
+                                                placeholder="#000000"
+                                              />
+                                            </div>
+                                          </div>
+
+                                          {/* Bold and Italic */}
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-2">
+                                              Text Style
+                                            </label>
+                                            <div className="flex items-center space-x-2">
+                                              <button
+                                                onClick={() =>
+                                                  updateTextField(field.id, {
+                                                    fontWeight:
+                                                      field.fontWeight ===
+                                                      "bold"
+                                                        ? "normal"
+                                                        : "bold",
+                                                  })
+                                                }
+                                                className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center font-bold text-lg transition-all duration-200 ${
+                                                  field.fontWeight === "bold"
+                                                    ? "bg-red-500 text-white border-red-500"
+                                                    : "bg-white text-gray-700 hover:bg-gray-50"
+                                                }`}
+                                                title="Bold"
+                                              >
+                                                B
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  updateTextField(field.id, {
+                                                    fontStyle:
+                                                      field.fontStyle ===
+                                                      "italic"
+                                                        ? "normal"
+                                                        : "italic",
+                                                  })
+                                                }
+                                                className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center italic text-lg transition-all duration-200 ${
+                                                  field.fontStyle === "italic"
+                                                    ? "bg-red-500 text-white border-red-500"
+                                                    : "bg-white text-gray-700 hover:bg-gray-50"
+                                                }`}
+                                                title="Italic"
+                                              >
+                                                I
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Chracter Spacing */}
+                                          <div className="mt-3">
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Character Spacing
+                                            </label>
+                                            <div className="flex items-center">
+                                              <button
+                                                onClick={() => {
+                                                  const current =
+                                                    field.characterSpacing || 0;
+                                                  updateTextField(field.id, {
+                                                    characterSpacing: Math.max(
+                                                      0,
+                                                      current - 0.5
+                                                    ),
+                                                  });
+                                                }}
+                                                className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
+                                              >
+                                                <Minus size={14} />
+                                              </button>
+
+                                              <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
+                                                {field.characterSpacing || 0}px
+                                              </div>
+
+                                              <button
+                                                onClick={() => {
+                                                  const current =
+                                                    field.characterSpacing || 0;
+                                                  updateTextField(field.id, {
+                                                    characterSpacing: Math.min(
+                                                      20,
+                                                      current + 0.5
+                                                    ),
+                                                  });
+                                                }}
+                                                className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
+                                              >
+                                                <Plus size={14} />
+                                              </button>
+                                            </div>
+                                          </div>
+
+                                          {/* Rotation */}
+                                          <div className="mt-3">
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                              Rotation
+                                            </label>
+                                            <div className="flex items-center space-x-2">
+                                              <input
+                                                type="range"
+                                                min="0"
+                                                max="360"
+                                                step="5"
+                                                value={field.rotation || 0}
+                                                onChange={(e) =>
+                                                  updateTextField(field.id, {
+                                                    rotation: parseInt(
+                                                      e.target.value
+                                                    ),
+                                                  })
+                                                }
+                                                className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider-thumb:bg-red-500"
+                                              />
+                                              <span className="text-xs font-medium text-gray-700 min-w-[30px] text-center">
+                                                {field.rotation || 0}°
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* Text content - wrapped in rotating container */}
+                                <div
+                                  className="w-full h-full absolute"
+                                  style={{
+                                    transform: field.rotation
+                                      ? `rotate(${field.rotation}deg)`
+                                      : "none",
+                                    transformOrigin: "center center",
+                                  }}
+                                >
+                                  <textarea
+                                    value={field.value}
+                                    onChange={(e) =>
+                                      updateTextField(field.id, {
+                                        value: e.target.value,
+                                      })
+                                    }
+                                    readOnly={!isEditMode}
+                                    className="absolute w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
+                                    style={{
+                                      fontSize: `${field.fontSize * scale}px`,
+                                      color: field.fontColor,
+                                      fontFamily: field.fontFamily,
+                                      fontWeight: field.fontWeight || "normal",
+                                      fontStyle: field.fontStyle || "normal",
+                                      cursor: "text",
+                                      padding: "1px",
+                                      lineHeight: "1.1",
+                                      wordWrap: "break-word",
+                                      wordBreak: "break-all",
+                                      whiteSpace: "pre-wrap",
+                                      boxSizing: "border-box",
+                                      overflow: "hidden",
+                                      letterSpacing: field.characterSpacing
+                                        ? `${field.characterSpacing}px`
+                                        : "normal",
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedFieldId(field.id);
+                                      setIsTextSelectionMode(false);
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </Rnd>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                    <Edit3 size={64} className="mb-4 text-gray-300" />
+                    <h2 className="text-xl font-semibold mb-2">
+                      Document Editor
+                    </h2>
+                    <p className="text-center mb-6 max-w-md">
+                      Upload a document to start adding and editing text fields.
+                      You can drag, resize, and customize text overlays.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Shape Dropdown - Rendered outside clipping containers */}
+              {shapeDropdownOpen && (
+                <div
+                  className="fixed bg-white border border-gray-200 rounded-lg shadow-lg z-[9999999999] min-w-[140px]"
+                  style={{
+                    top: `${dropdownPosition.top}px`,
+                    left: `${dropdownPosition.left}px`,
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setSelectedShapeType("rectangle");
+                      setShapeDropdownOpen(false);
+                      setShapeDrawingMode("rectangle");
+                      setIsAddTextBoxMode(false);
+                      setIsTextSelectionMode(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm rounded-t-lg ${
+                      selectedShapeType === "rectangle"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700"
+                    }`}
+                  >
+                    <Square size={16} />
+                    Rectangle
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedShapeType("circle");
+                      setShapeDropdownOpen(false);
+                      setShapeDrawingMode("circle");
+                      setIsAddTextBoxMode(false);
+                      setIsTextSelectionMode(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm rounded-b-lg ${
+                      selectedShapeType === "circle"
+                        ? "bg-red-50 text-red-700"
+                        : "text-gray-700"
+                    }`}
+                  >
+                    <Circle size={16} />
+                    Circle
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </TooltipProvider>
