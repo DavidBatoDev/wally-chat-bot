@@ -1378,9 +1378,16 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           const updatedFields = { ...updatedData.fields };
           const valueKey =
             currentTab === "original" ? "value" : "translated_value";
+          const statusKey =
+            currentTab === "original" ? "value_status" : "translated_status";
+
+          // Set status based on whether the value is empty
+          const newStatus = updates.value.trim() === "" ? "pending" : "edited";
+
           updatedFields[fieldId] = {
             ...updatedFields[fieldId],
             [valueKey]: updates.value,
+            [statusKey]: newStatus,
           };
           updatedData.fields = updatedFields;
         }
@@ -2259,8 +2266,6 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
       setFieldStatusDropdownOpen(false);
       setShowRectangles(false); // Hide deletion rectangles during export
 
-      // No text field adjustments needed - export exactly what user sees (WYSIWYG)
-
       // Set zoom to 300% for maximum quality
       setScale(3.0);
       setZoomMode("page");
@@ -2462,28 +2467,188 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         height: canvas.height,
       });
 
-      // Create a new PDF document
+      // Load the export template PDF
+      const templateResponse = await fetch(
+        "/export_template/export_template.pdf"
+      );
+      const templateArrayBuffer = await templateResponse.arrayBuffer();
+      const templatePdfDoc = await PDFDocument.load(templateArrayBuffer);
+
+      // Get the template pages
+      const templatePages = templatePdfDoc.getPages();
+      const templatePage1 = templatePages[0];
+      const templatePage2 = templatePages[1];
+      const templatePage3 = templatePages[2];
+
+      // Get template page dimensions
+      const { width: templateWidth, height: templateHeight } =
+        templatePage1.getSize();
+
+      // Create a new PDF document and copy the template pages
       const pdfDoc = await PDFDocument.create();
 
-      // Use the actual canvas dimensions for the PDF page
-      const pageWidth = canvas.width * 0.75; // Convert pixels to points (1 point = 1.33 pixels)
-      const pageHeight = canvas.height * 0.75;
+      // Copy all three pages from the template
+      const [copiedPage1, copiedPage2, copiedPage3] = await pdfDoc.copyPages(
+        templatePdfDoc,
+        [0, 1, 2]
+      );
 
-      const page = pdfDoc.addPage([pageWidth, pageHeight]);
+      // Add the copied pages to the new document
+      pdfDoc.addPage(copiedPage1);
+      pdfDoc.addPage(copiedPage2);
+      pdfDoc.addPage(copiedPage3);
 
-      // Convert canvas to PNG
+      // Get the added pages for modification
+      const pages = pdfDoc.getPages();
+      const page2 = pages[1]; // Second page for base file
+      const page3 = pages[2]; // Third page for exported content
+
+      // Process the base file (original document) for page 2
+      let baseFileImage;
+      const baseFileUrl =
+        localWorkflowData?.base_file_public_url || documentUrl;
+      const isBaseFilePdf = isPdfFile(baseFileUrl);
+      const isBaseFileImage = isImageFile(baseFileUrl);
+
+      if (isBaseFilePdf) {
+        // For PDF files, we need to convert the first page to an image
+        // We'll use the existing PDF canvas from the viewer
+        const baseFileCanvas = document.createElement("canvas");
+        const baseFileContext = baseFileCanvas.getContext("2d");
+
+        if (baseFileContext && pdfCanvas) {
+          // Copy the original PDF canvas content
+          baseFileCanvas.width = pdfCanvas.width;
+          baseFileCanvas.height = pdfCanvas.height;
+          baseFileContext.drawImage(pdfCanvas, 0, 0);
+
+          // Convert to PNG
+          const baseFileDataUrl = baseFileCanvas.toDataURL("image/png", 1.0);
+          const baseFileImageBytes = await fetch(baseFileDataUrl).then((res) =>
+            res.arrayBuffer()
+          );
+          baseFileImage = await pdfDoc.embedPng(baseFileImageBytes);
+        }
+      } else if (isBaseFileImage) {
+        // For image files, load directly
+        try {
+          const baseFileResponse = await fetch(baseFileUrl);
+          const baseFileArrayBuffer = await baseFileResponse.arrayBuffer();
+
+          // Determine image type and embed accordingly
+          const fileExtension = getCleanExtension(baseFileUrl).toLowerCase();
+          if (fileExtension === "png") {
+            baseFileImage = await pdfDoc.embedPng(baseFileArrayBuffer);
+          } else if (fileExtension === "jpg" || fileExtension === "jpeg") {
+            baseFileImage = await pdfDoc.embedJpg(baseFileArrayBuffer);
+          } else {
+            // For other formats, convert to PNG first
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            await new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              img.src = baseFileUrl;
+            });
+
+            const tempCanvas = document.createElement("canvas");
+            const tempContext = tempCanvas.getContext("2d");
+            tempCanvas.width = img.width;
+            tempCanvas.height = img.height;
+            tempContext?.drawImage(img, 0, 0);
+
+            const convertedDataUrl = tempCanvas.toDataURL("image/png", 1.0);
+            const convertedImageBytes = await fetch(convertedDataUrl).then(
+              (res) => res.arrayBuffer()
+            );
+            baseFileImage = await pdfDoc.embedPng(convertedImageBytes);
+          }
+        } catch (error) {
+          console.error("Error loading base file image:", error);
+        }
+      }
+
+      // Add the base file to the center of page 2 (lowered position)
+      if (baseFileImage) {
+        const baseFileDims = baseFileImage.scale(1);
+
+        // Calculate scale to fit the image within the page while maintaining aspect ratio
+        const maxWidth = templateWidth * 0.8; // Use 80% of page width
+        const maxHeight = templateHeight * 0.8; // Use 80% of page height
+
+        const scaleX = maxWidth / baseFileDims.width;
+        const scaleY = maxHeight / baseFileDims.height;
+        const scale = Math.min(scaleX, scaleY);
+
+        const scaledWidth = baseFileDims.width * scale;
+        const scaledHeight = baseFileDims.height * scale;
+
+        // Center the image on the page horizontally, but lower it vertically
+        const x = (templateWidth - scaledWidth) / 2;
+        const y = (templateHeight - scaledHeight) / 2 - 50; // Lower by 50 points
+
+        // Draw border around the image
+        const borderWidth = 2;
+
+        page2.drawRectangle({
+          x: x - borderWidth,
+          y: y - borderWidth,
+          width: scaledWidth + borderWidth * 2,
+          height: scaledHeight + borderWidth * 2,
+          borderColor: rgb(0, 0, 0), // Black border
+          borderWidth: borderWidth,
+        });
+
+        page2.drawImage(baseFileImage, {
+          x,
+          y,
+          width: scaledWidth,
+          height: scaledHeight,
+        });
+      }
+
+      // Convert the captured canvas to PNG for page 3
       const canvasDataUrl = canvas.toDataURL("image/png", 1.0);
       const pngImageBytes = await fetch(canvasDataUrl).then((res) =>
         res.arrayBuffer()
       );
       const pngImage = await pdfDoc.embedPng(pngImageBytes);
 
-      // Draw the full captured image on the PDF page
-      page.drawImage(pngImage, {
-        x: 0,
-        y: 0,
-        width: pageWidth,
-        height: pageHeight,
+      // Add the exported content to the center of page 3 (lowered position)
+      const exportedDims = pngImage.scale(1);
+
+      // Calculate scale to fit the exported content within the page while maintaining aspect ratio
+      const maxExportWidth = templateWidth * 0.8; // Use 80% of page width
+      const maxExportHeight = templateHeight * 0.8; // Use 80% of page height
+
+      const exportScaleX = maxExportWidth / exportedDims.width;
+      const exportScaleY = maxExportHeight / exportedDims.height;
+      const exportScale = Math.min(exportScaleX, exportScaleY);
+
+      const exportedScaledWidth = exportedDims.width * exportScale;
+      const exportedScaledHeight = exportedDims.height * exportScale;
+
+      // Center the exported content on the page horizontally, but lower it vertically
+      const exportX = (templateWidth - exportedScaledWidth) / 2;
+      const exportY = (templateHeight - exportedScaledHeight) / 2 - 50; // Lower by 50 points
+
+      // Draw border around the exported content
+      const exportBorderWidth = 2;
+
+      page3.drawRectangle({
+        x: exportX - exportBorderWidth,
+        y: exportY - exportBorderWidth,
+        width: exportedScaledWidth + exportBorderWidth * 2,
+        height: exportedScaledHeight + exportBorderWidth * 2,
+        borderColor: rgb(0, 0, 0), // Black border
+        borderWidth: exportBorderWidth,
+      });
+
+      page3.drawImage(pngImage, {
+        x: exportX,
+        y: exportY,
+        width: exportedScaledWidth,
+        height: exportedScaledHeight,
       });
 
       // Save and download the PDF
@@ -5230,6 +5395,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                                       ],
                                                                       value:
                                                                         newValue,
+                                                                      value_status:
+                                                                        newValue.trim() ===
+                                                                        ""
+                                                                          ? "pending"
+                                                                          : "edited",
                                                                     };
                                                                   }
                                                                   return {
@@ -5321,6 +5491,11 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                                         ],
                                                                         translated_value:
                                                                           newValue,
+                                                                        translated_status:
+                                                                          newValue.trim() ===
+                                                                          ""
+                                                                            ? "pending"
+                                                                            : "edited",
                                                                       };
                                                                     }
                                                                     return {
@@ -5351,7 +5526,8 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                               field.fieldKey
                                                             }
                                                             conversationId={
-                                                              conversationId || ""
+                                                              conversationId ||
+                                                              ""
                                                             }
                                                             originalValue={
                                                               localWorkflowData
@@ -5360,18 +5536,38 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                                   ""
                                                               ]?.value
                                                             }
-                                                            setTranslatedValue={(val) => {
-                                                              const fieldKey = field.fieldKey;
-                                                              if (localWorkflowData?.fields &&fieldKey) {
+                                                            setTranslatedValue={(
+                                                              val
+                                                            ) => {
+                                                              const fieldKey =
+                                                                field.fieldKey;
+                                                              if (
+                                                                localWorkflowData?.fields &&
+                                                                fieldKey
+                                                              ) {
                                                                 setLocalWorkflowData(
                                                                   (prev) => {
-                                                                    if (!prev) return prev;
-                                                                    const updatedFields ={ ...prev.fields,};
-                                                                    if (updatedFields[fieldKey]) {
-                                                                      updatedFields[fieldKey] = {
-                                                                        ...updatedFields[fieldKey],
-                                                                        translated_value:val,
-                                                                        translated_status: "translated"
+                                                                    if (!prev)
+                                                                      return prev;
+                                                                    const updatedFields =
+                                                                      {
+                                                                        ...prev.fields,
+                                                                      };
+                                                                    if (
+                                                                      updatedFields[
+                                                                        fieldKey
+                                                                      ]
+                                                                    ) {
+                                                                      updatedFields[
+                                                                        fieldKey
+                                                                      ] = {
+                                                                        ...updatedFields[
+                                                                          fieldKey
+                                                                        ],
+                                                                        translated_value:
+                                                                          val,
+                                                                        translated_status:
+                                                                          "translated",
                                                                       };
                                                                     }
                                                                     return {
