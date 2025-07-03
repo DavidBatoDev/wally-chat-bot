@@ -10,27 +10,38 @@ interface ChatSidebarProps {
   activeConversationId?: string;
   onNewConversation: () => Promise<void>;
   className?: string;
+  isOpen?: boolean;
+  onToggle?: (isOpen: boolean) => void;
 }
 
 export default function ChatSidebar({
   activeConversationId,
   onNewConversation,
-  className = ""
+  className = "",
+  isOpen: externalIsOpen,
+  onToggle,
 }: ChatSidebarProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [internalIsOpen, setInternalIsOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Use external control if provided, otherwise use internal state
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
+  const setIsOpen = onToggle || setInternalIsOpen;
 
   // Handle responsive behavior
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      
-      // Auto-close on mobile, auto-open on desktop
-      if (mobile) {
-        setIsOpen(false);
-      } else {
-        setIsOpen(true);
+
+      // Only auto-control if not externally controlled
+      if (externalIsOpen === undefined) {
+        // Auto-close on mobile, auto-open on desktop
+        if (mobile) {
+          setInternalIsOpen(false);
+        } else {
+          setInternalIsOpen(true);
+        }
       }
     };
 
@@ -38,9 +49,9 @@ export default function ChatSidebar({
     handleResize();
 
     // Add event listener
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [externalIsOpen]);
 
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
@@ -63,27 +74,27 @@ export default function ChatSidebar({
     <>
       {/* Mobile overlay */}
       {isMobile && isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <div 
+      <div
         className={`${
-          isOpen ? 'w-64 md:w-80' : 'w-0'
+          isOpen ? "w-64 md:w-80" : "w-0"
         } border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out overflow-hidden ${
-          isMobile ? 'fixed' : 'relative'
+          isMobile ? "fixed" : "relative"
         } z-50 bg-white h-full ${className}`}
       >
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-200 flex justify-between items-center">
           <h1 className="text-xl font-bold truncate">Conversations</h1>
           <div className="flex items-center space-x-1">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleNewConversation}
               title="New Conversation"
               className="h-8 w-8"
@@ -101,10 +112,10 @@ export default function ChatSidebar({
             </Button>
           </div>
         </div>
-        
+
         {/* Conversation List */}
         <div className="flex-1 overflow-hidden">
-          <ConversationList 
+          <ConversationList
             activeConversationId={activeConversationId}
             onNewConversation={handleNewConversation}
           />

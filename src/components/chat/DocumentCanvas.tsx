@@ -1695,7 +1695,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     const heightPadding = Math.max(fontSize * 0.2, 4); // At least 20% of font size or 4px
 
     return {
-      width: Math.max(width + padding, 5),
+      width: Math.max(width + padding + 5, 5),
       height: Math.max(height + heightPadding, fontSize), // Ensure minimum height is at least font size
     };
   };
