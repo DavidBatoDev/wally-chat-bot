@@ -32,6 +32,8 @@ import {
   File,
   FileText,
   Languages,
+  Loader2,
+  Undo,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -42,11 +44,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 // Add the useWorkflowData hook import
 import { useWorkflowData } from "./DocumentCanvas/hooks/useWorkflowData";
 import { WorkflowData, TemplateMapping } from "./DocumentCanvas/types/workflow";
 import api from "@/lib/api";
+import { getLanguageCode } from "@/lib/languageUtils";
 
 // Helper function to generate UUID
 const generateUUID = (): string => {
@@ -279,6 +283,109 @@ interface Shape {
 // Add tab type
 type TabType = "document" | "original" | "translated";
 
+interface TranslateFieldButtonProps {
+  fieldKey: string;
+  conversationId: string;
+  originalValue: string;
+  setTranslatedValue: (val: string) => void;
+  translateTo: string;
+  translateFrom?: string;
+}
+
+const TranslateFieldButton: React.FC<TranslateFieldButtonProps> = ({
+  fieldKey,
+  conversationId,
+  originalValue,
+  setTranslatedValue,
+  translateTo,
+  translateFrom,
+}) => {
+  const [loading, setLoading] = React.useState(false);
+  const [hasBeenTranslated, setHasBeenTranslated] = React.useState(false);
+  const [prevValue, setPrevValue] = React.useState<string>("");
+
+  const handleTranslate = async () => {
+    if (!originalValue) return;
+    if (hasBeenTranslated) {
+      setTranslatedValue(prevValue);
+      setHasBeenTranslated(false);
+      return;
+    }
+    setLoading(true);
+    setPrevValue("");
+    try {
+      setPrevValue("");
+      const targetLanguage = getLanguageCode(translateTo);
+      const sourceLanguage = translateFrom
+        ? getLanguageCode(translateFrom)
+        : undefined;
+      setPrevValue("");
+      const response = await api.post(
+        `api/workflow/${conversationId}/translate-field`,
+        {
+          field_key: fieldKey,
+          target_language: targetLanguage,
+          source_language: sourceLanguage,
+          use_gemini: false,
+        }
+      );
+      if (response.data.success) {
+        setPrevValue("");
+        setTranslatedValue(response.data.translated_value);
+        setHasBeenTranslated(true);
+      } else {
+        throw new Error(response.data.message || "Translation failed");
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Field translation error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleTranslate}
+            disabled={loading || !originalValue}
+            className="h-7 text-xs whitespace-nowrap"
+          >
+            {loading ? (
+              <span className="flex items-center">
+                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ...
+              </span>
+            ) : hasBeenTranslated ? (
+              <span className="flex items-center">
+                <Undo size={12} className="mr-1" />
+                Undo
+              </span>
+            ) : (
+              <span className="flex items-center">
+                <Languages size={12} className="mr-1" />
+              </span>
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>
+            {!originalValue
+              ? "No original value to translate from"
+              : hasBeenTranslated
+              ? "Undo translation and restore original value"
+              : "Translate field based on the original value"}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   isOpen,
   onClose,
@@ -301,6 +408,9 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
   // Add unsaved changes tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+
+  // Add translate all state
+  const [isTranslatingAll, setIsTranslatingAll] = useState<boolean>(false);
   const [initialWorkflowData, setInitialWorkflowData] =
     useState<WorkflowData | null>(null);
   const [showSaveConfirmation, setShowSaveConfirmation] =
@@ -2556,6 +2666,80 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
     }
   };
 
+  const translateAllFields = async () => {
+    if (
+      !localWorkflowData ||
+      !conversationId ||
+      !localWorkflowData.translate_to
+    )
+      return;
+
+    setIsTranslatingAll(true);
+    setError("");
+
+    try {
+      const translateRequest = {
+        target_language: localWorkflowData.translate_to,
+        source_language: localWorkflowData.translate_from,
+        use_gemini: true,
+        force_retranslate: false,
+      };
+
+      const response = await api.post(
+        `/api/workflow/${conversationId}/translate-all-fields`,
+        translateRequest
+      );
+
+      if (response.data.success) {
+        // Update local workflow data with translated values
+        const updatedFields = { ...localWorkflowData.fields };
+
+        // Apply translations to fields
+        Object.entries(response.data.translated_fields).forEach(
+          ([fieldKey, translatedValue]) => {
+            if (updatedFields[fieldKey]) {
+              updatedFields[fieldKey] = {
+                ...updatedFields[fieldKey],
+                translated_value: translatedValue as string,
+                translated_status: "translated",
+              };
+            }
+          }
+        );
+
+        // Update local workflow data
+        setLocalWorkflowData({
+          ...localWorkflowData,
+          fields: updatedFields,
+        });
+
+        setHasUnsavedChanges(true);
+        console.log(
+          `Successfully translated ${
+            Object.keys(response.data.translated_fields).length
+          } fields`
+        );
+
+        if (Object.keys(response.data.skipped_fields).length > 0) {
+          console.log("Skipped fields:", response.data.skipped_fields);
+        }
+      } else {
+        throw new Error(response.data.message || "Failed to translate fields");
+      }
+    } catch (error: any) {
+      console.error("Error translating fields:", error);
+      let errorMessage = "Failed to translate fields";
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      setError(errorMessage);
+    } finally {
+      setIsTranslatingAll(false);
+    }
+  };
+
   const handleClose = () => {
     if (hasUnsavedChanges) {
       setShowSaveConfirmation(true);
@@ -3337,97 +3521,163 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
 
                     {/* Right side - Export actions - Only show for template tabs */}
                     {showControls && (
-                      <div className="flex items-center gap-2">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <motion.button
-                              onClick={saveChanges}
-                              disabled={
-                                !documentUrl || !hasUnsavedChanges || isSaving
-                              }
-                              className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group relative overflow-hidden ${
-                                hasUnsavedChanges
-                                  ? isSaving
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <motion.button
+                                onClick={saveChanges}
+                                disabled={
+                                  !documentUrl || !hasUnsavedChanges || isSaving
+                                }
+                                className={`px-3 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center group relative overflow-hidden ${
+                                  hasUnsavedChanges
+                                    ? isSaving
+                                      ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-blue-200"
+                                      : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-green-200 hover:from-green-600 hover:to-green-700"
+                                    : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
+                                }`}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                {isSaving ? (
+                                  <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{
+                                      duration: 1,
+                                      repeat: Infinity,
+                                      ease: "linear",
+                                    }}
+                                    className="w-[18px] h-[18px] border-2 border-white border-t-transparent rounded-full"
+                                  />
+                                ) : (
+                                  <Save
+                                    size={18}
+                                    className="group-hover:scale-110 transition-transform"
+                                  />
+                                )}
+
+                                {/* Saving shimmer effect */}
+                                {isSaving && (
+                                  <motion.div
+                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                                    animate={{
+                                      x: ["-100%", "100%"],
+                                    }}
+                                    transition={{
+                                      duration: 1.5,
+                                      repeat: Infinity,
+                                      ease: "easeInOut",
+                                    }}
+                                  />
+                                )}
+                              </motion.button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                              <p>
+                                {isSaving
+                                  ? "Saving changes..."
+                                  : hasUnsavedChanges
+                                  ? "Save Changes"
+                                  : "No changes to save"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={exportToPDF}
+                                className="px-3 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 shadow-gray-100"
+                                disabled={isLoading || !documentUrl}
+                              >
+                                {isLoading ? (
+                                  <div
+                                    className={`w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin`}
+                                  />
+                                ) : (
+                                  <Download
+                                    size={18}
+                                    className="group-hover:scale-110 transition-transform"
+                                  />
+                                )}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
+                              <p>
+                                {isLoading
+                                  ? "Exporting PDF..."
+                                  : hasUnsavedChanges
+                                  ? "Export to PDF (You have unsaved changes)"
+                                  : "Export to PDF"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+
+                        {/* Translate All Button - Only show on translated tab */}
+                        {currentTab === "translated" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <motion.button
+                                onClick={translateAllFields}
+                                disabled={
+                                  !documentUrl ||
+                                  !localWorkflowData?.translate_to ||
+                                  isTranslatingAll ||
+                                  !localWorkflowData?.fields ||
+                                  Object.keys(localWorkflowData.fields)
+                                    .length === 0
+                                }
+                                className={`px-3 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group ${
+                                  isTranslatingAll
                                     ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-blue-200"
-                                    : "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-green-200 hover:from-green-600 hover:to-green-700"
-                                  : "bg-white hover:bg-red-50 text-red-700 border border-red-200 hover:border-red-300"
-                              }`}
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                            >
-                              {isSaving ? (
-                                <motion.div
-                                  animate={{ rotate: 360 }}
-                                  transition={{
-                                    duration: 1,
-                                    repeat: Infinity,
-                                    ease: "linear",
-                                  }}
-                                  className="w-[18px] h-[18px] border-2 border-white border-t-transparent rounded-full"
-                                />
-                              ) : (
-                                <Save
-                                  size={18}
-                                  className="group-hover:scale-110 transition-transform"
-                                />
-                              )}
-
-                              {/* Saving shimmer effect */}
-                              {isSaving && (
-                                <motion.div
-                                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                                  animate={{
-                                    x: ["-100%", "100%"],
-                                  }}
-                                  transition={{
-                                    duration: 1.5,
-                                    repeat: Infinity,
-                                    ease: "easeInOut",
-                                  }}
-                                />
-                              )}
-                            </motion.button>
-                          </TooltipTrigger>
-                          <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                            <p>
-                              {isSaving
-                                ? "Saving changes..."
-                                : hasUnsavedChanges
-                                ? "Save Changes"
-                                : "No changes to save"}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              onClick={exportToPDF}
-                              className="px-3 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center group bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 hover:border-gray-300 shadow-gray-100"
-                              disabled={isLoading || !documentUrl}
-                            >
-                              {isLoading ? (
-                                <div
-                                  className={`w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin`}
-                                />
-                              ) : (
-                                <Download
-                                  size={18}
-                                  className="group-hover:scale-110 transition-transform"
-                                />
-                              )}
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent className="bg-white border border-gray-200 text-red-600 rounded-lg shadow-lg">
-                            <p>
-                              {isLoading
-                                ? "Exporting PDF..."
-                                : hasUnsavedChanges
-                                ? "Export to PDF (You have unsaved changes)"
-                                : "Export to PDF"}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
+                                    : "bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-purple-200 hover:from-purple-600 hover:to-purple-700"
+                                } ${
+                                  !documentUrl ||
+                                  !localWorkflowData?.translate_to ||
+                                  !localWorkflowData?.fields ||
+                                  Object.keys(localWorkflowData.fields)
+                                    .length === 0
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : ""
+                                }`}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                {isTranslatingAll ? (
+                                  <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{
+                                      duration: 1,
+                                      repeat: Infinity,
+                                      ease: "linear",
+                                    }}
+                                    className="w-[18px] h-[18px] border-2 border-white border-t-transparent rounded-full"
+                                  />
+                                ) : (
+                                  <Languages
+                                    size={18}
+                                    className="group-hover:scale-110 transition-transform"
+                                  />
+                                )}
+                              </motion.button>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-white border border-gray-200 text-purple-600 rounded-lg shadow-lg">
+                              <p>
+                                {isTranslatingAll
+                                  ? "Translating all fields..."
+                                  : !localWorkflowData?.translate_to
+                                  ? "No target language set"
+                                  : !localWorkflowData?.fields ||
+                                    Object.keys(localWorkflowData.fields)
+                                      .length === 0
+                                  ? "No fields to translate"
+                                  : "Translate All Fields"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                     )}
                   </div>
@@ -5029,70 +5279,118 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                                       </label>
                                                       {currentTab ===
                                                       "translated" ? (
-                                                        <textarea
-                                                          value={
-                                                            localWorkflowData
-                                                              ?.fields?.[
-                                                              field.fieldKey ||
-                                                                ""
-                                                            ]
-                                                              ?.translated_value ||
-                                                            ""
-                                                          }
-                                                          onChange={(e) => {
-                                                            // Update workflow data and text field
-                                                            const newValue =
-                                                              e.target.value;
-                                                            const fieldKey =
-                                                              field.fieldKey;
-                                                            if (
-                                                              localWorkflowData?.fields &&
-                                                              fieldKey
-                                                            ) {
-                                                              setLocalWorkflowData(
-                                                                (prev) => {
-                                                                  if (!prev)
-                                                                    return prev;
-                                                                  const updatedFields =
-                                                                    {
-                                                                      ...prev.fields,
-                                                                    };
-                                                                  if (
-                                                                    updatedFields[
-                                                                      fieldKey
-                                                                    ]
-                                                                  ) {
-                                                                    updatedFields[
-                                                                      fieldKey
-                                                                    ] = {
-                                                                      ...updatedFields[
+                                                        <div className="flex items-center space-x-2">
+                                                          <textarea
+                                                            value={
+                                                              localWorkflowData
+                                                                ?.fields?.[
+                                                                field.fieldKey ||
+                                                                  ""
+                                                              ]
+                                                                ?.translated_value ||
+                                                              ""
+                                                            }
+                                                            onChange={(e) => {
+                                                              // Update workflow data and text field
+                                                              const newValue =
+                                                                e.target.value;
+                                                              const fieldKey =
+                                                                field.fieldKey;
+                                                              if (
+                                                                localWorkflowData?.fields &&
+                                                                fieldKey
+                                                              ) {
+                                                                setLocalWorkflowData(
+                                                                  (prev) => {
+                                                                    if (!prev)
+                                                                      return prev;
+                                                                    const updatedFields =
+                                                                      {
+                                                                        ...prev.fields,
+                                                                      };
+                                                                    if (
+                                                                      updatedFields[
                                                                         fieldKey
-                                                                      ],
-                                                                      translated_value:
-                                                                        newValue,
-                                                                    };
+                                                                      ]
+                                                                    ) {
+                                                                      updatedFields[
+                                                                        fieldKey
+                                                                      ] = {
+                                                                        ...updatedFields[
+                                                                          fieldKey
+                                                                        ],
+                                                                        translated_value:
+                                                                          newValue,
+                                                                      };
+                                                                    }
+                                                                    return {
+                                                                      ...prev,
+                                                                      fields:
+                                                                        updatedFields,
+                                                                    } as WorkflowData;
                                                                   }
-                                                                  return {
-                                                                    ...prev,
-                                                                    fields:
-                                                                      updatedFields,
-                                                                  } as WorkflowData;
+                                                                );
+                                                              }
+                                                              // Update text field value since we're on translated tab
+                                                              updateTextField(
+                                                                field.id,
+                                                                {
+                                                                  value:
+                                                                    newValue,
                                                                 }
                                                               );
+                                                              markAsUnsaved();
+                                                            }}
+                                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
+                                                            placeholder="Enter translated value..."
+                                                            rows={2}
+                                                          />
+                                                          {/* Translate Button */}
+                                                          <TranslateFieldButton
+                                                            fieldKey={
+                                                              field.fieldKey
                                                             }
-                                                            // Update text field value since we're on translated tab
-                                                            updateTextField(
-                                                              field.id,
-                                                              {
-                                                                value: newValue,
+                                                            conversationId={
+                                                              conversationId || ""
+                                                            }
+                                                            originalValue={
+                                                              localWorkflowData
+                                                                ?.fields?.[
+                                                                field.fieldKey ||
+                                                                  ""
+                                                              ]?.value
+                                                            }
+                                                            setTranslatedValue={(val) => {
+                                                              const fieldKey = field.fieldKey;
+                                                              if (localWorkflowData?.fields &&fieldKey) {
+                                                                setLocalWorkflowData(
+                                                                  (prev) => {
+                                                                    if (!prev) return prev;
+                                                                    const updatedFields ={ ...prev.fields,};
+                                                                    if (updatedFields[fieldKey]) {
+                                                                      updatedFields[fieldKey] = {
+                                                                        ...updatedFields[fieldKey],
+                                                                        translated_value:val,
+                                                                        translated_status: "translated"
+                                                                      };
+                                                                    }
+                                                                    return {
+                                                                      ...prev,
+                                                                      fields:
+                                                                        updatedFields,
+                                                                    } as WorkflowData;
+                                                                  }
+                                                                );
                                                               }
-                                                            );
-                                                            markAsUnsaved();
-                                                          }}
-                                                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all duration-200 resize-none"
-                                                          placeholder="Enter translated value..."
-                                                          rows={2}
-                                                        />
+                                                            }}
+                                                            translateTo={
+                                                              localWorkflowData?.translate_to
+                                                            }
+                                                            translateFrom={
+                                                              localWorkflowData?.translate_from
+                                                            }
+                                                          />
+                                                        </div>
                                                       ) : (
                                                         <div className="w-full px-3 py-2 text-sm text-gray-600 rounded-lg min-h-[24px] whitespace-pre-wrap">
                                                           {localWorkflowData
