@@ -12,7 +12,7 @@ import {
   UploadButtonMessage,
   FileCardMessage,
   FileMessage,
-  MessageStatus
+  MessageStatus,
 } from "./messages";
 
 interface ChatContainerProps {
@@ -23,6 +23,7 @@ interface ChatContainerProps {
   loading?: boolean;
   isConnected?: boolean;
   conversationId?: string;
+  isWorkflowRunning?: boolean;
 }
 
 const ChatContainer: React.FC<ChatContainerProps> = ({
@@ -33,9 +34,10 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   loading = false,
   isConnected = false,
   conversationId = "",
+  isWorkflowRunning = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   // Messages are already parsed by the hook, so we can use them directly
   const displayMessages = messages;
   const hasMessages = displayMessages.length > 0;
@@ -47,8 +49,21 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
     }
   }, [displayMessages, hasMessages]);
 
+  // Scroll to bottom when thinking animation appears
+  useEffect(() => {
+    if (isWorkflowRunning) {
+      // Small delay to ensure the thinking animation is rendered
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, [isWorkflowRunning]);
+
   // Handle button clicks - simplified
-  const handleButtonClick = (action: string, values: Record<string, any> = {}) => {
+  const handleButtonClick = (
+    action: string,
+    values: Record<string, any> = {}
+  ) => {
     console.log("Button clicked:", action, values);
     onActionClick(action, values);
   };
@@ -56,8 +71,8 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
   // Convert backend message timestamp to display format
   const formatTimestamp = (created_at: string): string => {
     return new Date(created_at).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -68,17 +83,17 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       body: msg.body,
       onButtonClick: handleButtonClick,
       onFileUploaded,
-      conversationId
+      conversationId,
     };
 
     switch (msg.kind) {
-      case 'text':
+      case "text":
         return <TextMessage body={msg.body} isUser={isUser} />;
-      case 'upload_button':
+      case "upload_button":
         return <UploadButtonMessage {...commonProps} />;
-      case 'file_card':
+      case "file_card":
         return <FileCardMessage {...commonProps} />;
-      case 'file':
+      case "file":
         return <FileMessage {...commonProps} />;
       default:
         // Fallback for unknown kinds - treat as text
@@ -91,22 +106,22 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* Chat header with real-time status */}
       <div className="flex items-center justify-between p-3 border-b border-gray-100">
         <h2 className="text-lg font-medium">Wally ChatBot</h2>
-        
+
         {/* Real-time connection status */}
         <ConnectionStatus isConnected={isConnected} />
       </div>
-     
+
       {/* Messages container or No Messages component */}
       <div className="flex-1 overflow-y-auto">
-        {!hasMessages && !loading ? (
-          /* Show NoMessagesComponent when there are no messages */
+        {!hasMessages && !loading && !isWorkflowRunning ? (
+          /* Show NoMessagesComponent when there are no messages and no workflow running */
           <NoMessagesComponent
             onSendMessage={onSendMessage}
             onFileUploaded={onFileUploaded}
             conversationId={conversationId}
           />
         ) : (
-          /* Show messages when they exist */
+          /* Show messages when they exist or workflow is running */
           <div className="p-4 space-y-4 max-w-3xl mx-auto w-full">
             {displayMessages.map((msg) => (
               <MessageWrapper
@@ -118,26 +133,29 @@ const ChatContainer: React.FC<ChatContainerProps> = ({
                 {renderMessageContent(msg)}
               </MessageWrapper>
             ))}
-           
-            {loading && (
+
+            {/* Show thinking animation when workflow is running */}
+            {isWorkflowRunning && (
               <div className="flex justify-start mb-4">
-                <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-3 animate-pulse">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
-                  <span className="text-sm text-gray-500">Thinking...</span>
+                <div className="flex items-center space-x-3 bg-gray-100 rounded-2xl px-4 py-3 max-w-xs">
+                  <Loader2 className="h-4 w-4 animate-spin text-wally" />
+                  <span className="text-sm text-gray-600">
+                    Wally is thinking...
+                  </span>
                 </div>
               </div>
             )}
-           
+
             <div ref={messagesEndRef} />
           </div>
         )}
       </div>
-     
+
       {/* Chat input - always visible */}
       <ChatInput
         onSendMessage={onSendMessage}
         placeholder="Type a message..."
-        disabled={loading}
+        disabled={loading || isWorkflowRunning}
       />
     </div>
   );

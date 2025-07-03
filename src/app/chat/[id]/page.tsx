@@ -34,6 +34,7 @@ export default function ChatPage() {
     createNewConversation,
     handleFileUploaded,
     isConnected,
+    isWorkflowRunning,
   } = useChat({
     conversationId,
   });
@@ -298,6 +299,7 @@ export default function ChatPage() {
             onFileUploaded={handleFileUploadedWithWorkflowCheck}
             isConnected={isConnected}
             conversationId={conversationId}
+            isWorkflowRunning={isWorkflowRunning}
           />
         </div>
       </div>
