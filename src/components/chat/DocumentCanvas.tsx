@@ -400,7 +400,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
   } = useWorkflowData(conversationId || "");
 
   // Add tab state
-  const [currentTab, setCurrentTab] = useState<TabType>("document");
+  const [currentTab, setCurrentTab] = useState<TabType>("original");
 
   // Local editable copy of workflow data
   const [localWorkflowData, setLocalWorkflowData] =
