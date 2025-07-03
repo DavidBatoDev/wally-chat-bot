@@ -5906,7 +5906,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                         })
                                       }
                                       readOnly={!isEditMode}
-                                      className="absolute w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
+                                      className="absolute top-0 left-0 w-full h-full resize-none border-none outline-none bg-transparent transition-all duration-200"
                                       style={{
                                         fontSize: `${field.fontSize * scale}px`,
                                         color: field.fontColor,
@@ -5915,7 +5915,7 @@ const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                                           field.fontWeight || "normal",
                                         fontStyle: field.fontStyle || "normal",
                                         cursor: "text",
-                                        padding: "2px",
+                                        paddingBottom: "1px",
                                         lineHeight: "1.1",
                                         wordWrap: "break-word",
                                         wordBreak: "break-all",
