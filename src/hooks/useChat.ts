@@ -1,7 +1,7 @@
 // client/src/hooks/useChat.ts
-import { useState, useEffect, useCallback, useRef } from 'react';
-import chatApi, { BackendMessage } from '@/lib/api/chatApi';
-import { createClient } from '@supabase/supabase-js';
+import { useState, useEffect, useCallback, useRef } from "react";
+import chatApi, { BackendMessage } from "@/lib/api/chatApi";
+import { createClient } from "@supabase/supabase-js";
 
 interface UseChatProps {
   conversationId?: string;
@@ -14,8 +14,15 @@ export type MessageStatus = "sending" | "sent" | "error";
 export interface ParsedMessage {
   id: string;
   conversation_id: string;
-  sender: 'user' | 'assistant';
-  kind: 'text' | 'action' | 'buttons' | 'file_card' | 'file_upload' | 'upload_button' | 'file';
+  sender: "user" | "assistant";
+  kind:
+    | "text"
+    | "action"
+    | "buttons"
+    | "file_card"
+    | "file_upload"
+    | "upload_button"
+    | "file";
   body: any; // This will be the parsed JSON object
   created_at: string;
   status?: MessageStatus; // Add status field
@@ -41,6 +48,7 @@ interface UseChatReturn {
   onViewFile: (fileData: any) => void;
   clearViewFile: () => void;
   isConnected: boolean;
+  isWorkflowRunning: boolean; // New state to track workflow status
 }
 
 // Initialize Supabase client
@@ -48,23 +56,27 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export default function useChat({ 
+export default function useChat({
   conversationId: initialConversationId,
-  initialMessages = []
+  initialMessages = [],
 }: UseChatProps = {}): UseChatReturn {
   const [messages, setMessages] = useState<ParsedMessage[]>([]);
   const [documentState, setDocumentState] = useState<DocumentState>({
     isOpen: false,
-    fileData: null
+    fileData: null,
   });
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(initialConversationId);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | undefined
+  >(initialConversationId);
   const [isConnected, setIsConnected] = useState<boolean>(false);
-  
+  const [isWorkflowRunning, setIsWorkflowRunning] = useState<boolean>(false);
+
   // Use ref to track subscription to avoid stale closures
   const subscriptionRef = useRef<any>(null);
   const messagesRef = useRef<ParsedMessage[]>([]);
+  const workflowTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -72,30 +84,81 @@ export default function useChat({
   }, [messages]);
 
   // Generate temporary ID for optimistic updates
-  const generateTempId = () => `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const generateTempId = () =>
+    `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  // Check if a message indicates workflow completion
+  const isWorkflowCompletionMessage = (message: ParsedMessage): boolean => {
+    // Check for specific message kinds that indicate workflow completion
+    const completionKinds = ["buttons", "file_card", "upload_button"];
+    if (completionKinds.includes(message.kind)) {
+      return true;
+    }
+
+    // Check for text messages that might indicate completion
+    if (message.kind === "text" && message.body?.text) {
+      const text = message.body.text.toLowerCase();
+      // Look for completion indicators in the text
+      const completionIndicators = [
+        "task completed",
+        "workflow completed",
+        "analysis complete",
+        "document ready",
+        "translation complete",
+      ];
+      return completionIndicators.some((indicator) => text.includes(indicator));
+    }
+
+    return false;
+  };
+
+  // Set a timeout to stop workflow thinking animation as a fallback
+  const setWorkflowTimeout = () => {
+    if (workflowTimeoutRef.current) {
+      clearTimeout(workflowTimeoutRef.current);
+    }
+
+    // Stop thinking animation after 30 seconds as a fallback
+    workflowTimeoutRef.current = setTimeout(() => {
+      console.log("Workflow timeout reached, stopping thinking animation");
+      setIsWorkflowRunning(false);
+    }, 30000);
+  };
+
+  // Clear workflow timeout
+  const clearWorkflowTimeout = () => {
+    if (workflowTimeoutRef.current) {
+      clearTimeout(workflowTimeoutRef.current);
+      workflowTimeoutRef.current = null;
+    }
+  };
 
   // Parse a single backend message into our component-friendly format
   const parseMessage = (backendMessage: BackendMessage): ParsedMessage => {
     let parsedBody;
-    
+
     try {
       // Try to parse the body as JSON
       parsedBody = JSON.parse(backendMessage.body);
     } catch {
       // If parsing fails, treat it as plain text
-      console.warn('Failed to parse message body as JSON, treating as plain text');
+      console.warn(
+        "Failed to parse message body as JSON, treating as plain text"
+      );
       parsedBody = { text: backendMessage.body };
     }
 
     return {
       ...backendMessage,
       body: parsedBody,
-      status: 'sent' // Backend messages are always considered sent
+      status: "sent", // Backend messages are always considered sent
     };
   };
 
   // Parse multiple backend messages
-  const parseMessages = (backendMessages: BackendMessage[]): ParsedMessage[] => {
+  const parseMessages = (
+    backendMessages: BackendMessage[]
+  ): ParsedMessage[] => {
     return backendMessages.map(parseMessage);
   };
 
@@ -104,20 +167,20 @@ export default function useChat({
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('Loading initial messages for conversation:', conversationId);
-      
+
+      console.log("Loading initial messages for conversation:", conversationId);
+
       // Get raw backend messages
       const backendMessages = await chatApi.getMessages(conversationId);
-      
+
       // Parse them in our hook
       const parsedMessages = parseMessages(backendMessages);
-      
-      console.log('Loaded initial messages:', parsedMessages.length);
+
+      console.log("Loaded initial messages:", parsedMessages.length);
       setMessages(parsedMessages);
     } catch (err) {
-      console.error('Failed to load initial messages:', err);
-      setError('Failed to load messages. Please try again.');
+      console.error("Failed to load initial messages:", err);
+      setError("Failed to load messages. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -125,11 +188,14 @@ export default function useChat({
 
   // Set up real-time subscription for messages
   const setupRealtimeSubscription = useCallback((conversationId: string) => {
-    console.log('Setting up real-time subscription for conversation:', conversationId);
-    
+    console.log(
+      "Setting up real-time subscription for conversation:",
+      conversationId
+    );
+
     // Clean up existing subscription
     if (subscriptionRef.current) {
-      console.log('Cleaning up existing subscription');
+      console.log("Cleaning up existing subscription");
       supabase.removeChannel(subscriptionRef.current);
     }
 
@@ -137,75 +203,82 @@ export default function useChat({
     const channel = supabase
       .channel(`messages:${conversationId}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          console.log('Real-time message received:', payload);
-          
+          console.log("Real-time message received:", payload);
+
           try {
             const newMessage = payload.new as BackendMessage;
             const parsedMessage = parseMessage(newMessage);
-            
+
             // Check if message already exists (avoid duplicates)
             const messageExists = messagesRef.current.some(
-              msg => msg.id === parsedMessage.id
+              (msg) => msg.id === parsedMessage.id
             );
-            
+
             if (!messageExists) {
-              console.log('Adding new real-time message:', parsedMessage);
-              setMessages(prevMessages => {
+              console.log("Adding new real-time message:", parsedMessage);
+              setMessages((prevMessages) => {
                 // Also remove any temporary messages that might match
                 const filteredMessages = prevMessages.filter(
-                  msg => !msg.tempId || msg.status !== 'sending'
+                  (msg) => !msg.tempId || msg.status !== "sending"
                 );
                 return [...filteredMessages, parsedMessage];
               });
+
+              // Check if this message indicates workflow completion
+              if (
+                parsedMessage.sender === "assistant" &&
+                isWorkflowCompletionMessage(parsedMessage)
+              ) {
+                console.log(
+                  "Workflow completion message detected, stopping thinking animation"
+                );
+                setIsWorkflowRunning(false);
+                clearWorkflowTimeout();
+              }
             } else {
-              console.log('Message already exists, skipping');
+              console.log("Message already exists, skipping");
             }
           } catch (err) {
-            console.error('Error processing real-time message:', err);
+            console.error("Error processing real-time message:", err);
           }
         }
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          console.log('Real-time message updated:', payload);
-          
+          console.log("Real-time message updated:", payload);
+
           try {
             const updatedMessage = payload.new as BackendMessage;
             const parsedMessage = parseMessage(updatedMessage);
-            
-            setMessages(prevMessages =>
-              prevMessages.map(msg =>
+
+            setMessages((prevMessages) =>
+              prevMessages.map((msg) =>
                 msg.id === parsedMessage.id ? parsedMessage : msg
               )
             );
           } catch (err) {
-            console.error('Error processing real-time message update:', err);
+            console.error("Error processing real-time message update:", err);
           }
         }
       )
       .subscribe((status) => {
-        console.log('Subscription status:', status);
-        setIsConnected(status === 'SUBSCRIBED');
-        
-        if (status === 'CHANNEL_ERROR') {
-          console.error('Subscription error');
-          setError('Real-time connection failed');
-        }
+        console.log("Real-time subscription status:", status);
+        setIsConnected(status === "SUBSCRIBED");
       });
 
     subscriptionRef.current = channel;
@@ -221,11 +294,11 @@ export default function useChat({
   // Handle conversation ID changes
   useEffect(() => {
     if (activeConversationId) {
-      console.log('Active conversation changed to:', activeConversationId);
-      
+      console.log("Active conversation changed to:", activeConversationId);
+
       // Load initial messages
       loadInitialMessages(activeConversationId);
-      
+
       // Set up real-time subscription
       setupRealtimeSubscription(activeConversationId);
     }
@@ -233,7 +306,7 @@ export default function useChat({
     // Cleanup on unmount or conversation change
     return () => {
       if (subscriptionRef.current) {
-        console.log('Cleaning up subscription on conversation change');
+        console.log("Cleaning up subscription on conversation change");
         supabase.removeChannel(subscriptionRef.current);
         subscriptionRef.current = null;
         setIsConnected(false);
@@ -251,8 +324,8 @@ export default function useChat({
       setMessages([]);
       return conversationId;
     } catch (err) {
-      console.error('Failed to create conversation:', err);
-      setError('Failed to create a new conversation. Please try again.');
+      console.error("Failed to create conversation:", err);
+      setError("Failed to create a new conversation. Please try again.");
       throw err;
     } finally {
       setLoading(false);
@@ -260,41 +333,48 @@ export default function useChat({
   };
 
   // Update message status by tempId or id
-  const updateMessageStatus = (messageId: string, status: MessageStatus, tempId?: string) => {
-    setMessages(prevMessages => 
-      prevMessages.map(msg => 
-        (msg.id === messageId || msg.tempId === tempId) 
-          ? { ...msg, status }
-          : msg
+  const updateMessageStatus = (
+    messageId: string,
+    status: MessageStatus,
+    tempId?: string
+  ) => {
+    setMessages((prevMessages) =>
+      prevMessages.map((msg) =>
+        msg.id === messageId || msg.tempId === tempId ? { ...msg, status } : msg
       )
     );
   };
 
   // Handle file upload - Don't add message manually since real-time will handle it
   const handleFileUploaded = useCallback((fileResponse: any) => {
-    console.log('File uploaded successfully:', fileResponse);
-    
+    console.log("File uploaded successfully:", fileResponse);
+
+    // Start workflow thinking animation for file uploads
+    setIsWorkflowRunning(true);
+    setWorkflowTimeout();
+
     // The backend creates a message in the database when a file is uploaded,
     // and our Supabase real-time subscription will automatically pick up
     // that new message and add it to the state. No need to manually add it here.
-    
+
     // Optionally, you can handle any UI feedback or error handling here
     // For example, you might want to show a success toast:
     // toast.success('File uploaded successfully');
-    
+
     // Or handle any specific file data if needed for your document viewer:
     if (fileResponse.message?.body) {
       try {
-        const fileData = typeof fileResponse.message.body === 'string' 
-          ? JSON.parse(fileResponse.message.body)
-          : fileResponse.message.body;
-        
+        const fileData =
+          typeof fileResponse.message.body === "string"
+            ? JSON.parse(fileResponse.message.body)
+            : fileResponse.message.body;
+
         // You could auto-open the file viewer if desired:
         onViewFile(fileData);
-        
-        console.log('File data available for viewing:', fileData);
+
+        console.log("File data available for viewing:", fileData);
       } catch (err) {
-        console.warn('Could not parse file message body:', err);
+        console.warn("Could not parse file message body:", err);
       }
     }
   }, []);
@@ -302,14 +382,14 @@ export default function useChat({
   // Send a text message (optimistic updates + real-time will handle the response)
   const sendMessage = async (text: string): Promise<void> => {
     if (!text.trim()) return;
-    
+
     // Create or ensure we have a conversation
     let conversationId = activeConversationId;
     if (!conversationId) {
       try {
-        conversationId = await createNewConversation('New Conversation');
+        conversationId = await createNewConversation("New Conversation");
       } catch (err) {
-        setError('Failed to create conversation. Please try again.');
+        setError("Failed to create conversation. Please try again.");
         return;
       }
     }
@@ -320,43 +400,59 @@ export default function useChat({
       id: tempId, // Temporary ID
       tempId: tempId,
       conversation_id: conversationId,
-      sender: 'user',
-      kind: 'text',
+      sender: "user",
+      kind: "text",
       body: { text },
       created_at: new Date().toISOString(),
-      status: 'sending'
+      status: "sending",
     };
 
     // Add optimistic message immediately
-    setMessages(prevMessages => [...prevMessages, optimisticUserMessage]);
+    setMessages((prevMessages) => [...prevMessages, optimisticUserMessage]);
     setLoading(true);
     setError(null);
 
+    // Start workflow thinking animation
+    setIsWorkflowRunning(true);
+    setWorkflowTimeout();
+
     try {
       // Send the message to the backend
-      // The real-time subscription will handle adding the actual messages
-      await chatApi.sendTextMessage(conversationId, text);
-      
+      const response = await chatApi.sendTextMessage(conversationId, text);
+
       // Remove the optimistic message since real-time will add the real one
-      setMessages(prevMessages => 
-        prevMessages.filter(msg => msg.tempId !== tempId)
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg.tempId !== tempId)
       );
 
+      // Check workflow status from response
+      if (response?.workflow_status === "completed") {
+        console.log("Workflow completed immediately");
+        setIsWorkflowRunning(false);
+        clearWorkflowTimeout();
+      }
     } catch (err) {
-      console.error('Failed to send message:', err);
-      setError('Failed to send message. Please try again.');
-      
+      console.error("Failed to send message:", err);
+      setError("Failed to send message. Please try again.");
+
       // Update the optimistic message status to error
-      updateMessageStatus('', 'error', tempId);
+      updateMessageStatus("", "error", tempId);
+
+      // Stop workflow thinking animation on error
+      setIsWorkflowRunning(false);
+      clearWorkflowTimeout();
     } finally {
       setLoading(false);
     }
   };
 
   // Send an action message (response to buttons or inputs)
-  const sendAction = async (action: string, values: Record<string, any> = {}): Promise<void> => {
+  const sendAction = async (
+    action: string,
+    values: Record<string, any> = {}
+  ): Promise<void> => {
     if (!activeConversationId) {
-      setError('No active conversation to send action to.');
+      setError("No active conversation to send action to.");
       return;
     }
 
@@ -366,34 +462,51 @@ export default function useChat({
       id: tempId,
       tempId: tempId,
       conversation_id: activeConversationId,
-      sender: 'user',
-      kind: 'action',
+      sender: "user",
+      kind: "action",
       body: { action, values },
       created_at: new Date().toISOString(),
-      status: 'sending'
+      status: "sending",
     };
 
     // Add optimistic message immediately
-    setMessages(prevMessages => [...prevMessages, optimisticActionMessage]);
+    setMessages((prevMessages) => [...prevMessages, optimisticActionMessage]);
     setLoading(true);
     setError(null);
 
+    // Start workflow thinking animation
+    setIsWorkflowRunning(true);
+    setWorkflowTimeout();
+
     try {
       // Send the action to the backend
-      // The real-time subscription will handle adding the actual messages
-      await chatApi.sendActionMessage(activeConversationId, action, values);
-      
-      // Remove the optimistic message since real-time will add the real one
-      setMessages(prevMessages => 
-        prevMessages.filter(msg => msg.tempId !== tempId)
+      const response = await chatApi.sendActionMessage(
+        activeConversationId,
+        action,
+        values
       );
 
+      // Remove the optimistic message since real-time will add the real one
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg.tempId !== tempId)
+      );
+
+      // Check workflow status from response
+      if (response?.workflow_status === "completed") {
+        console.log("Workflow completed immediately");
+        setIsWorkflowRunning(false);
+        clearWorkflowTimeout();
+      }
     } catch (err) {
-      console.error('Failed to send action:', err);
-      setError('Failed to send action. Please try again.');
-      
+      console.error("Failed to send action:", err);
+      setError("Failed to send action. Please try again.");
+
       // Update the optimistic message status to error
-      updateMessageStatus('', 'error', tempId);
+      updateMessageStatus("", "error", tempId);
+
+      // Stop workflow thinking animation on error
+      setIsWorkflowRunning(false);
+      clearWorkflowTimeout();
     } finally {
       setLoading(false);
     }
@@ -401,21 +514,31 @@ export default function useChat({
 
   // Handle viewing files in document canvas
   const onViewFile = useCallback((fileData: any) => {
-    console.log('onViewFile called with:', fileData);
-    
+    console.log("onViewFile called with:", fileData);
+
     setDocumentState({
       isOpen: true,
-      fileData: fileData
+      fileData: fileData,
     });
   }, []);
 
   // Clear document view
   const clearViewFile = useCallback(() => {
-    console.log('Clearing document view');
+    console.log("Clearing document view");
     setDocumentState({
       isOpen: false,
-      fileData: null
+      fileData: null,
     });
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearWorkflowTimeout();
+      if (subscriptionRef.current) {
+        supabase.removeChannel(subscriptionRef.current);
+      }
+    };
   }, []);
 
   return {
@@ -430,6 +553,7 @@ export default function useChat({
     handleFileUploaded,
     onViewFile,
     clearViewFile,
-    isConnected
+    isConnected,
+    isWorkflowRunning,
   };
 }

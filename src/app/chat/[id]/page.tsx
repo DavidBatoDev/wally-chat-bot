@@ -1,12 +1,11 @@
 // client/src/app/chat/[id]/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ChatContainer from "@/components/chat/ChatContainer";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-// import DocumentCanvas from "@/components/chat/DocumentCanvas";
-import DocumentCanvas from "@/components/chat/DocumentCanvas/index";
+import DocumentCanvas from "@/components/chat/DocumentCanvas";
 import useChat from "@/hooks/useChat";
 import useWorkflow from "@/hooks/useWorkflow";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,9 @@ export default function ChatPage() {
   const conversationId = params?.id as string;
   const [isDocumentCanvasOpen, setIsDocumentCanvasOpen] = useState(false);
   const [showWorkflowButton, setShowWorkflowButton] = useState(false);
-  const [hasAutoOpened, setHasAutoOpened] = useState(false); // Track if we've auto-opened
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
+  const [docCanvasWidth, setDocCanvasWidth] = useState(1000); // Default width
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   // Initialize chat with the conversation ID from the URL
   const {
@@ -32,9 +33,10 @@ export default function ChatPage() {
     sendAction,
     createNewConversation,
     handleFileUploaded,
-    isConnected
+    isConnected,
+    isWorkflowRunning,
   } = useChat({
-    conversationId
+    conversationId,
   });
 
   // Initialize workflow detection
@@ -43,13 +45,12 @@ export default function ChatPage() {
     workflowData,
     loading: workflowLoading,
     error: workflowError,
-    checkWorkflow
+    checkWorkflow,
   } = useWorkflow(conversationId);
 
   // Check for workflow after messages change (when new messages arrive)
   useEffect(() => {
     if (messages.length > 0 && conversationId) {
-      // Small delay to ensure any workflow creation process is complete
       const timeoutId = setTimeout(() => {
         checkWorkflow();
       }, 1000);
@@ -61,13 +62,20 @@ export default function ChatPage() {
   // Handle workflow detection - Auto-open DocumentCanvas and show button
   useEffect(() => {
     if (hasWorkflow && !workflowLoading) {
-      // Auto-open the DocumentCanvas when workflow is first detected
-      if (!hasAutoOpened) {
+      // Check if the first workflow field has a value
+      const hasFieldWithValue =
+        workflowData?.fields &&
+        Object.values(workflowData.fields).some(
+          (field) => field.value && field.value.trim() !== ""
+        );
+
+      if (!hasAutoOpened && hasFieldWithValue) {
         setIsDocumentCanvasOpen(true);
         setHasAutoOpened(true);
+        // Close the sidebar when auto-opening DocumentCanvas
+        setIsSidebarOpen(false);
       }
-      
-      // Delay the button appearance for a smooth animation
+
       const timeoutId = setTimeout(() => {
         setShowWorkflowButton(true);
       }, 200);
@@ -75,12 +83,11 @@ export default function ChatPage() {
       return () => clearTimeout(timeoutId);
     } else {
       setShowWorkflowButton(false);
-      // Reset auto-open flag when no workflow
       if (!hasWorkflow) {
         setHasAutoOpened(false);
       }
     }
-  }, [hasWorkflow, workflowLoading, hasAutoOpened]);
+  }, [hasWorkflow, workflowLoading, hasAutoOpened, workflowData]);
 
   // Reset auto-open flag when conversation changes
   useEffect(() => {
@@ -89,15 +96,22 @@ export default function ChatPage() {
 
   // Debug logging for workflow state
   useEffect(() => {
-    console.log('ChatPage workflow state:', {
+    console.log("ChatPage workflow state:", {
       conversationId,
       hasWorkflow,
-      workflowData: workflowData ? 'present' : 'none',
+      workflowData: workflowData ? "present" : "none",
       messagesCount: messages.length,
       isDocumentCanvasOpen,
-      hasAutoOpened
+      hasAutoOpened,
     });
-  }, [conversationId, hasWorkflow, workflowData, messages.length, isDocumentCanvasOpen, hasAutoOpened]);
+  }, [
+    conversationId,
+    hasWorkflow,
+    workflowData,
+    messages.length,
+    isDocumentCanvasOpen,
+    hasAutoOpened,
+  ]);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -120,8 +134,7 @@ export default function ChatPage() {
   const handleActionClick = (action: string, values: any) => {
     console.log("Action triggered:", action, values);
     sendAction(action, values);
-    
-    // Check for workflow after action is sent
+
     setTimeout(() => {
       checkWorkflow();
     }, 1500);
@@ -130,8 +143,7 @@ export default function ChatPage() {
   // Enhanced send message handler that checks for workflow
   const handleSendMessage = async (text: string) => {
     await sendMessage(text);
-    
-    // Check for workflow after sending message
+
     setTimeout(() => {
       checkWorkflow();
     }, 1500);
@@ -140,17 +152,38 @@ export default function ChatPage() {
   // Enhanced file upload handler that checks for workflow
   const handleFileUploadedWithWorkflowCheck = async (fileMessage: any) => {
     await handleFileUploaded(fileMessage);
-    
-    // Check for workflow after file upload (workflows often created after file uploads)
+
     setTimeout(() => {
       checkWorkflow();
-    }, 2000); // Longer delay for file processing
+    }, 2000);
   };
 
   // Toggle document canvas
   const toggleDocumentCanvas = () => {
-    console.log('Toggling document canvas, current hasWorkflow:', hasWorkflow);
+    console.log("Toggling document canvas, current hasWorkflow:", hasWorkflow);
     setIsDocumentCanvasOpen(!isDocumentCanvasOpen);
+  };
+
+  // Handle resizing of document canvas
+  const handleResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startWidth = docCanvasWidth;
+    const startX = e.clientX;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = startWidth + (startX - moveEvent.clientX);
+      setDocCanvasWidth(
+        Math.max(700, Math.min(window.innerWidth * 0.7, newWidth))
+      );
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
   // If we're loading initially
@@ -178,16 +211,22 @@ export default function ChatPage() {
       <ChatSidebar
         activeConversationId={activeConversationId}
         onNewConversation={handleNewConversation}
+        isOpen={isSidebarOpen}
+        onToggle={setIsSidebarOpen}
       />
 
       {/* Main content area */}
-      <div className={`flex-1 flex flex-col min-w-0 ${isDocumentCanvasOpen ? 'mr-96' : ''}`}>
+      <div
+        className={`flex-1 flex flex-col min-w-0 ${
+          isDocumentCanvasOpen ? "" : ""
+        }`}
+      >
         {/* Chat header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white shadow-sm">
           <div className="flex items-center">
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => router.push("/")}
               className="mr-2 h-9 w-9"
               title="Back to Home"
@@ -200,18 +239,19 @@ export default function ChatPage() {
                 <div className="text-sm text-red-500">Disconnected</div>
               )}
               {/* Debug info - remove in production */}
-              {process.env.NODE_ENV === 'development' && (
+              {process.env.NODE_ENV === "development" && (
                 <div className="text-xs text-gray-400 mt-1">
-                  Workflow: {hasWorkflow ? 'Yes' : 'No'} | Messages: {messages.length}
-                  {workflowLoading && ' (Checking...)'}
-                  {workflowError && ` (Error: ${workflowError})`}
-                  | Canvas: {isDocumentCanvasOpen ? 'Open' : 'Closed'}
-                  | Auto-opened: {hasAutoOpened ? 'Yes' : 'No'}
+                  Workflow: {hasWorkflow ? "Yes" : "No"} | Messages:{" "}
+                  {messages.length}
+                  {workflowLoading && " (Checking...)"}
+                  {workflowError && ` (Error: ${workflowError})`}| Canvas:{" "}
+                  {isDocumentCanvasOpen ? "Open" : "Closed"}| Auto-opened:{" "}
+                  {hasAutoOpened ? "Yes" : "No"}
                 </div>
               )}
             </div>
           </div>
-          
+
           {/* Document Canvas Toggle Button - Show if workflow exists */}
           {showWorkflowButton && (
             <div className="relative">
@@ -221,21 +261,26 @@ export default function ChatPage() {
                 onClick={toggleDocumentCanvas}
                 className={`
                   h-9 w-9 transition-all duration-300 transform
-                  ${isDocumentCanvasOpen 
-                    ? 'scale-100 shadow-lg' 
-                    : 'scale-100 hover:scale-105 animate-pulse-glow'
+                  ${
+                    isDocumentCanvasOpen
+                      ? "scale-100 shadow-lg"
+                      : "scale-100 hover:scale-105 animate-pulse-glow"
                   }
                 `}
-                title={isDocumentCanvasOpen ? "Close Document Fields" : "Open Document Fields"}
+                title={
+                  isDocumentCanvasOpen
+                    ? "Close Document Fields"
+                    : "Open Document Fields"
+                }
               >
                 <FileText size={18} />
               </Button>
-              
+
               {/* Notification glow effect - only show if closed and workflow exists */}
               {!isDocumentCanvasOpen && hasWorkflow && (
                 <div className="absolute inset-0 rounded-md animate-ping-slow bg-blue-400 opacity-20 pointer-events-none"></div>
               )}
-              
+
               {/* Notification dot - only show if closed and workflow exists */}
               {!isDocumentCanvasOpen && hasWorkflow && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-lg"></div>
@@ -243,7 +288,7 @@ export default function ChatPage() {
             </div>
           )}
         </div>
-        
+
         {/* Chat container */}
         <div className="flex-1 overflow-hidden">
           <ChatContainer
@@ -254,28 +299,44 @@ export default function ChatPage() {
             onFileUploaded={handleFileUploadedWithWorkflowCheck}
             isConnected={isConnected}
             conversationId={conversationId}
+            isWorkflowRunning={isWorkflowRunning}
           />
         </div>
       </div>
 
       {/* Document Canvas - appears on the right when open */}
-      <DocumentCanvas
-        isOpen={isDocumentCanvasOpen}
-        onClose={() => setIsDocumentCanvasOpen(false)}
-        conversationId={conversationId}
-      />
+      {isDocumentCanvasOpen && (
+        <div
+          className="relative flex h-screen"
+          style={{ width: `${docCanvasWidth}px` }}
+        >
+          {/* Resize handle */}
+          <div
+            className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize bg-gray-300 hover:bg-blue-500 z-50"
+            onMouseDown={handleResize}
+          />
+
+          <DocumentCanvas
+            isOpen={isDocumentCanvasOpen}
+            onClose={() => setIsDocumentCanvasOpen(false)}
+            conversationId={conversationId}
+          />
+        </div>
+      )}
 
       {/* Custom styles for animations */}
       <style jsx>{`
         @keyframes pulse-glow {
-          0%, 100% {
+          0%,
+          100% {
             box-shadow: 0 0 8px rgba(59, 130, 246, 0.4);
           }
           50% {
-            box-shadow: 0 0 16px rgba(59, 130, 246, 0.6), 0 0 24px rgba(59, 130, 246, 0.3);
+            box-shadow: 0 0 16px rgba(59, 130, 246, 0.6),
+              0 0 24px rgba(59, 130, 246, 0.3);
           }
         }
-        
+
         @keyframes ping-slow {
           0% {
             transform: scale(1);
@@ -290,11 +351,11 @@ export default function ChatPage() {
             opacity: 0;
           }
         }
-        
+
         .animate-pulse-glow {
           animation: pulse-glow 2s ease-in-out infinite;
         }
-        
+
         .animate-ping-slow {
           animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
         }

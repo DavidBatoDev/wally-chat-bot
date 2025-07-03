@@ -26,14 +26,19 @@ export interface TemplateMapping {
   page_number: number;
 }
 
-export type WorkflowFieldStatus = 'ocr' | 'pending' | 'edited' | 'confirmed';
-export type TranslatedFieldStatus = 'pending' | 'translated' | 'completed' | 'edited';
+export type WorkflowFieldStatus = "ocr" | "pending" | "edited" | "confirmed";
+export type TranslatedFieldStatus =
+  | "pending"
+  | "translated"
+  | "completed"
+  | "edited";
 
 export interface WorkflowField {
   value: string;
   value_status: WorkflowFieldStatus;
   translated_value: string | null;
   translated_status: TranslatedFieldStatus;
+  isCustomField?: boolean;
 }
 
 export interface WorkflowData {
@@ -48,10 +53,8 @@ export interface WorkflowData {
   translated_template_mappings?: Record<string, TemplateMapping>;
   translate_to: string;
   translate_from: string;
-  required_fields?: Record<string, string>;
-  template_required_fields?: Record<string, string>;
-  info_json_custom?: any;
-  info_json?: any;
+  shapes?: any[];
+  deletion_rectangles?: any[];
 }
 
-export type ViewType = 'original' | 'template' | 'translated_template';
+export type ViewType = "original" | "template" | "translated_template";
