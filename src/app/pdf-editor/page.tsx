@@ -718,6 +718,11 @@ const PDFEditor: React.FC = () => {
   const [isDrawingInProgress, setIsDrawingInProgress] =
     useState<boolean>(false);
 
+  // Add state to track which document side the shape drawing started on
+  const [shapeDrawTargetView, setShapeDrawTargetView] = useState<
+    "original" | "translated" | null
+  >(null);
+
   // Drag and interaction state
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
@@ -1368,7 +1373,7 @@ const PDFEditor: React.FC = () => {
 
   // Text box management
   const addTextBox = useCallback(
-    (x: number, y: number) => {
+    (x: number, y: number, targetView?: "original" | "translated") => {
       const value = "New Text Field";
       const fontSize = 8;
       const fontFamily = "Arial, sans-serif";
@@ -1393,7 +1398,18 @@ const PDFEditor: React.FC = () => {
         rotation: 0,
       };
 
-      setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+      // Determine which document to add to
+      if (currentView === "split") {
+        // In split view, determine target based on click position or default to original
+        if (targetView === "translated") {
+          setTranslatedTextBoxes((prev) => [...prev, newTextBox]);
+        } else {
+          setOriginalTextBoxes((prev) => [...prev, newTextBox]);
+        }
+      } else {
+        setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+      }
+
       setSelectedFieldId(fieldId);
       setIsAddTextBoxMode(false);
       setIsTextSelectionMode(false);
@@ -1460,7 +1476,8 @@ const PDFEditor: React.FC = () => {
       x: number,
       y: number,
       width: number,
-      height: number
+      height: number,
+      targetView?: "original" | "translated"
     ) => {
       const newShape: Shape = {
         id: generateUUID(),
@@ -1477,7 +1494,18 @@ const PDFEditor: React.FC = () => {
         rotation: 0,
       };
 
-      setCurrentShapes((prev) => [...prev, newShape]);
+      // Determine which document to add to
+      if (currentView === "split") {
+        // In split view, determine target based on position or default to original
+        if (targetView === "translated") {
+          setTranslatedShapes((prev) => [...prev, newShape]);
+        } else {
+          setOriginalShapes((prev) => [...prev, newShape]);
+        }
+      } else {
+        setCurrentShapes((prev) => [...prev, newShape]);
+      }
+
       setSelectedShapeId(newShape.id);
     },
     [currentPage, currentView]
@@ -1555,14 +1583,36 @@ const PDFEditor: React.FC = () => {
     }
 
     const rect = documentRef.current.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
+    let x = (e.clientX - rect.left) / scale;
+    let y = (e.clientY - rect.top) / scale;
+    let targetView: "original" | "translated" | undefined = undefined;
+
+    // For split screen view, determine which side was clicked and adjust coordinates
+    if (currentView === "split") {
+      const clickX = e.clientX - rect.left;
+      const singleDocWidth = pageWidth * scale;
+      const gap = 20; // Gap between documents
+
+      // If click is on the right side (translated document)
+      if (clickX > singleDocWidth + gap) {
+        // Adjust x coordinate for the translated document side
+        x = (clickX - singleDocWidth - gap) / scale;
+        targetView = "translated";
+      } else if (clickX <= singleDocWidth) {
+        // Click is on the left side (original document)
+        targetView = "original";
+      } else {
+        // Click is in the gap - ignore
+        return;
+      }
+    }
 
     if (isAddTextBoxMode) {
-      addTextBox(x, y);
+      addTextBox(x, y, targetView);
     } else if (shapeDrawingMode) {
       if (!isDrawingInProgress) {
         setShapeDrawStart({ x, y });
+        setShapeDrawTargetView(targetView || null);
         setIsDrawingInProgress(true);
       }
     } else {
@@ -1610,12 +1660,20 @@ const PDFEditor: React.FC = () => {
       const y = Math.min(shapeDrawStart.y, shapeDrawEnd.y);
 
       if (shapeDrawingMode) {
-        addShape(shapeDrawingMode, x, y, width, height);
+        addShape(
+          shapeDrawingMode,
+          x,
+          y,
+          width,
+          height,
+          shapeDrawTargetView || undefined
+        );
       }
     }
 
     setShapeDrawStart(null);
     setShapeDrawEnd(null);
+    setShapeDrawTargetView(null);
     setIsDrawingInProgress(false);
     setShapeDrawingMode(null);
   };
@@ -2281,8 +2339,18 @@ const PDFEditor: React.FC = () => {
               style={{
                 minHeight: `${Math.max(100, pageHeight * scale + 80)}px`,
                 height: `${Math.max(100, pageHeight * scale + 80)}px`,
-                width: `${Math.max(100, pageWidth * scale + 80)}px`,
-                minWidth: `${Math.max(100, pageWidth * scale + 80)}px`,
+                width: `${Math.max(
+                  100,
+                  currentView === "split"
+                    ? pageWidth * scale * 2 + 100 // Double width for split view plus gap and padding
+                    : pageWidth * scale + 80
+                )}px`,
+                minWidth: `${Math.max(
+                  100,
+                  currentView === "split"
+                    ? pageWidth * scale * 2 + 100
+                    : pageWidth * scale + 80
+                )}px`,
                 display: "flex",
                 justifyContent: "center",
                 alignItems: "center",
@@ -2306,9 +2374,15 @@ const PDFEditor: React.FC = () => {
                 onMouseMove={shapeDrawingMode ? handleShapeDrawMove : undefined}
                 onMouseUp={shapeDrawingMode ? handleShapeDrawEnd : undefined}
                 style={{
-                  width: pageWidth * scale,
+                  width:
+                    currentView === "split"
+                      ? pageWidth * scale * 2 + 20 // Double width plus gap for split view
+                      : pageWidth * scale,
                   height: pageHeight * scale,
-                  minWidth: pageWidth * scale,
+                  minWidth:
+                    currentView === "split"
+                      ? pageWidth * scale * 2 + 20
+                      : pageWidth * scale,
                   minHeight: pageHeight * scale,
                   display: "block",
                 }}
@@ -2418,21 +2492,322 @@ const PDFEditor: React.FC = () => {
                 {/* Split Screen View */}
                 {currentView === "split" && (
                   <div
-                    className="flex items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300"
+                    className="flex"
                     style={{
-                      width: pageWidth * scale,
+                      width: pageWidth * scale * 2 + 20, // Double width plus gap
                       height: pageHeight * scale,
                     }}
                   >
-                    <div className="text-center p-8">
-                      <SplitSquareHorizontal className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-xl font-semibold text-gray-600 mb-2">
-                        Split Screen View
-                      </h3>
-                      <p className="text-gray-500 max-w-md">
-                        Split screen functionality will show original and
-                        translated documents side by side. Coming soon!
-                      </p>
+                    {/* Original Document Side */}
+                    <div
+                      className="relative bg-white border border-gray-200 shadow-sm"
+                      style={{
+                        width: pageWidth * scale,
+                        height: pageHeight * scale,
+                      }}
+                    >
+                      {/* Original Document Header */}
+                      <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                        <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                          Original Document
+                        </div>
+                      </div>
+
+                      {/* Original Document Content */}
+                      {isPdfFile(documentUrl) ? (
+                        <div className="relative w-full h-full">
+                          <Document
+                            file={documentUrl}
+                            onLoadSuccess={handleDocumentLoadSuccess}
+                            onLoadError={handleDocumentLoadError}
+                            loading={null}
+                          >
+                            <Page
+                              pageNumber={currentPage}
+                              onLoadSuccess={handlePageLoadSuccess}
+                              onRenderSuccess={() => setIsPageLoading(false)}
+                              onRenderError={() => setIsPageLoading(false)}
+                              renderTextLayer={isTextSelectionMode}
+                              renderAnnotationLayer={false}
+                              loading={null}
+                              width={pageWidth * scale}
+                            />
+                          </Document>
+                        </div>
+                      ) : (
+                        <img
+                          src={documentUrl}
+                          alt="Original Document"
+                          style={{
+                            width: pageWidth * scale,
+                            height: pageHeight * scale,
+                            maxWidth: "none",
+                            display: "block",
+                          }}
+                          className="select-none"
+                        />
+                      )}
+
+                      {/* Original Document Elements */}
+                      {/* Deletion Rectangles */}
+                      {originalDeletionRectangles
+                        .filter((rect) => rect.page === currentPage)
+                        .map((rect) => (
+                          <Rnd
+                            key={`orig-del-${rect.id}`}
+                            position={{ x: rect.x * scale, y: rect.y * scale }}
+                            size={{
+                              width: rect.width * scale,
+                              height: rect.height * scale,
+                            }}
+                            bounds="parent"
+                            onDragStop={(e, d) => {
+                              setOriginalDeletionRectangles((prev) =>
+                                prev.map((r) =>
+                                  r.id === rect.id
+                                    ? { ...r, x: d.x / scale, y: d.y / scale }
+                                    : r
+                                )
+                              );
+                            }}
+                            onResizeStop={(
+                              e,
+                              direction,
+                              ref,
+                              delta,
+                              position
+                            ) => {
+                              setOriginalDeletionRectangles((prev) =>
+                                prev.map((r) =>
+                                  r.id === rect.id
+                                    ? {
+                                        ...r,
+                                        x: position.x / scale,
+                                        y: position.y / scale,
+                                        width:
+                                          parseInt(ref.style.width) / scale,
+                                        height:
+                                          parseInt(ref.style.height) / scale,
+                                      }
+                                    : r
+                                )
+                              );
+                            }}
+                            className="border-2 border-red-500 bg-white bg-opacity-90"
+                            style={{ zIndex: 10, transform: "none" }}
+                          >
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span className="text-red-500 text-xs font-medium">
+                                DELETE
+                              </span>
+                            </div>
+                          </Rnd>
+                        ))}
+
+                      {/* Original Shapes */}
+                      {originalShapes
+                        .filter((shape) => shape.page === currentPage)
+                        .map((shape) => (
+                          <MemoizedShape
+                            key={`orig-shape-${shape.id}`}
+                            shape={shape}
+                            isSelected={selectedShapeId === shape.id}
+                            isEditMode={isEditMode}
+                            scale={scale}
+                            onSelect={handleShapeSelect}
+                            onUpdate={(id, updates) => {
+                              setOriginalShapes((prev) =>
+                                prev.map((s) =>
+                                  s.id === id ? { ...s, ...updates } : s
+                                )
+                              );
+                            }}
+                            onDelete={(id) => {
+                              setOriginalShapes((prev) =>
+                                prev.filter((s) => s.id !== id)
+                              );
+                              if (selectedShapeId === id) {
+                                setSelectedShapeId(null);
+                              }
+                            }}
+                          />
+                        ))}
+
+                      {/* Original Text Boxes */}
+                      {originalTextBoxes
+                        .filter((box) => box.page === currentPage)
+                        .map((textBox) => (
+                          <MemoizedTextBox
+                            key={`orig-text-${textBox.id}`}
+                            textBox={textBox}
+                            isSelected={selectedFieldId === textBox.id}
+                            isEditMode={isEditMode}
+                            settingsPopupFor={settingsPopupFor}
+                            scale={scale}
+                            onSelect={handleTextBoxSelect}
+                            onUpdate={(id, updates) => {
+                              setOriginalTextBoxes((prev) =>
+                                prev.map((box) =>
+                                  box.id === id ? { ...box, ...updates } : box
+                                )
+                              );
+                            }}
+                            onDelete={(id) => {
+                              setOriginalTextBoxes((prev) =>
+                                prev.filter((box) => box.id !== id)
+                              );
+                              setSelectedFieldId((current) =>
+                                current === id ? null : current
+                              );
+                            }}
+                            onSettingsToggle={handleSettingsToggle}
+                          />
+                        ))}
+                    </div>
+
+                    {/* Gap between documents */}
+                    <div className="w-5 flex items-center justify-center">
+                      <div className="w-px h-full bg-gray-300"></div>
+                    </div>
+
+                    {/* Translated Document Side */}
+                    <div
+                      className="relative bg-white border border-gray-200 shadow-sm"
+                      style={{
+                        width: pageWidth * scale,
+                        height: pageHeight * scale,
+                      }}
+                    >
+                      {/* Translated Document Header */}
+                      <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                        <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                          Translated Document
+                        </div>
+                      </div>
+
+                      {/* Blank translated document background */}
+                      <div className="w-full h-full bg-white">
+                        {/* Page number indicator */}
+                        <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
+                          Page {currentPage} of {numPages}
+                        </div>
+                      </div>
+
+                      {/* Translated Document Elements */}
+                      {/* Deletion Rectangles */}
+                      {translatedDeletionRectangles
+                        .filter((rect) => rect.page === currentPage)
+                        .map((rect) => (
+                          <Rnd
+                            key={`trans-del-${rect.id}`}
+                            position={{ x: rect.x * scale, y: rect.y * scale }}
+                            size={{
+                              width: rect.width * scale,
+                              height: rect.height * scale,
+                            }}
+                            bounds="parent"
+                            onDragStop={(e, d) => {
+                              setTranslatedDeletionRectangles((prev) =>
+                                prev.map((r) =>
+                                  r.id === rect.id
+                                    ? { ...r, x: d.x / scale, y: d.y / scale }
+                                    : r
+                                )
+                              );
+                            }}
+                            onResizeStop={(
+                              e,
+                              direction,
+                              ref,
+                              delta,
+                              position
+                            ) => {
+                              setTranslatedDeletionRectangles((prev) =>
+                                prev.map((r) =>
+                                  r.id === rect.id
+                                    ? {
+                                        ...r,
+                                        x: position.x / scale,
+                                        y: position.y / scale,
+                                        width:
+                                          parseInt(ref.style.width) / scale,
+                                        height:
+                                          parseInt(ref.style.height) / scale,
+                                      }
+                                    : r
+                                )
+                              );
+                            }}
+                            className="border-2 border-red-500 bg-white bg-opacity-90"
+                            style={{ zIndex: 10, transform: "none" }}
+                          >
+                            <div className="w-full h-full flex items-center justify-center">
+                              <span className="text-red-500 text-xs font-medium">
+                                DELETE
+                              </span>
+                            </div>
+                          </Rnd>
+                        ))}
+
+                      {/* Translated Shapes */}
+                      {translatedShapes
+                        .filter((shape) => shape.page === currentPage)
+                        .map((shape) => (
+                          <MemoizedShape
+                            key={`trans-shape-${shape.id}`}
+                            shape={shape}
+                            isSelected={selectedShapeId === shape.id}
+                            isEditMode={isEditMode}
+                            scale={scale}
+                            onSelect={handleShapeSelect}
+                            onUpdate={(id, updates) => {
+                              setTranslatedShapes((prev) =>
+                                prev.map((s) =>
+                                  s.id === id ? { ...s, ...updates } : s
+                                )
+                              );
+                            }}
+                            onDelete={(id) => {
+                              setTranslatedShapes((prev) =>
+                                prev.filter((s) => s.id !== id)
+                              );
+                              if (selectedShapeId === id) {
+                                setSelectedShapeId(null);
+                              }
+                            }}
+                          />
+                        ))}
+
+                      {/* Translated Text Boxes */}
+                      {translatedTextBoxes
+                        .filter((box) => box.page === currentPage)
+                        .map((textBox) => (
+                          <MemoizedTextBox
+                            key={`trans-text-${textBox.id}`}
+                            textBox={textBox}
+                            isSelected={selectedFieldId === textBox.id}
+                            isEditMode={isEditMode}
+                            settingsPopupFor={settingsPopupFor}
+                            scale={scale}
+                            onSelect={handleTextBoxSelect}
+                            onUpdate={(id, updates) => {
+                              setTranslatedTextBoxes((prev) =>
+                                prev.map((box) =>
+                                  box.id === id ? { ...box, ...updates } : box
+                                )
+                              );
+                            }}
+                            onDelete={(id) => {
+                              setTranslatedTextBoxes((prev) =>
+                                prev.filter((box) => box.id !== id)
+                              );
+                              setSelectedFieldId((current) =>
+                                current === id ? null : current
+                              );
+                            }}
+                            onSettingsToggle={handleSettingsToggle}
+                          />
+                        ))}
                     </div>
                   </div>
                 )}
@@ -2636,11 +3011,75 @@ const PDFEditor: React.FC = () => {
       <div className="bg-white border-t border-gray-200 px-4 py-2">
         <div className="flex items-center justify-between text-sm text-gray-600">
           <div className="flex items-center space-x-4">
-            <span>Text Boxes: {getCurrentPageTextBoxes.length}</span>
-            <span>Shapes: {getCurrentPageShapes.length}</span>
-            <span>
-              Deletion Areas: {getCurrentPageDeletionRectangles.length}
-            </span>
+            {currentView === "split" ? (
+              <>
+                <span className="flex items-center space-x-2">
+                  <span className="text-blue-600 font-medium">Original:</span>
+                  <span>
+                    {
+                      originalTextBoxes.filter(
+                        (box) => box.page === currentPage
+                      ).length
+                    }{" "}
+                    text
+                  </span>
+                  <span>
+                    {
+                      originalShapes.filter(
+                        (shape) => shape.page === currentPage
+                      ).length
+                    }{" "}
+                    shapes
+                  </span>
+                  <span>
+                    {
+                      originalDeletionRectangles.filter(
+                        (rect) => rect.page === currentPage
+                      ).length
+                    }{" "}
+                    deletions
+                  </span>
+                </span>
+                <span className="text-gray-400">|</span>
+                <span className="flex items-center space-x-2">
+                  <span className="text-green-600 font-medium">
+                    Translated:
+                  </span>
+                  <span>
+                    {
+                      translatedTextBoxes.filter(
+                        (box) => box.page === currentPage
+                      ).length
+                    }{" "}
+                    text
+                  </span>
+                  <span>
+                    {
+                      translatedShapes.filter(
+                        (shape) => shape.page === currentPage
+                      ).length
+                    }{" "}
+                    shapes
+                  </span>
+                  <span>
+                    {
+                      translatedDeletionRectangles.filter(
+                        (rect) => rect.page === currentPage
+                      ).length
+                    }{" "}
+                    deletions
+                  </span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span>Text Boxes: {getCurrentPageTextBoxes.length}</span>
+                <span>Shapes: {getCurrentPageShapes.length}</span>
+                <span>
+                  Deletion Areas: {getCurrentPageDeletionRectangles.length}
+                </span>
+              </>
+            )}
             {/* Current View Indicator */}
             <span className="flex items-center space-x-1">
               <span>View:</span>
