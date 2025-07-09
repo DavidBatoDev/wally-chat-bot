@@ -45,6 +45,12 @@ import {
   SplitSquareHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  TextFormatProvider,
+  useTextFormat,
+} from "@/components/editor/TextFormatContext";
+import { TextFormatDrawer } from "@/components/editor/TextFormatDrawer";
+import { TextField } from "@/components/types";
 
 // Import react-pdf CSS for text layer support
 import "react-pdf/dist/Page/TextLayer.css";
@@ -116,23 +122,6 @@ const hexToRgba = (hex: string, opacity: number): string => {
 };
 
 // Interfaces
-interface TextField {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  value: string;
-  fontSize: number;
-  fontColor: string;
-  fontFamily: string;
-  page: number;
-  characterSpacing?: number;
-  fontWeight?: "normal" | "bold";
-  fontStyle?: "normal" | "italic";
-  rotation?: number;
-}
-
 interface Shape {
   id: string;
   type: "circle" | "rectangle";
@@ -177,22 +166,20 @@ const MemoizedTextBox = memo(
     textBox,
     isSelected,
     isEditMode,
-    settingsPopupFor,
     scale,
+    showPaddingIndicator,
     onSelect,
     onUpdate,
     onDelete,
-    onSettingsToggle,
   }: {
     textBox: TextField;
     isSelected: boolean;
     isEditMode: boolean;
-    settingsPopupFor: string | null;
     scale: number;
+    showPaddingIndicator?: boolean;
     onSelect: (id: string) => void;
     onUpdate: (id: string, updates: Partial<TextField>) => void;
     onDelete: (id: string) => void;
-    onSettingsToggle: (id: string | null) => void;
   }) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -219,6 +206,110 @@ const MemoizedTextBox = memo(
         position={{ x: textBox.x * scale, y: textBox.y * scale }}
         size={{ width: textBox.width * scale, height: textBox.height * scale }}
         bounds="parent"
+        disableDragging={false}
+        dragHandleClassName="drag-handle"
+        enableResizing={
+          isEditMode && isSelected
+            ? {
+                top: true,
+                right: true,
+                bottom: true,
+                left: true,
+                topRight: true,
+                bottomRight: true,
+                bottomLeft: true,
+                topLeft: true,
+              }
+            : false
+        }
+        resizeHandleStyles={{
+          top: {
+            width: "10px",
+            height: "5px",
+            top: "-2.5px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ns-resize",
+          },
+          right: {
+            width: "5px",
+            height: "10px",
+            right: "-2.5px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ew-resize",
+          },
+          bottom: {
+            width: "10px",
+            height: "5px",
+            bottom: "-2.5px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ns-resize",
+          },
+          left: {
+            width: "5px",
+            height: "10px",
+            left: "-2.5px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ew-resize",
+          },
+          topRight: {
+            width: "8px",
+            height: "8px",
+            top: "-4px",
+            right: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "ne-resize",
+          },
+          bottomRight: {
+            width: "8px",
+            height: "8px",
+            bottom: "-4px",
+            right: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "se-resize",
+          },
+          bottomLeft: {
+            width: "8px",
+            height: "8px",
+            bottom: "-4px",
+            left: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "sw-resize",
+          },
+          topLeft: {
+            width: "8px",
+            height: "8px",
+            top: "-4px",
+            left: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "nw-resize",
+          },
+        }}
+        resizeHandleClasses={{
+          top: "resize-handle resize-handle-top",
+          right: "resize-handle resize-handle-right",
+          bottom: "resize-handle resize-handle-bottom",
+          left: "resize-handle resize-handle-left",
+          topRight: "resize-handle resize-handle-corner",
+          bottomRight: "resize-handle resize-handle-corner",
+          bottomLeft: "resize-handle resize-handle-corner",
+          topLeft: "resize-handle resize-handle-corner",
+        }}
         onDragStop={(e, d) => {
           onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale });
         }}
@@ -230,302 +321,34 @@ const MemoizedTextBox = memo(
             height: parseInt(ref.style.height) / scale,
           });
         }}
-        className={`${isSelected ? "ring-2 ring-blue-500" : ""}`}
+        className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
+          isEditMode ? "edit-mode" : ""
+        }`}
         style={{ zIndex: 30, transform: "none" }}
         onClick={handleClick}
       >
         <div className="w-full h-full relative group">
-          {/* Controls and settings UI */}
+          {/* Delete button - only show when selected and in edit mode */}
           {isEditMode && isSelected && (
-            <>
-              {/* Move handle and font size input */}
-              <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
-                <div className="drag-handle bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
-                  <Move size={10} />
-                </div>
-                <div className="flex items-center bg-white rounded-md shadow-lg overflow-hidden">
-                  <input
-                    type="number"
-                    value={Math.round(textBox.fontSize * 10) / 10}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      const newSize = parseFloat(e.target.value) || 5;
-                      onUpdate(textBox.id, {
-                        fontSize: Math.max(5, Math.min(72, newSize)),
-                      });
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onFocus={(e) => {
-                      e.stopPropagation();
-                      e.target.select();
-                    }}
-                    className="text-black text-xs font-medium px-2 py-1 w-12 text-center border-none outline-none bg-transparent"
-                    min="5"
-                    max="72"
-                    step="0.1"
-                    title="Font size"
-                  />
-                  <span className="text-gray-500 text-xs pr-1">px</span>
-                </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(textBox.id);
+              }}
+              className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+              title="Delete text field"
+            >
+              <Trash2 size={10} />
+            </button>
+          )}
+
+          {/* Move handle - only show when selected and in edit mode */}
+          {isEditMode && isSelected && (
+            <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+              <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                <Move size={10} />
               </div>
-
-              {/* Delete button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(textBox.id);
-                }}
-                className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
-                title="Delete text field"
-              >
-                <Trash2 size={10} />
-              </button>
-
-              {/* Settings button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSettingsToggle(textBox.id);
-                }}
-                className={`absolute top-0 right-0 transform -translate-y-1/2 translate-x-1/2 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors z-10 ${
-                  settingsPopupFor === textBox.id
-                    ? "bg-gray-100 border-gray-400"
-                    : ""
-                }`}
-              >
-                <MoreHorizontal size={14} className="text-gray-600" />
-              </button>
-
-              {/* Settings popup */}
-              {settingsPopupFor === textBox.id && (
-                <div
-                  className="absolute top-0 right-0 transform translate-y-8 translate-x-1 bg-white shadow-xl rounded-lg p-4 z-[9999999999] border border-gray-200 w-64 settings-popup"
-                  style={{
-                    transform: "translate(0.25rem, 2rem)",
-                    transformOrigin: "top right",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-gray-800">
-                      Field Settings
-                    </h3>
-                    <button
-                      onClick={() => onSettingsToggle(null)}
-                      className="text-gray-500 hover:text-gray-800"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Font Family */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Font Family
-                      </label>
-                      <select
-                        value={textBox.fontFamily}
-                        onChange={(e) =>
-                          onUpdate(textBox.id, {
-                            fontFamily: e.target.value,
-                          })
-                        }
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                      >
-                        <option value="Arial, sans-serif">Arial</option>
-                        <option value="Helvetica, sans-serif">Helvetica</option>
-                        <option value="Times New Roman, serif">
-                          Times New Roman
-                        </option>
-                        <option value="Georgia, serif">Georgia</option>
-                        <option value="Courier New, monospace">
-                          Courier New
-                        </option>
-                        <option value="Verdana, sans-serif">Verdana</option>
-                        <option value="Tahoma, sans-serif">Tahoma</option>
-                        <option value="Trebuchet MS, sans-serif">
-                          Trebuchet MS
-                        </option>
-                        <option value="Palatino, serif">Palatino</option>
-                        <option value="Lucida Console, monospace">
-                          Lucida Console
-                        </option>
-                      </select>
-                    </div>
-
-                    {/* Font Color */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Font Color
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="color"
-                          value={textBox.fontColor}
-                          onChange={(e) =>
-                            onUpdate(textBox.id, {
-                              fontColor: e.target.value,
-                            })
-                          }
-                          className="w-10 h-10 border border-gray-300 rounded-lg cursor-pointer bg-white"
-                        />
-                        <input
-                          type="text"
-                          value={textBox.fontColor}
-                          onChange={(e) =>
-                            onUpdate(textBox.id, {
-                              fontColor: e.target.value,
-                            })
-                          }
-                          className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200"
-                          placeholder="#000000"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Bold and Italic */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-2">
-                        Text Style
-                      </label>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() =>
-                            onUpdate(textBox.id, {
-                              fontWeight:
-                                textBox.fontWeight === "bold"
-                                  ? "normal"
-                                  : "bold",
-                            })
-                          }
-                          className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center font-bold text-lg transition-all duration-200 ${
-                            textBox.fontWeight === "bold"
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                          title="Bold"
-                        >
-                          B
-                        </button>
-                        <button
-                          onClick={() =>
-                            onUpdate(textBox.id, {
-                              fontStyle:
-                                textBox.fontStyle === "italic"
-                                  ? "normal"
-                                  : "italic",
-                            })
-                          }
-                          className={`w-10 h-10 border border-gray-300 rounded-lg flex items-center justify-center italic text-lg transition-all duration-200 ${
-                            textBox.fontStyle === "italic"
-                              ? "bg-red-500 text-white border-red-500"
-                              : "bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                          title="Italic"
-                        >
-                          I
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Character Spacing */}
-                    <div className="mt-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Character Spacing
-                      </label>
-                      <div className="flex items-center">
-                        <button
-                          onClick={() => {
-                            const current = textBox.characterSpacing || 0;
-                            onUpdate(textBox.id, {
-                              characterSpacing: Math.max(0, current - 0.5),
-                            });
-                          }}
-                          className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-l-lg hover:bg-gray-200 transition-colors"
-                        >
-                          <Minus size={14} />
-                        </button>
-
-                        <div className="w-16 h-8 flex items-center justify-center border-t border-b border-gray-300 bg-white">
-                          {textBox.characterSpacing || 0}px
-                        </div>
-
-                        <button
-                          onClick={() => {
-                            const current = textBox.characterSpacing || 0;
-                            onUpdate(textBox.id, {
-                              characterSpacing: Math.min(20, current + 0.5),
-                            });
-                          }}
-                          className="w-8 h-8 flex items-center justify-center bg-gray-100 border border-gray-300 rounded-r-lg hover:bg-gray-200 transition-colors"
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Rotation */}
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <label className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          className="text-red-500"
-                        >
-                          <path d="M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9" />
-                          <path d="M9 12l2 2 4-4" />
-                        </svg>
-                        Rotation
-                      </label>
-                      <div className="flex items-center space-x-3">
-                        <input
-                          type="range"
-                          min="0"
-                          max="360"
-                          step="5"
-                          value={textBox.rotation || 0}
-                          onChange={(e) =>
-                            onUpdate(textBox.id, {
-                              rotation: parseInt(e.target.value),
-                            })
-                          }
-                          className="flex-1 rotation-slider"
-                          style={{
-                            background: `linear-gradient(to right, #fee2e2 0%, #fecaca ${
-                              ((textBox.rotation || 0) / 360) * 100
-                            }%, #f3f4f6 ${
-                              ((textBox.rotation || 0) / 360) * 100
-                            }%, #f3f4f6 100%)`,
-                          }}
-                        />
-                        <span className="text-sm font-bold text-red-600 min-w-[40px] text-center bg-white px-2 py-1 rounded border border-red-200 shadow-sm">
-                          {textBox.rotation || 0}°
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Delete Field */}
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <button
-                        onClick={() => {
-                          onSettingsToggle(null);
-                          onDelete(textBox.id);
-                        }}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 font-medium"
-                      >
-                        <Trash2 size={16} />
-                        Delete Field
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
+            </div>
           )}
 
           {/* Text content */}
@@ -543,24 +366,81 @@ const MemoizedTextBox = memo(
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
-              className="absolute top-0 left-0 w-full h-full bg-transparent border-none outline-none cursor-pointer resize-none"
+              className="absolute top-0 left-0 w-full h-full bg-transparent border-none outline-none cursor-text resize-none"
               style={{
                 fontSize: `${textBox.fontSize * scale}px`,
                 fontFamily: textBox.fontFamily,
-                fontWeight: textBox.fontWeight,
-                fontStyle: textBox.fontStyle,
-                color: textBox.fontColor,
-                letterSpacing: `${(textBox.characterSpacing || 0) * scale}px`,
+                fontWeight: textBox.bold ? "bold" : "normal",
+                fontStyle: textBox.italic ? "italic" : "normal",
+                color: textBox.color || "#000000",
+                letterSpacing: `${(textBox.letterSpacing || 0) * scale}px`,
+                textAlign: textBox.textAlign || "left",
+                textDecoration: textBox.underline ? "underline" : "none",
+                lineHeight: textBox.lineHeight || 1.2,
                 backgroundColor: isSelected
-                  ? "rgba(59, 130, 246, 0.1)"
-                  : "transparent",
-                textAlign: "left",
-                // padding: "2px 4px",
+                  ? "rgba(107, 114, 128, 0.1)"
+                  : textBox.backgroundColor || "transparent",
+                border: textBox.borderWidth
+                  ? `${textBox.borderWidth * scale}px solid ${
+                      textBox.borderColor || "#000000"
+                    }`
+                  : "none",
+                borderRadius: `${(textBox.borderRadius || 0) * scale}px`,
+                padding: `${(textBox.paddingTop || 0) * scale}px ${
+                  (textBox.paddingRight || 0) * scale
+                }px ${(textBox.paddingBottom || 0) * scale}px ${
+                  (textBox.paddingLeft || 0) * scale
+                }px`,
                 overflow: "hidden",
                 whiteSpace: "pre-wrap",
                 wordWrap: "break-word",
               }}
             />
+
+            {/* Padding Visual Indicator - only show when padding popup is open and this textbox is selected */}
+            {showPaddingIndicator && isSelected && (
+              <div className="absolute inset-0 pointer-events-none">
+                {/* Top Padding */}
+                {(textBox.paddingTop || 0) > 0 && (
+                  <div
+                    className="absolute top-0 left-0 right-0 bg-yellow-300 bg-opacity-40 border-t-2 border-yellow-500"
+                    style={{
+                      height: `${(textBox.paddingTop || 0) * scale}px`,
+                    }}
+                  />
+                )}
+
+                {/* Right Padding */}
+                {(textBox.paddingRight || 0) > 0 && (
+                  <div
+                    className="absolute top-0 right-0 bottom-0 bg-yellow-300 bg-opacity-40 border-r-2 border-yellow-500"
+                    style={{
+                      width: `${(textBox.paddingRight || 0) * scale}px`,
+                    }}
+                  />
+                )}
+
+                {/* Bottom Padding */}
+                {(textBox.paddingBottom || 0) > 0 && (
+                  <div
+                    className="absolute bottom-0 left-0 right-0 bg-yellow-300 bg-opacity-40 border-b-2 border-yellow-500"
+                    style={{
+                      height: `${(textBox.paddingBottom || 0) * scale}px`,
+                    }}
+                  />
+                )}
+
+                {/* Left Padding */}
+                {(textBox.paddingLeft || 0) > 0 && (
+                  <div
+                    className="absolute top-0 bottom-0 left-0 bg-yellow-300 bg-opacity-40 border-l-2 border-yellow-500"
+                    style={{
+                      width: `${(textBox.paddingLeft || 0) * scale}px`,
+                    }}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </Rnd>
@@ -603,6 +483,110 @@ const MemoizedShape = memo(
         position={{ x: shape.x * scale, y: shape.y * scale }}
         size={{ width: shape.width * scale, height: shape.height * scale }}
         bounds="parent"
+        disableDragging={false}
+        dragHandleClassName="drag-handle"
+        enableResizing={
+          isEditMode && isSelected
+            ? {
+                top: true,
+                right: true,
+                bottom: true,
+                left: true,
+                topRight: true,
+                bottomRight: true,
+                bottomLeft: true,
+                topLeft: true,
+              }
+            : false
+        }
+        resizeHandleStyles={{
+          top: {
+            width: "10px",
+            height: "5px",
+            top: "-2.5px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ns-resize",
+          },
+          right: {
+            width: "5px",
+            height: "10px",
+            right: "-2.5px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ew-resize",
+          },
+          bottom: {
+            width: "10px",
+            height: "5px",
+            bottom: "-2.5px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ns-resize",
+          },
+          left: {
+            width: "5px",
+            height: "10px",
+            left: "-2.5px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            backgroundColor: "#6b7280",
+            borderRadius: "2px",
+            cursor: "ew-resize",
+          },
+          topRight: {
+            width: "8px",
+            height: "8px",
+            top: "-4px",
+            right: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "ne-resize",
+          },
+          bottomRight: {
+            width: "8px",
+            height: "8px",
+            bottom: "-4px",
+            right: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "se-resize",
+          },
+          bottomLeft: {
+            width: "8px",
+            height: "8px",
+            bottom: "-4px",
+            left: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "sw-resize",
+          },
+          topLeft: {
+            width: "8px",
+            height: "8px",
+            top: "-4px",
+            left: "-4px",
+            backgroundColor: "#6b7280",
+            borderRadius: "50%",
+            cursor: "nw-resize",
+          },
+        }}
+        resizeHandleClasses={{
+          top: "resize-handle resize-handle-top",
+          right: "resize-handle resize-handle-right",
+          bottom: "resize-handle resize-handle-bottom",
+          left: "resize-handle resize-handle-left",
+          topRight: "resize-handle resize-handle-corner",
+          bottomRight: "resize-handle resize-handle-corner",
+          bottomLeft: "resize-handle resize-handle-corner",
+          topLeft: "resize-handle resize-handle-corner",
+        }}
         onDragStop={(e, d) => {
           onUpdate(shape.id, { x: d.x / scale, y: d.y / scale });
         }}
@@ -614,7 +598,9 @@ const MemoizedShape = memo(
             height: parseInt(ref.style.height) / scale,
           });
         }}
-        className={`${isSelected ? "ring-2 ring-red-500" : ""}`}
+        className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
+          isEditMode ? "edit-mode" : ""
+        }`}
         style={{ zIndex: isSelected ? 1000 : 200, transform: "none" }}
         onClick={handleClick}
       >
@@ -640,7 +626,7 @@ const MemoizedShape = memo(
             <>
               {/* Move handle */}
               <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
-                <div className="drag-handle bg-red-500 hover:bg-red-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                   <Move size={10} />
                 </div>
               </div>
@@ -669,7 +655,14 @@ const MemoizedShape = memo(
 
 MemoizedShape.displayName = "MemoizedShape";
 
-const PDFEditor: React.FC = () => {
+const PDFEditorContent: React.FC = () => {
+  const {
+    setIsDrawerOpen,
+    setSelectedElementId,
+    setCurrentFormat,
+    setOnFormatChange,
+    showPaddingPopup,
+  } = useTextFormat();
   // Document state
   const [documentUrl, setDocumentUrl] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -695,7 +688,7 @@ const PDFEditor: React.FC = () => {
   const [isAddTextBoxMode, setIsAddTextBoxMode] = useState<boolean>(false);
   const [isTextSelectionMode, setIsTextSelectionMode] =
     useState<boolean>(false);
-  const [settingsPopupFor, setSettingsPopupFor] = useState<string | null>(null);
+
   const [textSelectionPopup, setTextSelectionPopup] =
     useState<TextSelectionPopupState | null>(null);
 
@@ -1334,12 +1327,16 @@ const PDFEditor: React.FC = () => {
         height: height,
         value: value,
         fontSize: fontSize,
-        fontColor: "#000000",
         fontFamily: fontFamily,
         page: currentPage,
-        characterSpacing: 0,
-        fontWeight: "normal",
-        fontStyle: "normal",
+        color: "#000000",
+        bold: false,
+        italic: false,
+        underline: false,
+        textAlign: "left",
+        listType: "none",
+        letterSpacing: 0,
+        lineHeight: 1.2,
         rotation: 0,
       };
 
@@ -1389,12 +1386,16 @@ const PDFEditor: React.FC = () => {
         height: height,
         value: value,
         fontSize: fontSize,
-        fontColor: "#000000",
         fontFamily: fontFamily,
         page: currentPage,
-        characterSpacing: 0,
-        fontWeight: "normal",
-        fontStyle: "normal",
+        color: "#000000",
+        bold: false,
+        italic: false,
+        underline: false,
+        textAlign: "left",
+        listType: "none",
+        letterSpacing: 0,
+        lineHeight: 1.2,
         rotation: 0,
       };
 
@@ -1414,6 +1415,11 @@ const PDFEditor: React.FC = () => {
       setIsAddTextBoxMode(false);
       setIsTextSelectionMode(false);
       setTextSelectionPopup(null);
+      setShapeDrawingMode(null);
+      setIsDrawingInProgress(false);
+      setShapeDrawStart(null);
+      setShapeDrawEnd(null);
+      setShapeDrawTargetView(null);
     },
     [currentPage, currentView]
   );
@@ -1440,15 +1446,171 @@ const PDFEditor: React.FC = () => {
     setSelectedFieldId(id);
   }, []);
 
-  const handleSettingsToggle = useCallback((id: string | null) => {
-    setSettingsPopupFor(id);
-  }, []);
+  // Create a stable format change handler using useCallback
+  const handleFormatChange = useCallback(
+    (format: any) => {
+      console.log(
+        "handleFormatChange called with:",
+        format,
+        "selectedFieldId:",
+        selectedFieldId
+      );
+
+      // Safety check: ensure format is defined and is an object
+      if (!format || typeof format !== "object") {
+        console.warn("Invalid format object:", format);
+        return;
+      }
+
+      if (selectedFieldId) {
+        const updates: Partial<TextField> = {};
+
+        // Map format changes back to TextField properties
+        if (format.value !== undefined) updates.value = format.value;
+        if (format.fontFamily !== undefined)
+          updates.fontFamily = format.fontFamily;
+        if (format.fontSize !== undefined) updates.fontSize = format.fontSize;
+        if (format.color !== undefined) updates.color = format.color;
+        if (format.bold !== undefined) updates.bold = format.bold;
+        if (format.italic !== undefined) updates.italic = format.italic;
+        if (format.letterSpacing !== undefined)
+          updates.letterSpacing = format.letterSpacing;
+        if (format.underline !== undefined)
+          updates.underline = format.underline;
+        if (format.textAlign !== undefined)
+          updates.textAlign = format.textAlign;
+        if (format.listType !== undefined) updates.listType = format.listType;
+        if (format.lineHeight !== undefined)
+          updates.lineHeight = format.lineHeight;
+        if (format.backgroundColor !== undefined)
+          updates.backgroundColor = format.backgroundColor;
+        if (format.borderColor !== undefined)
+          updates.borderColor = format.borderColor;
+        if (format.borderWidth !== undefined)
+          updates.borderWidth = format.borderWidth;
+        if (format.borderRadius !== undefined)
+          updates.borderRadius = format.borderRadius;
+        if (format.paddingTop !== undefined)
+          updates.paddingTop = format.paddingTop;
+        if (format.paddingRight !== undefined)
+          updates.paddingRight = format.paddingRight;
+        if (format.paddingBottom !== undefined)
+          updates.paddingBottom = format.paddingBottom;
+        if (format.paddingLeft !== undefined)
+          updates.paddingLeft = format.paddingLeft;
+
+        console.log("Applying updates:", updates);
+        updateTextBox(selectedFieldId, updates);
+      } else {
+        console.warn("No selected field ID when trying to update format");
+      }
+    },
+    [selectedFieldId, updateTextBox]
+  );
+
+  // Effect to handle text box selection and TextFormatDrawer updates
+  useEffect(() => {
+    // Use setTimeout to ensure state updates happen after render
+    const timeoutId = setTimeout(() => {
+      if (selectedFieldId) {
+        // Find the selected text box from all text boxes
+        const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
+        const selectedTextBox = allTextBoxes.find(
+          (box) => box.id === selectedFieldId
+        );
+
+        if (selectedTextBox) {
+          console.log("Selected text box:", selectedTextBox);
+
+          // Ensure all required properties exist with safe defaults
+          const safeTextBox = {
+            id: selectedTextBox.id || "",
+            x: selectedTextBox.x || 0,
+            y: selectedTextBox.y || 0,
+            width: selectedTextBox.width || 100,
+            height: selectedTextBox.height || 20,
+            value: selectedTextBox.value || "", // Ensure value is never undefined
+            fontSize: selectedTextBox.fontSize || 12,
+            fontFamily: selectedTextBox.fontFamily || "Arial",
+            page: selectedTextBox.page || 1,
+            rotation: selectedTextBox.rotation || 0,
+            // Text formatting properties
+            bold: selectedTextBox.bold || false,
+            italic: selectedTextBox.italic || false,
+            underline: selectedTextBox.underline || false,
+            color: selectedTextBox.color || "#000000",
+            textAlign: selectedTextBox.textAlign || "left",
+            listType: selectedTextBox.listType || "none",
+            // Spacing and layout
+            lineHeight: selectedTextBox.lineHeight || 1.2,
+            letterSpacing: selectedTextBox.letterSpacing || 0,
+            // Border and background
+            borderColor: selectedTextBox.borderColor || "#000000",
+            borderWidth: selectedTextBox.borderWidth || 0,
+            backgroundColor: selectedTextBox.backgroundColor || "transparent",
+            borderRadius: selectedTextBox.borderRadius || 0,
+            // Padding
+            paddingTop: selectedTextBox.paddingTop || 0,
+            paddingRight: selectedTextBox.paddingRight || 0,
+            paddingBottom: selectedTextBox.paddingBottom || 0,
+            paddingLeft: selectedTextBox.paddingLeft || 0,
+            // State
+            isEditing: selectedTextBox.isEditing || false,
+          };
+
+          console.log("Setting safeTextBox format:", safeTextBox);
+
+          // Update the format drawer state
+          setCurrentFormat(safeTextBox);
+          setSelectedElementId(selectedFieldId);
+          setIsDrawerOpen(true);
+        } else {
+          console.warn("Selected text box not found:", selectedFieldId);
+          // Close drawer if selected text box is not found
+          setIsDrawerOpen(false);
+          setSelectedElementId(null);
+          setCurrentFormat(null);
+        }
+      } else {
+        // Close drawer when no text box is selected
+        setIsDrawerOpen(false);
+        setSelectedElementId(null);
+        setCurrentFormat(null);
+      }
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [
+    selectedFieldId,
+    originalTextBoxes,
+    translatedTextBoxes,
+    setIsDrawerOpen,
+    setSelectedElementId,
+    setCurrentFormat,
+  ]);
+
+  // Set the format change handler when it changes
+  useEffect(() => {
+    console.log("Setting onFormatChange handler:", handleFormatChange);
+    if (typeof handleFormatChange === "function") {
+      setOnFormatChange(handleFormatChange);
+    } else {
+      console.error(
+        "handleFormatChange is not a function:",
+        handleFormatChange
+      );
+    }
+  }, [handleFormatChange, setOnFormatChange]);
 
   // Memoized callbacks for shape interactions to prevent re-renders
-  const handleShapeSelect = useCallback((id: string) => {
-    setSelectedShapeId(id);
-    setSelectedFieldId(null); // Clear text field selection
-  }, []);
+  const handleShapeSelect = useCallback(
+    (id: string) => {
+      setSelectedShapeId(id);
+      setSelectedFieldId(null); // Clear text field selection
+      setIsDrawerOpen(false); // Close the format drawer when selecting shapes
+    },
+    [setIsDrawerOpen]
+  );
 
   const updateShapeCallback = useCallback(
     (id: string, updates: Partial<Shape>) => {
@@ -1619,7 +1781,8 @@ const PDFEditor: React.FC = () => {
       // Clear selections only if clicking on empty space
       setSelectedFieldId(null);
       setSelectedShapeId(null);
-      setSettingsPopupFor(null);
+      // Close the format drawer when clicking on empty space
+      setIsDrawerOpen(false);
     }
   };
 
@@ -1676,6 +1839,9 @@ const PDFEditor: React.FC = () => {
     setShapeDrawTargetView(null);
     setIsDrawingInProgress(false);
     setShapeDrawingMode(null);
+    setIsAddTextBoxMode(false);
+    setIsTextSelectionMode(false);
+    setTextSelectionPopup(null);
   };
 
   // Export functionality
@@ -2177,350 +2343,299 @@ const PDFEditor: React.FC = () => {
           )}
         </div>
 
-        {/* Floating Toolbar */}
-        <div
-          className={`absolute top-4 z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300 ${
-            isSidebarCollapsed ? "left-4" : "left-80"
-          }`}
-          style={{
-            left: isSidebarCollapsed ? "16px" : "336px", // 320px sidebar + 16px margin
-          }}
-        >
-          <div className="bg-white rounded-lg shadow-lg border border-red-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
-            <button
-              onClick={() => setIsTextSelectionMode(!isTextSelectionMode)}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                isTextSelectionMode
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Select Text from Document"
-            >
-              <MousePointer className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setIsAddTextBoxMode(!isAddTextBoxMode)}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                isAddTextBoxMode
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Add Text Field"
-            >
-              <Type className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => {
-                setShapeDrawingMode(
-                  shapeDrawingMode === "rectangle" ? null : "rectangle"
-                );
-                setSelectedShapeType("rectangle");
-              }}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                shapeDrawingMode === "rectangle"
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Draw Rectangle"
-            >
-              <Square className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => {
-                setShapeDrawingMode(
-                  shapeDrawingMode === "circle" ? null : "circle"
-                );
-                setSelectedShapeType("circle");
-              }}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                shapeDrawingMode === "circle"
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Draw Circle"
-            >
-              <Circle className="w-5 h-5" />
-            </button>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* TextFormatDrawer - Positioned at top of main content area */}
+          <div
+            className={`relative z-40 transition-all duration-300 ${
+              isSidebarCollapsed ? "" : ""
+            }`}
+          >
+            <TextFormatDrawer />
           </div>
-        </div>
 
-        {/* Right Floating Toolbar - View Controls */}
-        <div className="absolute top-4 right-4 z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300">
-          <div className="bg-white rounded-lg shadow-lg border border-red-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
-            <button
-              onClick={() => setCurrentView("original")}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                currentView === "original"
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Original Document"
-            >
-              <FileText className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => setCurrentView("translated")}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                currentView === "translated"
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Translated Document"
-            >
-              <Globe className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => setCurrentView("split")}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                currentView === "split"
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Split Screen"
-            >
-              <SplitSquareHorizontal className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={() => setIsEditMode(!isEditMode)}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-                isEditMode
-                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                  : "text-gray-700 hover:text-red-600"
-              }`}
-              title="Toggle Edit Mode"
-            >
-              <Eye className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Document Viewer */}
-        <div
-          className="flex-1 document-viewer document-container"
-          ref={containerRef}
-          style={{
-            scrollBehavior: "smooth",
-            overflow: "auto",
-            overflowX: "auto",
-            overflowY: "auto",
-          }}
-        >
-          {error && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <div className="text-red-500 text-lg mb-2">Error</div>
-                <div className="text-gray-600">{error}</div>
-              </div>
-            </div>
-          )}
-
-          {!documentUrl && !error && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <div className="text-gray-500 text-lg mb-2">
-                  No document loaded
-                </div>
-                <Button onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload Document
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {documentUrl && !error && (
-            <div
-              className="document-wrapper"
-              style={{
-                minHeight: `${Math.max(100, pageHeight * scale + 80)}px`,
-                height: `${Math.max(100, pageHeight * scale + 80)}px`,
-                width: `${Math.max(
-                  100,
-                  currentView === "split"
-                    ? pageWidth * scale * 2 + 100 // Double width for split view plus gap and padding
-                    : pageWidth * scale + 80
-                )}px`,
-                minWidth: `${Math.max(
-                  100,
-                  currentView === "split"
-                    ? pageWidth * scale * 2 + 100
-                    : pageWidth * scale + 80
-                )}px`,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                paddingTop: "40px",
-                paddingBottom: "40px",
-                paddingLeft: "40px",
-                paddingRight: "40px",
-                margin: "0 auto",
-              }}
-            >
-              <div
-                ref={documentRef}
-                className={`relative bg-white document-page ${
-                  isScaleChanging ? "" : "zoom-transition"
-                } ${isTextSelectionMode ? "text-selection-mode" : ""} ${
-                  isAddTextBoxMode ? "cursor-crosshair" : ""
-                } ${shapeDrawingMode ? "cursor-crosshair" : ""} ${
-                  isCtrlPressed ? "cursor-zoom-in" : ""
+          {/* Floating Toolbar - Moved down to account for format drawer */}
+          <div
+            className={`absolute z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300 ${
+              isSidebarCollapsed ? "left-4" : "left-4"
+            }`}
+            style={{
+              top: "80px", // Moved down from top-4 to account for format drawer
+            }}
+          >
+            <div className="bg-white rounded-lg shadow-lg border border-red-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
+              <button
+                onClick={() => {
+                  // Toggle text selection mode and disable other modes
+                  const newMode = !isTextSelectionMode;
+                  setIsTextSelectionMode(newMode);
+                  if (newMode) {
+                    setIsAddTextBoxMode(false);
+                    setShapeDrawingMode(null);
+                    setIsDrawingInProgress(false);
+                    setShapeDrawStart(null);
+                    setShapeDrawEnd(null);
+                    setShapeDrawTargetView(null);
+                  }
+                }}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  isTextSelectionMode
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
                 }`}
-                onClick={handleDocumentContainerClick}
-                onMouseMove={shapeDrawingMode ? handleShapeDrawMove : undefined}
-                onMouseUp={shapeDrawingMode ? handleShapeDrawEnd : undefined}
+                title="Select Text from Document"
+              >
+                <MousePointer className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => {
+                  // Toggle add text box mode and disable other modes
+                  const newMode = !isAddTextBoxMode;
+                  setIsAddTextBoxMode(newMode);
+                  if (newMode) {
+                    setIsTextSelectionMode(false);
+                    setTextSelectionPopup(null);
+                    setShapeDrawingMode(null);
+                    setIsDrawingInProgress(false);
+                    setShapeDrawStart(null);
+                    setShapeDrawEnd(null);
+                    setShapeDrawTargetView(null);
+                  }
+                }}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  isAddTextBoxMode
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Add Text Field"
+              >
+                <Type className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => {
+                  // Toggle rectangle drawing mode and disable other modes
+                  const newMode =
+                    shapeDrawingMode === "rectangle" ? null : "rectangle";
+                  setShapeDrawingMode(newMode);
+                  setSelectedShapeType("rectangle");
+                  if (newMode) {
+                    setIsTextSelectionMode(false);
+                    setTextSelectionPopup(null);
+                    setIsAddTextBoxMode(false);
+                    setIsDrawingInProgress(false);
+                    setShapeDrawStart(null);
+                    setShapeDrawEnd(null);
+                    setShapeDrawTargetView(null);
+                  }
+                }}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  shapeDrawingMode === "rectangle"
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Draw Rectangle"
+              >
+                <Square className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => {
+                  // Toggle circle drawing mode and disable other modes
+                  const newMode =
+                    shapeDrawingMode === "circle" ? null : "circle";
+                  setShapeDrawingMode(newMode);
+                  setSelectedShapeType("circle");
+                  if (newMode) {
+                    setIsTextSelectionMode(false);
+                    setTextSelectionPopup(null);
+                    setIsAddTextBoxMode(false);
+                    setIsDrawingInProgress(false);
+                    setShapeDrawStart(null);
+                    setShapeDrawEnd(null);
+                    setShapeDrawTargetView(null);
+                  }
+                }}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  shapeDrawingMode === "circle"
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Draw Circle"
+              >
+                <Circle className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Right Floating Toolbar - View Controls - Also moved down */}
+          <div
+            className="absolute right-4 z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300"
+            style={{
+              top: "80px", // Moved down from top-4 to account for format drawer
+            }}
+          >
+            <div className="bg-white rounded-lg shadow-lg border border-red-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
+              <button
+                onClick={() => setCurrentView("original")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  currentView === "original"
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Original Document"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => setCurrentView("translated")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  currentView === "translated"
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Translated Document"
+              >
+                <Globe className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => setCurrentView("split")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  currentView === "split"
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Split Screen"
+              >
+                <SplitSquareHorizontal className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  isEditMode
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Toggle Edit Mode"
+              >
+                <Eye className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Document Viewer - Added top padding */}
+          <div
+            className="flex-1 document-viewer document-container"
+            ref={containerRef}
+            style={{
+              scrollBehavior: "smooth",
+              overflow: "auto",
+              overflowX: "auto",
+              overflowY: "auto",
+              paddingTop: "20px", // Added top padding to account for format drawer
+            }}
+          >
+            {error && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="text-red-500 text-lg mb-2">Error</div>
+                  <div className="text-gray-600">{error}</div>
+                </div>
+              </div>
+            )}
+
+            {!documentUrl && !error && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="text-gray-500 text-lg mb-2">
+                    No document loaded
+                  </div>
+                  <Button onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Document
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {documentUrl && !error && (
+              <div
+                className="document-wrapper"
                 style={{
-                  width:
+                  minHeight: `${Math.max(100, pageHeight * scale + 80)}px`,
+                  height: `${Math.max(100, pageHeight * scale + 80)}px`,
+                  width: `${Math.max(
+                    100,
                     currentView === "split"
-                      ? pageWidth * scale * 2 + 20 // Double width plus gap for split view
-                      : pageWidth * scale,
-                  height: pageHeight * scale,
-                  minWidth:
+                      ? pageWidth * scale * 2 + 100 // Double width for split view plus gap and padding
+                      : pageWidth * scale + 80
+                  )}px`,
+                  minWidth: `${Math.max(
+                    100,
                     currentView === "split"
-                      ? pageWidth * scale * 2 + 20
-                      : pageWidth * scale,
-                  minHeight: pageHeight * scale,
-                  display: "block",
+                      ? pageWidth * scale * 2 + 100
+                      : pageWidth * scale + 80
+                  )}px`,
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  paddingTop: "40px",
+                  paddingBottom: "40px",
+                  paddingLeft: "40px",
+                  paddingRight: "40px",
+                  margin: "0 auto",
                 }}
               >
-                {/* Document Rendering - Show different content based on view */}
-                {currentView === "original" && (
-                  <>
-                    {isPdfFile(documentUrl) ? (
-                      <div className="relative">
-                        <Document
-                          file={documentUrl}
-                          onLoadSuccess={handleDocumentLoadSuccess}
-                          onLoadError={handleDocumentLoadError}
-                          loading={
-                            <div className="flex items-center justify-center p-8">
-                              <div className="text-center">
-                                <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                                <div className="text-gray-600">
-                                  Loading PDF...
-                                </div>
-                              </div>
-                            </div>
-                          }
-                        >
-                          <Page
-                            pageNumber={currentPage}
-                            onLoadSuccess={handlePageLoadSuccess}
-                            onRenderSuccess={() => setIsPageLoading(false)}
-                            onRenderError={() => setIsPageLoading(false)}
-                            renderTextLayer={isTextSelectionMode}
-                            renderAnnotationLayer={false}
-                            loading={
-                              <div
-                                className="flex items-center justify-center bg-gray-50"
-                                style={{
-                                  width: pageWidth * scale,
-                                  height: pageHeight * scale,
-                                }}
-                              >
-                                <div className="text-center">
-                                  <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                                  <div className="text-gray-500 text-sm">
-                                    Rendering page...
-                                  </div>
-                                </div>
-                              </div>
-                            }
-                            width={pageWidth * scale}
-                          />
-                        </Document>
-
-                        {/* Loading overlay during scale changes */}
-                        {isScaleChanging && (
-                          <div
-                            className="absolute inset-0 bg-gray-50 bg-opacity-50 flex items-center justify-center z-50"
-                            style={{
-                              width: pageWidth * scale,
-                              height: pageHeight * scale,
-                            }}
-                          >
-                            <div className="bg-white rounded-lg shadow-md p-3 flex items-center space-x-2">
-                              <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                              <span className="text-sm text-gray-600">
-                                Adjusting zoom...
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <img
-                        src={documentUrl}
-                        alt="Document"
-                        onLoad={handleImageLoadSuccess}
-                        onError={handleImageLoadError}
-                        style={{
-                          width: pageWidth * scale,
-                          height: pageHeight * scale,
-                          maxWidth: "none",
-                          display: "block",
-                        }}
-                        className="select-none"
-                      />
-                    )}
-                  </>
-                )}
-
-                {/* Translated Document View */}
-                {currentView === "translated" && (
-                  <div className="relative">
-                    {/* Blank document page */}
-                    <div
-                      className="bg-white border border-gray-200 shadow-sm"
-                      style={{
-                        width: pageWidth * scale,
-                        height: pageHeight * scale,
-                      }}
-                    />
-
-                    {/* Page number indicator */}
-                    <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
-                      Page {currentPage} of {numPages}
-                    </div>
-                  </div>
-                )}
-
-                {/* Split Screen View */}
-                {currentView === "split" && (
-                  <div
-                    className="flex"
-                    style={{
-                      width: pageWidth * scale * 2 + 20, // Double width plus gap
-                      height: pageHeight * scale,
-                    }}
-                  >
-                    {/* Original Document Side */}
-                    <div
-                      className="relative bg-white border border-gray-200 shadow-sm"
-                      style={{
-                        width: pageWidth * scale,
-                        height: pageHeight * scale,
-                      }}
-                    >
-                      {/* Original Document Header */}
-                      <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                        <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                          Original Document
-                        </div>
-                      </div>
-
-                      {/* Original Document Content */}
+                <div
+                  ref={documentRef}
+                  className={`relative bg-white document-page ${
+                    isScaleChanging ? "" : "zoom-transition"
+                  } ${isTextSelectionMode ? "text-selection-mode" : ""} ${
+                    isAddTextBoxMode ? "cursor-crosshair" : ""
+                  } ${shapeDrawingMode ? "cursor-crosshair" : ""} ${
+                    isCtrlPressed ? "cursor-zoom-in" : ""
+                  }`}
+                  onClick={handleDocumentContainerClick}
+                  onMouseMove={
+                    shapeDrawingMode ? handleShapeDrawMove : undefined
+                  }
+                  onMouseUp={shapeDrawingMode ? handleShapeDrawEnd : undefined}
+                  style={{
+                    width:
+                      currentView === "split"
+                        ? pageWidth * scale * 2 + 20 // Double width plus gap for split view
+                        : pageWidth * scale,
+                    height: pageHeight * scale,
+                    minWidth:
+                      currentView === "split"
+                        ? pageWidth * scale * 2 + 20
+                        : pageWidth * scale,
+                    minHeight: pageHeight * scale,
+                    display: "block",
+                  }}
+                >
+                  {/* Document Rendering - Show different content based on view */}
+                  {currentView === "original" && (
+                    <>
                       {isPdfFile(documentUrl) ? (
-                        <div className="relative w-full h-full">
+                        <div className="relative">
                           <Document
                             file={documentUrl}
                             onLoadSuccess={handleDocumentLoadSuccess}
                             onLoadError={handleDocumentLoadError}
-                            loading={null}
+                            loading={
+                              <div className="flex items-center justify-center p-8">
+                                <div className="text-center">
+                                  <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                                  <div className="text-gray-600">
+                                    Loading PDF...
+                                  </div>
+                                </div>
+                              </div>
+                            }
                           >
                             <Page
                               pageNumber={currentPage}
@@ -2529,15 +2644,50 @@ const PDFEditor: React.FC = () => {
                               onRenderError={() => setIsPageLoading(false)}
                               renderTextLayer={isTextSelectionMode}
                               renderAnnotationLayer={false}
-                              loading={null}
+                              loading={
+                                <div
+                                  className="flex items-center justify-center bg-gray-50"
+                                  style={{
+                                    width: pageWidth * scale,
+                                    height: pageHeight * scale,
+                                  }}
+                                >
+                                  <div className="text-center">
+                                    <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                                    <div className="text-gray-500 text-sm">
+                                      Rendering page...
+                                    </div>
+                                  </div>
+                                </div>
+                              }
                               width={pageWidth * scale}
                             />
                           </Document>
+
+                          {/* Loading overlay during scale changes */}
+                          {isScaleChanging && (
+                            <div
+                              className="absolute inset-0 bg-gray-50 bg-opacity-50 flex items-center justify-center z-50"
+                              style={{
+                                width: pageWidth * scale,
+                                height: pageHeight * scale,
+                              }}
+                            >
+                              <div className="bg-white rounded-lg shadow-md p-3 flex items-center space-x-2">
+                                <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-sm text-gray-600">
+                                  Adjusting zoom...
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <img
                           src={documentUrl}
-                          alt="Original Document"
+                          alt="Document"
+                          onLoad={handleImageLoadSuccess}
+                          onError={handleImageLoadError}
                           style={{
                             width: pageWidth * scale,
                             height: pageHeight * scale,
@@ -2547,364 +2697,460 @@ const PDFEditor: React.FC = () => {
                           className="select-none"
                         />
                       )}
+                    </>
+                  )}
 
-                      {/* Original Document Elements */}
-                      {/* Deletion Rectangles */}
-                      {originalDeletionRectangles
-                        .filter((rect) => rect.page === currentPage)
-                        .map((rect) => (
-                          <Rnd
-                            key={`orig-del-${rect.id}`}
-                            position={{ x: rect.x * scale, y: rect.y * scale }}
-                            size={{
-                              width: rect.width * scale,
-                              height: rect.height * scale,
-                            }}
-                            bounds="parent"
-                            onDragStop={(e, d) => {
-                              setOriginalDeletionRectangles((prev) =>
-                                prev.map((r) =>
-                                  r.id === rect.id
-                                    ? { ...r, x: d.x / scale, y: d.y / scale }
-                                    : r
-                                )
-                              );
-                            }}
-                            onResizeStop={(
-                              e,
-                              direction,
-                              ref,
-                              delta,
-                              position
-                            ) => {
-                              setOriginalDeletionRectangles((prev) =>
-                                prev.map((r) =>
-                                  r.id === rect.id
-                                    ? {
-                                        ...r,
-                                        x: position.x / scale,
-                                        y: position.y / scale,
-                                        width:
-                                          parseInt(ref.style.width) / scale,
-                                        height:
-                                          parseInt(ref.style.height) / scale,
-                                      }
-                                    : r
-                                )
-                              );
-                            }}
-                            className="border-2 border-red-500 bg-white bg-opacity-90"
-                            style={{ zIndex: 10, transform: "none" }}
-                          >
-                            <div className="w-full h-full flex items-center justify-center">
-                              <span className="text-red-500 text-xs font-medium">
-                                DELETE
-                              </span>
-                            </div>
-                          </Rnd>
-                        ))}
+                  {/* Translated Document View */}
+                  {currentView === "translated" && (
+                    <div className="relative">
+                      {/* Blank document page */}
+                      <div
+                        className="bg-white border border-gray-200 shadow-sm"
+                        style={{
+                          width: pageWidth * scale,
+                          height: pageHeight * scale,
+                        }}
+                      />
 
-                      {/* Original Shapes */}
-                      {originalShapes
-                        .filter((shape) => shape.page === currentPage)
-                        .map((shape) => (
-                          <MemoizedShape
-                            key={`orig-shape-${shape.id}`}
-                            shape={shape}
-                            isSelected={selectedShapeId === shape.id}
-                            isEditMode={isEditMode}
-                            scale={scale}
-                            onSelect={handleShapeSelect}
-                            onUpdate={(id, updates) => {
-                              setOriginalShapes((prev) =>
-                                prev.map((s) =>
-                                  s.id === id ? { ...s, ...updates } : s
-                                )
-                              );
-                            }}
-                            onDelete={(id) => {
-                              setOriginalShapes((prev) =>
-                                prev.filter((s) => s.id !== id)
-                              );
-                              if (selectedShapeId === id) {
-                                setSelectedShapeId(null);
-                              }
-                            }}
-                          />
-                        ))}
-
-                      {/* Original Text Boxes */}
-                      {originalTextBoxes
-                        .filter((box) => box.page === currentPage)
-                        .map((textBox) => (
-                          <MemoizedTextBox
-                            key={`orig-text-${textBox.id}`}
-                            textBox={textBox}
-                            isSelected={selectedFieldId === textBox.id}
-                            isEditMode={isEditMode}
-                            settingsPopupFor={settingsPopupFor}
-                            scale={scale}
-                            onSelect={handleTextBoxSelect}
-                            onUpdate={(id, updates) => {
-                              setOriginalTextBoxes((prev) =>
-                                prev.map((box) =>
-                                  box.id === id ? { ...box, ...updates } : box
-                                )
-                              );
-                            }}
-                            onDelete={(id) => {
-                              setOriginalTextBoxes((prev) =>
-                                prev.filter((box) => box.id !== id)
-                              );
-                              setSelectedFieldId((current) =>
-                                current === id ? null : current
-                              );
-                            }}
-                            onSettingsToggle={handleSettingsToggle}
-                          />
-                        ))}
+                      {/* Page number indicator */}
+                      <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
+                        Page {currentPage} of {numPages}
+                      </div>
                     </div>
+                  )}
 
-                    {/* Gap between documents */}
-                    <div className="w-5 flex items-center justify-center">
-                      <div className="w-px h-full bg-gray-300"></div>
-                    </div>
-
-                    {/* Translated Document Side */}
+                  {/* Split Screen View */}
+                  {currentView === "split" && (
                     <div
-                      className="relative bg-white border border-gray-200 shadow-sm"
+                      className="flex"
                       style={{
-                        width: pageWidth * scale,
+                        width: pageWidth * scale * 2 + 20, // Double width plus gap
                         height: pageHeight * scale,
                       }}
                     >
-                      {/* Translated Document Header */}
-                      <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                        <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                          Translated Document
-                        </div>
-                      </div>
-
-                      {/* Blank translated document background */}
-                      <div className="w-full h-full bg-white">
-                        {/* Page number indicator */}
-                        <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
-                          Page {currentPage} of {numPages}
-                        </div>
-                      </div>
-
-                      {/* Translated Document Elements */}
-                      {/* Deletion Rectangles */}
-                      {translatedDeletionRectangles
-                        .filter((rect) => rect.page === currentPage)
-                        .map((rect) => (
-                          <Rnd
-                            key={`trans-del-${rect.id}`}
-                            position={{ x: rect.x * scale, y: rect.y * scale }}
-                            size={{
-                              width: rect.width * scale,
-                              height: rect.height * scale,
-                            }}
-                            bounds="parent"
-                            onDragStop={(e, d) => {
-                              setTranslatedDeletionRectangles((prev) =>
-                                prev.map((r) =>
-                                  r.id === rect.id
-                                    ? { ...r, x: d.x / scale, y: d.y / scale }
-                                    : r
-                                )
-                              );
-                            }}
-                            onResizeStop={(
-                              e,
-                              direction,
-                              ref,
-                              delta,
-                              position
-                            ) => {
-                              setTranslatedDeletionRectangles((prev) =>
-                                prev.map((r) =>
-                                  r.id === rect.id
-                                    ? {
-                                        ...r,
-                                        x: position.x / scale,
-                                        y: position.y / scale,
-                                        width:
-                                          parseInt(ref.style.width) / scale,
-                                        height:
-                                          parseInt(ref.style.height) / scale,
-                                      }
-                                    : r
-                                )
-                              );
-                            }}
-                            className="border-2 border-red-500 bg-white bg-opacity-90"
-                            style={{ zIndex: 10, transform: "none" }}
-                          >
-                            <div className="w-full h-full flex items-center justify-center">
-                              <span className="text-red-500 text-xs font-medium">
-                                DELETE
-                              </span>
-                            </div>
-                          </Rnd>
-                        ))}
-
-                      {/* Translated Shapes */}
-                      {translatedShapes
-                        .filter((shape) => shape.page === currentPage)
-                        .map((shape) => (
-                          <MemoizedShape
-                            key={`trans-shape-${shape.id}`}
-                            shape={shape}
-                            isSelected={selectedShapeId === shape.id}
-                            isEditMode={isEditMode}
-                            scale={scale}
-                            onSelect={handleShapeSelect}
-                            onUpdate={(id, updates) => {
-                              setTranslatedShapes((prev) =>
-                                prev.map((s) =>
-                                  s.id === id ? { ...s, ...updates } : s
-                                )
-                              );
-                            }}
-                            onDelete={(id) => {
-                              setTranslatedShapes((prev) =>
-                                prev.filter((s) => s.id !== id)
-                              );
-                              if (selectedShapeId === id) {
-                                setSelectedShapeId(null);
-                              }
-                            }}
-                          />
-                        ))}
-
-                      {/* Translated Text Boxes */}
-                      {translatedTextBoxes
-                        .filter((box) => box.page === currentPage)
-                        .map((textBox) => (
-                          <MemoizedTextBox
-                            key={`trans-text-${textBox.id}`}
-                            textBox={textBox}
-                            isSelected={selectedFieldId === textBox.id}
-                            isEditMode={isEditMode}
-                            settingsPopupFor={settingsPopupFor}
-                            scale={scale}
-                            onSelect={handleTextBoxSelect}
-                            onUpdate={(id, updates) => {
-                              setTranslatedTextBoxes((prev) =>
-                                prev.map((box) =>
-                                  box.id === id ? { ...box, ...updates } : box
-                                )
-                              );
-                            }}
-                            onDelete={(id) => {
-                              setTranslatedTextBoxes((prev) =>
-                                prev.filter((box) => box.id !== id)
-                              );
-                              setSelectedFieldId((current) =>
-                                current === id ? null : current
-                              );
-                            }}
-                            onSettingsToggle={handleSettingsToggle}
-                          />
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Show interactive elements in both original and translated views */}
-                {(currentView === "original" ||
-                  currentView === "translated") && (
-                  <>
-                    {/* Deletion Rectangles */}
-                    {getCurrentPageDeletionRectangles.map((rect) => (
-                      <Rnd
-                        key={rect.id}
-                        position={{ x: rect.x * scale, y: rect.y * scale }}
-                        size={{
-                          width: rect.width * scale,
-                          height: rect.height * scale,
-                        }}
-                        bounds="parent"
-                        onDragStop={(e, d) => {
-                          updateDeletionRectangle(rect.id, {
-                            x: d.x / scale,
-                            y: d.y / scale,
-                          });
-                        }}
-                        onResizeStop={(e, direction, ref, delta, position) => {
-                          updateDeletionRectangle(rect.id, {
-                            x: position.x / scale,
-                            y: position.y / scale,
-                            width: parseInt(ref.style.width) / scale,
-                            height: parseInt(ref.style.height) / scale,
-                          });
-                        }}
-                        className="border-2 border-red-500 bg-white bg-opacity-90"
-                        style={{ zIndex: 10, transform: "none" }}
-                      >
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="text-red-500 text-xs font-medium">
-                            DELETE
-                          </span>
-                        </div>
-                      </Rnd>
-                    ))}
-
-                    {/* Shapes */}
-                    {getCurrentPageShapes.map((shape) => (
-                      <MemoizedShape
-                        key={shape.id}
-                        shape={shape}
-                        isSelected={selectedShapeId === shape.id}
-                        isEditMode={isEditMode}
-                        scale={scale}
-                        onSelect={handleShapeSelect}
-                        onUpdate={updateShapeCallback}
-                        onDelete={deleteShapeCallback}
-                      />
-                    ))}
-
-                    {/* Text Boxes */}
-                    {getCurrentPageTextBoxes.map((textBox) => (
-                      <MemoizedTextBox
-                        key={textBox.id}
-                        textBox={textBox}
-                        isSelected={selectedFieldId === textBox.id}
-                        isEditMode={isEditMode}
-                        settingsPopupFor={settingsPopupFor}
-                        scale={scale}
-                        onSelect={handleTextBoxSelect}
-                        onUpdate={updateTextBox}
-                        onDelete={deleteTextBox}
-                        onSettingsToggle={handleSettingsToggle}
-                      />
-                    ))}
-
-                    {/* Shape Drawing Preview */}
-                    {isDrawingInProgress && shapeDrawStart && shapeDrawEnd && (
+                      {/* Original Document Side */}
                       <div
-                        className="absolute border-2 border-dashed border-red-500 bg-red-100 bg-opacity-30 pointer-events-none"
+                        className="relative bg-white border border-gray-200 shadow-sm"
                         style={{
-                          left:
-                            Math.min(shapeDrawStart.x, shapeDrawEnd.x) * scale,
-                          top:
-                            Math.min(shapeDrawStart.y, shapeDrawEnd.y) * scale,
-                          width:
-                            Math.abs(shapeDrawEnd.x - shapeDrawStart.x) * scale,
-                          height:
-                            Math.abs(shapeDrawEnd.y - shapeDrawStart.y) * scale,
-                          borderRadius:
-                            shapeDrawingMode === "circle" ? "50%" : "0",
-                          zIndex: 50,
+                          width: pageWidth * scale,
+                          height: pageHeight * scale,
                         }}
-                      />
-                    )}
-                  </>
-                )}
+                      >
+                        {/* Original Document Header */}
+                        <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                          <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                            Original Document
+                          </div>
+                        </div>
+
+                        {/* Original Document Content */}
+                        {isPdfFile(documentUrl) ? (
+                          <div className="relative w-full h-full">
+                            <Document
+                              file={documentUrl}
+                              onLoadSuccess={handleDocumentLoadSuccess}
+                              onLoadError={handleDocumentLoadError}
+                              loading={null}
+                            >
+                              <Page
+                                pageNumber={currentPage}
+                                onLoadSuccess={handlePageLoadSuccess}
+                                onRenderSuccess={() => setIsPageLoading(false)}
+                                onRenderError={() => setIsPageLoading(false)}
+                                renderTextLayer={isTextSelectionMode}
+                                renderAnnotationLayer={false}
+                                loading={null}
+                                width={pageWidth * scale}
+                              />
+                            </Document>
+                          </div>
+                        ) : (
+                          <img
+                            src={documentUrl}
+                            alt="Original Document"
+                            style={{
+                              width: pageWidth * scale,
+                              height: pageHeight * scale,
+                              maxWidth: "none",
+                              display: "block",
+                            }}
+                            className="select-none"
+                          />
+                        )}
+
+                        {/* Original Document Elements */}
+                        {/* Deletion Rectangles */}
+                        {originalDeletionRectangles
+                          .filter((rect) => rect.page === currentPage)
+                          .map((rect) => (
+                            <Rnd
+                              key={`orig-del-${rect.id}`}
+                              position={{
+                                x: rect.x * scale,
+                                y: rect.y * scale,
+                              }}
+                              size={{
+                                width: rect.width * scale,
+                                height: rect.height * scale,
+                              }}
+                              bounds="parent"
+                              onDragStop={(e, d) => {
+                                setOriginalDeletionRectangles((prev) =>
+                                  prev.map((r) =>
+                                    r.id === rect.id
+                                      ? { ...r, x: d.x / scale, y: d.y / scale }
+                                      : r
+                                  )
+                                );
+                              }}
+                              onResizeStop={(
+                                e,
+                                direction,
+                                ref,
+                                delta,
+                                position
+                              ) => {
+                                setOriginalDeletionRectangles((prev) =>
+                                  prev.map((r) =>
+                                    r.id === rect.id
+                                      ? {
+                                          ...r,
+                                          x: position.x / scale,
+                                          y: position.y / scale,
+                                          width:
+                                            parseInt(ref.style.width) / scale,
+                                          height:
+                                            parseInt(ref.style.height) / scale,
+                                        }
+                                      : r
+                                  )
+                                );
+                              }}
+                              className="border-2 border-red-500 bg-white bg-opacity-90"
+                              style={{ zIndex: 10, transform: "none" }}
+                            >
+                              <div className="w-full h-full flex items-center justify-center">
+                                <span className="text-red-500 text-xs font-medium">
+                                  DELETE
+                                </span>
+                              </div>
+                            </Rnd>
+                          ))}
+
+                        {/* Original Shapes */}
+                        {originalShapes
+                          .filter((shape) => shape.page === currentPage)
+                          .map((shape) => (
+                            <MemoizedShape
+                              key={`orig-shape-${shape.id}`}
+                              shape={shape}
+                              isSelected={selectedShapeId === shape.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              onSelect={handleShapeSelect}
+                              onUpdate={(id, updates) => {
+                                setOriginalShapes((prev) =>
+                                  prev.map((s) =>
+                                    s.id === id ? { ...s, ...updates } : s
+                                  )
+                                );
+                              }}
+                              onDelete={(id) => {
+                                setOriginalShapes((prev) =>
+                                  prev.filter((s) => s.id !== id)
+                                );
+                                if (selectedShapeId === id) {
+                                  setSelectedShapeId(null);
+                                }
+                              }}
+                            />
+                          ))}
+
+                        {/* Original Text Boxes */}
+                        {originalTextBoxes
+                          .filter((box) => box.page === currentPage)
+                          .map((textBox) => (
+                            <MemoizedTextBox
+                              key={`orig-text-${textBox.id}`}
+                              textBox={textBox}
+                              isSelected={selectedFieldId === textBox.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              showPaddingIndicator={showPaddingPopup}
+                              onSelect={handleTextBoxSelect}
+                              onUpdate={(id, updates) => {
+                                setOriginalTextBoxes((prev) =>
+                                  prev.map((box) =>
+                                    box.id === id ? { ...box, ...updates } : box
+                                  )
+                                );
+                              }}
+                              onDelete={(id) => {
+                                setOriginalTextBoxes((prev) =>
+                                  prev.filter((box) => box.id !== id)
+                                );
+                                setSelectedFieldId((current) =>
+                                  current === id ? null : current
+                                );
+                              }}
+                            />
+                          ))}
+                      </div>
+
+                      {/* Gap between documents */}
+                      <div className="w-5 flex items-center justify-center">
+                        <div className="w-px h-full bg-gray-300"></div>
+                      </div>
+
+                      {/* Translated Document Side */}
+                      <div
+                        className="relative bg-white border border-gray-200 shadow-sm"
+                        style={{
+                          width: pageWidth * scale,
+                          height: pageHeight * scale,
+                        }}
+                      >
+                        {/* Translated Document Header */}
+                        <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                          <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                            Translated Document
+                          </div>
+                        </div>
+
+                        {/* Blank translated document background */}
+                        <div className="w-full h-full bg-white">
+                          {/* Page number indicator */}
+                          <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
+                            Page {currentPage} of {numPages}
+                          </div>
+                        </div>
+
+                        {/* Translated Document Elements */}
+                        {/* Deletion Rectangles */}
+                        {translatedDeletionRectangles
+                          .filter((rect) => rect.page === currentPage)
+                          .map((rect) => (
+                            <Rnd
+                              key={`trans-del-${rect.id}`}
+                              position={{
+                                x: rect.x * scale,
+                                y: rect.y * scale,
+                              }}
+                              size={{
+                                width: rect.width * scale,
+                                height: rect.height * scale,
+                              }}
+                              bounds="parent"
+                              onDragStop={(e, d) => {
+                                setTranslatedDeletionRectangles((prev) =>
+                                  prev.map((r) =>
+                                    r.id === rect.id
+                                      ? { ...r, x: d.x / scale, y: d.y / scale }
+                                      : r
+                                  )
+                                );
+                              }}
+                              onResizeStop={(
+                                e,
+                                direction,
+                                ref,
+                                delta,
+                                position
+                              ) => {
+                                setTranslatedDeletionRectangles((prev) =>
+                                  prev.map((r) =>
+                                    r.id === rect.id
+                                      ? {
+                                          ...r,
+                                          x: position.x / scale,
+                                          y: position.y / scale,
+                                          width:
+                                            parseInt(ref.style.width) / scale,
+                                          height:
+                                            parseInt(ref.style.height) / scale,
+                                        }
+                                      : r
+                                  )
+                                );
+                              }}
+                              className="border-2 border-red-500 bg-white bg-opacity-90"
+                              style={{ zIndex: 10, transform: "none" }}
+                            >
+                              <div className="w-full h-full flex items-center justify-center">
+                                <span className="text-red-500 text-xs font-medium">
+                                  DELETE
+                                </span>
+                              </div>
+                            </Rnd>
+                          ))}
+
+                        {/* Translated Shapes */}
+                        {translatedShapes
+                          .filter((shape) => shape.page === currentPage)
+                          .map((shape) => (
+                            <MemoizedShape
+                              key={`trans-shape-${shape.id}`}
+                              shape={shape}
+                              isSelected={selectedShapeId === shape.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              onSelect={handleShapeSelect}
+                              onUpdate={(id, updates) => {
+                                setTranslatedShapes((prev) =>
+                                  prev.map((s) =>
+                                    s.id === id ? { ...s, ...updates } : s
+                                  )
+                                );
+                              }}
+                              onDelete={(id) => {
+                                setTranslatedShapes((prev) =>
+                                  prev.filter((s) => s.id !== id)
+                                );
+                                if (selectedShapeId === id) {
+                                  setSelectedShapeId(null);
+                                }
+                              }}
+                            />
+                          ))}
+
+                        {/* Translated Text Boxes */}
+                        {translatedTextBoxes
+                          .filter((box) => box.page === currentPage)
+                          .map((textBox) => (
+                            <MemoizedTextBox
+                              key={`trans-text-${textBox.id}`}
+                              textBox={textBox}
+                              isSelected={selectedFieldId === textBox.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              showPaddingIndicator={showPaddingPopup}
+                              onSelect={handleTextBoxSelect}
+                              onUpdate={(id, updates) => {
+                                setTranslatedTextBoxes((prev) =>
+                                  prev.map((box) =>
+                                    box.id === id ? { ...box, ...updates } : box
+                                  )
+                                );
+                              }}
+                              onDelete={(id) => {
+                                setTranslatedTextBoxes((prev) =>
+                                  prev.filter((box) => box.id !== id)
+                                );
+                                setSelectedFieldId((current) =>
+                                  current === id ? null : current
+                                );
+                              }}
+                            />
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Show interactive elements in both original and translated views */}
+                  {(currentView === "original" ||
+                    currentView === "translated") && (
+                    <>
+                      {/* Deletion Rectangles */}
+                      {getCurrentPageDeletionRectangles.map((rect) => (
+                        <Rnd
+                          key={rect.id}
+                          position={{ x: rect.x * scale, y: rect.y * scale }}
+                          size={{
+                            width: rect.width * scale,
+                            height: rect.height * scale,
+                          }}
+                          bounds="parent"
+                          onDragStop={(e, d) => {
+                            updateDeletionRectangle(rect.id, {
+                              x: d.x / scale,
+                              y: d.y / scale,
+                            });
+                          }}
+                          onResizeStop={(
+                            e,
+                            direction,
+                            ref,
+                            delta,
+                            position
+                          ) => {
+                            updateDeletionRectangle(rect.id, {
+                              x: position.x / scale,
+                              y: position.y / scale,
+                              width: parseInt(ref.style.width) / scale,
+                              height: parseInt(ref.style.height) / scale,
+                            });
+                          }}
+                          className="border-2 border-red-500 bg-white bg-opacity-90"
+                          style={{ zIndex: 10, transform: "none" }}
+                        >
+                          <div className="w-full h-full flex items-center justify-center">
+                            <span className="text-red-500 text-xs font-medium">
+                              DELETE
+                            </span>
+                          </div>
+                        </Rnd>
+                      ))}
+
+                      {/* Shapes */}
+                      {getCurrentPageShapes.map((shape) => (
+                        <MemoizedShape
+                          key={shape.id}
+                          shape={shape}
+                          isSelected={selectedShapeId === shape.id}
+                          isEditMode={isEditMode}
+                          scale={scale}
+                          onSelect={handleShapeSelect}
+                          onUpdate={updateShapeCallback}
+                          onDelete={deleteShapeCallback}
+                        />
+                      ))}
+
+                      {/* Text Boxes */}
+                      {getCurrentPageTextBoxes.map((textBox) => (
+                        <MemoizedTextBox
+                          key={textBox.id}
+                          textBox={textBox}
+                          isSelected={selectedFieldId === textBox.id}
+                          isEditMode={isEditMode}
+                          scale={scale}
+                          showPaddingIndicator={showPaddingPopup}
+                          onSelect={handleTextBoxSelect}
+                          onUpdate={updateTextBox}
+                          onDelete={deleteTextBox}
+                        />
+                      ))}
+
+                      {/* Shape Drawing Preview */}
+                      {isDrawingInProgress &&
+                        shapeDrawStart &&
+                        shapeDrawEnd && (
+                          <div
+                            className="absolute border-2 border-dashed border-red-500 bg-red-100 bg-opacity-30 pointer-events-none"
+                            style={{
+                              left:
+                                Math.min(shapeDrawStart.x, shapeDrawEnd.x) *
+                                scale,
+                              top:
+                                Math.min(shapeDrawStart.y, shapeDrawEnd.y) *
+                                scale,
+                              width:
+                                Math.abs(shapeDrawEnd.x - shapeDrawStart.x) *
+                                scale,
+                              height:
+                                Math.abs(shapeDrawEnd.y - shapeDrawStart.y) *
+                                scale,
+                              borderRadius:
+                                shapeDrawingMode === "circle" ? "50%" : "0",
+                              zIndex: 50,
+                            }}
+                          />
+                        )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Text Selection Popup */}
@@ -3482,8 +3728,61 @@ const PDFEditor: React.FC = () => {
             #e5e7eb 100%
           );
         }
+
+        /* Resize handle styles */
+        .resize-handle {
+          opacity: 0;
+          transition: opacity 0.2s ease, transform 0.2s ease,
+            background-color 0.2s ease;
+          z-index: 100;
+        }
+
+        .rnd:hover .resize-handle,
+        .rnd.selected .resize-handle {
+          opacity: 1;
+        }
+
+        .resize-handle:hover {
+          transform: scale(1.2);
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Blue handles for text boxes */
+        .rnd .resize-handle:hover {
+          background-color: #2563eb !important;
+        }
+
+        /* Red handles for shapes */
+        .rnd .resize-handle[style*="#ef4444"]:hover {
+          background-color: #dc2626 !important;
+        }
+
+        .resize-handle-corner {
+          border: 1px solid #ffffff;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .resize-handle-top,
+        .resize-handle-bottom,
+        .resize-handle-left,
+        .resize-handle-right {
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Hide resize handles when not in edit mode */
+        .rnd:not(.edit-mode) .resize-handle {
+          display: none !important;
+        }
       `}</style>
     </div>
+  );
+};
+
+const PDFEditor: React.FC = () => {
+  return (
+    <TextFormatProvider>
+      <PDFEditorContent />
+    </TextFormatProvider>
   );
 };
 
