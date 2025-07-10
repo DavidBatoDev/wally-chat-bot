@@ -3903,9 +3903,28 @@ const PDFEditorContent: React.FC = () => {
       </div>
 
       {/* CSS Styles */}
-      <style jsx>{`
-        /* Default text layer styling - matches DocumentCanvas approach */
+      <style>{`
+        /* EXACT COPY FROM DocumentCanvas - PDF Canvas styling */
+        .react-pdf__Page__canvas {
+          display: block !important;
+          position: relative !important;
+          z-index: 1 !important;
+        }
+
+        /* CRITICAL: Text layer positioning - must exactly overlay the canvas */
         .react-pdf__Page__textContent {
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          z-index: 2 !important;
+          pointer-events: none !important;
+          overflow: hidden !important;
+          /* Ensure text layer doesn't interfere with layout */
+          margin: 0 !important;
           padding: 0 !important;
           box-sizing: border-box !important;
         }
@@ -3938,6 +3957,17 @@ const PDFEditorContent: React.FC = () => {
         .add-text-box-mode .react-pdf__Page__textContent span:hover {
           background-color: rgba(34, 197, 94, 0.4) !important;
           color: rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* Ensure text fields are properly layered above text layer */
+        .text-field-overlay {
+          position: absolute !important;
+          z-index: 100 !important;
+        }
+
+        /* Fix any potential scaling issues */
+        .add-text-box-mode .react-pdf__Page {
+          transform-origin: top left !important;
         }
 
         /* Keep text selection mode styles for text selection functionality */
