@@ -41,6 +41,7 @@ import {
   Globe,
   Files,
   Wrench,
+  Edit2,
   Eye,
   SplitSquareHorizontal,
 } from "lucide-react";
@@ -144,19 +145,16 @@ interface DeletionRectangle {
   width: number;
   height: number;
   page: number;
-  background?: string;
+  background?: string; // Add this for background color
 }
 
-interface TextSelectionPopupState {
-  texts: {
-    text: string;
-    position: { top: number; left: number };
-    pagePosition: { x: number; y: number };
-  }[];
-  popupPosition: {
-    top: number;
-    left: number;
-    position: "above" | "below";
+interface SelectedTextBoxes {
+  textBoxIds: string[];
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
   };
 }
 
@@ -171,6 +169,9 @@ const MemoizedTextBox = memo(
     onSelect,
     onUpdate,
     onDelete,
+    isTextSelectionMode,
+    isSelectedInTextMode,
+    onTextSelectionClick,
   }: {
     textBox: TextField;
     isSelected: boolean;
@@ -180,6 +181,9 @@ const MemoizedTextBox = memo(
     onSelect: (id: string) => void;
     onUpdate: (id: string, updates: Partial<TextField>) => void;
     onDelete: (id: string) => void;
+    isTextSelectionMode?: boolean;
+    isSelectedInTextMode?: boolean;
+    onTextSelectionClick?: (id: string, event: React.MouseEvent) => void;
   }) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -191,9 +195,15 @@ const MemoizedTextBox = memo(
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         e.stopPropagation();
-        onSelect(textBox.id);
+
+        // In text selection mode, use the text selection handler
+        if (isTextSelectionMode && onTextSelectionClick) {
+          onTextSelectionClick(textBox.id, e);
+        } else {
+          onSelect(textBox.id);
+        }
       },
-      [textBox.id, onSelect]
+      [textBox.id, onSelect, isTextSelectionMode, onTextSelectionClick]
     );
 
     const handleFocus = useCallback(() => {
@@ -206,10 +216,10 @@ const MemoizedTextBox = memo(
         position={{ x: textBox.x * scale, y: textBox.y * scale }}
         size={{ width: textBox.width * scale, height: textBox.height * scale }}
         bounds="parent"
-        disableDragging={false}
+        disableDragging={isTextSelectionMode}
         dragHandleClassName="drag-handle"
         enableResizing={
-          isEditMode && isSelected
+          isEditMode && isSelected && !isTextSelectionMode
             ? {
                 top: true,
                 right: true,
@@ -323,6 +333,10 @@ const MemoizedTextBox = memo(
         }}
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
           isEditMode ? "edit-mode" : ""
+        } ${
+          isSelectedInTextMode
+            ? "ring-2 ring-blue-500 text-selection-highlight"
+            : ""
         }`}
         style={{ zIndex: 30, transform: "none" }}
         onClick={handleClick}
@@ -342,8 +356,8 @@ const MemoizedTextBox = memo(
             </button>
           )}
 
-          {/* Move handle - only show when selected and in edit mode */}
-          {isEditMode && isSelected && (
+          {/* Move handle - only show when selected and in edit mode and NOT in text selection mode */}
+          {isEditMode && isSelected && !isTextSelectionMode && (
             <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
               <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
@@ -680,6 +694,7 @@ const PDFEditorContent: React.FC = () => {
   const [isDocumentLoaded, setIsDocumentLoaded] = useState<boolean>(false);
   const [isPageLoading, setIsPageLoading] = useState<boolean>(false);
   const [isScaleChanging, setIsScaleChanging] = useState<boolean>(false);
+  const [pdfBackgroundColor, setPdfBackgroundColor] = useState<string>("white"); // Store PDF background color
 
   // Editor state
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
@@ -688,9 +703,36 @@ const PDFEditorContent: React.FC = () => {
   const [isAddTextBoxMode, setIsAddTextBoxMode] = useState<boolean>(false);
   const [isTextSelectionMode, setIsTextSelectionMode] =
     useState<boolean>(false);
+  const [showDeletionRectangles, setShowDeletionRectangles] =
+    useState<boolean>(false);
 
-  const [textSelectionPopup, setTextSelectionPopup] =
-    useState<TextSelectionPopupState | null>(null);
+  // New state for refactored approach
+  const [selectedTextBoxes, setSelectedTextBoxes] = useState<SelectedTextBoxes>(
+    { textBoxIds: [] }
+  );
+
+  // Selection rectangle state for text selection mode
+  const [isDrawingSelection, setIsDrawingSelection] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Calculate selection rectangle for text selection
+  const selectionRect = useMemo(() => {
+    if (!selectionStart || !selectionEnd) return null;
+
+    const left = Math.min(selectionStart.x, selectionEnd.x);
+    const top = Math.min(selectionStart.y, selectionEnd.y);
+    const width = Math.abs(selectionEnd.x - selectionStart.x);
+    const height = Math.abs(selectionEnd.y - selectionStart.y);
+
+    return { left, top, width, height };
+  }, [selectionStart, selectionEnd]);
 
   // Shape drawing state
   const [isDrawingShape, setIsDrawingShape] = useState<boolean>(false);
@@ -717,12 +759,6 @@ const PDFEditorContent: React.FC = () => {
   >(null);
 
   // Drag and interaction state
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
-    null
-  );
-  const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
-  const [mouseDownTime, setMouseDownTime] = useState<number | null>(null);
   const [isRotating, setIsRotating] = useState<boolean>(false);
   const [rotatingFieldId, setRotatingFieldId] = useState<string | null>(null);
   const [initialRotation, setInitialRotation] = useState<number>(0);
@@ -896,6 +932,11 @@ const PDFEditorContent: React.FC = () => {
     return () => {
       document.removeEventListener("mouseup", handleGlobalMouseUp);
       document.removeEventListener("mouseleave", handleGlobalMouseUp);
+
+      // Cleanup timeouts on unmount
+      if (scaleTimeoutRef.current) {
+        clearTimeout(scaleTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -998,6 +1039,15 @@ const PDFEditorContent: React.FC = () => {
     setIsPageLoading(true);
   }, [scale, currentPage]);
 
+  // Capture background color only once when document is first loaded
+  useEffect(() => {
+    if (isDocumentLoaded && !isPageLoading && pdfBackgroundColor === "white") {
+      setTimeout(() => {
+        capturePdfBackgroundColor();
+      }, 200);
+    }
+  }, [isDocumentLoaded, isPageLoading, pdfBackgroundColor]);
+
   // Track Ctrl key state for zoom indicator and handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1056,7 +1106,7 @@ const PDFEditorContent: React.FC = () => {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, []);
+  }, [resetScaleChanging]);
 
   // Document loading handlers
   const handleDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
@@ -1075,7 +1125,398 @@ const PDFEditorContent: React.FC = () => {
     setPageWidth(viewport.width);
     setPageHeight(viewport.height);
     setIsPageLoading(false);
+
+    // Capture PDF background color once when page loads
+    setTimeout(() => {
+      capturePdfBackgroundColor();
+    }, 100);
   };
+
+  const handlePageLoadError = (error: any) => {
+    // Suppress text layer cancellation warnings as they're expected during zoom/mode changes
+    if (
+      error?.message?.includes("TextLayer task cancelled") ||
+      error?.message?.includes("AbortException") ||
+      error?.name === "AbortException" ||
+      error?.name === "AbortError" ||
+      error?.toString?.().includes("TextLayer task cancelled") ||
+      error?.toString?.().includes("AbortException") ||
+      // Handle cases where error might be wrapped
+      (error?.error &&
+        (error.error.message?.includes("TextLayer task cancelled") ||
+          error.error.name === "AbortException"))
+    ) {
+      // Don't log anything for these expected cancellations during zoom/mode changes
+      return;
+    }
+
+    console.error("PDF page load error:", error);
+    setIsPageLoading(false);
+  };
+
+  // Detect font properties from a span element
+  const detectFontProperties = (span: HTMLSpanElement) => {
+    const computedStyle = window.getComputedStyle(span);
+
+    // Extract font family with fallbacks
+    const fontFamily = computedStyle.fontFamily || "Arial, sans-serif";
+
+    // Detect bold
+    const fontWeight = computedStyle.fontWeight;
+    const isBold =
+      fontWeight === "bold" ||
+      fontWeight === "700" ||
+      parseInt(fontWeight) >= 700;
+
+    // Detect italic
+    const fontStyle = computedStyle.fontStyle;
+    const isItalic = fontStyle === "italic" || fontStyle === "oblique";
+
+    // Get font size
+    const fontSize = parseFloat(computedStyle.fontSize) || 12;
+
+    return {
+      fontFamily,
+      isBold,
+      isItalic,
+      fontSize,
+    };
+  };
+
+  // Capture PDF background color from the first pixel and store it
+  const capturePdfBackgroundColor = () => {
+    const canvas = document.querySelector(
+      ".react-pdf__Page__canvas"
+    ) as HTMLCanvasElement;
+
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        try {
+          // Sample the very first pixel (0, 0) to get the main PDF background color
+          const pixel = ctx.getImageData(0, 0, 1, 1).data;
+          const bgColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+          setPdfBackgroundColor(bgColor);
+          console.log(
+            "PDF background color captured from first pixel:",
+            bgColor
+          );
+        } catch (error) {
+          console.warn("Failed to capture PDF background color:", error);
+          setPdfBackgroundColor("white");
+        }
+      }
+    }
+  };
+
+  // Handle text span click during add text field mode (like DocumentCanvas)
+  const handleTextSpanClick = useCallback(
+    (e: React.MouseEvent<HTMLSpanElement>) => {
+      if (!isAddTextBoxMode) return;
+      e.stopPropagation();
+
+      const span = e.currentTarget;
+      const textContent = span.textContent || "";
+
+      if (!textContent.trim()) return;
+
+      const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
+      if (!pdfPage) return;
+
+      const spanRect = span.getBoundingClientRect();
+
+      // Calculate dimensions in original scale (like DocumentCanvas)
+      const pageWidth = spanRect.width / scale;
+      const pageHeight = spanRect.height / scale;
+
+      // Calculate position relative to PDF page (original scale)
+      const pageRect = pdfPage.getBoundingClientRect();
+      const pageX = (spanRect.left - pageRect.left) / scale;
+      const pageY = (spanRect.top - pageRect.top) / scale;
+
+      // Create text field from the selected text
+      const fontSize = Math.max(8, pageHeight * 0.8); // Estimate font size
+      const fontFamily = "Arial, sans-serif";
+      const fieldId = generateUUID();
+
+      const { width, height } = measureText(textContent, fontSize, fontFamily);
+
+      const newTextBox: TextField = {
+        id: fieldId,
+        x: pageX,
+        y: pageY,
+        width: Math.max(pageWidth, width),
+        height: Math.max(pageHeight, height),
+        value: textContent,
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        page: currentPage,
+        color: "#000000",
+        bold: false,
+        italic: false,
+        underline: false,
+        textAlign: "left",
+        listType: "none",
+        letterSpacing: 0,
+        lineHeight: 1.2,
+        rotation: 0,
+      };
+
+      setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+      setSelectedFieldId(fieldId);
+      setIsAddTextBoxMode(false);
+    },
+    [isAddTextBoxMode, scale, currentPage, currentView]
+  );
+
+  // State to track if we're currently zooming to temporarily disable text layer
+  const [isZooming, setIsZooming] = useState(false);
+  const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle zoom state changes
+  useEffect(() => {
+    if (zoomTimeoutRef.current) {
+      clearTimeout(zoomTimeoutRef.current);
+    }
+
+    setIsZooming(true);
+
+    // Set a timeout to mark zooming as complete
+    zoomTimeoutRef.current = setTimeout(() => {
+      setIsZooming(false);
+    }, 500); // Wait 500ms after scale change to re-enable text layer
+
+    return () => {
+      if (zoomTimeoutRef.current) {
+        clearTimeout(zoomTimeoutRef.current);
+      }
+    };
+  }, [scale]);
+
+  // Attach click handlers to text spans for add text field mode (like DocumentCanvas)
+  useEffect(() => {
+    if (!isAddTextBoxMode || !documentUrl || isZooming) return;
+
+    let debounceTimer: NodeJS.Timeout;
+
+    const attachHandlers = () => {
+      // Clear any existing timer
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+
+      // Debounce to prevent excessive re-attachments during zoom/render
+      debounceTimer = setTimeout(() => {
+        // Only proceed if we're still in add textbox mode and not zooming
+        if (!isAddTextBoxMode || isZooming) return;
+
+        const textLayerDiv = document.querySelector(
+          ".react-pdf__Page__textContent"
+        );
+        const textSpans = document.querySelectorAll(
+          ".react-pdf__Page__textContent span"
+        );
+
+        // Only attach if text layer exists and has content
+        if (!textLayerDiv || textSpans.length === 0) return;
+
+        textSpans.forEach((span) => {
+          // Only attach handler once and ensure span has content
+          if (!(span as any).hasListener && span.textContent?.trim()) {
+            span.addEventListener("click", handleTextSpanClick as any);
+            (span as any).hasListener = true;
+          }
+        });
+      }, 200); // Increased debounce to 200ms for better stability
+    };
+
+    // Only create observer if not zooming
+    let observer: MutationObserver | null = null;
+
+    if (!isZooming) {
+      // Create a mutation observer to detect when text layer updates
+      observer = new MutationObserver((mutations) => {
+        // Skip if we're zooming
+        if (isZooming) return;
+
+        // Only process mutations that involve text content changes
+        const hasTextChanges = mutations.some((mutation) =>
+          Array.from(mutation.addedNodes).some(
+            (node) =>
+              node.nodeType === Node.ELEMENT_NODE &&
+              (node as Element).classList?.contains(
+                "react-pdf__Page__textContent"
+              )
+          )
+        );
+
+        if (hasTextChanges) {
+          attachHandlers();
+        }
+      });
+
+      if (documentRef.current) {
+        const config = {
+          childList: true,
+          subtree: true,
+          // Only observe specific changes to reduce noise
+          attributeFilter: ["class"],
+        };
+        observer.observe(documentRef.current, config);
+
+        // Initial attachment with delay to ensure text layer is ready
+        setTimeout(() => {
+          attachHandlers();
+        }, 300);
+      }
+    }
+
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      if (observer) {
+        observer.disconnect();
+      }
+
+      // Clean up all handlers
+      const textSpans = document.querySelectorAll(
+        ".react-pdf__Page__textContent span"
+      );
+      textSpans.forEach((span) => {
+        span.removeEventListener("click", handleTextSpanClick as any);
+        delete (span as any).hasListener;
+      });
+    };
+  }, [
+    isAddTextBoxMode,
+    documentUrl,
+    currentPage,
+    handleTextSpanClick,
+    isZooming,
+  ]);
+
+  // Handle textbox selection in Text Selection mode
+  const handleTextBoxSelectionMode = useCallback(
+    (textBoxId: string, event: React.MouseEvent) => {
+      if (!isTextSelectionMode) return;
+
+      event.stopPropagation();
+
+      // Check if Ctrl/Cmd is pressed for multi-selection
+      const isMultiSelect = event.ctrlKey || event.metaKey;
+
+      setSelectedTextBoxes((prev) => {
+        if (isMultiSelect) {
+          // Multi-select: toggle the textbox
+          const isSelected = prev.textBoxIds.includes(textBoxId);
+          if (isSelected) {
+            // Remove from selection
+            const newIds = prev.textBoxIds.filter((id) => id !== textBoxId);
+            return {
+              textBoxIds: newIds,
+              bounds:
+                newIds.length > 0
+                  ? calculateSelectionBounds(newIds)
+                  : undefined,
+            };
+          } else {
+            // Add to selection
+            const newIds = [...prev.textBoxIds, textBoxId];
+            return {
+              textBoxIds: newIds,
+              bounds: calculateSelectionBounds(newIds),
+            };
+          }
+        } else {
+          // Single select: replace selection
+          return {
+            textBoxIds: [textBoxId],
+            bounds: calculateSelectionBounds([textBoxId]),
+          };
+        }
+      });
+    },
+    [isTextSelectionMode]
+  );
+
+  // Calculate bounding box for selected textboxes
+  const calculateSelectionBounds = useCallback(
+    (textBoxIds: string[]) => {
+      if (textBoxIds.length === 0) return undefined;
+
+      const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
+      const selectedBoxes = allTextBoxes.filter((box) =>
+        textBoxIds.includes(box.id)
+      );
+
+      if (selectedBoxes.length === 0) return undefined;
+
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+
+      selectedBoxes.forEach((box) => {
+        minX = Math.min(minX, box.x);
+        minY = Math.min(minY, box.y);
+        maxX = Math.max(maxX, box.x + box.width);
+        maxY = Math.max(maxY, box.y + box.height);
+      });
+
+      return {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+      };
+    },
+    [originalTextBoxes, translatedTextBoxes]
+  );
+
+  // Handle moving selected textboxes
+  const handleMoveSelectedTextBoxes = useCallback(
+    (deltaX: number, deltaY: number) => {
+      if (selectedTextBoxes.textBoxIds.length === 0) return;
+
+      // Update all selected textboxes
+      setCurrentTextBoxes((prev) =>
+        prev.map((box) => {
+          if (selectedTextBoxes.textBoxIds.includes(box.id)) {
+            return {
+              ...box,
+              x: box.x + deltaX,
+              y: box.y + deltaY,
+            };
+          }
+          return box;
+        })
+      );
+
+      // Update selection bounds
+      setSelectedTextBoxes((prev) => ({
+        ...prev,
+        bounds: prev.bounds
+          ? {
+              ...prev.bounds,
+              x: prev.bounds.x + deltaX,
+              y: prev.bounds.y + deltaY,
+            }
+          : undefined,
+      }));
+    },
+    [selectedTextBoxes.textBoxIds, currentView]
+  );
+
+  // Clear text selection when clicking outside
+  const handleClearTextSelection = useCallback(() => {
+    if (isTextSelectionMode) {
+      setSelectedTextBoxes({ textBoxIds: [], bounds: undefined });
+      setIsDrawingSelection(false);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    }
+  }, [isTextSelectionMode]);
 
   const handleImageLoadSuccess = (
     event: React.SyntheticEvent<HTMLImageElement>
@@ -1113,127 +1554,6 @@ const PDFEditorContent: React.FC = () => {
     }
   };
 
-  // Handle text span click during selection mode
-  const handleTextSpanClick = useCallback(
-    (e: React.MouseEvent<HTMLSpanElement>) => {
-      if (!isTextSelectionMode) return;
-      e.stopPropagation();
-
-      const span = e.currentTarget;
-      const textContent = span.textContent || "";
-
-      if (!textContent.trim()) return;
-
-      const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
-      if (!pdfPage) return;
-
-      const spanRect = span.getBoundingClientRect();
-
-      // Calculate position relative to viewport
-      const popupTop = spanRect.bottom + 5;
-      const popupLeft = spanRect.left + spanRect.width / 2;
-
-      // Calculate position relative to PDF page (convert to original coordinate system)
-      const pageRect = pdfPage.getBoundingClientRect();
-      const pageX = (spanRect.left - pageRect.left) / scale;
-      const pageY = (spanRect.top - pageRect.top) / scale;
-
-      const popupPosition = calculatePopupPosition(
-        spanRect.top,
-        spanRect.height
-      );
-
-      setTextSelectionPopup((prev) => {
-        const newSelection = {
-          text: textContent,
-          position: { top: spanRect.top, left: spanRect.left },
-          pagePosition: { x: pageX, y: pageY },
-        };
-
-        // If shift key is pressed, add to existing selections
-        if (e.shiftKey && prev) {
-          return {
-            texts: [...prev.texts, newSelection],
-            popupPosition: {
-              top: popupTop,
-              left: popupLeft,
-              position: "below",
-            },
-          };
-        }
-
-        // Otherwise, create new selection
-        return {
-          texts: [newSelection],
-          popupPosition: {
-            top: popupPosition.top,
-            left: popupLeft,
-            position: popupPosition.position || "below",
-          },
-        };
-      });
-    },
-    [isTextSelectionMode, scale]
-  );
-
-  // Attach click handlers to text spans
-  useEffect(() => {
-    if (!isTextSelectionMode || !documentUrl) return;
-
-    const attachHandlers = () => {
-      const textSpans = document.querySelectorAll(
-        ".react-pdf__Page__textContent span"
-      );
-
-      textSpans.forEach((span) => {
-        // Only attach handler once
-        if (!(span as any).hasListener) {
-          span.addEventListener("click", handleTextSpanClick as any);
-          (span as any).hasListener = true;
-        }
-      });
-    };
-
-    // Create a mutation observer to detect when text layer updates
-    const observer = new MutationObserver(attachHandlers);
-
-    if (documentRef.current) {
-      const config = { childList: true, subtree: true };
-      observer.observe(documentRef.current, config);
-
-      // Initial attachment
-      attachHandlers();
-    }
-
-    return () => {
-      observer.disconnect();
-      const textSpans = document.querySelectorAll(
-        ".react-pdf__Page__textContent span"
-      );
-      textSpans.forEach((span) => {
-        span.removeEventListener("click", handleTextSpanClick as any);
-        delete (span as any).hasListener;
-      });
-    };
-  }, [isTextSelectionMode, documentUrl, currentPage, handleTextSpanClick]);
-
-  // Close popup when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        textSelectionPopup &&
-        !(e.target as Element).closest(".text-selection-popup")
-      ) {
-        setTextSelectionPopup(null);
-      }
-    };
-
-    document.addEventListener("click", handleClickOutside);
-    return () => {
-      document.removeEventListener("click", handleClickOutside);
-    };
-  }, [textSelectionPopup]);
-
   // File upload handler
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1254,6 +1574,7 @@ const PDFEditorContent: React.FC = () => {
       setSelectedFieldId(null);
       setSelectedShapeId(null);
       setDeletedPages(new Set());
+      setPdfBackgroundColor("white"); // Reset background color for new document
 
       // Switch to pages tab when document is uploaded
       setActiveSidebarTab("pages");
@@ -1309,15 +1630,26 @@ const PDFEditorContent: React.FC = () => {
     toast.success(`Page ${pageNumber} deleted`);
   };
 
-  // Create text field from selected text
+  // Create text field from selected text with proper font size estimation
   const createTextFieldFromSelection = useCallback(
-    (selection: { text: string; pagePosition: { x: number; y: number } }) => {
+    (selection: {
+      text: string;
+      pagePosition: { x: number; y: number };
+      pageSize: { width: number; height: number };
+    }) => {
       const value = selection.text;
-      const fontSize = 8;
-      const fontFamily = "Arial, sans-serif";
       const fieldId = generateUUID();
 
-      const { width, height } = measureText(value, fontSize, fontFamily);
+      // Estimate font size based on text height
+      // PDF text height is usually about 1.2x the font size
+      const estimatedFontSize = Math.max(
+        8,
+        Math.round(selection.pageSize.height / 1.2)
+      );
+
+      // Use actual dimensions from selection
+      const width = Math.max(selection.pageSize.width, 50);
+      const height = Math.max(selection.pageSize.height, 20);
 
       const newTextBox: TextField = {
         id: fieldId,
@@ -1326,8 +1658,8 @@ const PDFEditorContent: React.FC = () => {
         width: width,
         height: height,
         value: value,
-        fontSize: fontSize,
-        fontFamily: fontFamily,
+        fontSize: estimatedFontSize,
+        fontFamily: "Arial, sans-serif",
         page: currentPage,
         color: "#000000",
         bold: false,
@@ -1348,24 +1680,78 @@ const PDFEditorContent: React.FC = () => {
 
   // Create deletion rectangle from selected text
   const createDeletionFromSelection = useCallback(
-    (selection: { text: string; pagePosition: { x: number; y: number } }) => {
-      // Estimate dimensions based on text and font size
-      const fontSize = 12; // Estimate based on typical PDF text
-      const { width, height } = measureText(selection.text, fontSize, "Arial");
-
+    (selection: {
+      text: string;
+      pagePosition: { x: number; y: number };
+      pageSize: { width: number; height: number };
+    }) => {
       const newRectangle: DeletionRectangle = {
         id: generateUUID(),
         x: selection.pagePosition.x,
         y: selection.pagePosition.y,
-        width: Math.max(width, 50), // Minimum width
-        height: Math.max(height, 20), // Minimum height
+        width: selection.pageSize.width + 1, // Add 1px for better coverage
+        height: selection.pageSize.height + 1, // Add 1px for better coverage
         page: currentPage,
-        background: "#ffffff",
+        background: pdfBackgroundColor, // Use the stored PDF background color
       };
 
       setCurrentDeletionRectangles((prev) => [...prev, newRectangle]);
     },
-    [currentPage, currentView]
+    [currentPage, currentView, pdfBackgroundColor]
+  );
+
+  // Create text field from selected text with font properties
+  const createTextFieldFromSelectionWithFont = useCallback(
+    (selection: {
+      text: string;
+      pagePosition: { x: number; y: number };
+      pageSize: { width: number; height: number };
+      fontProperties: {
+        fontFamily: string;
+        isBold: boolean;
+        isItalic: boolean;
+        fontSize: number;
+      };
+    }) => {
+      const value = selection.text;
+      const fieldId = generateUUID();
+
+      // Use detected font properties
+      const { fontFamily, isBold, isItalic, fontSize } =
+        selection.fontProperties;
+
+      // Convert font size from screen pixels to PDF coordinates
+      const pdfFontSize = fontSize / scale;
+
+      // Use actual dimensions from selection
+      const width = Math.max(selection.pageSize.width, 50);
+      const height = Math.max(selection.pageSize.height, 20);
+
+      const newTextBox: TextField = {
+        id: fieldId,
+        x: selection.pagePosition.x,
+        y: selection.pagePosition.y,
+        width: width,
+        height: height,
+        value: value,
+        fontSize: Math.max(8, pdfFontSize),
+        fontFamily: fontFamily,
+        page: currentPage,
+        color: "#000000",
+        bold: isBold,
+        italic: isItalic,
+        underline: false,
+        textAlign: "left",
+        listType: "none",
+        letterSpacing: 0,
+        lineHeight: 1.2,
+        rotation: 0,
+      };
+
+      setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+      setSelectedFieldId(fieldId);
+    },
+    [currentPage, currentView, scale]
   );
 
   // Text box management
@@ -1414,7 +1800,6 @@ const PDFEditorContent: React.FC = () => {
       setSelectedFieldId(fieldId);
       setIsAddTextBoxMode(false);
       setIsTextSelectionMode(false);
-      setTextSelectionPopup(null);
       setShapeDrawingMode(null);
       setIsDrawingInProgress(false);
       setShapeDrawStart(null);
@@ -1442,9 +1827,16 @@ const PDFEditorContent: React.FC = () => {
   );
 
   // Memoized callbacks for text box interactions to prevent re-renders
-  const handleTextBoxSelect = useCallback((id: string) => {
-    setSelectedFieldId(id);
-  }, []);
+  const handleTextBoxSelect = useCallback(
+    (id: string) => {
+      setSelectedFieldId(id);
+      // Turn off text selection mode when selecting a text box
+      if (isTextSelectionMode) {
+        setIsTextSelectionMode(false);
+      }
+    },
+    [isTextSelectionMode]
+  );
 
   // Create a stable format change handler using useCallback
   const handleFormatChange = useCallback(
@@ -1730,6 +2122,107 @@ const PDFEditorContent: React.FC = () => {
     [currentView]
   );
 
+  // Handle mouse down for text selection
+  const handleDocumentMouseDown = (e: React.MouseEvent) => {
+    if (isTextSelectionMode) {
+      // Handle drag-to-select for textboxes
+      if (e.button !== 0) return; // Only left click
+
+      const rect = documentRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = e.clientX;
+      const y = e.clientY;
+
+      setIsDrawingSelection(true);
+      setSelectionStart({ x, y });
+      setSelectionEnd({ x, y });
+
+      // Clear previous selections unless holding Ctrl/Cmd
+      if (!e.ctrlKey && !e.metaKey) {
+        setSelectedTextBoxes({ textBoxIds: [], bounds: undefined });
+      }
+
+      e.preventDefault();
+    }
+  };
+
+  // Handle mouse move for text selection
+  const handleDocumentMouseMove = (e: React.MouseEvent) => {
+    if (isTextSelectionMode && isDrawingSelection && selectionStart) {
+      const x = e.clientX;
+      const y = e.clientY;
+
+      setSelectionEnd({ x, y });
+      e.preventDefault();
+    }
+  };
+
+  // Handle mouse up for text selection
+  const handleDocumentMouseUp = (e: React.MouseEvent) => {
+    if (isTextSelectionMode && isDrawingSelection) {
+      // Find textboxes within the selection rectangle
+      if (
+        selectionRect &&
+        selectionRect.width > 5 &&
+        selectionRect.height > 5
+      ) {
+        const rect = documentRef.current?.getBoundingClientRect();
+        if (rect) {
+          const currentTextBoxes = getCurrentPageTextBoxes;
+          const selectedIds: string[] = [];
+
+          currentTextBoxes.forEach((textBox) => {
+            // Convert textbox coordinates to screen coordinates
+            const textBoxLeft = rect.left + textBox.x * scale;
+            const textBoxTop = rect.top + textBox.y * scale;
+            const textBoxRight = textBoxLeft + textBox.width * scale;
+            const textBoxBottom = textBoxTop + textBox.height * scale;
+
+            // Check if textbox intersects with selection rectangle
+            const intersects = !(
+              textBoxRight < selectionRect.left ||
+              textBoxLeft > selectionRect.left + selectionRect.width ||
+              textBoxBottom < selectionRect.top ||
+              textBoxTop > selectionRect.top + selectionRect.height
+            );
+
+            if (intersects) {
+              selectedIds.push(textBox.id);
+            }
+          });
+
+          // Update selection (merge with existing if Ctrl/Cmd held)
+          if (e.ctrlKey || e.metaKey) {
+            setSelectedTextBoxes((prev) => {
+              const newIds = [...new Set([...prev.textBoxIds, ...selectedIds])];
+              return {
+                textBoxIds: newIds,
+                bounds:
+                  newIds.length > 0
+                    ? calculateSelectionBounds(newIds)
+                    : undefined,
+              };
+            });
+          } else {
+            setSelectedTextBoxes({
+              textBoxIds: selectedIds,
+              bounds:
+                selectedIds.length > 0
+                  ? calculateSelectionBounds(selectedIds)
+                  : undefined,
+            });
+          }
+        }
+      }
+
+      // Reset selection state
+      setIsDrawingSelection(false);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    }
+  };
+
   // Document container click handler
   const handleDocumentContainerClick = (e: React.MouseEvent) => {
     if (!documentRef.current) return;
@@ -1781,6 +2274,8 @@ const PDFEditorContent: React.FC = () => {
       // Clear selections only if clicking on empty space
       setSelectedFieldId(null);
       setSelectedShapeId(null);
+      // Clear text selection in text selection mode
+      handleClearTextSelection();
       // Close the format drawer when clicking on empty space
       setIsDrawerOpen(false);
     }
@@ -1841,7 +2336,6 @@ const PDFEditorContent: React.FC = () => {
     setShapeDrawingMode(null);
     setIsAddTextBoxMode(false);
     setIsTextSelectionMode(false);
-    setTextSelectionPopup(null);
   };
 
   // Export functionality
@@ -2141,6 +2635,7 @@ const PDFEditorContent: React.FC = () => {
                                             renderAnnotationLayer={false}
                                             loading={null}
                                             error={null}
+                                            onRenderError={handlePageLoadError}
                                           />
                                         </Document>
                                       </div>
@@ -2383,7 +2878,7 @@ const PDFEditorContent: React.FC = () => {
                     ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
                     : "text-gray-700 hover:text-red-600"
                 }`}
-                title="Select Text from Document"
+                title="Add Text Field from Document (Click text to create editable field)"
               >
                 <MousePointer className="w-5 h-5" />
               </button>
@@ -2394,7 +2889,6 @@ const PDFEditorContent: React.FC = () => {
                   setIsAddTextBoxMode(newMode);
                   if (newMode) {
                     setIsTextSelectionMode(false);
-                    setTextSelectionPopup(null);
                     setShapeDrawingMode(null);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
@@ -2421,7 +2915,6 @@ const PDFEditorContent: React.FC = () => {
                   setSelectedShapeType("rectangle");
                   if (newMode) {
                     setIsTextSelectionMode(false);
-                    setTextSelectionPopup(null);
                     setIsAddTextBoxMode(false);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
@@ -2448,7 +2941,6 @@ const PDFEditorContent: React.FC = () => {
                   setSelectedShapeType("circle");
                   if (newMode) {
                     setIsTextSelectionMode(false);
-                    setTextSelectionPopup(null);
                     setIsAddTextBoxMode(false);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
@@ -2521,7 +3013,25 @@ const PDFEditorContent: React.FC = () => {
                 }`}
                 title="Toggle Edit Mode"
               >
-                <Eye className="w-5 h-5" />
+                <Edit2 className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() =>
+                  setShowDeletionRectangles(!showDeletionRectangles)
+                }
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  showDeletionRectangles
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title={
+                  showDeletionRectangles
+                    ? "Hide Deletion Areas"
+                    : "Show Deletion Areas"
+                }
+              >
+                <Trash2 className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -2593,16 +3103,29 @@ const PDFEditorContent: React.FC = () => {
                   ref={documentRef}
                   className={`relative bg-white document-page ${
                     isScaleChanging ? "" : "zoom-transition"
-                  } ${isTextSelectionMode ? "text-selection-mode" : ""} ${
-                    isAddTextBoxMode ? "cursor-crosshair" : ""
-                  } ${shapeDrawingMode ? "cursor-crosshair" : ""} ${
-                    isCtrlPressed ? "cursor-zoom-in" : ""
-                  }`}
+                  } ${isAddTextBoxMode ? "add-text-box-mode" : ""} ${
+                    isTextSelectionMode ? "text-selection-mode" : ""
+                  } ${isAddTextBoxMode ? "cursor-crosshair" : ""} ${
+                    shapeDrawingMode ? "cursor-crosshair" : ""
+                  } ${isCtrlPressed ? "cursor-zoom-in" : ""}`}
                   onClick={handleDocumentContainerClick}
-                  onMouseMove={
-                    shapeDrawingMode ? handleShapeDrawMove : undefined
+                  onMouseDown={
+                    isTextSelectionMode ? handleDocumentMouseDown : undefined
                   }
-                  onMouseUp={shapeDrawingMode ? handleShapeDrawEnd : undefined}
+                  onMouseMove={
+                    shapeDrawingMode
+                      ? handleShapeDrawMove
+                      : isTextSelectionMode
+                      ? handleDocumentMouseMove
+                      : undefined
+                  }
+                  onMouseUp={
+                    shapeDrawingMode
+                      ? handleShapeDrawEnd
+                      : isTextSelectionMode
+                      ? handleDocumentMouseUp
+                      : undefined
+                  }
                   style={{
                     width:
                       currentView === "split"
@@ -2640,9 +3163,10 @@ const PDFEditorContent: React.FC = () => {
                             <Page
                               pageNumber={currentPage}
                               onLoadSuccess={handlePageLoadSuccess}
+                              onLoadError={handlePageLoadError}
                               onRenderSuccess={() => setIsPageLoading(false)}
-                              onRenderError={() => setIsPageLoading(false)}
-                              renderTextLayer={isTextSelectionMode}
+                              onRenderError={handlePageLoadError}
+                              renderTextLayer={isAddTextBoxMode && !isZooming}
                               renderAnnotationLayer={false}
                               loading={
                                 <div
@@ -2755,9 +3279,10 @@ const PDFEditorContent: React.FC = () => {
                               <Page
                                 pageNumber={currentPage}
                                 onLoadSuccess={handlePageLoadSuccess}
+                                onLoadError={handlePageLoadError}
                                 onRenderSuccess={() => setIsPageLoading(false)}
-                                onRenderError={() => setIsPageLoading(false)}
-                                renderTextLayer={isTextSelectionMode}
+                                onRenderError={handlePageLoadError}
+                                renderTextLayer={isAddTextBoxMode && !isZooming}
                                 renderAnnotationLayer={false}
                                 loading={null}
                                 width={pageWidth * scale}
@@ -2783,58 +3308,37 @@ const PDFEditorContent: React.FC = () => {
                         {originalDeletionRectangles
                           .filter((rect) => rect.page === currentPage)
                           .map((rect) => (
-                            <Rnd
+                            <div
                               key={`orig-del-${rect.id}`}
-                              position={{
-                                x: rect.x * scale,
-                                y: rect.y * scale,
-                              }}
-                              size={{
+                              className={`absolute ${
+                                showDeletionRectangles
+                                  ? "border border-red-400"
+                                  : ""
+                              }`}
+                              style={{
+                                left: rect.x * scale,
+                                top: rect.y * scale,
                                 width: rect.width * scale,
                                 height: rect.height * scale,
+                                zIndex: showDeletionRectangles ? 20 : 5,
+                                backgroundColor: rect.background || "white",
                               }}
-                              bounds="parent"
-                              onDragStop={(e, d) => {
-                                setOriginalDeletionRectangles((prev) =>
-                                  prev.map((r) =>
-                                    r.id === rect.id
-                                      ? { ...r, x: d.x / scale, y: d.y / scale }
-                                      : r
-                                  )
-                                );
-                              }}
-                              onResizeStop={(
-                                e,
-                                direction,
-                                ref,
-                                delta,
-                                position
-                              ) => {
-                                setOriginalDeletionRectangles((prev) =>
-                                  prev.map((r) =>
-                                    r.id === rect.id
-                                      ? {
-                                          ...r,
-                                          x: position.x / scale,
-                                          y: position.y / scale,
-                                          width:
-                                            parseInt(ref.style.width) / scale,
-                                          height:
-                                            parseInt(ref.style.height) / scale,
-                                        }
-                                      : r
-                                  )
-                                );
-                              }}
-                              className="border-2 border-red-500 bg-white bg-opacity-90"
-                              style={{ zIndex: 10, transform: "none" }}
                             >
-                              <div className="w-full h-full flex items-center justify-center">
-                                <span className="text-red-500 text-xs font-medium">
-                                  DELETE
-                                </span>
-                              </div>
-                            </Rnd>
+                              {showDeletionRectangles && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOriginalDeletionRectangles((prev) =>
+                                      prev.filter((r) => r.id !== rect.id)
+                                    );
+                                  }}
+                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                  title="Delete area"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
                           ))}
 
                         {/* Original Shapes */}
@@ -2893,6 +3397,11 @@ const PDFEditorContent: React.FC = () => {
                                   current === id ? null : current
                                 );
                               }}
+                              isTextSelectionMode={isTextSelectionMode}
+                              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                textBox.id
+                              )}
+                              onTextSelectionClick={handleTextBoxSelectionMode}
                             />
                           ))}
                       </div>
@@ -2930,58 +3439,37 @@ const PDFEditorContent: React.FC = () => {
                         {translatedDeletionRectangles
                           .filter((rect) => rect.page === currentPage)
                           .map((rect) => (
-                            <Rnd
+                            <div
                               key={`trans-del-${rect.id}`}
-                              position={{
-                                x: rect.x * scale,
-                                y: rect.y * scale,
-                              }}
-                              size={{
+                              className={`absolute ${
+                                showDeletionRectangles
+                                  ? "border border-red-400"
+                                  : ""
+                              }`}
+                              style={{
+                                left: rect.x * scale,
+                                top: rect.y * scale,
                                 width: rect.width * scale,
                                 height: rect.height * scale,
+                                zIndex: showDeletionRectangles ? 20 : 5,
+                                backgroundColor: rect.background || "white",
                               }}
-                              bounds="parent"
-                              onDragStop={(e, d) => {
-                                setTranslatedDeletionRectangles((prev) =>
-                                  prev.map((r) =>
-                                    r.id === rect.id
-                                      ? { ...r, x: d.x / scale, y: d.y / scale }
-                                      : r
-                                  )
-                                );
-                              }}
-                              onResizeStop={(
-                                e,
-                                direction,
-                                ref,
-                                delta,
-                                position
-                              ) => {
-                                setTranslatedDeletionRectangles((prev) =>
-                                  prev.map((r) =>
-                                    r.id === rect.id
-                                      ? {
-                                          ...r,
-                                          x: position.x / scale,
-                                          y: position.y / scale,
-                                          width:
-                                            parseInt(ref.style.width) / scale,
-                                          height:
-                                            parseInt(ref.style.height) / scale,
-                                        }
-                                      : r
-                                  )
-                                );
-                              }}
-                              className="border-2 border-red-500 bg-white bg-opacity-90"
-                              style={{ zIndex: 10, transform: "none" }}
                             >
-                              <div className="w-full h-full flex items-center justify-center">
-                                <span className="text-red-500 text-xs font-medium">
-                                  DELETE
-                                </span>
-                              </div>
-                            </Rnd>
+                              {showDeletionRectangles && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTranslatedDeletionRectangles((prev) =>
+                                      prev.filter((r) => r.id !== rect.id)
+                                    );
+                                  }}
+                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                  title="Delete area"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
                           ))}
 
                         {/* Translated Shapes */}
@@ -3040,6 +3528,11 @@ const PDFEditorContent: React.FC = () => {
                                   current === id ? null : current
                                 );
                               }}
+                              isTextSelectionMode={isTextSelectionMode}
+                              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                textBox.id
+                              )}
+                              onTextSelectionClick={handleTextBoxSelectionMode}
                             />
                           ))}
                       </div>
@@ -3052,43 +3545,35 @@ const PDFEditorContent: React.FC = () => {
                     <>
                       {/* Deletion Rectangles */}
                       {getCurrentPageDeletionRectangles.map((rect) => (
-                        <Rnd
+                        <div
                           key={rect.id}
-                          position={{ x: rect.x * scale, y: rect.y * scale }}
-                          size={{
+                          className={`absolute ${
+                            showDeletionRectangles
+                              ? "border border-red-400"
+                              : ""
+                          }`}
+                          style={{
+                            left: rect.x * scale,
+                            top: rect.y * scale,
                             width: rect.width * scale,
                             height: rect.height * scale,
+                            zIndex: showDeletionRectangles ? 20 : 5,
+                            backgroundColor: rect.background || "white",
                           }}
-                          bounds="parent"
-                          onDragStop={(e, d) => {
-                            updateDeletionRectangle(rect.id, {
-                              x: d.x / scale,
-                              y: d.y / scale,
-                            });
-                          }}
-                          onResizeStop={(
-                            e,
-                            direction,
-                            ref,
-                            delta,
-                            position
-                          ) => {
-                            updateDeletionRectangle(rect.id, {
-                              x: position.x / scale,
-                              y: position.y / scale,
-                              width: parseInt(ref.style.width) / scale,
-                              height: parseInt(ref.style.height) / scale,
-                            });
-                          }}
-                          className="border-2 border-red-500 bg-white bg-opacity-90"
-                          style={{ zIndex: 10, transform: "none" }}
                         >
-                          <div className="w-full h-full flex items-center justify-center">
-                            <span className="text-red-500 text-xs font-medium">
-                              DELETE
-                            </span>
-                          </div>
-                        </Rnd>
+                          {showDeletionRectangles && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteDeletionRectangle(rect.id);
+                              }}
+                              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                              title="Delete area"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                       ))}
 
                       {/* Shapes */}
@@ -3117,8 +3602,103 @@ const PDFEditorContent: React.FC = () => {
                           onSelect={handleTextBoxSelect}
                           onUpdate={updateTextBox}
                           onDelete={deleteTextBox}
+                          isTextSelectionMode={isTextSelectionMode}
+                          isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                            textBox.id
+                          )}
+                          onTextSelectionClick={handleTextBoxSelectionMode}
                         />
                       ))}
+
+                      {/* Multi-Selection Overlay - Show in Text Selection mode */}
+                      {isTextSelectionMode && selectedTextBoxes.bounds && (
+                        <div
+                          className="absolute border-2 border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none"
+                          style={{
+                            left: selectedTextBoxes.bounds.x * scale,
+                            top: selectedTextBoxes.bounds.y * scale,
+                            width: selectedTextBoxes.bounds.width * scale,
+                            height: selectedTextBoxes.bounds.height * scale,
+                            zIndex: 40,
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {/* Selection info */}
+                          <div className="absolute -top-6 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded shadow-md">
+                            {selectedTextBoxes.textBoxIds.length} selected
+                          </div>
+
+                          {/* Move handle - center of selection */}
+                          <div
+                            className="absolute w-4 h-4 bg-blue-500 rounded-full cursor-move shadow-md border-2 border-white pointer-events-auto"
+                            style={{
+                              left: "50%",
+                              top: "50%",
+                              transform: "translate(-50%, -50%)",
+                              zIndex: 50,
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+
+                              const startX = e.clientX;
+                              const startY = e.clientY;
+
+                              const handleMouseMove = (
+                                moveEvent: MouseEvent
+                              ) => {
+                                const deltaX =
+                                  (moveEvent.clientX - startX) / scale;
+                                const deltaY =
+                                  (moveEvent.clientY - startY) / scale;
+                                handleMoveSelectedTextBoxes(deltaX, deltaY);
+                              };
+
+                              const handleMouseUp = () => {
+                                document.removeEventListener(
+                                  "mousemove",
+                                  handleMouseMove
+                                );
+                                document.removeEventListener(
+                                  "mouseup",
+                                  handleMouseUp
+                                );
+                              };
+
+                              document.addEventListener(
+                                "mousemove",
+                                handleMouseMove
+                              );
+                              document.addEventListener(
+                                "mouseup",
+                                handleMouseUp
+                              );
+                            }}
+                            title="Drag to move selected textboxes"
+                          />
+                        </div>
+                      )}
+
+                      {/* Selection Rectangle - Show during drag-to-select */}
+                      {isTextSelectionMode &&
+                        isDrawingSelection &&
+                        selectionRect && (
+                          <div
+                            className="fixed border-2 border-dashed border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none z-50"
+                            style={{
+                              left: selectionRect.left,
+                              top: selectionRect.top,
+                              width: selectionRect.width,
+                              height: selectionRect.height,
+                              borderRadius: "2px",
+                            }}
+                          >
+                            {/* Selection info */}
+                            <div className="absolute -top-6 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded shadow-md">
+                              Selecting textboxes...
+                            </div>
+                          </div>
+                        )}
 
                       {/* Shape Drawing Preview */}
                       {isDrawingInProgress &&
@@ -3153,104 +3733,7 @@ const PDFEditorContent: React.FC = () => {
           </div>
         </div>
 
-        {/* Text Selection Popup */}
-        {textSelectionPopup && (
-          <div
-            className={`fixed bg-white shadow-lg rounded-md border border-gray-200 z-[1000] p-2 flex flex-col max-h-60 overflow-y-auto text-selection-popup max-w-xs ${
-              textSelectionPopup!.popupPosition.position === "above"
-                ? "bottom-auto"
-                : "top-auto"
-            }`}
-            style={{
-              top:
-                textSelectionPopup!.popupPosition.position === "below"
-                  ? `${textSelectionPopup!.popupPosition.top}px`
-                  : undefined,
-              bottom:
-                textSelectionPopup!.popupPosition.position === "above"
-                  ? `${
-                      window.innerHeight - textSelectionPopup!.popupPosition.top
-                    }px`
-                  : undefined,
-              left: `${textSelectionPopup!.popupPosition.left}px`,
-              transform: "translateX(-50%)",
-              maxWidth: "300px",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-2 pb-2 border-b">
-              <span className="text-sm font-medium">
-                {textSelectionPopup!.texts.length} selected
-              </span>
-              <button
-                onClick={() => setTextSelectionPopup(null)}
-                className="text-gray-500 hover:text-gray-800"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {textSelectionPopup!.texts.map((sel, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between py-1"
-              >
-                <span className="text-sm truncate flex-1">{sel.text}</span>
-                <div className="flex space-x-1 ml-2">
-                  <button
-                    onClick={() => {
-                      const newSelections = [...textSelectionPopup!.texts];
-                      newSelections.splice(index, 1);
-
-                      if (newSelections.length === 0) {
-                        setTextSelectionPopup(null);
-                      } else {
-                        setTextSelectionPopup({
-                          texts: newSelections,
-                          popupPosition: textSelectionPopup!.popupPosition,
-                        });
-                      }
-                    }}
-                    className="p-1 text-gray-500 hover:text-red-500"
-                    title="Remove from selection"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <div className="mt-2 space-y-2">
-              <button
-                onClick={() => {
-                  textSelectionPopup!.texts.forEach((sel) => {
-                    createTextFieldFromSelection(sel);
-                  });
-                  setTextSelectionPopup(null);
-                  toast.success("Text fields created from selection");
-                }}
-                className="w-full p-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center text-sm"
-              >
-                <Type size={14} className="mr-1" />
-                <span>Create Text Fields</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  textSelectionPopup!.texts.forEach((sel) => {
-                    createDeletionFromSelection(sel);
-                  });
-                  setTextSelectionPopup(null);
-                  toast.success("Deletion areas created from selection");
-                }}
-                className="w-full p-2 bg-red-500 text-white rounded-md hover:bg-red-600 flex items-center justify-center text-sm"
-              >
-                <Trash2 size={14} className="mr-1" />
-                <span>Delete Selected Text</span>
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Text Selection Popup - Removed for new approach */}
       </div>
 
       {/* Status Bar */}
@@ -3421,6 +3904,43 @@ const PDFEditorContent: React.FC = () => {
 
       {/* CSS Styles */}
       <style jsx>{`
+        /* Default text layer styling - matches DocumentCanvas approach */
+        .react-pdf__Page__textContent {
+          padding: 0 !important;
+          box-sizing: border-box !important;
+        }
+
+        /* Text spans positioning */
+        .react-pdf__Page__textContent span {
+          position: absolute !important;
+          white-space: nowrap !important;
+          color: transparent !important;
+          line-height: 1 !important;
+          pointer-events: none !important;
+          transform-origin: 0% 0% !important;
+        }
+
+        /* Enable pointer events and styling only in add text box mode */
+        .add-text-box-mode .react-pdf__Page__textContent {
+          pointer-events: auto !important;
+          z-index: 50 !important;
+        }
+
+        .add-text-box-mode .react-pdf__Page__textContent span {
+          cursor: pointer !important;
+          color: rgba(0, 0, 0, 0.1) !important;
+          background-color: rgba(34, 197, 94, 0.2) !important;
+          transition: background-color 0.2s !important;
+          pointer-events: auto !important;
+          border-radius: 2px !important;
+        }
+
+        .add-text-box-mode .react-pdf__Page__textContent span:hover {
+          background-color: rgba(34, 197, 94, 0.4) !important;
+          color: rgba(0, 0, 0, 0.3) !important;
+        }
+
+        /* Keep text selection mode styles for text selection functionality */
         .text-selection-mode .react-pdf__Page__textContent {
           pointer-events: auto !important;
           z-index: 50 !important;
@@ -3430,14 +3950,50 @@ const PDFEditorContent: React.FC = () => {
           cursor: pointer !important;
           color: rgba(0, 0, 0, 0.1) !important;
           background-color: rgba(59, 130, 246, 0.2) !important;
-          transition: background-color 0.2s !important;
+          transition: all 0.2s ease !important;
           pointer-events: auto !important;
           border-radius: 2px !important;
+          border: 1px solid transparent !important;
+          box-sizing: border-box !important;
         }
 
         .text-selection-mode .react-pdf__Page__textContent span:hover {
           background-color: rgba(59, 130, 246, 0.4) !important;
           color: rgba(0, 0, 0, 0.3) !important;
+          border: 1px solid rgba(59, 130, 246, 0.8) !important;
+          box-shadow: 0 0 3px rgba(59, 130, 246, 0.5) !important;
+        }
+
+        /* Highlighted text selection */
+        .text-selection-mode .react-pdf__Page__textContent span.selected {
+          background-color: rgba(59, 130, 246, 0.6) !important;
+          color: rgba(0, 0, 0, 0.8) !important;
+          border: 1px solid rgba(59, 130, 246, 1) !important;
+          box-shadow: 0 0 5px rgba(59, 130, 246, 0.7) !important;
+        }
+
+        /* Prevent text selection during drag */
+        .text-selection-mode {
+          user-select: none;
+          -webkit-user-select: none;
+          -moz-user-select: none;
+          -ms-user-select: none;
+        }
+
+        /* Selection rectangle animation */
+        .selection-rectangle {
+          animation: selectionPulse 0.5s ease-in-out infinite alternate;
+        }
+
+        @keyframes selectionPulse {
+          from {
+            border-color: rgba(59, 130, 246, 0.8);
+            background-color: rgba(59, 130, 246, 0.1);
+          }
+          to {
+            border-color: rgba(59, 130, 246, 1);
+            background-color: rgba(59, 130, 246, 0.2);
+          }
         }
 
         /* Zoom cursor */
@@ -3727,6 +4283,12 @@ const PDFEditorContent: React.FC = () => {
             #e5e7eb var(--value, 20%),
             #e5e7eb 100%
           );
+        }
+
+        /* Deletion rectangle styles */
+        .deletion-rectangle {
+          pointer-events: none;
+          user-select: none;
         }
 
         /* Resize handle styles */
