@@ -9,6 +9,24 @@ import React, {
 } from "react";
 import { TextField } from "../types";
 
+// Add Shape type
+interface Shape {
+  id: string;
+  type: "circle" | "rectangle";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
+  borderColor: string;
+  borderWidth: number;
+  fillColor: string;
+  fillOpacity: number;
+  rotation?: number;
+}
+
+type ElementType = "textbox" | "shape";
+
 interface TextFormatContextType {
   // Drawer state
   isDrawerOpen: boolean;
@@ -17,14 +35,18 @@ interface TextFormatContextType {
   // Selected element
   selectedElementId: string | null;
   setSelectedElementId: (id: string | null) => void;
+  selectedElementType: ElementType | null;
+  setSelectedElementType: (type: ElementType | null) => void;
 
   // Current format
-  currentFormat: TextField | null;
-  setCurrentFormat: (format: TextField | null) => void;
+  currentFormat: TextField | Shape | null;
+  setCurrentFormat: (format: TextField | Shape | null) => void;
 
   // Format change handler
-  onFormatChange: (format: Partial<TextField>) => void;
-  setOnFormatChange: (handler: (format: Partial<TextField>) => void) => void;
+  onFormatChange: (format: Partial<TextField | Shape>) => void;
+  setOnFormatChange: (
+    handler: (format: Partial<TextField | Shape>) => void
+  ) => void;
 
   // Padding popup state for visual indicator
   showPaddingPopup: boolean;
@@ -50,25 +72,31 @@ interface TextFormatProviderProps {
 export const TextFormatProvider: React.FC<TextFormatProviderProps> = ({
   children,
 }) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(
     null
   );
-  const [currentFormat, setCurrentFormat] = useState<TextField | null>(null);
+  const [selectedElementType, setSelectedElementType] =
+    useState<ElementType | null>(null);
+  const [currentFormat, setCurrentFormat] = useState<TextField | Shape | null>(
+    null
+  );
   const [showPaddingPopup, setShowPaddingPopup] = useState(false);
 
   // Use ref to store the format change handler to avoid useState issues
-  const onFormatChangeRef = useRef<(format: Partial<TextField>) => void>(
-    (format: Partial<TextField>) => {
-      console.log("Default onFormatChange called with:", format);
-    }
-  );
+  const onFormatChangeRef = useRef<
+    (format: Partial<TextField | Shape>) => void
+  >((format: Partial<TextField | Shape>) => {
+    console.log("Default onFormatChange called with:", format);
+  });
 
-  const setOnFormatChange = (handler: (format: Partial<TextField>) => void) => {
+  const setOnFormatChange = (
+    handler: (format: Partial<TextField | Shape>) => void
+  ) => {
     onFormatChangeRef.current = handler;
   };
 
-  const onFormatChange = (format: Partial<TextField>) => {
+  const onFormatChange = (format: Partial<TextField | Shape>) => {
     if (typeof onFormatChangeRef.current === "function") {
       onFormatChangeRef.current(format);
     } else {
@@ -84,6 +112,8 @@ export const TextFormatProvider: React.FC<TextFormatProviderProps> = ({
     setIsDrawerOpen,
     selectedElementId,
     setSelectedElementId,
+    selectedElementType,
+    setSelectedElementType,
     currentFormat,
     setCurrentFormat,
     onFormatChange,

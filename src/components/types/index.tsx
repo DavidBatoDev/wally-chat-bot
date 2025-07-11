@@ -1,3 +1,19 @@
+export interface Shape {
+  id: string;
+  type: "circle" | "rectangle";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
+  borderColor: string;
+  borderWidth: number;
+  fillColor: string;
+  fillOpacity: number;
+  rotation?: number;
+  borderRadius?: number; // Add border radius support
+}
+
 export interface TextField {
   id: string;
   x: number;
@@ -8,33 +24,27 @@ export interface TextField {
   fontSize: number;
   fontFamily: string;
   page: number;
-  rotation?: number;
-  // Text formatting properties
-  // headingType?: "normal" | "h1" | "h2" | "h3" | "h4";
+  color?: string;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
-  color?: string;
   textAlign?: "left" | "center" | "right" | "justify";
   listType?: "none" | "ordered" | "unordered";
-  // Spacing and layout
-  lineHeight?: number;
   letterSpacing?: number;
-  // Border and background
+  lineHeight?: number;
+  rotation?: number;
+  backgroundColor?: string;
   borderColor?: string;
   borderWidth?: number;
-  backgroundColor?: string;
   borderRadius?: number;
   borderTopLeftRadius?: number;
   borderTopRightRadius?: number;
   borderBottomLeftRadius?: number;
   borderBottomRightRadius?: number;
-  // Padding
   paddingTop?: number;
   paddingRight?: number;
   paddingBottom?: number;
   paddingLeft?: number;
-  // State
   isEditing?: boolean;
 }
 

@@ -47,8 +47,8 @@ import {
 import { Button } from "@/components/ui/button";
 
 // Add the useWorkflowData hook import
-import { useWorkflowData } from "./DocumentCanvas/hooks/useWorkflowData";
-import { WorkflowData, TemplateMapping } from "./DocumentCanvas/types/workflow";
+import { useWorkflowData } from "./DepractedDocumentCanvas/hooks/useWorkflowData";
+import { WorkflowData, TemplateMapping } from "./DepractedDocumentCanvas/types/workflow";
 import api from "@/lib/api";
 import { getLanguageCode } from "@/lib/languageUtils";
 

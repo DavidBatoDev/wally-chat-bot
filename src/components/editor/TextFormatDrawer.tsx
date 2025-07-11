@@ -19,8 +19,11 @@ import {
   Square,
   MoreHorizontal,
   Move3D,
+  Circle,
+  SquareIcon as Rectangle,
 } from "lucide-react";
 import { useTextFormat } from "./TextFormatContext";
+import { TextField, Shape } from "../types";
 
 const fontFamilies = [
   "Arial",
@@ -34,8 +37,8 @@ const fontFamilies = [
 ];
 
 const fontSizes = Array.from({ length: 20 }, (_, i) => i + 2); // 8px to 28px
-
 const borderWidths = [0, 1, 2, 3, 4, 5];
+const opacityValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
 export const TextFormatDrawer: React.FC = () => {
   const {
@@ -43,6 +46,7 @@ export const TextFormatDrawer: React.FC = () => {
     currentFormat,
     onFormatChange,
     selectedElementId,
+    selectedElementType,
     showPaddingPopup,
     setShowPaddingPopup,
   } = useTextFormat();
@@ -134,266 +138,427 @@ export const TextFormatDrawer: React.FC = () => {
     showAlignmentPopup,
   ]);
 
+  // Add type guard functions
+  const isTextField = (format: TextField | Shape): format is TextField => {
+    return "fontFamily" in format;
+  };
+
+  const isShape = (format: TextField | Shape): format is Shape => {
+    return "type" in format;
+  };
+
   // Don't render if drawer is not open or no element is selected
   if (!isDrawerOpen || !selectedElementId || !currentFormat) {
     return null;
   }
 
-  // Add additional safety checks for required properties
-  const safeFormat = {
-    fontFamily: currentFormat.fontFamily || "Arial",
-    fontSize: currentFormat.fontSize || 12,
-    bold: currentFormat.bold || false,
-    italic: currentFormat.italic || false,
-    underline: currentFormat.underline || false,
-    textAlign: currentFormat.textAlign || "left",
-    listType: currentFormat.listType || "none",
-    color: currentFormat.color || "#000000",
-    borderColor: currentFormat.borderColor || "#000000",
-    borderWidth: currentFormat.borderWidth || 0,
-    lineHeight: currentFormat.lineHeight || 1.2,
-    letterSpacing: currentFormat.letterSpacing || 0,
-    paddingTop: currentFormat.paddingTop || 0,
-    paddingRight: currentFormat.paddingRight || 0,
-    paddingBottom: currentFormat.paddingBottom || 0,
-    paddingLeft: currentFormat.paddingLeft || 0,
-    borderRadius: currentFormat.borderRadius || 0,
-    borderTopLeftRadius: currentFormat.borderTopLeftRadius || 0,
-    borderTopRightRadius: currentFormat.borderTopRightRadius || 0,
-    borderBottomLeftRadius: currentFormat.borderBottomLeftRadius || 0,
-    borderBottomRightRadius: currentFormat.borderBottomRightRadius || 0,
-  };
+  // Add additional safety checks for required properties based on element type
+  const safeFormat =
+    selectedElementType === "textbox" && isTextField(currentFormat)
+      ? {
+          // Text box properties
+          fontFamily: currentFormat.fontFamily || "Arial",
+          fontSize: currentFormat.fontSize || 12,
+          bold: currentFormat.bold || false,
+          italic: currentFormat.italic || false,
+          underline: currentFormat.underline || false,
+          textAlign: currentFormat.textAlign || "left",
+          listType: currentFormat.listType || "none",
+          color: currentFormat.color || "#000000",
+          borderColor: currentFormat.borderColor || "#000000",
+          borderWidth: currentFormat.borderWidth || 0,
+          lineHeight: currentFormat.lineHeight || 1.2,
+          letterSpacing: currentFormat.letterSpacing || 0,
+          paddingTop: currentFormat.paddingTop || 0,
+          paddingRight: currentFormat.paddingRight || 0,
+          paddingBottom: currentFormat.paddingBottom || 0,
+          paddingLeft: currentFormat.paddingLeft || 0,
+          borderRadius: currentFormat.borderRadius || 0,
+          borderTopLeftRadius: currentFormat.borderTopLeftRadius || 0,
+          borderTopRightRadius: currentFormat.borderTopRightRadius || 0,
+          borderBottomLeftRadius: currentFormat.borderBottomLeftRadius || 0,
+          borderBottomRightRadius: currentFormat.borderBottomRightRadius || 0,
+        }
+      : selectedElementType === "shape" && isShape(currentFormat)
+      ? {
+          // Shape properties
+          type: currentFormat.type || "rectangle",
+          borderColor: currentFormat.borderColor || "#000000",
+          borderWidth: currentFormat.borderWidth || 1,
+          fillColor: currentFormat.fillColor || "#ffffff",
+          fillOpacity: currentFormat.fillOpacity || 0.5,
+          rotation: currentFormat.rotation || 0,
+          borderRadius: currentFormat.borderRadius || 0, // Add border radius support
+        }
+      : null;
+
+  // Don't render if we couldn't determine the format type
+  if (!safeFormat) {
+    return null;
+  }
 
   return (
     <div className="absolute w-full flex justify-center bg-transparent">
       <div className="mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 z-50 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
-        {/* Text Content Input */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <input
-            type="text"
-            value={currentFormat.value || ""}
-            onChange={(e) => onFormatChange({ value: e.target.value })}
-            placeholder="Enter text..."
-            className="w-32 sm:w-48 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
-          />
-        </div>
+        {selectedElementType === "textbox" ? (
+          <>
+            {/* Text Content Input */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <input
+                type="text"
+                value={isTextField(currentFormat) ? currentFormat.value : ""}
+                onChange={(e) => onFormatChange({ value: e.target.value })}
+                placeholder="Enter text..."
+                className="w-32 sm:w-48 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
+              />
+            </div>
 
-        {/* Font Family */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex items-center gap-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200">
-            <select
-              className="w-20 sm:w-32 bg-transparent outline-none p-2 text-sm rounded-lg"
-              value={safeFormat.fontFamily}
-              onChange={(e) => onFormatChange({ fontFamily: e.target.value })}
-            >
-              {fontFamilies.map((font) => (
-                <option key={font} value={font}>
-                  {font}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+            {/* Font Family */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200">
+                <select
+                  className="w-20 sm:w-32 bg-transparent outline-none p-2 text-sm rounded-lg"
+                  value={safeFormat.fontFamily}
+                  onChange={(e) =>
+                    onFormatChange({ fontFamily: e.target.value })
+                  }
+                >
+                  {fontFamilies.map((font) => (
+                    <option key={font} value={font}>
+                      {font}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-        {/* Font Size */}
-        <div className="flex items-center gap-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex-shrink-0 transition-all duration-200">
-          <select
-            className="w-16 sm:w-20 bg-transparent outline-none p-2 text-sm rounded-lg"
-            value={safeFormat.fontSize}
-            onChange={(e) =>
-              onFormatChange({ fontSize: Number(e.target.value) })
-            }
-          >
-            {fontSizes.map((size) => (
-              <option key={size} value={size}>
-                {size}px
-              </option>
-            ))}
-          </select>
-        </div>
+            {/* Font Size */}
+            <div className="flex items-center gap-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex-shrink-0 transition-all duration-200">
+              <select
+                className="w-16 sm:w-20 bg-transparent outline-none p-2 text-sm rounded-lg"
+                value={safeFormat.fontSize}
+                onChange={(e) =>
+                  onFormatChange({ fontSize: Number(e.target.value) })
+                }
+              >
+                {fontSizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size}px
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Text Style Buttons */}
-        <div className="flex items-center gap-1 border-l border-gray-300 pl-4 flex-shrink-0">
-          <button
-            className={`p-2 rounded-lg transition-all duration-200 ${
-              safeFormat.bold
-                ? "bg-blue-500 text-white shadow-md"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-            onClick={() => onFormatChange({ bold: !safeFormat.bold })}
-          >
-            <Bold size={16} />
-          </button>
-          <button
-            className={`p-2 rounded-lg transition-all duration-200 ${
-              safeFormat.italic
-                ? "bg-blue-500 text-white shadow-md"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-            onClick={() => onFormatChange({ italic: !safeFormat.italic })}
-          >
-            <Italic size={16} />
-          </button>
-          <button
-            className={`p-2 rounded-lg transition-all duration-200 ${
-              safeFormat.underline
-                ? "bg-blue-500 text-white shadow-md"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-            onClick={() => onFormatChange({ underline: !safeFormat.underline })}
-          >
-            <Underline size={16} />
-          </button>
-        </div>
+            {/* Text Style Buttons */}
+            <div className="flex items-center gap-1 border-l border-gray-300 pl-4 flex-shrink-0">
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.bold
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => onFormatChange({ bold: !safeFormat.bold })}
+              >
+                <Bold size={16} />
+              </button>
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.italic
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => onFormatChange({ italic: !safeFormat.italic })}
+              >
+                <Italic size={16} />
+              </button>
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.underline
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() =>
+                  onFormatChange({ underline: !safeFormat.underline })
+                }
+              >
+                <Underline size={16} />
+              </button>
+            </div>
 
-        {/* Text Alignment - Popup Menu */}
-        <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-          <div className="relative">
-            <button
-              ref={alignmentButtonRef}
-              className={`p-2 rounded-lg transition-all duration-200 ${
-                showAlignmentPopup
-                  ? "bg-blue-500 text-white shadow-md"
-                  : "hover:bg-gray-100 text-gray-700"
-              }`}
-              onClick={() => setShowAlignmentPopup(!showAlignmentPopup)}
-              title="Text Alignment"
-            >
-              {safeFormat.textAlign === "left" && <AlignLeft size={16} />}
-              {safeFormat.textAlign === "center" && <AlignCenter size={16} />}
-              {safeFormat.textAlign === "right" && <AlignRight size={16} />}
-              {safeFormat.textAlign === "justify" && <AlignJustify size={16} />}
-            </button>
-          </div>
-        </div>
+            {/* Text Alignment - Popup Menu */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={alignmentButtonRef}
+                  className={`p-2 rounded-lg transition-all duration-200 ${
+                    showAlignmentPopup
+                      ? "bg-blue-500 text-white shadow-md"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                  onClick={() => setShowAlignmentPopup(!showAlignmentPopup)}
+                  title="Text Alignment"
+                >
+                  {safeFormat.textAlign === "left" && <AlignLeft size={16} />}
+                  {safeFormat.textAlign === "center" && (
+                    <AlignCenter size={16} />
+                  )}
+                  {safeFormat.textAlign === "right" && <AlignRight size={16} />}
+                  {safeFormat.textAlign === "justify" && (
+                    <AlignJustify size={16} />
+                  )}
+                </button>
+              </div>
+            </div>
 
-        {/* List Style - Hidden on small screens */}
-        <div className="hidden md:flex items-center gap-1 border-l border-gray-300 pl-4 flex-shrink-0">
-          <button
-            className={`p-2 rounded-lg transition-all duration-200 ${
-              safeFormat.listType === "unordered"
-                ? "bg-blue-500 text-white shadow-md"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-            onClick={() =>
-              onFormatChange({
-                listType:
-                  safeFormat.listType === "unordered" ? "none" : "unordered",
-              })
-            }
-          >
-            <List size={16} />
-          </button>
-          <button
-            className={`p-2 rounded-lg transition-all duration-200 ${
-              safeFormat.listType === "ordered"
-                ? "bg-blue-500 text-white shadow-md"
-                : "hover:bg-gray-100 text-gray-700"
-            }`}
-            onClick={() =>
-              onFormatChange({
-                listType:
-                  safeFormat.listType === "ordered" ? "none" : "ordered",
-              })
-            }
-          >
-            <ListOrdered size={16} />
-          </button>
-        </div>
+            {/* List Style - Hidden on small screens */}
+            <div className="hidden md:flex items-center gap-1 border-l border-gray-300 pl-4 flex-shrink-0">
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.listType === "unordered"
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() =>
+                  onFormatChange({
+                    listType:
+                      safeFormat.listType === "unordered"
+                        ? "none"
+                        : "unordered",
+                  })
+                }
+              >
+                <List size={16} />
+              </button>
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.listType === "ordered"
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() =>
+                  onFormatChange({
+                    listType:
+                      safeFormat.listType === "ordered" ? "none" : "ordered",
+                  })
+                }
+              >
+                <ListOrdered size={16} />
+              </button>
+            </div>
 
-        {/* Colors */}
-        <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-          <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
-            <Palette size={14} />
-            <input
-              type="color"
-              value={safeFormat.color}
-              onChange={(e) => onFormatChange({ color: e.target.value })}
-              className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
-              title="Text Color"
-            />
-          </div>
-          <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
-            <Square size={14} />
-            <input
-              type="color"
-              value={safeFormat.borderColor}
-              onChange={(e) => onFormatChange({ borderColor: e.target.value })}
-              className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
-              title="Border Color"
-            />
-          </div>
-        </div>
+            {/* Colors */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <Palette size={14} />
+                <input
+                  type="color"
+                  value={safeFormat.color}
+                  onChange={(e) => onFormatChange({ color: e.target.value })}
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
+                  title="Text Color"
+                />
+              </div>
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <Square size={14} />
+                <input
+                  type="color"
+                  value={safeFormat.borderColor}
+                  onChange={(e) =>
+                    onFormatChange({ borderColor: e.target.value })
+                  }
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
+                  title="Border Color"
+                />
+              </div>
+            </div>
 
-        {/* Spacing Controls - Hidden on small screens */}
-        <div className="hidden lg:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-          <div className="relative">
-            <button
-              ref={spacingButtonRef}
-              className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
-              onClick={() => setShowSpacingTooltip(!showSpacingTooltip)}
-              title="Line Spacing"
-            >
-              <Text size={16} />
-            </button>
-          </div>
-          <div className="relative">
-            <button
-              ref={charSpacingButtonRef}
-              className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
-              onClick={() => setShowCharSpacingTooltip(!showCharSpacingTooltip)}
-              title="Character Spacing"
-            >
-              <TextCursor size={16} />
-            </button>
-          </div>
-        </div>
+            {/* Spacing Controls - Hidden on small screens */}
+            <div className="hidden lg:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={spacingButtonRef}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
+                  onClick={() => setShowSpacingTooltip(!showSpacingTooltip)}
+                  title="Line Spacing"
+                >
+                  <Text size={16} />
+                </button>
+              </div>
+              <div className="relative">
+                <button
+                  ref={charSpacingButtonRef}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
+                  onClick={() =>
+                    setShowCharSpacingTooltip(!showCharSpacingTooltip)
+                  }
+                  title="Character Spacing"
+                >
+                  <TextCursor size={16} />
+                </button>
+              </div>
+            </div>
 
-        {/* Border Width - Hidden on small screens */}
-        <div className="hidden md:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-          <select
-            className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
-            value={safeFormat.borderWidth}
-            onChange={(e) =>
-              onFormatChange({ borderWidth: Number(e.target.value) })
-            }
-          >
-            {borderWidths.map((width) => (
-              <option key={width} value={width}>
-                {width}px
-              </option>
-            ))}
-          </select>
-        </div>
+            {/* Border Width - Hidden on small screens */}
+            <div className="hidden md:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <select
+                className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
+                value={safeFormat.borderWidth}
+                onChange={(e) =>
+                  onFormatChange({ borderWidth: Number(e.target.value) })
+                }
+              >
+                {borderWidths.map((width) => (
+                  <option key={width} value={width}>
+                    {width}px
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Border Radius Control - Hidden on small screens */}
-        <div className="hidden md:flex items-center gap-2 flex-shrink-0">
-          <div className="relative">
-            <button
-              ref={borderRadiusButtonRef}
-              className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200 flex items-center gap-1"
-              onClick={() => setShowBorderRadiusPopup(!showBorderRadiusPopup)}
-              title="Border Radius"
-            >
-              <Square size={16} className="rounded" />
-              <span className="text-xs">{safeFormat.borderRadius}px</span>
-            </button>
-          </div>
-        </div>
+            {/* Border Radius Control - Hidden on small screens */}
+            <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={borderRadiusButtonRef}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200 flex items-center gap-1"
+                  onClick={() =>
+                    setShowBorderRadiusPopup(!showBorderRadiusPopup)
+                  }
+                  title="Border Radius"
+                >
+                  <Square size={16} className="rounded" />
+                  <span className="text-xs">{safeFormat.borderRadius}px</span>
+                </button>
+              </div>
+            </div>
 
-        {/* Padding Control - Icon only */}
-        <div className="hidden xl:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-          <div className="relative">
-            <button
-              ref={paddingButtonRef}
-              className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
-              onClick={() => setShowPaddingPopup(!showPaddingPopup)}
-              title="Padding"
-            >
-              <Move3D size={16} />
-            </button>
-          </div>
-        </div>
+            {/* Padding Control - Icon only */}
+            <div className="hidden xl:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={paddingButtonRef}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
+                  onClick={() => setShowPaddingPopup(!showPaddingPopup)}
+                  title="Padding"
+                >
+                  <Move3D size={16} />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Shape Type */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.type === "rectangle"
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => onFormatChange({ type: "rectangle" })}
+              >
+                <Rectangle size={16} />
+              </button>
+              <button
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  safeFormat.type === "circle"
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => onFormatChange({ type: "circle" })}
+              >
+                <Circle size={16} />
+              </button>
+            </div>
+
+            {/* Fill Color */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <Palette size={14} />
+                <input
+                  type="color"
+                  value={safeFormat.fillColor}
+                  onChange={(e) =>
+                    onFormatChange({ fillColor: e.target.value })
+                  }
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
+                  title="Fill Color"
+                />
+              </div>
+            </div>
+
+            {/* Fill Opacity */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <select
+                className="w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
+                value={safeFormat.fillOpacity}
+                onChange={(e) =>
+                  onFormatChange({ fillOpacity: parseFloat(e.target.value) })
+                }
+              >
+                {opacityValues.map((opacity) => (
+                  <option key={opacity} value={opacity}>
+                    {Math.round(opacity * 100)}%
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Border Color */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <Square size={14} />
+                <input
+                  type="color"
+                  value={safeFormat.borderColor}
+                  onChange={(e) =>
+                    onFormatChange({ borderColor: e.target.value })
+                  }
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
+                  title="Border Color"
+                />
+              </div>
+            </div>
+
+            {/* Border Width */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <select
+                className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
+                value={safeFormat.borderWidth}
+                onChange={(e) =>
+                  onFormatChange({ borderWidth: Number(e.target.value) })
+                }
+              >
+                {borderWidths.map((width) => (
+                  <option key={width} value={width}>
+                    {width}px
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Border Radius Control - Only show for rectangles */}
+            {safeFormat.type === "rectangle" && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                  <div className="text-xs text-gray-600">Radius</div>
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    value={safeFormat.borderRadius || 0}
+                    onChange={(e) =>
+                      onFormatChange({ borderRadius: Number(e.target.value) })
+                    }
+                    className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center"
+                  />
+                  <span className="text-xs text-gray-500">px</span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Line Spacing Popup - Outside drawer */}
