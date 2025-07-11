@@ -1,0 +1,15 @@
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+supabase>=2.0.3
+gotrue>=1.3.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+google-cloud-documentai>=2.20.1
+python-multipart>=0.0.6
+reportlab>=4.0.8 
+Pillow>=10.1.0  # For image processing
+PyMuPDF>=1.23.7  # fitz package for PDF handling
+python-dateutil>=2.8.2  # For date handling
+typing-extensions>=4.8.0  # For additional type hints
+pydantic>=2.5.2  # For data validation
+requests>=2.31.0  # For HTTP requests 
