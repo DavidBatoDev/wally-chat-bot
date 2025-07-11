@@ -25,6 +25,10 @@ export interface TextField {
   borderWidth?: number;
   backgroundColor?: string;
   borderRadius?: number;
+  borderTopLeftRadius?: number;
+  borderTopRightRadius?: number;
+  borderBottomLeftRadius?: number;
+  borderBottomRightRadius?: number;
   // Padding
   paddingTop?: number;
   paddingRight?: number;

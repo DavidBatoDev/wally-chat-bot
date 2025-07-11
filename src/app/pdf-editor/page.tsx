@@ -399,7 +399,17 @@ const MemoizedTextBox = memo(
                       textBox.borderColor || "#000000"
                     }`
                   : "none",
-                borderRadius: `${(textBox.borderRadius || 0) * scale}px`,
+                borderRadius:
+                  textBox.borderTopLeftRadius !== undefined ||
+                  textBox.borderTopRightRadius !== undefined ||
+                  textBox.borderBottomLeftRadius !== undefined ||
+                  textBox.borderBottomRightRadius !== undefined
+                    ? `${(textBox.borderTopLeftRadius || 0) * scale}px ${
+                        (textBox.borderTopRightRadius || 0) * scale
+                      }px ${(textBox.borderBottomRightRadius || 0) * scale}px ${
+                        (textBox.borderBottomLeftRadius || 0) * scale
+                      }px`
+                    : `${(textBox.borderRadius || 0) * scale}px`,
                 padding: `${(textBox.paddingTop || 0) * scale}px ${
                   (textBox.paddingRight || 0) * scale
                 }px ${(textBox.paddingBottom || 0) * scale}px ${
@@ -798,6 +808,9 @@ const PDFEditorContent: React.FC = () => {
     useState<DeletionRectangle[]>([]);
 
   const [deletedPages, setDeletedPages] = useState<Set<number>>(new Set());
+
+  // State for showing the transform button
+  const [showTransformButton, setShowTransformButton] = useState(true);
 
   // Helper functions to get current state arrays based on view
   const getCurrentTextBoxes = () => {
@@ -1209,64 +1222,192 @@ const PDFEditorContent: React.FC = () => {
     }
   };
 
-  // Handle text span click during add text field mode (like DocumentCanvas)
+  // Create deletion rectangle for text span
+  const createDeletionRectangleForSpan = (span: HTMLElement) => {
+    const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
+    if (!pdfPage) return;
+
+    const spanRect = span.getBoundingClientRect();
+    const pageRect = pdfPage.getBoundingClientRect();
+
+    // Calculate position relative to PDF page (original scale)
+    const pageX = (spanRect.left - pageRect.left) / scale;
+    const pageY = (spanRect.top - pageRect.top) / scale;
+    const pageWidth = spanRect.width / scale;
+    const pageHeight = spanRect.height / scale;
+
+    const deletionRect: DeletionRectangle = {
+      id: generateUUID(),
+      x: pageX,
+      y: pageY,
+      width: pageWidth,
+      height: pageHeight,
+      page: currentPage,
+      background: pdfBackgroundColor, // Use PDF background color to cover text
+    };
+
+    setCurrentDeletionRectangles((prev) => [...prev, deletionRect]);
+  };
+
+  // Create text field from span and add deletion rectangle
+  const createTextFieldFromSpan = (span: HTMLElement) => {
+    const textContent = span.textContent || "";
+    if (!textContent.trim()) return;
+
+    const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
+    if (!pdfPage) return;
+
+    const spanRect = span.getBoundingClientRect();
+    const pageRect = pdfPage.getBoundingClientRect();
+
+    // Calculate dimensions in original scale
+    const pageWidth = spanRect.width / scale;
+    const pageHeight = spanRect.height / scale;
+    const pageX = (spanRect.left - pageRect.left) / scale;
+    const pageY = (spanRect.top - pageRect.top) / scale;
+
+    // Clean text content by removing icon characters
+    const cleanedTextContent = textContent.replace(/×✎/g, "").trim();
+
+    // Create text field with actual font size (no minimum limit)
+    const fontSize = Math.max(1, pageHeight * 0.8); // Removed 8px minimum, now 1px minimum
+    const fontFamily = "Arial, sans-serif";
+    const fieldId = generateUUID();
+
+    const { width, height } = measureText(
+      cleanedTextContent,
+      fontSize,
+      fontFamily
+    );
+
+    const newTextBox: TextField = {
+      id: fieldId,
+      x: pageX,
+      y: pageY,
+      width: Math.max(pageWidth, width),
+      height: Math.max(pageHeight, height),
+      value: cleanedTextContent,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+      page: currentPage,
+      color: "#000000",
+      bold: false,
+      italic: false,
+      underline: false,
+      textAlign: "left",
+      listType: "none",
+      letterSpacing: 0,
+      lineHeight: 1.2,
+      rotation: 0,
+      borderRadius: 0,
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+    };
+
+    // Add text field
+    setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+    setSelectedFieldId(fieldId);
+
+    // Create deletion rectangle to cover original text
+    createDeletionRectangleForSpan(span);
+
+    // Remove icons after creating text field
+    removeIconsFromSpan(span);
+
+    // Exit add textfield mode
+    setIsAddTextBoxMode(false);
+  };
+
+  // Remove icons from span
+  const removeIconsFromSpan = (span: HTMLElement) => {
+    const overlay = span.querySelector(".text-span-icons");
+    if (overlay) {
+      overlay.remove();
+    }
+    span.classList.remove("text-span-clicked");
+  };
+
+  // Create icon overlay for text spans (only shown on click)
+  const createIconOverlay = (span: HTMLElement) => {
+    // Remove existing overlay if any
+    const existingOverlay = span.querySelector(".text-span-icons");
+    if (existingOverlay) {
+      existingOverlay.remove();
+    }
+
+    // Add clicked class for styling
+    span.classList.add("text-span-clicked");
+
+    // Create overlay container
+    const overlay = document.createElement("div");
+    overlay.className = "text-span-icons";
+
+    // Create delete icon
+    const deleteIcon = document.createElement("div");
+    deleteIcon.className = "text-span-icon-delete";
+    deleteIcon.innerHTML = "×";
+    deleteIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      console.log("Delete icon clicked for span:", span.textContent);
+      // Create deletion rectangle to cover the text
+      createDeletionRectangleForSpan(span);
+      // Remove icons after deletion
+      removeIconsFromSpan(span);
+    });
+
+    // Create edit icon
+    const editIcon = document.createElement("div");
+    editIcon.className = "text-span-icon-edit";
+    editIcon.innerHTML = "✎";
+    editIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      console.log("Edit icon clicked for span:", span.textContent);
+      // Create text field and deletion rectangle
+      createTextFieldFromSpan(span);
+    });
+
+    // Add icons to overlay
+    overlay.appendChild(deleteIcon);
+    overlay.appendChild(editIcon);
+
+    // Add overlay to span
+    span.appendChild(overlay);
+  };
+
+  // Handle text span click during add text field mode - show icons instead of creating text field
   const handleTextSpanClick = useCallback(
-    (e: React.MouseEvent<HTMLSpanElement>) => {
+    (e: MouseEvent) => {
       if (!isAddTextBoxMode) return;
       e.stopPropagation();
 
-      const span = e.currentTarget;
+      const span = e.currentTarget as HTMLSpanElement;
       const textContent = span.textContent || "";
 
       if (!textContent.trim()) return;
 
-      const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
-      if (!pdfPage) return;
+      // Clear any existing icons from other spans
+      const allSpans = document.querySelectorAll(
+        ".react-pdf__Page__textContent span"
+      );
+      allSpans.forEach((otherSpan) => {
+        if (otherSpan !== span) {
+          removeIconsFromSpan(otherSpan as HTMLElement);
+        }
+      });
 
-      const spanRect = span.getBoundingClientRect();
-
-      // Calculate dimensions in original scale (like DocumentCanvas)
-      const pageWidth = spanRect.width / scale;
-      const pageHeight = spanRect.height / scale;
-
-      // Calculate position relative to PDF page (original scale)
-      const pageRect = pdfPage.getBoundingClientRect();
-      const pageX = (spanRect.left - pageRect.left) / scale;
-      const pageY = (spanRect.top - pageRect.top) / scale;
-
-      // Create text field from the selected text
-      const fontSize = Math.max(8, pageHeight * 0.8); // Estimate font size
-      const fontFamily = "Arial, sans-serif";
-      const fieldId = generateUUID();
-
-      const { width, height } = measureText(textContent, fontSize, fontFamily);
-
-      const newTextBox: TextField = {
-        id: fieldId,
-        x: pageX,
-        y: pageY,
-        width: Math.max(pageWidth, width),
-        height: Math.max(pageHeight, height),
-        value: textContent,
-        fontSize: fontSize,
-        fontFamily: fontFamily,
-        page: currentPage,
-        color: "#000000",
-        bold: false,
-        italic: false,
-        underline: false,
-        textAlign: "left",
-        listType: "none",
-        letterSpacing: 0,
-        lineHeight: 1.2,
-        rotation: 0,
-      };
-
-      setCurrentTextBoxes((prev) => [...prev, newTextBox]);
-      setSelectedFieldId(fieldId);
-      setIsAddTextBoxMode(false);
+      // Check if this span already has icons
+      const hasIcons = span.querySelector(".text-span-icons");
+      if (hasIcons) {
+        // Remove icons if clicking the same span again
+        removeIconsFromSpan(span);
+      } else {
+        // Show icons for this span
+        createIconOverlay(span);
+      }
     },
-    [isAddTextBoxMode, scale, currentPage, currentView]
+    [isAddTextBoxMode]
   );
 
   // State to track if we're currently zooming to temporarily disable text layer
@@ -1379,13 +1520,16 @@ const PDFEditorContent: React.FC = () => {
         observer.disconnect();
       }
 
-      // Clean up all handlers
+      // Clean up all handlers and overlays
       const textSpans = document.querySelectorAll(
         ".react-pdf__Page__textContent span"
       );
       textSpans.forEach((span) => {
         span.removeEventListener("click", handleTextSpanClick as any);
         delete (span as any).hasListener;
+
+        // Remove icon overlay and styling
+        removeIconsFromSpan(span as HTMLElement);
       });
     };
   }, [
@@ -1670,6 +1814,11 @@ const PDFEditorContent: React.FC = () => {
         letterSpacing: 0,
         lineHeight: 1.2,
         rotation: 0,
+        borderRadius: 0,
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
       };
 
       setCurrentTextBoxes((prev) => [...prev, newTextBox]);
@@ -1746,6 +1895,11 @@ const PDFEditorContent: React.FC = () => {
         letterSpacing: 0,
         lineHeight: 1.2,
         rotation: 0,
+        borderRadius: 0,
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
       };
 
       setCurrentTextBoxes((prev) => [...prev, newTextBox]);
@@ -1783,6 +1937,11 @@ const PDFEditorContent: React.FC = () => {
         letterSpacing: 0,
         lineHeight: 1.2,
         rotation: 0,
+        borderRadius: 0,
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
       };
 
       // Determine which document to add to
@@ -1882,6 +2041,14 @@ const PDFEditorContent: React.FC = () => {
           updates.borderWidth = format.borderWidth;
         if (format.borderRadius !== undefined)
           updates.borderRadius = format.borderRadius;
+        if (format.borderTopLeftRadius !== undefined)
+          updates.borderTopLeftRadius = format.borderTopLeftRadius;
+        if (format.borderTopRightRadius !== undefined)
+          updates.borderTopRightRadius = format.borderTopRightRadius;
+        if (format.borderBottomLeftRadius !== undefined)
+          updates.borderBottomLeftRadius = format.borderBottomLeftRadius;
+        if (format.borderBottomRightRadius !== undefined)
+          updates.borderBottomRightRadius = format.borderBottomRightRadius;
         if (format.paddingTop !== undefined)
           updates.paddingTop = format.paddingTop;
         if (format.paddingRight !== undefined)
@@ -1941,6 +2108,11 @@ const PDFEditorContent: React.FC = () => {
             borderWidth: selectedTextBox.borderWidth || 0,
             backgroundColor: selectedTextBox.backgroundColor || "transparent",
             borderRadius: selectedTextBox.borderRadius || 0,
+            borderTopLeftRadius: selectedTextBox.borderTopLeftRadius || 0,
+            borderTopRightRadius: selectedTextBox.borderTopRightRadius || 0,
+            borderBottomLeftRadius: selectedTextBox.borderBottomLeftRadius || 0,
+            borderBottomRightRadius:
+              selectedTextBox.borderBottomRightRadius || 0,
             // Padding
             paddingTop: selectedTextBox.paddingTop || 0,
             paddingRight: selectedTextBox.paddingRight || 0,
@@ -2096,12 +2268,12 @@ const PDFEditorContent: React.FC = () => {
         width,
         height,
         page: currentPage,
-        background: "#ffffff",
+        background: pdfBackgroundColor,
       };
 
       setCurrentDeletionRectangles((prev) => [...prev, newRectangle]);
     },
-    [currentPage, currentView]
+    [currentPage, currentView, pdfBackgroundColor]
   );
 
   const updateDeletionRectangle = useCallback(
@@ -2413,6 +2585,202 @@ const PDFEditorContent: React.FC = () => {
       }
     }
   };
+
+  // Function to transform example_to_textbox.json into textboxes
+  const transformJsonToTextboxes = useCallback(async () => {
+    try {
+      // Import the JSON file
+      const response = await fetch("/example_to_textbox.json");
+      const jsonData = await response.json();
+
+      if (!jsonData.entities || !Array.isArray(jsonData.entities)) {
+        console.error("Invalid JSON format: missing entities array");
+        return;
+      }
+
+      const newTextBoxes: TextField[] = [];
+
+      jsonData.entities.forEach((entity: any) => {
+        if (
+          !entity.bounding_poly ||
+          !entity.bounding_poly.vertices ||
+          entity.bounding_poly.vertices.length < 4
+        ) {
+          console.warn("Skipping entity with invalid bounding_poly:", entity);
+          return;
+        }
+
+        const vertices = entity.bounding_poly.vertices;
+
+        // Calculate position and size from vertices (relative coordinates)
+        const x = Math.min(...vertices.map((v: any) => v.x)) * pageWidth;
+        const y = Math.min(...vertices.map((v: any) => v.y)) * pageHeight;
+        const maxX = Math.max(...vertices.map((v: any) => v.x)) * pageWidth;
+        const maxY = Math.max(...vertices.map((v: any) => v.y)) * pageHeight;
+        const width = maxX - x;
+        const height = maxY - y;
+
+        // Convert style colors from [0-1] range to hex
+        const rgbToHex = (rgb: number[]): string => {
+          if (!rgb || rgb.length !== 3) return "#000000";
+          const r = Math.round(rgb[0] * 255);
+          const g = Math.round(rgb[1] * 255);
+          const b = Math.round(rgb[2] * 255);
+          return `#${r.toString(16).padStart(2, "0")}${g
+            .toString(16)
+            .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+        };
+
+        // Extract styling information
+        const style = entity.style || {};
+        const backgroundColor = style.background_color
+          ? rgbToHex(style.background_color)
+          : "transparent";
+        const textColor = style.text_color
+          ? rgbToHex(style.text_color)
+          : "#000000";
+        const borderColor = style.border_color
+          ? rgbToHex(style.border_color)
+          : "#000000";
+        const borderWidth = style.has_border ? 1 : 0;
+        const borderRadius = style.border_radius || 0;
+        const padding = style.padding || 0;
+        const fontWeight = style.font_weight === "bold";
+        const textAlign = style.alignment || "left";
+
+        // Calculate font size more accurately for MessengerTextBox
+        let estimatedFontSize = 12; // Default font size
+
+        if (entity.type === "MessengerTextBox") {
+          // Calculate available space inside the border
+          const borderAndPaddingHeight = borderWidth * 2 + padding * 2;
+          const availableHeight = height - borderAndPaddingHeight;
+
+          // Count number of lines in the text
+          const textLines = (entity.text || "").split("\n");
+          const numberOfLines = textLines.length;
+
+          // Calculate font size based on available height and number of lines
+          // Account for line height (1.2 is our default)
+          const lineHeight = 1.2;
+          const fontSizeFromHeight =
+            availableHeight / (numberOfLines * lineHeight);
+
+          // Also calculate based on the longest line to ensure text fits horizontally
+          const borderAndPaddingWidth = borderWidth * 2 + padding * 2;
+          const availableWidth = width - borderAndPaddingWidth;
+
+          // Find the longest line
+          const longestLine = textLines.reduce(
+            (longest: string, current: string) =>
+              current.length > longest.length ? current : longest,
+            ""
+          );
+
+          // Use a binary search approach to find the optimal font size for width
+          let fontSizeFromWidth = 24; // Start with max size
+          let testFontSize = fontSizeFromWidth;
+
+          // Binary search for the largest font size that fits the width
+          let minSize = 6;
+          let maxSize = 24;
+
+          while (minSize <= maxSize) {
+            testFontSize = Math.floor((minSize + maxSize) / 2);
+            const { width: textWidth } = measureText(
+              longestLine,
+              testFontSize,
+              "Arial, sans-serif"
+            );
+
+            if (textWidth <= availableWidth) {
+              fontSizeFromWidth = testFontSize;
+              minSize = testFontSize + 1;
+            } else {
+              maxSize = testFontSize - 1;
+            }
+          }
+
+          // Use the smaller of the two calculations to ensure text fits both dimensions
+          estimatedFontSize = Math.min(fontSizeFromHeight, fontSizeFromWidth);
+
+          // Apply reasonable bounds (minimum 6px, maximum 24px for messenger text)
+          estimatedFontSize = Math.max(
+            6,
+            Math.min(24, Math.round(estimatedFontSize))
+          );
+
+          // Debug logging for MessengerTextBox font size calculation
+          console.log(`MessengerTextBox font size calculation:`, {
+            entityId: entity.id,
+            originalHeight: height,
+            originalWidth: width,
+            availableHeight,
+            availableWidth,
+            numberOfLines,
+            longestLineLength: longestLine.length,
+            fontSizeFromHeight,
+            fontSizeFromWidth,
+            finalFontSize: estimatedFontSize,
+            borderWidth,
+            padding,
+          });
+        } else {
+          // For non-MessengerTextBox entities, use the original calculation
+          estimatedFontSize = Math.max(8, Math.round(height * 0.6));
+        }
+
+        const newTextBox: TextField = {
+          id: generateUUID(),
+          x: x,
+          y: y,
+          width: width,
+          height: height,
+          value: entity.text || "",
+          fontSize: estimatedFontSize,
+          fontFamily: "Arial, sans-serif",
+          page: currentPage,
+          color: textColor,
+          bold: fontWeight,
+          italic: false,
+          underline: false,
+          textAlign: textAlign as "left" | "center" | "right" | "justify",
+          listType: "none",
+          letterSpacing: 0,
+          lineHeight: 1.2,
+          rotation: 0,
+          backgroundColor: backgroundColor,
+          borderColor: borderColor,
+          borderWidth: borderWidth,
+          borderRadius: borderRadius,
+          borderTopLeftRadius: borderRadius,
+          borderTopRightRadius: borderRadius,
+          borderBottomLeftRadius: borderRadius,
+          borderBottomRightRadius: borderRadius,
+          paddingTop: padding,
+          paddingRight: padding,
+          paddingBottom: padding,
+          paddingLeft: padding,
+        };
+
+        newTextBoxes.push(newTextBox);
+      });
+
+      // Add all textboxes to the translated document
+      setTranslatedTextBoxes((prev) => [...prev, ...newTextBoxes]);
+
+      // Hide the transform button after transformation
+      setShowTransformButton(false);
+
+      console.log(`Transformed ${newTextBoxes.length} entities into textboxes`);
+      toast.success(
+        `Transformed ${newTextBoxes.length} entities into textboxes`
+      );
+    } catch (error) {
+      console.error("Error transforming JSON to textboxes:", error);
+      toast.error("Failed to transform JSON to textboxes");
+    }
+  }, [currentPage, pageWidth, pageHeight]);
 
   // Get current page items - memoized for performance
   const getCurrentPageTextBoxes = useMemo(
@@ -3432,6 +3800,32 @@ const PDFEditorContent: React.FC = () => {
                           <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
                             Page {currentPage} of {numPages}
                           </div>
+
+                          {/* Transform JSON Button - positioned in the middle */}
+                          {showTransformButton && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <button
+                                onClick={transformJsonToTextboxes}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 flex items-center space-x-2"
+                                title="Transform example_to_textbox.json into textboxes"
+                              >
+                                <svg
+                                  className="w-5 h-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                                  />
+                                </svg>
+                                <span>Transform JSON to Textboxes</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Translated Document Elements */}
@@ -3945,7 +4339,7 @@ const PDFEditorContent: React.FC = () => {
           z-index: 50 !important;
         }
 
-        .add-text-box-mode .react-pdf__Page__textContent span {
+                .add-text-box-mode .react-pdf__Page__textContent span {
           cursor: pointer !important;
           color: rgba(0, 0, 0, 0.1) !important;
           background-color: rgba(34, 197, 94, 0.2) !important;
@@ -3953,10 +4347,80 @@ const PDFEditorContent: React.FC = () => {
           pointer-events: auto !important;
           border-radius: 2px !important;
         }
-
+        
         .add-text-box-mode .react-pdf__Page__textContent span:hover {
           background-color: rgba(34, 197, 94, 0.4) !important;
           color: rgba(0, 0, 0, 0.3) !important;
+        }
+        
+        /* Text span click styling - shows icons on click */
+        .text-span-clicked {
+          position: relative !important;
+        }
+        
+        .text-span-icons {
+          position: absolute !important;
+          pointer-events: auto !important;
+          z-index: 100 !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+        }
+        
+        /* Delete icon - top left */
+        .text-span-icon-delete {
+          position: absolute !important;
+          top: -8px !important;
+          left: -8px !important;
+          width: 16px !important;
+          height: 16px !important;
+          background-color: #ef4444 !important;
+          color: white !important;
+          border-radius: 50% !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          font-size: 12px !important;
+          font-weight: bold !important;
+          opacity: 1 !important;
+          cursor: pointer !important;
+          z-index: 101 !important;
+          line-height: 1 !important;
+          pointer-events: auto !important;
+        }
+        
+        /* Edit icon - top right */
+        .text-span-icon-edit {
+          position: absolute !important;
+          top: -8px !important;
+          right: -8px !important;
+          width: 16px !important;
+          height: 16px !important;
+          background-color: #3b82f6 !important;
+          color: white !important;
+          border-radius: 50% !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          font-size: 10px !important;
+          font-weight: bold !important;
+          opacity: 1 !important;
+          cursor: pointer !important;
+          z-index: 101 !important;
+          line-height: 1 !important;
+          pointer-events: auto !important;
+        }
+        
+        /* Hover effects for icons */
+        .text-span-icon-delete:hover {
+          background-color: #dc2626 !important;
+          transform: scale(1.1) !important;
+        }
+        
+        .text-span-icon-edit:hover {
+          background-color: #2563eb !important;
+          transform: scale(1.1) !important;
         }
 
         /* Ensure text fields are properly layered above text layer */

@@ -33,7 +33,7 @@ const fontFamilies = [
   "Open Sans",
 ];
 
-const fontSizes = Array.from({ length: 20 }, (_, i) => i + 8); // 8px to 28px
+const fontSizes = Array.from({ length: 20 }, (_, i) => i + 2); // 8px to 28px
 
 const borderWidths = [0, 1, 2, 3, 4, 5];
 
@@ -50,16 +50,19 @@ export const TextFormatDrawer: React.FC = () => {
   const [showSpacingTooltip, setShowSpacingTooltip] = useState(false);
   const [showCharSpacingTooltip, setShowCharSpacingTooltip] = useState(false);
   const [showAlignmentPopup, setShowAlignmentPopup] = useState(false);
+  const [showBorderRadiusPopup, setShowBorderRadiusPopup] = useState(false);
 
   // Refs for positioning popups
   const spacingButtonRef = useRef<HTMLButtonElement>(null);
   const charSpacingButtonRef = useRef<HTMLButtonElement>(null);
   const paddingButtonRef = useRef<HTMLButtonElement>(null);
+  const borderRadiusButtonRef = useRef<HTMLButtonElement>(null);
 
   // Refs for popup containers
   const spacingPopupRef = useRef<HTMLDivElement>(null);
   const charSpacingPopupRef = useRef<HTMLDivElement>(null);
   const paddingPopupRef = useRef<HTMLDivElement>(null);
+  const borderRadiusPopupRef = useRef<HTMLDivElement>(null);
   const alignmentButtonRef = useRef<HTMLButtonElement>(null);
   const alignmentPopupRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +102,16 @@ export const TextFormatDrawer: React.FC = () => {
       }
 
       if (
+        showBorderRadiusPopup &&
+        borderRadiusButtonRef.current &&
+        borderRadiusPopupRef.current &&
+        !borderRadiusButtonRef.current.contains(target) &&
+        !borderRadiusPopupRef.current.contains(target)
+      ) {
+        setShowBorderRadiusPopup(false);
+      }
+
+      if (
         showAlignmentPopup &&
         alignmentButtonRef.current &&
         alignmentPopupRef.current &&
@@ -117,6 +130,7 @@ export const TextFormatDrawer: React.FC = () => {
     showSpacingTooltip,
     showCharSpacingTooltip,
     showPaddingPopup,
+    showBorderRadiusPopup,
     showAlignmentPopup,
   ]);
 
@@ -143,6 +157,11 @@ export const TextFormatDrawer: React.FC = () => {
     paddingRight: currentFormat.paddingRight || 0,
     paddingBottom: currentFormat.paddingBottom || 0,
     paddingLeft: currentFormat.paddingLeft || 0,
+    borderRadius: currentFormat.borderRadius || 0,
+    borderTopLeftRadius: currentFormat.borderTopLeftRadius || 0,
+    borderTopRightRadius: currentFormat.borderTopRightRadius || 0,
+    borderBottomLeftRadius: currentFormat.borderBottomLeftRadius || 0,
+    borderBottomRightRadius: currentFormat.borderBottomRightRadius || 0,
   };
 
   return (
@@ -345,6 +364,21 @@ export const TextFormatDrawer: React.FC = () => {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Border Radius Control - Hidden on small screens */}
+        <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+          <div className="relative">
+            <button
+              ref={borderRadiusButtonRef}
+              className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200 flex items-center gap-1"
+              onClick={() => setShowBorderRadiusPopup(!showBorderRadiusPopup)}
+              title="Border Radius"
+            >
+              <Square size={16} className="rounded" />
+              <span className="text-xs">{safeFormat.borderRadius}px</span>
+            </button>
+          </div>
         </div>
 
         {/* Padding Control - Icon only */}
@@ -587,6 +621,194 @@ export const TextFormatDrawer: React.FC = () => {
                     value={safeFormat.paddingLeft}
                     onChange={(e) =>
                       onFormatChange({ paddingLeft: Number(e.target.value) })
+                    }
+                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Border Radius Popup */}
+      {showBorderRadiusPopup && (
+        <div
+          ref={borderRadiusPopupRef}
+          className="fixed bg-white shadow-xl rounded-lg border border-gray-200 p-4 min-w-[280px] z-[60] animate-in slide-in-from-top-2 duration-200"
+          style={{
+            top: borderRadiusButtonRef.current
+              ? borderRadiusButtonRef.current.getBoundingClientRect().bottom + 8
+              : 0,
+            left: borderRadiusButtonRef.current
+              ? borderRadiusButtonRef.current.getBoundingClientRect().left - 100
+              : 0,
+          }}
+        >
+          <div className="space-y-4">
+            <div className="text-sm font-medium text-gray-700 mb-3">
+              Border Radius
+            </div>
+
+            {/* Overall Border Radius */}
+            <div className="space-y-2">
+              <label className="text-xs text-gray-600">Overall</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={safeFormat.borderRadius}
+                  onChange={(e) =>
+                    onFormatChange({
+                      borderRadius: Number(e.target.value),
+                      borderTopLeftRadius: Number(e.target.value),
+                      borderTopRightRadius: Number(e.target.value),
+                      borderBottomLeftRadius: Number(e.target.value),
+                      borderBottomRightRadius: Number(e.target.value),
+                    })
+                  }
+                  className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={safeFormat.borderRadius}
+                  onChange={(e) =>
+                    onFormatChange({
+                      borderRadius: Number(e.target.value),
+                      borderTopLeftRadius: Number(e.target.value),
+                      borderTopRightRadius: Number(e.target.value),
+                      borderBottomLeftRadius: Number(e.target.value),
+                      borderBottomRightRadius: Number(e.target.value),
+                    })
+                  }
+                  className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                />
+              </div>
+            </div>
+
+            {/* Individual Corner Radius */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Top Left */}
+              <div className="space-y-1">
+                <label className="text-xs text-gray-600">Top Left</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    value={safeFormat.borderTopLeftRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderTopLeftRadius: Number(e.target.value),
+                      })
+                    }
+                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={safeFormat.borderTopLeftRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderTopLeftRadius: Number(e.target.value),
+                      })
+                    }
+                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                  />
+                </div>
+              </div>
+
+              {/* Top Right */}
+              <div className="space-y-1">
+                <label className="text-xs text-gray-600">Top Right</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    value={safeFormat.borderTopRightRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderTopRightRadius: Number(e.target.value),
+                      })
+                    }
+                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={safeFormat.borderTopRightRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderTopRightRadius: Number(e.target.value),
+                      })
+                    }
+                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                  />
+                </div>
+              </div>
+
+              {/* Bottom Left */}
+              <div className="space-y-1">
+                <label className="text-xs text-gray-600">Bottom Left</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    value={safeFormat.borderBottomLeftRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderBottomLeftRadius: Number(e.target.value),
+                      })
+                    }
+                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={safeFormat.borderBottomLeftRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderBottomLeftRadius: Number(e.target.value),
+                      })
+                    }
+                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                  />
+                </div>
+              </div>
+
+              {/* Bottom Right */}
+              <div className="space-y-1">
+                <label className="text-xs text-gray-600">Bottom Right</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    value={safeFormat.borderBottomRightRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderBottomRightRadius: Number(e.target.value),
+                      })
+                    }
+                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={safeFormat.borderBottomRightRadius}
+                    onChange={(e) =>
+                      onFormatChange({
+                        borderBottomRightRadius: Number(e.target.value),
+                      })
                     }
                     className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
                   />
