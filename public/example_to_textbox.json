@@ -1,0 +1,329 @@
+{
+    "entities": [
+      {
+        "type": "MessengerTextBox",
+        "text": "Hindi ko kailangan panahon mo, gawa\nna lahat yan perma lang kailangan ko",
+        "confidence": 0.649498701095581,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.37258246541023254,
+              "y": 0.5090109705924988
+            },
+            {
+              "x": 0.8686006665229797,
+              "y": 0.5090109705924988
+            },
+            {
+              "x": 0.8686006665229797,
+              "y": 0.5643956065177917
+            },
+            {
+              "x": 0.37258246541023254,
+              "y": 0.5643956065177917
+            }
+          ]
+        },
+        "id": "0",
+        "style": {
+          "background_color": [
+            0.97,
+            0.97,
+            0.97
+          ],
+          "text_color": [
+            0.2,
+            0.2,
+            0.2
+          ],
+          "border_color": [
+            0.7,
+            0.7,
+            0.7
+          ],
+          "has_border": true,
+          "border_radius": 6,
+          "padding": 8,
+          "font_weight": "normal",
+          "alignment": "left"
+        }
+      },
+      {
+        "type": "MessengerTextBox",
+        "text": "Waray ito problema...hulat la asta\npagpirma ko",
+        "confidence": 0.9871153831481934,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.21274174749851227,
+              "y": 0.6136263608932495
+            },
+            {
+              "x": 0.6518771052360535,
+              "y": 0.6136263608932495
+            },
+            {
+              "x": 0.6518771052360535,
+              "y": 0.6690109968185425
+            },
+            {
+              "x": 0.21274174749851227,
+              "y": 0.6690109968185425
+            }
+          ]
+        },
+        "id": "1",
+        "style": {
+          "background_color": [
+            0.97,
+            0.97,
+            0.97
+          ],
+          "text_color": [
+            0.2,
+            0.2,
+            0.2
+          ],
+          "border_color": [
+            0.7,
+            0.7,
+            0.7
+          ],
+          "has_border": true,
+          "border_radius": 6,
+          "padding": 8,
+          "font_weight": "normal",
+          "alignment": "left"
+        }
+      },
+      {
+        "type": "MessengerTextBox",
+        "text": "Naserve na ang papers DHL ang\nmagsesend niyan - 21days since ma\nreceive mo yan, hindi ko deadline yan,\ndeadline ng court",
+        "confidence": 0.8107785582542419,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.3657565414905548,
+              "y": 0.7441758513450623
+            },
+            {
+              "x": 0.8680318593978882,
+              "y": 0.7441758513450623
+            },
+            {
+              "x": 0.8680318593978882,
+              "y": 0.8632966876029968
+            },
+            {
+              "x": 0.3657565414905548,
+              "y": 0.8632966876029968
+            }
+          ]
+        },
+        "id": "2",
+        "style": {
+          "background_color": [
+            0.97,
+            0.97,
+            0.97
+          ],
+          "text_color": [
+            0.2,
+            0.2,
+            0.2
+          ],
+          "border_color": [
+            0.7,
+            0.7,
+            0.7
+          ],
+          "has_border": true,
+          "border_radius": 6,
+          "padding": 8,
+          "font_weight": "normal",
+          "alignment": "left"
+        }
+      },
+      {
+        "type": "MessengerTextBox",
+        "text": "Cge la...ay kabaraka permahan ko ito\nayaw la anay yna pagdungan...",
+        "confidence": 0.985198974609375,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.2133105844259262,
+              "y": 0.9142857193946838
+            },
+            {
+              "x": 0.700796365737915,
+              "y": 0.9142857193946838
+            },
+            {
+              "x": 0.700796365737915,
+              "y": 0.9701098799705505
+            },
+            {
+              "x": 0.2133105844259262,
+              "y": 0.9701098799705505
+            }
+          ]
+        },
+        "id": "3",
+        "style": {
+          "background_color": [
+            0.97,
+            0.97,
+            0.97
+          ],
+          "text_color": [
+            0.2,
+            0.2,
+            0.2
+          ],
+          "border_color": [
+            0.7,
+            0.7,
+            0.7
+          ],
+          "has_border": true,
+          "border_radius": 6,
+          "padding": 8,
+          "font_weight": "normal",
+          "alignment": "left"
+        }
+      },
+      {
+        "type": "audience_name",
+        "text": "Richard Florendo Roncal",
+        "confidence": 0.9999732971191406,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.2775881588459015,
+              "y": 0.10505494475364685
+            },
+            {
+              "x": 0.6200227737426758,
+              "y": 0.10505494475364685
+            },
+            {
+              "x": 0.6200227737426758,
+              "y": 0.12439560145139694
+            },
+            {
+              "x": 0.2775881588459015,
+              "y": 0.12439560145139694
+            }
+          ]
+        },
+        "id": "4",
+        "style": {
+          "background_color": null,
+          "text_color": [
+            0.25,
+            0.25,
+            0.25
+          ],
+          "border_color": [
+            0.9,
+            0.9,
+            0.9
+          ],
+          "has_border": false,
+          "border_radius": 0,
+          "padding": 8,
+          "font_weight": "bold",
+          "alignment": "left"
+        }
+      },
+      {
+        "type": "chat_label",
+        "text": "Edited",
+        "confidence": 0.9951342344284058,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.8145620226860046,
+              "y": 0.7046154141426086
+            },
+            {
+              "x": 0.8782707452774048,
+              "y": 0.7046154141426086
+            },
+            {
+              "x": 0.8782707452774048,
+              "y": 0.7160439491271973
+            },
+            {
+              "x": 0.8145620226860046,
+              "y": 0.7160439491271973
+            }
+          ]
+        },
+        "id": "5",
+        "style": {
+          "background_color": null,
+          "text_color": [
+            0.4,
+            0.4,
+            0.4
+          ],
+          "border_color": [
+            0.9,
+            0.9,
+            0.9
+          ],
+          "has_border": false,
+          "border_radius": 0,
+          "padding": 8,
+          "font_weight": "normal",
+          "alignment": "left"
+        }
+      },
+      {
+        "type": "chat_time",
+        "text": "12 JUN AT 05:24",
+        "confidence": 0.9705828428268433,
+        "bounding_poly": {
+          "vertices": [
+            {
+              "x": 0.41296929121017456,
+              "y": 0.16483516991138458
+            },
+            {
+              "x": 0.5858930349349976,
+              "y": 0.16483516991138458
+            },
+            {
+              "x": 0.5858930349349976,
+              "y": 0.1767033040523529
+            },
+            {
+              "x": 0.41296929121017456,
+              "y": 0.1767033040523529
+            }
+          ]
+        },
+        "id": "6",
+        "style": {
+          "background_color": null,
+          "text_color": [
+            0.4,
+            0.4,
+            0.4
+          ],
+          "border_color": [
+            0.9,
+            0.9,
+            0.9
+          ],
+          "has_border": false,
+          "border_radius": 0,
+          "padding": 8,
+          "font_weight": "normal",
+          "alignment": "left"
+        }
+      }
+    ],
+    "text": "06:30\n5G 99\n<\nRichard Florendo Roncal\n12 JUN AT 05:24\nReason for the divorce\nHindi ko kailangan panahon mo, gawa\nna lahat yan perma lang kailangan ko\nWaray ito problema...hulat la asta\npagpirma ko\nEdited\nNaserve na ang papers DHL ang\nmagsesend niyan - 21days since ma\nreceive mo yan, hindi ko deadline yan,\ndeadline ng court\nCge la...ay kabaraka permahan ko ito\nayaw la anay yna pagdungan...\n"
+  }

@@ -44,6 +44,7 @@ import {
   Edit2,
   Eye,
   SplitSquareHorizontal,
+  Eraser,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -146,6 +147,9 @@ interface DeletionRectangle {
   height: number;
   page: number;
   background?: string; // Add this for background color
+  opacity?: number; // Add opacity control
+  borderColor?: string; // Add border color for erasure tool
+  borderWidth?: number; // Add border width for erasure tool
 }
 
 interface SelectedTextBoxes {
@@ -763,6 +767,24 @@ const PDFEditorContent: React.FC = () => {
   const [isDrawingInProgress, setIsDrawingInProgress] =
     useState<boolean>(false);
 
+  // Erasure tool state
+  const [isErasureMode, setIsErasureMode] = useState<boolean>(false);
+  const [isDrawingErasure, setIsDrawingErasure] = useState<boolean>(false);
+  const [erasureDrawStart, setErasureDrawStart] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [erasureDrawEnd, setErasureDrawEnd] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [erasureSettings, setErasureSettings] = useState({
+    width: 20,
+    height: 20,
+    background: "#ffffff",
+    opacity: 1.0,
+  });
+
   // Add state to track which document side the shape drawing started on
   const [shapeDrawTargetView, setShapeDrawTargetView] = useState<
     "original" | "translated" | null
@@ -885,6 +907,11 @@ const PDFEditorContent: React.FC = () => {
   const shapeDragRafRef = useRef<number | null>(null);
   const isShapeDraggingRef = useRef<Record<string, boolean>>({});
 
+  // Erasure drawing state refs for immediate access
+  const isDrawingErasureRef = useRef<boolean>(false);
+  const erasureDrawStartRef = useRef<{ x: number; y: number } | null>(null);
+  const erasureDrawEndRef = useRef<{ x: number; y: number } | null>(null);
+
   // Global mouse event handlers
   useEffect(() => {
     const handleGlobalMouseUp = () => {
@@ -936,6 +963,19 @@ const PDFEditorContent: React.FC = () => {
       if (shapeDragRafRef.current) {
         cancelAnimationFrame(shapeDragRafRef.current);
         shapeDragRafRef.current = null;
+      }
+
+      // Clean up erasure drawing state - only if not in erasure mode (fallback cleanup)
+      if (isDrawingErasure && !isErasureMode) {
+        console.log(
+          "Global mouse up - cleaning up erasure state (not in erasure mode)"
+        );
+        setIsDrawingErasure(false);
+        setErasureDrawStart(null);
+        setErasureDrawEnd(null);
+      } else if (isDrawingErasure && isErasureMode) {
+        console.log("Global mouse up - erasure mode active, not interfering");
+        // Don't interfere with erasure mode - let the document handler deal with it
       }
     };
 
@@ -2316,10 +2356,29 @@ const PDFEditorContent: React.FC = () => {
       }
 
       e.preventDefault();
+    } else if (isErasureMode) {
+      // Handle erasure drawing start
+      if (e.button !== 0) return; // Only left click
+
+      const rect = documentRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = (e.clientX - rect.left) / scale;
+      const y = (e.clientY - rect.top) / scale;
+
+      console.log("Document mouse down - erasure mode, starting erasure draw");
+      setErasureDrawStart({ x, y });
+      setIsDrawingErasure(true);
+
+      // Update refs immediately
+      erasureDrawStartRef.current = { x, y };
+      isDrawingErasureRef.current = true;
+
+      e.preventDefault();
     }
   };
 
-  // Handle mouse move for text selection
+  // Handle mouse move for text selection and erasure
   const handleDocumentMouseMove = (e: React.MouseEvent) => {
     if (isTextSelectionMode && isDrawingSelection && selectionStart) {
       const x = e.clientX;
@@ -2327,6 +2386,8 @@ const PDFEditorContent: React.FC = () => {
 
       setSelectionEnd({ x, y });
       e.preventDefault();
+    } else if (isErasureMode && isDrawingErasure) {
+      handleErasureDrawMove(e);
     }
   };
 
@@ -2392,6 +2453,16 @@ const PDFEditorContent: React.FC = () => {
       setIsDrawingSelection(false);
       setSelectionStart(null);
       setSelectionEnd(null);
+    } else if (isErasureMode && isDrawingErasure) {
+      console.log(
+        "Document mouse up - erasure mode, calling handleErasureDrawEnd"
+      );
+      e.preventDefault();
+      e.stopPropagation();
+      handleErasureDrawEnd();
+      return; // Prevent further processing
+    } else if (isErasureMode) {
+      console.log("Document mouse up - erasure mode but not drawing");
     }
   };
 
@@ -2442,6 +2513,9 @@ const PDFEditorContent: React.FC = () => {
         setShapeDrawTargetView(targetView || null);
         setIsDrawingInProgress(true);
       }
+    } else if (isErasureMode) {
+      // Don't start erasure drawing on click - only on mouse down
+      // This prevents interference with the mouse up event
     } else {
       // Clear selections only if clicking on empty space
       setSelectedFieldId(null);
@@ -2508,6 +2582,82 @@ const PDFEditorContent: React.FC = () => {
     setShapeDrawingMode(null);
     setIsAddTextBoxMode(false);
     setIsTextSelectionMode(false);
+    setIsErasureMode(false);
+  };
+
+  const handleErasureDrawMove = (e: React.MouseEvent) => {
+    if (!isDrawingErasure || !erasureDrawStart) return;
+
+    const rect = documentRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+
+    console.log("Erasure draw move", { x, y });
+    setErasureDrawEnd({ x, y });
+
+    // Update ref immediately
+    erasureDrawEndRef.current = { x, y };
+  };
+
+  const handleErasureDrawEnd = () => {
+    console.log("handleErasureDrawEnd called", {
+      isDrawingErasure,
+      erasureDrawStart,
+      erasureDrawEnd,
+    });
+
+    // Always reset the drawing state, regardless of conditions
+    const wasDrawing = isDrawingErasure;
+    const hadStart = erasureDrawStart;
+    const hadEnd = erasureDrawEnd;
+
+    // Reset state immediately to prevent any lingering preview
+    setErasureDrawStart(null);
+    setErasureDrawEnd(null);
+    setIsDrawingErasure(false);
+
+    // Reset refs immediately
+    isDrawingErasureRef.current = false;
+    erasureDrawStartRef.current = null;
+    erasureDrawEndRef.current = null;
+
+    // Only process if we were actually drawing
+    if (!wasDrawing || !hadStart) {
+      console.log("Early return - not drawing or no start point");
+      return;
+    }
+
+    // Only create rectangle if we actually dragged (have an end point and significant size)
+    if (hadEnd) {
+      const width = Math.abs(hadEnd.x - hadStart.x);
+      const height = Math.abs(hadEnd.y - hadStart.y);
+
+      console.log("Drawing dimensions", { width, height });
+
+      if (width > 5 && height > 5) {
+        const x = Math.min(hadStart.x, hadEnd.x);
+        const y = Math.min(hadStart.y, hadEnd.y);
+
+        // Create deletion rectangle with erasure settings
+        const deletionRect: DeletionRectangle = {
+          id: generateUUID(),
+          x,
+          y,
+          width,
+          height,
+          page: currentPage,
+          background: erasureSettings.background,
+          opacity: erasureSettings.opacity,
+        };
+
+        console.log("Creating deletion rectangle", deletionRect);
+        setCurrentDeletionRectangles((prev) => [...prev, deletionRect]);
+      }
+    }
+
+    console.log("Erasure drawing completed and state reset");
   };
 
   // Export functionality
@@ -3217,6 +3367,64 @@ const PDFEditorContent: React.FC = () => {
             <TextFormatDrawer />
           </div>
 
+          {/* Erasure Tool Controls */}
+          {isErasureMode && (
+            <div
+              className={`absolute z-50 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-4 rounded-lg transition-all duration-300 ${
+                isSidebarCollapsed ? "left-4" : "left-4"
+              }`}
+              style={{
+                top: "300px", // Below the floating toolbar
+                minWidth: "280px",
+              }}
+            >
+              <div className="space-y-3">
+                {/* Background Color */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 w-20">
+                    Background:
+                  </label>
+                  <input
+                    type="color"
+                    value={erasureSettings.background}
+                    onChange={(e) =>
+                      setErasureSettings((prev) => ({
+                        ...prev,
+                        background: e.target.value,
+                      }))
+                    }
+                    className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-500">
+                    {erasureSettings.background}
+                  </span>
+                </div>
+
+                {/* Opacity */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 w-20">Opacity:</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={erasureSettings.opacity}
+                    onChange={(e) =>
+                      setErasureSettings((prev) => ({
+                        ...prev,
+                        opacity: parseFloat(e.target.value),
+                      }))
+                    }
+                    className="flex-1"
+                  />
+                  <span className="text-xs text-gray-500 w-10">
+                    {Math.round(erasureSettings.opacity * 100)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Floating Toolbar - Moved down to account for format drawer */}
           <div
             className={`absolute z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300 ${
@@ -3234,6 +3442,7 @@ const PDFEditorContent: React.FC = () => {
                   setIsTextSelectionMode(newMode);
                   if (newMode) {
                     setIsAddTextBoxMode(false);
+                    setIsErasureMode(false);
                     setShapeDrawingMode(null);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
@@ -3257,6 +3466,7 @@ const PDFEditorContent: React.FC = () => {
                   setIsAddTextBoxMode(newMode);
                   if (newMode) {
                     setIsTextSelectionMode(false);
+                    setIsErasureMode(false);
                     setShapeDrawingMode(null);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
@@ -3284,6 +3494,7 @@ const PDFEditorContent: React.FC = () => {
                   if (newMode) {
                     setIsTextSelectionMode(false);
                     setIsAddTextBoxMode(false);
+                    setIsErasureMode(false);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
                     setShapeDrawEnd(null);
@@ -3310,6 +3521,7 @@ const PDFEditorContent: React.FC = () => {
                   if (newMode) {
                     setIsTextSelectionMode(false);
                     setIsAddTextBoxMode(false);
+                    setIsErasureMode(false);
                     setIsDrawingInProgress(false);
                     setShapeDrawStart(null);
                     setShapeDrawEnd(null);
@@ -3324,6 +3536,31 @@ const PDFEditorContent: React.FC = () => {
                 title="Draw Circle"
               >
                 <Circle className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => {
+                  // Toggle erasure mode and disable other modes
+                  const newMode = !isErasureMode;
+                  setIsErasureMode(newMode);
+                  if (newMode) {
+                    setIsTextSelectionMode(false);
+                    setIsAddTextBoxMode(false);
+                    setShapeDrawingMode(null);
+                    setIsDrawingInProgress(false);
+                    setShapeDrawStart(null);
+                    setShapeDrawEnd(null);
+                    setShapeDrawTargetView(null);
+                  }
+                }}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
+                  isErasureMode
+                    ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                    : "text-gray-700 hover:text-red-600"
+                }`}
+                title="Erasure Tool (Draw deletion rectangles)"
+              >
+                <Eraser className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -3475,16 +3712,22 @@ const PDFEditorContent: React.FC = () => {
                     isTextSelectionMode ? "text-selection-mode" : ""
                   } ${isAddTextBoxMode ? "cursor-crosshair" : ""} ${
                     shapeDrawingMode ? "cursor-crosshair" : ""
-                  } ${isCtrlPressed ? "cursor-zoom-in" : ""}`}
+                  } ${isErasureMode ? "cursor-crosshair" : ""} ${
+                    isCtrlPressed ? "cursor-zoom-in" : ""
+                  }`}
                   onClick={handleDocumentContainerClick}
                   onMouseDown={
-                    isTextSelectionMode ? handleDocumentMouseDown : undefined
+                    isTextSelectionMode || isErasureMode
+                      ? handleDocumentMouseDown
+                      : undefined
                   }
                   onMouseMove={
                     shapeDrawingMode
                       ? handleShapeDrawMove
                       : isTextSelectionMode
                       ? handleDocumentMouseMove
+                      : isErasureMode
+                      ? handleErasureDrawMove
                       : undefined
                   }
                   onMouseUp={
@@ -3492,6 +3735,8 @@ const PDFEditorContent: React.FC = () => {
                       ? handleShapeDrawEnd
                       : isTextSelectionMode
                       ? handleDocumentMouseUp
+                      : isErasureMode
+                      ? handleErasureDrawEnd
                       : undefined
                   }
                   style={{
@@ -3689,7 +3934,12 @@ const PDFEditorContent: React.FC = () => {
                                 width: rect.width * scale,
                                 height: rect.height * scale,
                                 zIndex: showDeletionRectangles ? 20 : 5,
-                                backgroundColor: rect.background || "white",
+                                backgroundColor: rect.background
+                                  ? hexToRgba(
+                                      rect.background,
+                                      rect.opacity || 1.0
+                                    )
+                                  : "white",
                               }}
                             >
                               {showDeletionRectangles && (
@@ -3846,7 +4096,12 @@ const PDFEditorContent: React.FC = () => {
                                 width: rect.width * scale,
                                 height: rect.height * scale,
                                 zIndex: showDeletionRectangles ? 20 : 5,
-                                backgroundColor: rect.background || "white",
+                                backgroundColor: rect.background
+                                  ? hexToRgba(
+                                      rect.background,
+                                      rect.opacity || 1.0
+                                    )
+                                  : "white",
                               }}
                             >
                               {showDeletionRectangles && (
@@ -3952,7 +4207,9 @@ const PDFEditorContent: React.FC = () => {
                             width: rect.width * scale,
                             height: rect.height * scale,
                             zIndex: showDeletionRectangles ? 20 : 5,
-                            backgroundColor: rect.background || "white",
+                            backgroundColor: rect.background
+                              ? hexToRgba(rect.background, rect.opacity || 1.0)
+                              : "white",
                           }}
                         >
                           {showDeletionRectangles && (
@@ -4115,6 +4372,36 @@ const PDFEditorContent: React.FC = () => {
                                 scale,
                               borderRadius:
                                 shapeDrawingMode === "circle" ? "50%" : "0",
+                              zIndex: 50,
+                            }}
+                          />
+                        )}
+
+                      {/* Erasure Drawing Preview */}
+                      {isDrawingErasure &&
+                        erasureDrawStart &&
+                        erasureDrawEnd && (
+                          <div
+                            className="absolute border-2 border-dashed pointer-events-none"
+                            style={{
+                              left:
+                                Math.min(erasureDrawStart.x, erasureDrawEnd.x) *
+                                scale,
+                              top:
+                                Math.min(erasureDrawStart.y, erasureDrawEnd.y) *
+                                scale,
+                              width:
+                                Math.abs(
+                                  erasureDrawEnd.x - erasureDrawStart.x
+                                ) * scale,
+                              height:
+                                Math.abs(
+                                  erasureDrawEnd.y - erasureDrawStart.y
+                                ) * scale,
+                              backgroundColor: hexToRgba(
+                                erasureSettings.background,
+                                erasureSettings.opacity
+                              ),
                               zIndex: 50,
                             }}
                           />
