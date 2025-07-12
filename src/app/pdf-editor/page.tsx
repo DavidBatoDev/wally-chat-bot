@@ -5375,120 +5375,127 @@ const PDFEditorContent: React.FC = () => {
                           />
                         )}
 
-                        {/* Original Document Elements */}
-                        {/* Deletion Rectangles */}
-                        {originalDeletionRectangles
-                          .filter((rect) => rect.page === currentPage)
-                          .map((rect) => (
-                            <div
-                              key={`orig-del-${rect.id}`}
-                              className={`absolute ${
-                                showDeletionRectangles
-                                  ? "border border-red-400"
-                                  : ""
-                              }`}
-                              style={{
-                                left: rect.x * scale,
-                                top: rect.y * scale,
-                                width: rect.width * scale,
-                                height: rect.height * scale,
-                                zIndex: showDeletionRectangles ? 40 : 25,
-                                backgroundColor: rect.background
-                                  ? colorToRgba(
-                                      rect.background,
-                                      rect.opacity || 1.0
-                                    )
-                                  : "white",
-                              }}
-                            >
-                              {showDeletionRectangles && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOriginalDeletionRectangles((prev) =>
-                                      prev.filter((r) => r.id !== rect.id)
-                                    );
-                                  }}
-                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
-                                  title="Delete area"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ))}
-
-                        {/* Original Elements in Layer Order */}
-                        {getOriginalSortedElements.map(({ type, element }) => {
-                          if (type === "textbox") {
-                            const textBox = element as TextField;
-                            return (
-                              <MemoizedTextBox
-                                key={`orig-text-${textBox.id}`}
-                                textBox={textBox}
-                                isSelected={selectedFieldId === textBox.id}
-                                isEditMode={isEditMode}
-                                scale={scale}
-                                showPaddingIndicator={showPaddingPopup}
-                                onSelect={handleTextBoxSelect}
-                                onUpdate={(id, updates) => {
-                                  setOriginalTextBoxes((prev) =>
-                                    prev.map((box) =>
-                                      box.id === id
-                                        ? { ...box, ...updates }
-                                        : box
-                                    )
-                                  );
+                        {/* Original Document Elements - Wrapped for proper z-index */}
+                        <div
+                          className="absolute inset-0"
+                          style={{ zIndex: 10000 }}
+                        >
+                          {/* Deletion Rectangles */}
+                          {originalDeletionRectangles
+                            .filter((rect) => rect.page === currentPage)
+                            .map((rect) => (
+                              <div
+                                key={`orig-del-${rect.id}`}
+                                className={`absolute ${
+                                  showDeletionRectangles
+                                    ? "border border-red-400"
+                                    : ""
+                                }`}
+                                style={{
+                                  left: rect.x * scale,
+                                  top: rect.y * scale,
+                                  width: rect.width * scale,
+                                  height: rect.height * scale,
+                                  zIndex: showDeletionRectangles ? 40 : 25,
+                                  backgroundColor: rect.background
+                                    ? colorToRgba(
+                                        rect.background,
+                                        rect.opacity || 1.0
+                                      )
+                                    : "white",
                                 }}
-                                onDelete={(id) => {
-                                  setOriginalTextBoxes((prev) =>
-                                    prev.filter((box) => box.id !== id)
-                                  );
-                                  removeFromLayerOrder(id);
-                                  setSelectedFieldId((current) =>
-                                    current === id ? null : current
-                                  );
-                                }}
-                                isTextSelectionMode={isTextSelectionMode}
-                                isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
-                                  textBox.id
+                              >
+                                {showDeletionRectangles && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOriginalDeletionRectangles((prev) =>
+                                        prev.filter((r) => r.id !== rect.id)
+                                      );
+                                    }}
+                                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                    title="Delete area"
+                                  >
+                                    ×
+                                  </button>
                                 )}
-                                onTextSelectionClick={
-                                  handleTextBoxSelectionMode
-                                }
-                              />
-                            );
-                          } else if (type === "shape") {
-                            const shape = element as Shape;
-                            return (
-                              <MemoizedShape
-                                key={`orig-shape-${shape.id}`}
-                                shape={shape}
-                                isSelected={selectedShapeId === shape.id}
-                                isEditMode={isEditMode}
-                                scale={scale}
-                                onSelect={handleShapeSelect}
-                                onUpdate={(id, updates) => {
-                                  setOriginalShapes((prev) =>
-                                    prev.map((s) =>
-                                      s.id === id ? { ...s, ...updates } : s
-                                    )
-                                  );
-                                }}
-                                onDelete={(id) => {
-                                  setOriginalShapes((prev) =>
-                                    prev.filter((s) => s.id !== id)
-                                  );
-                                  removeFromLayerOrder(id);
-                                  if (selectedShapeId === id) {
-                                    setSelectedShapeId(null);
-                                  }
-                                }}
-                              />
-                            );
-                          }
-                          return null;
-                        })}
+                              </div>
+                            ))}
+
+                          {/* Original Elements in Layer Order */}
+                          {getOriginalSortedElements.map(
+                            ({ type, element }) => {
+                              if (type === "textbox") {
+                                const textBox = element as TextField;
+                                return (
+                                  <MemoizedTextBox
+                                    key={`orig-text-${textBox.id}`}
+                                    textBox={textBox}
+                                    isSelected={selectedFieldId === textBox.id}
+                                    isEditMode={isEditMode}
+                                    scale={scale}
+                                    showPaddingIndicator={showPaddingPopup}
+                                    onSelect={handleTextBoxSelect}
+                                    onUpdate={(id, updates) => {
+                                      setOriginalTextBoxes((prev) =>
+                                        prev.map((box) =>
+                                          box.id === id
+                                            ? { ...box, ...updates }
+                                            : box
+                                        )
+                                      );
+                                    }}
+                                    onDelete={(id) => {
+                                      setOriginalTextBoxes((prev) =>
+                                        prev.filter((box) => box.id !== id)
+                                      );
+                                      removeFromLayerOrder(id);
+                                      setSelectedFieldId((current) =>
+                                        current === id ? null : current
+                                      );
+                                    }}
+                                    isTextSelectionMode={isTextSelectionMode}
+                                    isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                      textBox.id
+                                    )}
+                                    onTextSelectionClick={
+                                      handleTextBoxSelectionMode
+                                    }
+                                  />
+                                );
+                              } else if (type === "shape") {
+                                const shape = element as Shape;
+                                return (
+                                  <MemoizedShape
+                                    key={`orig-shape-${shape.id}`}
+                                    shape={shape}
+                                    isSelected={selectedShapeId === shape.id}
+                                    isEditMode={isEditMode}
+                                    scale={scale}
+                                    onSelect={handleShapeSelect}
+                                    onUpdate={(id, updates) => {
+                                      setOriginalShapes((prev) =>
+                                        prev.map((s) =>
+                                          s.id === id ? { ...s, ...updates } : s
+                                        )
+                                      );
+                                    }}
+                                    onDelete={(id) => {
+                                      setOriginalShapes((prev) =>
+                                        prev.filter((s) => s.id !== id)
+                                      );
+                                      removeFromLayerOrder(id);
+                                      if (selectedShapeId === id) {
+                                        setSelectedShapeId(null);
+                                      }
+                                    }}
+                                  />
+                                );
+                              }
+                              return null;
+                            }
+                          )}
+                        </div>
                       </div>
 
                       {/* Gap between documents */}
@@ -5555,122 +5562,127 @@ const PDFEditorContent: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Translated Document Elements */}
-                        {/* Deletion Rectangles */}
-                        {translatedDeletionRectangles
-                          .filter((rect) => rect.page === currentPage)
-                          .map((rect) => (
-                            <div
-                              key={`trans-del-${rect.id}`}
-                              className={`absolute ${
-                                showDeletionRectangles
-                                  ? "border border-red-400"
-                                  : ""
-                              }`}
-                              style={{
-                                left: rect.x * scale,
-                                top: rect.y * scale,
-                                width: rect.width * scale,
-                                height: rect.height * scale,
-                                zIndex: showDeletionRectangles ? 40 : 25,
-                                backgroundColor: rect.background
-                                  ? colorToRgba(
-                                      rect.background,
-                                      rect.opacity || 1.0
-                                    )
-                                  : "white",
-                              }}
-                            >
-                              {showDeletionRectangles && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setTranslatedDeletionRectangles((prev) =>
-                                      prev.filter((r) => r.id !== rect.id)
-                                    );
-                                  }}
-                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
-                                  title="Delete area"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ))}
+                        {/* Translated Document Elements - Wrapped for proper z-index */}
+                        <div
+                          className="absolute inset-0"
+                          style={{ zIndex: 10000 }}
+                        >
+                          {/* Deletion Rectangles */}
+                          {translatedDeletionRectangles
+                            .filter((rect) => rect.page === currentPage)
+                            .map((rect) => (
+                              <div
+                                key={`trans-del-${rect.id}`}
+                                className={`absolute ${
+                                  showDeletionRectangles
+                                    ? "border border-red-400"
+                                    : ""
+                                }`}
+                                style={{
+                                  left: rect.x * scale,
+                                  top: rect.y * scale,
+                                  width: rect.width * scale,
+                                  height: rect.height * scale,
+                                  zIndex: showDeletionRectangles ? 40 : 25,
+                                  backgroundColor: rect.background
+                                    ? colorToRgba(
+                                        rect.background,
+                                        rect.opacity || 1.0
+                                      )
+                                    : "white",
+                                }}
+                              >
+                                {showDeletionRectangles && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTranslatedDeletionRectangles((prev) =>
+                                        prev.filter((r) => r.id !== rect.id)
+                                      );
+                                    }}
+                                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                    title="Delete area"
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            ))}
 
-                        {/* Translated Elements in Layer Order */}
-                        {getTranslatedSortedElements.map(
-                          ({ type, element }) => {
-                            if (type === "textbox") {
-                              const textBox = element as TextField;
-                              return (
-                                <MemoizedTextBox
-                                  key={`trans-text-${textBox.id}`}
-                                  textBox={textBox}
-                                  isSelected={selectedFieldId === textBox.id}
-                                  isEditMode={isEditMode}
-                                  scale={scale}
-                                  showPaddingIndicator={showPaddingPopup}
-                                  onSelect={handleTextBoxSelect}
-                                  onUpdate={(id, updates) => {
-                                    setTranslatedTextBoxes((prev) =>
-                                      prev.map((box) =>
-                                        box.id === id
-                                          ? { ...box, ...updates }
-                                          : box
-                                      )
-                                    );
-                                  }}
-                                  onDelete={(id) => {
-                                    setTranslatedTextBoxes((prev) =>
-                                      prev.filter((box) => box.id !== id)
-                                    );
-                                    removeFromLayerOrder(id);
-                                    setSelectedFieldId((current) =>
-                                      current === id ? null : current
-                                    );
-                                  }}
-                                  isTextSelectionMode={isTextSelectionMode}
-                                  isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
-                                    textBox.id
-                                  )}
-                                  onTextSelectionClick={
-                                    handleTextBoxSelectionMode
-                                  }
-                                />
-                              );
-                            } else if (type === "shape") {
-                              const shape = element as Shape;
-                              return (
-                                <MemoizedShape
-                                  key={`trans-shape-${shape.id}`}
-                                  shape={shape}
-                                  isSelected={selectedShapeId === shape.id}
-                                  isEditMode={isEditMode}
-                                  scale={scale}
-                                  onSelect={handleShapeSelect}
-                                  onUpdate={(id, updates) => {
-                                    setTranslatedShapes((prev) =>
-                                      prev.map((s) =>
-                                        s.id === id ? { ...s, ...updates } : s
-                                      )
-                                    );
-                                  }}
-                                  onDelete={(id) => {
-                                    setTranslatedShapes((prev) =>
-                                      prev.filter((s) => s.id !== id)
-                                    );
-                                    removeFromLayerOrder(id);
-                                    if (selectedShapeId === id) {
-                                      setSelectedShapeId(null);
+                          {/* Translated Elements in Layer Order */}
+                          {getTranslatedSortedElements.map(
+                            ({ type, element }) => {
+                              if (type === "textbox") {
+                                const textBox = element as TextField;
+                                return (
+                                  <MemoizedTextBox
+                                    key={`trans-text-${textBox.id}`}
+                                    textBox={textBox}
+                                    isSelected={selectedFieldId === textBox.id}
+                                    isEditMode={isEditMode}
+                                    scale={scale}
+                                    showPaddingIndicator={showPaddingPopup}
+                                    onSelect={handleTextBoxSelect}
+                                    onUpdate={(id, updates) => {
+                                      setTranslatedTextBoxes((prev) =>
+                                        prev.map((box) =>
+                                          box.id === id
+                                            ? { ...box, ...updates }
+                                            : box
+                                        )
+                                      );
+                                    }}
+                                    onDelete={(id) => {
+                                      setTranslatedTextBoxes((prev) =>
+                                        prev.filter((box) => box.id !== id)
+                                      );
+                                      removeFromLayerOrder(id);
+                                      setSelectedFieldId((current) =>
+                                        current === id ? null : current
+                                      );
+                                    }}
+                                    isTextSelectionMode={isTextSelectionMode}
+                                    isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                      textBox.id
+                                    )}
+                                    onTextSelectionClick={
+                                      handleTextBoxSelectionMode
                                     }
-                                  }}
-                                />
-                              );
+                                  />
+                                );
+                              } else if (type === "shape") {
+                                const shape = element as Shape;
+                                return (
+                                  <MemoizedShape
+                                    key={`trans-shape-${shape.id}`}
+                                    shape={shape}
+                                    isSelected={selectedShapeId === shape.id}
+                                    isEditMode={isEditMode}
+                                    scale={scale}
+                                    onSelect={handleShapeSelect}
+                                    onUpdate={(id, updates) => {
+                                      setTranslatedShapes((prev) =>
+                                        prev.map((s) =>
+                                          s.id === id ? { ...s, ...updates } : s
+                                        )
+                                      );
+                                    }}
+                                    onDelete={(id) => {
+                                      setTranslatedShapes((prev) =>
+                                        prev.filter((s) => s.id !== id)
+                                      );
+                                      removeFromLayerOrder(id);
+                                      if (selectedShapeId === id) {
+                                        setSelectedShapeId(null);
+                                      }
+                                    }}
+                                  />
+                                );
+                              }
+                              return null;
                             }
-                            return null;
-                          }
-                        )}
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
