@@ -1,0 +1,783 @@
+import { useState, useCallback, useMemo } from "react";
+import {
+  ElementCollections,
+  LayerState,
+  TextField,
+  Shape,
+  Image,
+  DeletionRectangle,
+  SortedElement,
+  ViewMode,
+} from "../types/pdf-editor.types";
+import { generateUUID, measureText } from "../utils/measurements";
+
+export const useElementManagement = () => {
+  // Element collections state
+  const [elementCollections, setElementCollections] =
+    useState<ElementCollections>({
+      originalTextBoxes: [],
+      originalShapes: [],
+      originalDeletionRectangles: [],
+      originalImages: [],
+      translatedTextBoxes: [],
+      translatedShapes: [],
+      translatedDeletionRectangles: [],
+      translatedImages: [],
+    });
+
+  // Layer order state
+  const [layerState, setLayerState] = useState<LayerState>({
+    originalLayerOrder: [],
+    translatedLayerOrder: [],
+  });
+
+  // Helper functions to get current arrays based on view
+  const getCurrentTextBoxes = useCallback(
+    (currentView: ViewMode) => {
+      return currentView === "original"
+        ? elementCollections.originalTextBoxes
+        : elementCollections.translatedTextBoxes;
+    },
+    [elementCollections]
+  );
+
+  const getCurrentShapes = useCallback(
+    (currentView: ViewMode) => {
+      return currentView === "original"
+        ? elementCollections.originalShapes
+        : elementCollections.translatedShapes;
+    },
+    [elementCollections]
+  );
+
+  const getCurrentImages = useCallback(
+    (currentView: ViewMode) => {
+      return currentView === "original"
+        ? elementCollections.originalImages
+        : elementCollections.translatedImages;
+    },
+    [elementCollections]
+  );
+
+  const getCurrentDeletionRectangles = useCallback(
+    (currentView: ViewMode) => {
+      return currentView === "original"
+        ? elementCollections.originalDeletionRectangles
+        : elementCollections.translatedDeletionRectangles;
+    },
+    [elementCollections]
+  );
+
+  const getCurrentLayerOrder = useCallback(
+    (currentView: ViewMode) => {
+      return currentView === "original"
+        ? layerState.originalLayerOrder
+        : layerState.translatedLayerOrder;
+    },
+    [layerState]
+  );
+
+  // Layer management functions
+  const addToLayerOrder = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      setLayerState((prev) => {
+        if (currentView === "original") {
+          return {
+            ...prev,
+            originalLayerOrder: [...prev.originalLayerOrder, elementId],
+          };
+        } else {
+          return {
+            ...prev,
+            translatedLayerOrder: [...prev.translatedLayerOrder, elementId],
+          };
+        }
+      });
+    },
+    []
+  );
+
+  const removeFromLayerOrder = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      setLayerState((prev) => {
+        if (currentView === "original") {
+          return {
+            ...prev,
+            originalLayerOrder: prev.originalLayerOrder.filter(
+              (id) => id !== elementId
+            ),
+          };
+        } else {
+          return {
+            ...prev,
+            translatedLayerOrder: prev.translatedLayerOrder.filter(
+              (id) => id !== elementId
+            ),
+          };
+        }
+      });
+    },
+    []
+  );
+
+  const moveToFront = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      setLayerState((prev) => {
+        const layerOrder =
+          currentView === "original"
+            ? prev.originalLayerOrder
+            : prev.translatedLayerOrder;
+
+        const filtered = layerOrder.filter((id) => id !== elementId);
+        const newOrder = [...filtered, elementId];
+
+        if (currentView === "original") {
+          return { ...prev, originalLayerOrder: newOrder };
+        } else {
+          return { ...prev, translatedLayerOrder: newOrder };
+        }
+      });
+    },
+    []
+  );
+
+  const moveToBack = useCallback((elementId: string, currentView: ViewMode) => {
+    setLayerState((prev) => {
+      const layerOrder =
+        currentView === "original"
+          ? prev.originalLayerOrder
+          : prev.translatedLayerOrder;
+
+      const filtered = layerOrder.filter((id) => id !== elementId);
+      const newOrder = [elementId, ...filtered];
+
+      if (currentView === "original") {
+        return { ...prev, originalLayerOrder: newOrder };
+      } else {
+        return { ...prev, translatedLayerOrder: newOrder };
+      }
+    });
+  }, []);
+
+  const moveForward = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      setLayerState((prev) => {
+        const layerOrder =
+          currentView === "original"
+            ? prev.originalLayerOrder
+            : prev.translatedLayerOrder;
+
+        const index = layerOrder.indexOf(elementId);
+        if (index === -1 || index === layerOrder.length - 1) return prev;
+
+        const newOrder = [...layerOrder];
+        [newOrder[index], newOrder[index + 1]] = [
+          newOrder[index + 1],
+          newOrder[index],
+        ];
+
+        if (currentView === "original") {
+          return { ...prev, originalLayerOrder: newOrder };
+        } else {
+          return { ...prev, translatedLayerOrder: newOrder };
+        }
+      });
+    },
+    []
+  );
+
+  const moveBackward = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      setLayerState((prev) => {
+        const layerOrder =
+          currentView === "original"
+            ? prev.originalLayerOrder
+            : prev.translatedLayerOrder;
+
+        const index = layerOrder.indexOf(elementId);
+        if (index <= 0) return prev;
+
+        const newOrder = [...layerOrder];
+        [newOrder[index], newOrder[index - 1]] = [
+          newOrder[index - 1],
+          newOrder[index],
+        ];
+
+        if (currentView === "original") {
+          return { ...prev, originalLayerOrder: newOrder };
+        } else {
+          return { ...prev, translatedLayerOrder: newOrder };
+        }
+      });
+    },
+    []
+  );
+
+  // Element creation functions
+  const addTextBox = useCallback(
+    (
+      x: number,
+      y: number,
+      currentPage: number,
+      currentView: ViewMode,
+      targetView?: "original" | "translated"
+    ) => {
+      const value = "New Text Field";
+      const fontSize = 8;
+      const fontFamily = "Arial, sans-serif";
+      const fieldId = generateUUID();
+
+      const { width, height } = measureText(value, fontSize, fontFamily);
+
+      const newTextBox: TextField = {
+        id: fieldId,
+        x,
+        y,
+        width,
+        height,
+        value,
+        fontSize,
+        fontFamily,
+        page: currentPage,
+        color: "#000000",
+        bold: false,
+        italic: false,
+        underline: false,
+        textAlign: "left",
+        listType: "none",
+        letterSpacing: 0,
+        lineHeight: 1.2,
+        rotation: 0,
+        borderRadius: 0,
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
+        borderBottomLeftRadius: 0,
+        borderBottomRightRadius: 0,
+      };
+
+      // Determine which document to add to
+      const shouldAddToTranslated =
+        currentView === "split"
+          ? targetView === "translated"
+          : currentView === "translated";
+
+      setElementCollections((prev) => {
+        if (shouldAddToTranslated) {
+          return {
+            ...prev,
+            translatedTextBoxes: [...prev.translatedTextBoxes, newTextBox],
+          };
+        } else {
+          return {
+            ...prev,
+            originalTextBoxes: [...prev.originalTextBoxes, newTextBox],
+          };
+        }
+      });
+
+      addToLayerOrder(
+        fieldId,
+        shouldAddToTranslated ? "translated" : "original"
+      );
+
+      return fieldId;
+    },
+    [addToLayerOrder]
+  );
+
+  const addShape = useCallback(
+    (
+      type: "circle" | "rectangle",
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      currentPage: number,
+      currentView: ViewMode,
+      targetView?: "original" | "translated"
+    ) => {
+      const newShape: Shape = {
+        id: generateUUID(),
+        type,
+        x,
+        y,
+        width,
+        height,
+        page: currentPage,
+        borderColor: "#000000",
+        borderWidth: 2,
+        fillColor: "#ffffff",
+        fillOpacity: 0.5,
+        rotation: 0,
+        borderRadius: type === "rectangle" ? 0 : undefined,
+      };
+
+      const shouldAddToTranslated =
+        currentView === "split"
+          ? targetView === "translated"
+          : currentView === "translated";
+
+      setElementCollections((prev) => {
+        if (shouldAddToTranslated) {
+          return {
+            ...prev,
+            translatedShapes: [...prev.translatedShapes, newShape],
+          };
+        } else {
+          return {
+            ...prev,
+            originalShapes: [...prev.originalShapes, newShape],
+          };
+        }
+      });
+
+      addToLayerOrder(
+        newShape.id,
+        shouldAddToTranslated ? "translated" : "original"
+      );
+
+      return newShape.id;
+    },
+    [addToLayerOrder]
+  );
+
+  const addImage = useCallback(
+    (
+      src: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      currentPage: number,
+      currentView: ViewMode
+    ) => {
+      const newImage: Image = {
+        id: generateUUID(),
+        x,
+        y,
+        width,
+        height,
+        page: currentPage,
+        src,
+        rotation: 0,
+        opacity: 1,
+        borderColor: "#000000",
+        borderWidth: 0,
+        borderRadius: 0,
+      };
+
+      setElementCollections((prev) => {
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedImages: [...prev.translatedImages, newImage],
+          };
+        } else {
+          return {
+            ...prev,
+            originalImages: [...prev.originalImages, newImage],
+          };
+        }
+      });
+
+      addToLayerOrder(
+        newImage.id,
+        currentView === "translated" ? "translated" : "original"
+      );
+
+      return newImage.id;
+    },
+    [addToLayerOrder]
+  );
+
+  const addDeletionRectangle = useCallback(
+    (
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      currentPage: number,
+      currentView: ViewMode,
+      background: string,
+      opacity?: number
+    ) => {
+      const newRectangle: DeletionRectangle = {
+        id: generateUUID(),
+        x,
+        y,
+        width,
+        height,
+        page: currentPage,
+        background,
+        ...(opacity !== undefined ? { opacity } : {}),
+      };
+
+      setElementCollections((prev) => {
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedDeletionRectangles: [
+              ...prev.translatedDeletionRectangles,
+              newRectangle,
+            ],
+          };
+        } else {
+          return {
+            ...prev,
+            originalDeletionRectangles: [
+              ...prev.originalDeletionRectangles,
+              newRectangle,
+            ],
+          };
+        }
+      });
+
+      return newRectangle.id;
+    },
+    []
+  );
+
+  // Element update functions
+  const updateTextBox = useCallback(
+    (id: string, updates: Partial<TextField>) => {
+      setElementCollections((prev) => ({
+        ...prev,
+        originalTextBoxes: prev.originalTextBoxes.map((box) =>
+          box.id === id ? { ...box, ...updates } : box
+        ),
+        translatedTextBoxes: prev.translatedTextBoxes.map((box) =>
+          box.id === id ? { ...box, ...updates } : box
+        ),
+      }));
+    },
+    []
+  );
+
+  const updateShape = useCallback((id: string, updates: Partial<Shape>) => {
+    setElementCollections((prev) => ({
+      ...prev,
+      originalShapes: prev.originalShapes.map((shape) =>
+        shape.id === id ? { ...shape, ...updates } : shape
+      ),
+      translatedShapes: prev.translatedShapes.map((shape) =>
+        shape.id === id ? { ...shape, ...updates } : shape
+      ),
+    }));
+  }, []);
+
+  const updateImage = useCallback((id: string, updates: Partial<Image>) => {
+    setElementCollections((prev) => ({
+      ...prev,
+      originalImages: prev.originalImages.map((image) =>
+        image.id === id ? { ...image, ...updates } : image
+      ),
+      translatedImages: prev.translatedImages.map((image) =>
+        image.id === id ? { ...image, ...updates } : image
+      ),
+    }));
+  }, []);
+
+  // Element deletion functions
+  const deleteTextBox = useCallback(
+    (id: string, currentView: ViewMode) => {
+      setElementCollections((prev) => {
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedTextBoxes: prev.translatedTextBoxes.filter(
+              (box) => box.id !== id
+            ),
+          };
+        } else {
+          return {
+            ...prev,
+            originalTextBoxes: prev.originalTextBoxes.filter(
+              (box) => box.id !== id
+            ),
+          };
+        }
+      });
+      removeFromLayerOrder(id, currentView);
+    },
+    [removeFromLayerOrder]
+  );
+
+  const deleteShape = useCallback(
+    (id: string, currentView: ViewMode) => {
+      setElementCollections((prev) => {
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedShapes: prev.translatedShapes.filter(
+              (shape) => shape.id !== id
+            ),
+          };
+        } else {
+          return {
+            ...prev,
+            originalShapes: prev.originalShapes.filter(
+              (shape) => shape.id !== id
+            ),
+          };
+        }
+      });
+      removeFromLayerOrder(id, currentView);
+    },
+    [removeFromLayerOrder]
+  );
+
+  const deleteImage = useCallback(
+    (id: string, currentView: ViewMode) => {
+      setElementCollections((prev) => {
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedImages: prev.translatedImages.filter(
+              (image) => image.id !== id
+            ),
+          };
+        } else {
+          return {
+            ...prev,
+            originalImages: prev.originalImages.filter(
+              (image) => image.id !== id
+            ),
+          };
+        }
+      });
+      removeFromLayerOrder(id, currentView);
+    },
+    [removeFromLayerOrder]
+  );
+
+  const deleteDeletionRectangle = useCallback(
+    (id: string, currentView: ViewMode) => {
+      setElementCollections((prev) => {
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedDeletionRectangles:
+              prev.translatedDeletionRectangles.filter(
+                (rect) => rect.id !== id
+              ),
+          };
+        } else {
+          return {
+            ...prev,
+            originalDeletionRectangles: prev.originalDeletionRectangles.filter(
+              (rect) => rect.id !== id
+            ),
+          };
+        }
+      });
+    },
+    []
+  );
+
+  // Get sorted elements based on layer order
+  const getSortedElements = useCallback(
+    (currentView: ViewMode, currentPage: number): SortedElement[] => {
+      const layerOrder = getCurrentLayerOrder(currentView);
+      const textBoxes = getCurrentTextBoxes(currentView).filter(
+        (box) => box.page === currentPage
+      );
+      const shapes = getCurrentShapes(currentView).filter(
+        (shape) => shape.page === currentPage
+      );
+      const images = getCurrentImages(currentView).filter(
+        (image) => image.page === currentPage
+      );
+
+      // Create a map of all elements
+      const elementMap = new Map<string, SortedElement>();
+      textBoxes.forEach((box) =>
+        elementMap.set(box.id, { type: "textbox", element: box })
+      );
+      shapes.forEach((shape) =>
+        elementMap.set(shape.id, { type: "shape", element: shape })
+      );
+      images.forEach((image) =>
+        elementMap.set(image.id, { type: "image", element: image })
+      );
+
+      // Sort elements based on layer order
+      const sortedElements: SortedElement[] = [];
+
+      // Add elements in layer order
+      layerOrder.forEach((id) => {
+        const element = elementMap.get(id);
+        if (element) {
+          sortedElements.push(element);
+          elementMap.delete(id);
+        }
+      });
+
+      // Add any remaining elements (newly created ones not in layer order yet)
+      elementMap.forEach((element) => {
+        sortedElements.push(element);
+      });
+
+      return sortedElements;
+    },
+    [
+      getCurrentLayerOrder,
+      getCurrentTextBoxes,
+      getCurrentShapes,
+      getCurrentImages,
+    ]
+  );
+
+  // Get sorted elements for original side (for split view)
+  const getOriginalSortedElements = useCallback(
+    (currentPage: number): SortedElement[] => {
+      const layerOrder = layerState.originalLayerOrder;
+      const textBoxes = elementCollections.originalTextBoxes.filter(
+        (box) => box.page === currentPage
+      );
+      const shapes = elementCollections.originalShapes.filter(
+        (shape) => shape.page === currentPage
+      );
+      const images = elementCollections.originalImages.filter(
+        (image) => image.page === currentPage
+      );
+
+      // Create a map of all elements
+      const elementMap = new Map<string, SortedElement>();
+      textBoxes.forEach((box) =>
+        elementMap.set(box.id, { type: "textbox", element: box })
+      );
+      shapes.forEach((shape) =>
+        elementMap.set(shape.id, { type: "shape", element: shape })
+      );
+      images.forEach((image) =>
+        elementMap.set(image.id, { type: "image", element: image })
+      );
+
+      // Sort elements based on layer order
+      const sortedElements: SortedElement[] = [];
+
+      // Add elements in layer order
+      layerOrder.forEach((id) => {
+        const element = elementMap.get(id);
+        if (element) {
+          sortedElements.push(element);
+          elementMap.delete(id);
+        }
+      });
+
+      // Add any remaining elements (newly created ones not in layer order yet)
+      elementMap.forEach((element) => {
+        sortedElements.push(element);
+      });
+
+      return sortedElements;
+    },
+    [layerState.originalLayerOrder, elementCollections]
+  );
+
+  // Get sorted elements for translated side (for split view)
+  const getTranslatedSortedElements = useCallback(
+    (currentPage: number): SortedElement[] => {
+      const layerOrder = layerState.translatedLayerOrder;
+      const textBoxes = elementCollections.translatedTextBoxes.filter(
+        (box) => box.page === currentPage
+      );
+      const shapes = elementCollections.translatedShapes.filter(
+        (shape) => shape.page === currentPage
+      );
+      const images = elementCollections.translatedImages.filter(
+        (image) => image.page === currentPage
+      );
+
+      // Create a map of all elements
+      const elementMap = new Map<string, SortedElement>();
+      textBoxes.forEach((box) =>
+        elementMap.set(box.id, { type: "textbox", element: box })
+      );
+      shapes.forEach((shape) =>
+        elementMap.set(shape.id, { type: "shape", element: shape })
+      );
+      images.forEach((image) =>
+        elementMap.set(image.id, { type: "image", element: image })
+      );
+
+      // Sort elements based on layer order
+      const sortedElements: SortedElement[] = [];
+
+      // Add elements in layer order
+      layerOrder.forEach((id) => {
+        const element = elementMap.get(id);
+        if (element) {
+          sortedElements.push(element);
+          elementMap.delete(id);
+        }
+      });
+
+      // Add any remaining elements (newly created ones not in layer order yet)
+      elementMap.forEach((element) => {
+        sortedElements.push(element);
+      });
+
+      return sortedElements;
+    },
+    [layerState.translatedLayerOrder, elementCollections]
+  );
+
+  // Helper functions for layer position checks
+  const isElementAtFront = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      const layerOrder = getCurrentLayerOrder(currentView);
+      return (
+        layerOrder.length > 0 && layerOrder[layerOrder.length - 1] === elementId
+      );
+    },
+    [getCurrentLayerOrder]
+  );
+
+  const isElementAtBack = useCallback(
+    (elementId: string, currentView: ViewMode) => {
+      const layerOrder = getCurrentLayerOrder(currentView);
+      return layerOrder.length > 0 && layerOrder[0] === elementId;
+    },
+    [getCurrentLayerOrder]
+  );
+
+  return {
+    elementCollections,
+    setElementCollections,
+    layerState,
+    setLayerState,
+    // Helper functions
+    getCurrentTextBoxes,
+    getCurrentShapes,
+    getCurrentImages,
+    getCurrentDeletionRectangles,
+    getCurrentLayerOrder,
+    getSortedElements,
+    getOriginalSortedElements,
+    getTranslatedSortedElements,
+    // Layer management
+    addToLayerOrder,
+    removeFromLayerOrder,
+    moveToFront,
+    moveToBack,
+    moveForward,
+    moveBackward,
+    isElementAtFront,
+    isElementAtBack,
+    // Element creation
+    addTextBox,
+    addShape,
+    addImage,
+    addDeletionRectangle,
+    // Element updates
+    updateTextBox,
+    updateShape,
+    updateImage,
+    // Element deletion
+    deleteTextBox,
+    deleteShape,
+    deleteImage,
+    deleteDeletionRectangle,
+  };
+};
