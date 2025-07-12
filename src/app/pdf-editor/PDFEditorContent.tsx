@@ -39,6 +39,8 @@ import { FloatingToolbar } from "./components/layout/FloatingToolbar";
 import { MemoizedTextBox } from "./components/elements/TextBox";
 import { MemoizedShape } from "./components/elements/Shape";
 import { MemoizedImage } from "./components/elements/ImageElement";
+import { SelectionPreview } from "./components/elements/SelectionPreview";
+import { SelectionRectangle } from "./components/elements/SelectionRectangle";
 
 // Import utilities
 import { isPdfFile } from "./utils/measurements";
@@ -52,6 +54,11 @@ import {
   createTextFieldFromSpan as createTextFieldFromSpanUtil,
   createDeletionRectangleForSpan,
 } from "./utils/textSpanUtils";
+import {
+  findElementsInSelection,
+  calculateSelectionBounds,
+  moveSelectedElements,
+} from "./utils/selectionUtils";
 
 // Import styles
 import "./styles/pdf-editor.css";
@@ -123,6 +130,18 @@ export const PDFEditorContent: React.FC = () => {
     selectionStart: null,
     selectionEnd: null,
     selectionRect: null,
+    // Multi-element selection properties
+    multiSelection: {
+      selectedElements: [],
+      selectionBounds: null,
+      isDrawingSelection: false,
+      selectionStart: null,
+      selectionEnd: null,
+      isMovingSelection: false,
+      moveStart: null,
+      targetView: null,
+    },
+    isSelectionMode: false,
   });
 
   // Tool state
@@ -187,6 +206,205 @@ export const PDFEditorContent: React.FC = () => {
   const handleAutoFocusComplete = useCallback((id: string) => {
     setAutoFocusTextBoxId(null);
   }, []);
+
+  // Helper function to get element by ID and type
+  const getElementById = useCallback(
+    (id: string, type: "textbox" | "shape" | "image") => {
+      // Search in both views
+      const originalTextBoxes = getCurrentTextBoxes("original");
+      const originalShapes = getCurrentShapes("original");
+      const originalImages = getCurrentImages("original");
+      const translatedTextBoxes = getCurrentTextBoxes("translated");
+      const translatedShapes = getCurrentShapes("translated");
+      const translatedImages = getCurrentImages("translated");
+
+      switch (type) {
+        case "textbox":
+          return (
+            originalTextBoxes.find((tb) => tb.id === id) ||
+            translatedTextBoxes.find((tb) => tb.id === id) ||
+            null
+          );
+        case "shape":
+          return (
+            originalShapes.find((s) => s.id === id) ||
+            translatedShapes.find((s) => s.id === id) ||
+            null
+          );
+        case "image":
+          return (
+            originalImages.find((img) => img.id === id) ||
+            translatedImages.find((img) => img.id === id) ||
+            null
+          );
+        default:
+          return null;
+      }
+    },
+    [getCurrentTextBoxes, getCurrentShapes, getCurrentImages]
+  );
+
+  // Handle multi-selection move events
+  const handleMultiSelectionMove = useCallback(
+    (event: CustomEvent) => {
+      console.log("Multi-selection move event received:", event.detail);
+      const { deltaX, deltaY } = event.detail;
+
+      // Move all selected elements
+      moveSelectedElements(
+        editorState.multiSelection.selectedElements,
+        deltaX,
+        deltaY,
+        updateTextBox,
+        updateShape,
+        updateImage,
+        getElementById
+      );
+
+      // Update original positions for next move
+      setEditorState((prev) => {
+        const updatedElements = prev.multiSelection.selectedElements.map(
+          (el) => ({
+            ...el,
+            originalPosition: {
+              x: el.originalPosition.x + deltaX,
+              y: el.originalPosition.y + deltaY,
+            },
+          })
+        );
+
+        // Recalculate selection bounds after moving elements
+        const newBounds = calculateSelectionBounds(
+          updatedElements,
+          getElementById
+        );
+
+        return {
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: updatedElements,
+            selectionBounds: newBounds,
+          },
+        };
+      });
+    },
+    [
+      editorState.multiSelection.selectedElements,
+      updateTextBox,
+      updateShape,
+      updateImage,
+      getElementById,
+    ]
+  );
+
+  const handleMultiSelectionMoveEnd = useCallback(() => {
+    console.log("Multi-selection move end event received");
+    setEditorState((prev) => ({
+      ...prev,
+      multiSelection: {
+        ...prev.multiSelection,
+        isMovingSelection: false,
+        moveStart: null,
+      },
+    }));
+  }, []);
+
+  // Multi-selection drag handlers for individual Rnd components
+  const initialPositionsRef = useRef<Record<string, { x: number; y: number }>>(
+    {}
+  );
+
+  const handleMultiSelectDragStart = useCallback(
+    (id: string) => {
+      console.log("Multi-select drag start for element:", id);
+      const selectedElements = editorState.multiSelection.selectedElements;
+      if (selectedElements.length > 1) {
+        // Store initial positions of all selected elements
+        const initial: Record<string, { x: number; y: number }> = {};
+        selectedElements.forEach((el) => {
+          const element = getElementById(el.id, el.type);
+          if (element) {
+            initial[el.id] = { x: element.x, y: element.y };
+          }
+        });
+        initialPositionsRef.current = initial;
+      }
+    },
+    [editorState.multiSelection.selectedElements, getElementById]
+  );
+
+  const handleMultiSelectDrag = useCallback(
+    (id: string, deltaX: number, deltaY: number) => {
+      console.log("Multi-select drag for element:", id, "delta:", {
+        deltaX,
+        deltaY,
+      });
+      const selectedElements = editorState.multiSelection.selectedElements;
+      if (selectedElements.length > 1) {
+        // Move all selected elements by the same delta
+        selectedElements.forEach((el) => {
+          if (el.id !== id) {
+            // Skip the actively dragged element (react-rnd handles it)
+            const initialPos = initialPositionsRef.current[el.id];
+            if (initialPos) {
+              const newX = initialPos.x + deltaX;
+              const newY = initialPos.y + deltaY;
+
+              switch (el.type) {
+                case "textbox":
+                  updateTextBox(el.id, { x: newX, y: newY });
+                  break;
+                case "shape":
+                  updateShape(el.id, { x: newX, y: newY });
+                  break;
+                case "image":
+                  updateImage(el.id, { x: newX, y: newY });
+                  break;
+              }
+            }
+          }
+        });
+      }
+    },
+    [
+      editorState.multiSelection.selectedElements,
+      updateTextBox,
+      updateShape,
+      updateImage,
+    ]
+  );
+
+  const handleMultiSelectDragStop = useCallback(
+    (id: string, deltaX: number, deltaY: number) => {
+      console.log("Multi-select drag stop for element:", id, "delta:", {
+        deltaX,
+        deltaY,
+      });
+      const selectedElements = editorState.multiSelection.selectedElements;
+      if (selectedElements.length > 1) {
+        // Update original positions for next drag
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: prev.multiSelection.selectedElements.map(
+              (el) => ({
+                ...el,
+                originalPosition: {
+                  x: el.originalPosition.x + deltaX,
+                  y: el.originalPosition.y + deltaY,
+                },
+              })
+            ),
+          },
+        }));
+      }
+      // Clear initial positions
+      initialPositionsRef.current = {};
+    },
+    [editorState.multiSelection.selectedElements]
+  );
 
   // Refs
   const documentRef = useRef<HTMLDivElement>(null);
@@ -408,6 +626,21 @@ export const PDFEditorContent: React.FC = () => {
           }
         }
       }
+
+      // Escape key to clear multi-selection
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: [],
+            selectionBounds: null,
+            isMovingSelection: false,
+            moveStart: null,
+          },
+        }));
+      }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -424,12 +657,45 @@ export const PDFEditorContent: React.FC = () => {
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", handleBlur);
 
+    // Add multi-selection move event listeners
+    document.addEventListener(
+      "multiSelectionMove",
+      handleMultiSelectionMove as EventListener
+    );
+    document.addEventListener(
+      "multiSelectionMoveEnd",
+      handleMultiSelectionMoveEnd as EventListener
+    );
+
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
+
+      // Remove multi-selection move event listeners
+      document.removeEventListener(
+        "multiSelectionMove",
+        handleMultiSelectionMove as EventListener
+      );
+      document.removeEventListener(
+        "multiSelectionMoveEnd",
+        handleMultiSelectionMoveEnd as EventListener
+      );
     };
-  }, [documentState.scale, actions]);
+  }, [
+    documentState.scale,
+    actions,
+    editorState.selectedTextBoxes.textBoxIds,
+    editorState.multiSelection,
+    addDeletionRectangle,
+    documentState.currentPage,
+    viewState.currentView,
+    documentState.pdfBackgroundColor,
+    erasureState.erasureSettings.opacity,
+    setEditorState,
+    handleMultiSelectionMove,
+    handleMultiSelectionMoveEnd,
+  ]);
 
   // Format change handler for ElementFormatDrawer
   const handleFormatChange = useCallback(
@@ -729,6 +995,14 @@ export const PDFEditorContent: React.FC = () => {
     [getSortedElements, viewState.currentView, documentState.currentPage]
   );
 
+  // Debug: Log selection state
+  useEffect(() => {
+    console.log("Selection state:", {
+      isSelectionMode: editorState.isSelectionMode,
+      multiSelection: editorState.multiSelection,
+    });
+  }, [editorState.isSelectionMode, editorState.multiSelection]);
+
   // Tool handlers
   const handleToolChange = useCallback((tool: string, enabled: boolean) => {
     // Reset all tool states
@@ -736,6 +1010,7 @@ export const PDFEditorContent: React.FC = () => {
       ...prev,
       isTextSelectionMode: false,
       isAddTextBoxMode: false,
+      isSelectionMode: false,
     }));
     setToolState((prev) => ({
       ...prev,
@@ -752,6 +1027,12 @@ export const PDFEditorContent: React.FC = () => {
 
     // Enable the selected tool
     switch (tool) {
+      case "selection":
+        if (enabled) {
+          console.log("Enabling selection mode");
+          setEditorState((prev) => ({ ...prev, isSelectionMode: true }));
+        }
+        break;
       case "textSelection":
         if (enabled) {
           setEditorState((prev) => ({ ...prev, isTextSelectionMode: true }));
@@ -1389,9 +1670,529 @@ export const PDFEditorContent: React.FC = () => {
     [addDeletionRectangle, documentState.currentPage, viewState.currentView]
   );
 
+  // Multi-element selection handlers
+  const handleMultiSelectionMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      console.log("Multi-selection mouse down", {
+        isSelectionMode: editorState.isSelectionMode,
+        button: e.button,
+      });
+
+      if (!editorState.isSelectionMode) return;
+      if (e.button !== 0) return; // Only left click
+
+      const rect = documentRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Determine which view was clicked in split mode
+      let clickedView: "original" | "translated" = "original";
+      if (viewState.currentView === "split") {
+        const clickX = e.clientX - rect.left;
+        const singleDocWidth = documentState.pageWidth * documentState.scale;
+        const gap = 20; // Gap between documents
+
+        if (clickX > singleDocWidth + gap) {
+          clickedView = "translated";
+        } else if (clickX <= singleDocWidth) {
+          clickedView = "original";
+        } else {
+          return; // Click in gap - ignore
+        }
+      } else {
+        clickedView =
+          viewState.currentView === "translated" ? "translated" : "original";
+      }
+
+      // Convert screen coordinates to document coordinates
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        clickedView,
+        viewState.currentView,
+        documentState.pageWidth
+      );
+
+      console.log("Selection start coordinates", { x, y, clickedView });
+
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          isDrawingSelection: true,
+          selectionStart: { x, y },
+          selectionEnd: { x, y },
+        },
+      }));
+
+      // Clear previous selections unless holding Ctrl/Cmd
+      if (!e.ctrlKey && !e.metaKey) {
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: [],
+            selectionBounds: null,
+            targetView: clickedView,
+          },
+        }));
+      } else {
+        // Update targetView even when adding to existing selection
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            targetView: clickedView,
+          },
+        }));
+      }
+
+      e.preventDefault();
+    },
+    [
+      editorState.isSelectionMode,
+      documentState.scale,
+      viewState.currentView,
+      documentState.pageWidth,
+    ]
+  );
+
+  const handleMultiSelectionMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (
+        !editorState.isSelectionMode ||
+        !editorState.multiSelection.isDrawingSelection ||
+        !editorState.multiSelection.selectionStart
+      )
+        return;
+
+      const rect = documentRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Convert screen coordinates to document coordinates
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        null,
+        viewState.currentView,
+        documentState.pageWidth
+      );
+
+      console.log("Selection move coordinates", { x, y });
+
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          selectionEnd: { x, y },
+        },
+      }));
+
+      e.preventDefault();
+    },
+    [
+      editorState.isSelectionMode,
+      editorState.multiSelection.isDrawingSelection,
+      editorState.multiSelection.selectionStart,
+      documentState.scale,
+      viewState.currentView,
+      documentState.pageWidth,
+    ]
+  );
+
+  const handleMultiSelectionMouseUp = useCallback(
+    (e: React.MouseEvent) => {
+      if (
+        !editorState.isSelectionMode ||
+        !editorState.multiSelection.isDrawingSelection ||
+        !editorState.multiSelection.selectionStart ||
+        !editorState.multiSelection.selectionEnd
+      )
+        return;
+
+      const start = editorState.multiSelection.selectionStart;
+      const end = editorState.multiSelection.selectionEnd;
+
+      // Calculate selection rectangle
+      const selectionRect = {
+        x: Math.min(start.x, end.x),
+        y: Math.min(start.y, end.y),
+        width: Math.abs(end.x - start.x),
+        height: Math.abs(end.y - start.y),
+      };
+
+      // Only process if selection is large enough
+      if (selectionRect.width > 5 && selectionRect.height > 5) {
+        // Check elements in both views for now
+        const originalTextBoxes = getCurrentTextBoxes("original");
+        const originalShapes = getCurrentShapes("original");
+        const originalImages = getCurrentImages("original");
+        const translatedTextBoxes = getCurrentTextBoxes("translated");
+        const translatedShapes = getCurrentShapes("translated");
+        const translatedImages = getCurrentImages("translated");
+
+        console.log("Finding elements in selection", {
+          selectionRect,
+          originalTextBoxesCount: originalTextBoxes.length,
+          originalShapesCount: originalShapes.length,
+          originalImagesCount: originalImages.length,
+          translatedTextBoxesCount: translatedTextBoxes.length,
+          translatedShapesCount: translatedShapes.length,
+          translatedImagesCount: translatedImages.length,
+        });
+
+        // Combine elements from both views
+        const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
+        const allShapes = [...originalShapes, ...translatedShapes];
+        const allImages = [...originalImages, ...translatedImages];
+
+        const selectedElements = findElementsInSelection(
+          selectionRect,
+          allTextBoxes,
+          allShapes,
+          allImages
+        );
+
+        console.log("Selected elements", selectedElements);
+
+        // Update selection (merge with existing if Ctrl/Cmd held)
+        if (e.ctrlKey || e.metaKey) {
+          setEditorState((prev) => {
+            const existingIds = new Set(
+              prev.multiSelection.selectedElements.map((el) => el.id)
+            );
+            const newElements = selectedElements.filter(
+              (el) => !existingIds.has(el.id)
+            );
+            const allElements = [
+              ...prev.multiSelection.selectedElements,
+              ...newElements,
+            ];
+
+            return {
+              ...prev,
+              multiSelection: {
+                ...prev.multiSelection,
+                selectedElements: allElements,
+                selectionBounds: calculateSelectionBounds(
+                  allElements,
+                  getElementById
+                ),
+              },
+            };
+          });
+        } else {
+          setEditorState((prev) => ({
+            ...prev,
+            multiSelection: {
+              ...prev.multiSelection,
+              selectedElements,
+              selectionBounds: calculateSelectionBounds(
+                selectedElements,
+                getElementById
+              ),
+            },
+          }));
+        }
+      }
+
+      // Reset drawing state
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+        },
+      }));
+
+      e.preventDefault();
+    },
+    [
+      editorState.isSelectionMode,
+      editorState.multiSelection.isDrawingSelection,
+      editorState.multiSelection.selectionStart,
+      editorState.multiSelection.selectionEnd,
+      getCurrentTextBoxes,
+      getCurrentShapes,
+      getCurrentImages,
+    ]
+  );
+
+  // Move selected elements - start moving mode
+  const handleMoveSelection = useCallback(() => {
+    console.log("=== handleMoveSelection called - starting move mode ===");
+    console.log("Current state:", {
+      isSelectionMode: editorState.isSelectionMode,
+      selectedElementsCount: editorState.multiSelection.selectedElements.length,
+      isMovingSelection: editorState.multiSelection.isMovingSelection,
+    });
+
+    setEditorState((prev) => {
+      console.log("Setting isMovingSelection to true");
+      return {
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          isMovingSelection: true,
+          moveStart: null,
+        },
+      };
+    });
+  }, [
+    editorState.isSelectionMode,
+    editorState.multiSelection.selectedElements.length,
+    editorState.multiSelection.isMovingSelection,
+  ]);
+
+  // Delete selected elements
+  const handleDeleteSelection = useCallback(() => {
+    const { selectedElements } = editorState.multiSelection;
+
+    selectedElements.forEach((selectedElement) => {
+      switch (selectedElement.type) {
+        case "textbox":
+          deleteTextBox(selectedElement.id, viewState.currentView);
+          break;
+        case "shape":
+          deleteShape(selectedElement.id, viewState.currentView);
+          break;
+        case "image":
+          deleteImage(selectedElement.id, viewState.currentView);
+          break;
+      }
+    });
+
+    // Clear selection
+    setEditorState((prev) => ({
+      ...prev,
+      multiSelection: {
+        ...prev.multiSelection,
+        selectedElements: [],
+        selectionBounds: null,
+      },
+    }));
+  }, [
+    editorState.multiSelection.selectedElements,
+    deleteTextBox,
+    deleteShape,
+    deleteImage,
+    viewState.currentView,
+  ]);
+
+  // Handle drag stop for selection rectangle
+  const handleDragStopSelection = useCallback(
+    (deltaX: number, deltaY: number) => {
+      console.log("=== handleDragStopSelection called ===", { deltaX, deltaY });
+
+      // Move all selected elements by the final delta
+      moveSelectedElements(
+        editorState.multiSelection.selectedElements,
+        deltaX,
+        deltaY,
+        updateTextBox,
+        updateShape,
+        updateImage,
+        getElementById
+      );
+
+      // Update original positions and recalculate selection bounds
+      setEditorState((prev) => {
+        const updatedElements = prev.multiSelection.selectedElements.map(
+          (el) => ({
+            ...el,
+            originalPosition: {
+              x: el.originalPosition.x + deltaX,
+              y: el.originalPosition.y + deltaY,
+            },
+          })
+        );
+
+        const newBounds = calculateSelectionBounds(
+          updatedElements,
+          getElementById
+        );
+
+        return {
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: updatedElements,
+            selectionBounds: newBounds,
+            isMovingSelection: false,
+            moveStart: null,
+          },
+        };
+      });
+    },
+    [
+      editorState.multiSelection.selectedElements,
+      updateTextBox,
+      updateShape,
+      updateImage,
+      getElementById,
+    ]
+  );
+
+  // Move selection mouse handlers
+  const handleMoveSelectionMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      console.log("handleMoveSelectionMouseDown called", {
+        isMovingSelection: editorState.multiSelection.isMovingSelection,
+        button: e.button,
+      });
+
+      if (!editorState.multiSelection.isMovingSelection) {
+        console.log("Not in moving selection mode, returning");
+        return;
+      }
+      if (e.button !== 0) {
+        console.log("Not left click, returning");
+        return; // Only left click
+      }
+
+      const rect = documentRef.current?.getBoundingClientRect();
+      if (!rect) {
+        console.log("No document rect, returning");
+        return;
+      }
+
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        null,
+        viewState.currentView,
+        documentState.pageWidth
+      );
+
+      console.log("Move selection mouse down", { x, y });
+
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          moveStart: { x, y },
+        },
+      }));
+
+      e.preventDefault();
+    },
+    [
+      editorState.multiSelection.isMovingSelection,
+      documentState.scale,
+      viewState.currentView,
+      documentState.pageWidth,
+    ]
+  );
+
+  const handleMoveSelectionMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      console.log("handleMoveSelectionMouseMove called", {
+        isMovingSelection: editorState.multiSelection.isMovingSelection,
+        hasMoveStart: !!editorState.multiSelection.moveStart,
+      });
+
+      if (
+        !editorState.multiSelection.isMovingSelection ||
+        !editorState.multiSelection.moveStart
+      ) {
+        console.log("Not in moving mode or no move start, returning");
+        return;
+      }
+
+      const rect = documentRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        null,
+        viewState.currentView,
+        documentState.pageWidth
+      );
+
+      const deltaX = x - editorState.multiSelection.moveStart.x;
+      const deltaY = y - editorState.multiSelection.moveStart.y;
+
+      console.log("Move selection mouse move", { x, y, deltaX, deltaY });
+
+      // Move all selected elements
+      console.log("Calling moveSelectedElements with", {
+        selectedElementsCount:
+          editorState.multiSelection.selectedElements.length,
+        deltaX,
+        deltaY,
+      });
+
+      moveSelectedElements(
+        editorState.multiSelection.selectedElements,
+        deltaX,
+        deltaY,
+        updateTextBox,
+        updateShape,
+        updateImage,
+        getElementById
+      );
+
+      // Update original positions for next move
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          selectedElements: prev.multiSelection.selectedElements.map((el) => ({
+            ...el,
+            originalPosition: {
+              x: el.originalPosition.x + deltaX,
+              y: el.originalPosition.y + deltaY,
+            },
+          })),
+          moveStart: { x, y },
+        },
+      }));
+
+      e.preventDefault();
+    },
+    [
+      editorState.multiSelection.isMovingSelection,
+      editorState.multiSelection.moveStart,
+      editorState.multiSelection.selectedElements,
+      documentState.scale,
+      viewState.currentView,
+      documentState.pageWidth,
+      updateTextBox,
+      updateShape,
+      updateImage,
+      getElementById,
+    ]
+  );
+
+  const handleMoveSelectionMouseUp = useCallback(() => {
+    if (!editorState.multiSelection.isMovingSelection) return;
+
+    console.log("Move selection mouse up");
+
+    setEditorState((prev) => ({
+      ...prev,
+      multiSelection: {
+        ...prev.multiSelection,
+        isMovingSelection: false,
+        moveStart: null,
+      },
+    }));
+  }, [editorState.multiSelection.isMovingSelection]);
+
   // Document click handler
   const handleDocumentContainerClick = useCallback(
     (e: React.MouseEvent) => {
+      console.log("Document click handler called");
       if (!documentRef.current) return;
 
       const target = e.target as HTMLElement;
@@ -1399,6 +2200,7 @@ export const PDFEditorContent: React.FC = () => {
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
         target.closest(".rnd") ||
+        target.closest(".selection-rectangle-rnd") ||
         target.closest(".text-format-drawer") ||
         target.closest(".element-format-drawer")
       ) {
@@ -1467,7 +2269,15 @@ export const PDFEditorContent: React.FC = () => {
           }));
         }
       } else {
-        if (!target.closest(".rnd")) {
+        // Don't clear selection if we're in multi-selection mode and have selected elements
+        if (
+          !target.closest(".rnd") &&
+          !target.closest(".selection-rectangle-rnd") &&
+          !(
+            editorState.isSelectionMode &&
+            editorState.multiSelection.selectedElements.length > 0
+          )
+        ) {
           setEditorState((prev) => ({
             ...prev,
             selectedFieldId: null,
@@ -1484,6 +2294,8 @@ export const PDFEditorContent: React.FC = () => {
       documentState,
       viewState.currentView,
       editorState.isAddTextBoxMode,
+      editorState.isSelectionMode,
+      editorState.multiSelection.selectedElements,
       toolState,
       addTextBox,
       setSelectedElementId,
@@ -1649,6 +2461,12 @@ export const PDFEditorContent: React.FC = () => {
   const renderElement = (element: SortedElement) => {
     if (element.type === "textbox") {
       const textBox = element.element as TextField;
+      const isMultiSelected = editorState.multiSelection.selectedElements.some(
+        (el) => el.id === textBox.id
+      );
+      const selectedElementIds =
+        editorState.multiSelection.selectedElements.map((el) => el.id);
+
       return (
         <MemoizedTextBox
           key={textBox.id}
@@ -1666,6 +2484,12 @@ export const PDFEditorContent: React.FC = () => {
           )}
           autoFocusId={autoFocusTextBoxId}
           onAutoFocusComplete={handleAutoFocusComplete}
+          // Multi-selection props
+          isMultiSelected={isMultiSelected}
+          selectedElementIds={selectedElementIds}
+          onMultiSelectDragStart={handleMultiSelectDragStart}
+          onMultiSelectDrag={handleMultiSelectDrag}
+          onMultiSelectDragStop={handleMultiSelectDragStop}
         />
       );
     } else if (element.type === "shape") {
@@ -1932,36 +2756,62 @@ export const PDFEditorContent: React.FC = () => {
                     editorState.isAddTextBoxMode ? "add-text-box-mode" : ""
                   } ${
                     editorState.isTextSelectionMode ? "text-selection-mode" : ""
-                  } ${editorState.isAddTextBoxMode ? "cursor-crosshair" : ""} ${
-                    toolState.shapeDrawingMode ? "cursor-crosshair" : ""
-                  } ${erasureState.isErasureMode ? "cursor-crosshair" : ""} ${
-                    viewState.isCtrlPressed ? "cursor-zoom-in" : ""
-                  }`}
+                  } ${editorState.isSelectionMode ? "selection-mode" : ""} ${
+                    editorState.isAddTextBoxMode ? "cursor-crosshair" : ""
+                  } ${toolState.shapeDrawingMode ? "cursor-crosshair" : ""} ${
+                    erasureState.isErasureMode ? "cursor-crosshair" : ""
+                  } ${viewState.isCtrlPressed ? "cursor-zoom-in" : ""}`}
                   onClick={handleDocumentContainerClick}
-                  onMouseDown={
-                    editorState.isTextSelectionMode ||
-                    erasureState.isErasureMode
-                      ? handleDocumentMouseDown
-                      : undefined
-                  }
-                  onMouseMove={
-                    toolState.shapeDrawingMode
-                      ? handleShapeDrawMove
-                      : editorState.isTextSelectionMode
-                      ? handleDocumentMouseMove
-                      : erasureState.isErasureMode
-                      ? handleErasureDrawMove
-                      : undefined
-                  }
-                  onMouseUp={
-                    toolState.shapeDrawingMode
-                      ? handleShapeDrawEnd
-                      : editorState.isTextSelectionMode
-                      ? handleDocumentMouseUp
-                      : erasureState.isErasureMode
-                      ? handleErasureDrawEnd
-                      : undefined
-                  }
+                  onMouseDown={(e) => {
+                    console.log("Document mouse down event", {
+                      isTextSelectionMode: editorState.isTextSelectionMode,
+                      isErasureMode: erasureState.isErasureMode,
+                      isSelectionMode: editorState.isSelectionMode,
+                      isMovingSelection:
+                        editorState.multiSelection.isMovingSelection,
+                    });
+
+                    if (
+                      editorState.isTextSelectionMode ||
+                      erasureState.isErasureMode ||
+                      editorState.isSelectionMode ||
+                      editorState.multiSelection.isMovingSelection
+                    ) {
+                      if (editorState.multiSelection.isMovingSelection) {
+                        handleMoveSelectionMouseDown(e);
+                      } else if (editorState.isSelectionMode) {
+                        handleMultiSelectionMouseDown(e);
+                      } else {
+                        handleDocumentMouseDown(e);
+                      }
+                    }
+                  }}
+                  onMouseMove={(e) => {
+                    if (toolState.shapeDrawingMode) {
+                      handleShapeDrawMove(e);
+                    } else if (editorState.multiSelection.isMovingSelection) {
+                      handleMoveSelectionMouseMove(e);
+                    } else if (editorState.isTextSelectionMode) {
+                      handleDocumentMouseMove(e);
+                    } else if (editorState.isSelectionMode) {
+                      handleMultiSelectionMouseMove(e);
+                    } else if (erasureState.isErasureMode) {
+                      handleErasureDrawMove(e);
+                    }
+                  }}
+                  onMouseUp={(e) => {
+                    if (toolState.shapeDrawingMode) {
+                      handleShapeDrawEnd();
+                    } else if (editorState.multiSelection.isMovingSelection) {
+                      handleMoveSelectionMouseUp();
+                    } else if (editorState.isTextSelectionMode) {
+                      handleDocumentMouseUp(e);
+                    } else if (editorState.isSelectionMode) {
+                      handleMultiSelectionMouseUp(e);
+                    } else if (erasureState.isErasureMode) {
+                      handleErasureDrawEnd();
+                    }
+                  }}
                   style={{
                     width:
                       viewState.currentView === "split"
@@ -2324,6 +3174,95 @@ export const PDFEditorContent: React.FC = () => {
                             }
                             return null;
                           })}
+
+                          {/* Original View Selection Components */}
+                          {editorState.isSelectionMode && (
+                            <>
+                              {/* Selection Preview for Original View */}
+                              {editorState.multiSelection.isDrawingSelection &&
+                                editorState.multiSelection.selectionStart &&
+                                editorState.multiSelection.selectionEnd &&
+                                editorState.multiSelection.targetView ===
+                                  "original" && (
+                                  <SelectionPreview
+                                    start={
+                                      editorState.multiSelection.selectionStart
+                                    }
+                                    end={
+                                      editorState.multiSelection.selectionEnd
+                                    }
+                                    scale={documentState.scale}
+                                  />
+                                )}
+
+                              {/* Selection Rectangle for Original View */}
+                              {editorState.multiSelection.selectionBounds &&
+                                editorState.multiSelection.selectedElements
+                                  .length > 0 &&
+                                viewState.currentView === "split" &&
+                                editorState.multiSelection.targetView ===
+                                  "original" && (
+                                  <SelectionRectangle
+                                    bounds={
+                                      editorState.multiSelection.selectionBounds
+                                    }
+                                    scale={documentState.scale}
+                                    onMove={handleMoveSelection}
+                                    onDelete={handleDeleteSelection}
+                                    isMoving={
+                                      editorState.multiSelection
+                                        .isMovingSelection
+                                    }
+                                    onDragSelection={(deltaX, deltaY) => {
+                                      // Move all selected elements by delta (in real time)
+                                      moveSelectedElements(
+                                        editorState.multiSelection
+                                          .selectedElements,
+                                        deltaX,
+                                        deltaY,
+                                        updateTextBox,
+                                        updateShape,
+                                        updateImage,
+                                        getElementById
+                                      );
+                                      // Update selection bounds in real time
+                                      setEditorState((prev) => {
+                                        const updatedElements =
+                                          prev.multiSelection.selectedElements.map(
+                                            (el) => ({
+                                              ...el,
+                                              originalPosition: {
+                                                x:
+                                                  el.originalPosition.x +
+                                                  deltaX,
+                                                y:
+                                                  el.originalPosition.y +
+                                                  deltaY,
+                                              },
+                                            })
+                                          );
+                                        const newBounds =
+                                          calculateSelectionBounds(
+                                            updatedElements,
+                                            getElementById
+                                          );
+                                        return {
+                                          ...prev,
+                                          multiSelection: {
+                                            ...prev.multiSelection,
+                                            selectedElements: updatedElements,
+                                            selectionBounds: newBounds,
+                                          },
+                                        };
+                                      });
+                                    }}
+                                    onDragStopSelection={
+                                      handleDragStopSelection
+                                    }
+                                  />
+                                )}
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -2520,6 +3459,95 @@ export const PDFEditorContent: React.FC = () => {
                             }
                             return null;
                           })}
+
+                          {/* Translated View Selection Components */}
+                          {editorState.isSelectionMode && (
+                            <>
+                              {/* Selection Preview for Translated View */}
+                              {editorState.multiSelection.isDrawingSelection &&
+                                editorState.multiSelection.selectionStart &&
+                                editorState.multiSelection.selectionEnd &&
+                                editorState.multiSelection.targetView ===
+                                  "translated" && (
+                                  <SelectionPreview
+                                    start={
+                                      editorState.multiSelection.selectionStart
+                                    }
+                                    end={
+                                      editorState.multiSelection.selectionEnd
+                                    }
+                                    scale={documentState.scale}
+                                  />
+                                )}
+
+                              {/* Selection Rectangle for Translated View */}
+                              {editorState.multiSelection.selectionBounds &&
+                                editorState.multiSelection.selectedElements
+                                  .length > 0 &&
+                                viewState.currentView === "split" &&
+                                editorState.multiSelection.targetView ===
+                                  "translated" && (
+                                  <SelectionRectangle
+                                    bounds={
+                                      editorState.multiSelection.selectionBounds
+                                    }
+                                    scale={documentState.scale}
+                                    onMove={handleMoveSelection}
+                                    onDelete={handleDeleteSelection}
+                                    isMoving={
+                                      editorState.multiSelection
+                                        .isMovingSelection
+                                    }
+                                    onDragSelection={(deltaX, deltaY) => {
+                                      // Move all selected elements by delta (in real time)
+                                      moveSelectedElements(
+                                        editorState.multiSelection
+                                          .selectedElements,
+                                        deltaX,
+                                        deltaY,
+                                        updateTextBox,
+                                        updateShape,
+                                        updateImage,
+                                        getElementById
+                                      );
+                                      // Update selection bounds in real time
+                                      setEditorState((prev) => {
+                                        const updatedElements =
+                                          prev.multiSelection.selectedElements.map(
+                                            (el) => ({
+                                              ...el,
+                                              originalPosition: {
+                                                x:
+                                                  el.originalPosition.x +
+                                                  deltaX,
+                                                y:
+                                                  el.originalPosition.y +
+                                                  deltaY,
+                                              },
+                                            })
+                                          );
+                                        const newBounds =
+                                          calculateSelectionBounds(
+                                            updatedElements,
+                                            getElementById
+                                          );
+                                        return {
+                                          ...prev,
+                                          multiSelection: {
+                                            ...prev.multiSelection,
+                                            selectedElements: updatedElements,
+                                            selectionBounds: newBounds,
+                                          },
+                                        };
+                                      });
+                                    }}
+                                    onDragStopSelection={
+                                      handleDragStopSelection
+                                    }
+                                  />
+                                )}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2588,6 +3616,91 @@ export const PDFEditorContent: React.FC = () => {
 
                       {/* Render elements in layer order */}
                       {currentPageSortedElements.map(renderElement)}
+
+                      {/* Single View Selection Components */}
+                      {editorState.isSelectionMode && (
+                        <>
+                          {/* Selection Preview for Single Views */}
+                          {editorState.multiSelection.isDrawingSelection &&
+                            editorState.multiSelection.selectionStart &&
+                            editorState.multiSelection.selectionEnd &&
+                            ((viewState.currentView === "original" &&
+                              editorState.multiSelection.targetView ===
+                                "original") ||
+                              (viewState.currentView === "translated" &&
+                                editorState.multiSelection.targetView ===
+                                  "translated")) && (
+                              <SelectionPreview
+                                start={
+                                  editorState.multiSelection.selectionStart
+                                }
+                                end={editorState.multiSelection.selectionEnd}
+                                scale={documentState.scale}
+                              />
+                            )}
+
+                          {/* Selection Rectangle for Single Views */}
+                          {editorState.multiSelection.selectionBounds &&
+                            editorState.multiSelection.selectedElements.length >
+                              0 &&
+                            ((viewState.currentView === "original" &&
+                              editorState.multiSelection.targetView ===
+                                "original") ||
+                              (viewState.currentView === "translated" &&
+                                editorState.multiSelection.targetView ===
+                                  "translated")) && (
+                              <SelectionRectangle
+                                bounds={
+                                  editorState.multiSelection.selectionBounds
+                                }
+                                scale={documentState.scale}
+                                onMove={handleMoveSelection}
+                                onDelete={handleDeleteSelection}
+                                isMoving={
+                                  editorState.multiSelection.isMovingSelection
+                                }
+                                onDragSelection={(deltaX, deltaY) => {
+                                  // Move all selected elements by delta (in real time)
+                                  moveSelectedElements(
+                                    editorState.multiSelection.selectedElements,
+                                    deltaX,
+                                    deltaY,
+                                    updateTextBox,
+                                    updateShape,
+                                    updateImage,
+                                    getElementById
+                                  );
+                                  // Update selection bounds in real time
+                                  setEditorState((prev) => {
+                                    const updatedElements =
+                                      prev.multiSelection.selectedElements.map(
+                                        (el) => ({
+                                          ...el,
+                                          originalPosition: {
+                                            x: el.originalPosition.x + deltaX,
+                                            y: el.originalPosition.y + deltaY,
+                                          },
+                                        })
+                                      );
+                                    const newBounds = calculateSelectionBounds(
+                                      updatedElements,
+                                      getElementById
+                                    );
+                                    return {
+                                      ...prev,
+                                      multiSelection: {
+                                        ...prev.multiSelection,
+                                        selectedElements: updatedElements,
+                                        selectionBounds: newBounds,
+                                      },
+                                    };
+                                  });
+                                }}
+                                onDragStopSelection={handleDragStopSelection}
+                              />
+                            )}
+                        </>
+                      )}
                     </div>
                   )}
 

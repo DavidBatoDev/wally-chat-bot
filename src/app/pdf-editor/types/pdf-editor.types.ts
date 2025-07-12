@@ -1,8 +1,7 @@
 import { TextField } from "@/components/types";
 
 // Re-export TextField from components/types
-export { TextField } from "@/components/types";
-export type { Image } from "@/components/types";
+export type { TextField } from "@/components/types";
 
 // Document and page related types
 export interface DocumentState {
@@ -90,6 +89,9 @@ export interface EditorState {
     width: number;
     height: number;
   } | null;
+  // Multi-element selection properties
+  multiSelection: MultiSelectionState;
+  isSelectionMode: boolean;
 }
 
 // Tool state types
@@ -134,6 +136,29 @@ export interface SelectionState {
   isDrawingSelection: boolean;
   selectionStart: { x: number; y: number } | null;
   selectionEnd: { x: number; y: number } | null;
+}
+
+// Multi-element selection types
+export interface SelectedElement {
+  id: string;
+  type: "textbox" | "shape" | "image";
+  originalPosition: { x: number; y: number };
+}
+
+export interface MultiSelectionState {
+  selectedElements: SelectedElement[];
+  selectionBounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+  isDrawingSelection: boolean;
+  selectionStart: { x: number; y: number } | null;
+  selectionEnd: { x: number; y: number } | null;
+  isMovingSelection: boolean;
+  moveStart: { x: number; y: number } | null;
+  targetView: "original" | "translated" | null;
 }
 
 // View state types

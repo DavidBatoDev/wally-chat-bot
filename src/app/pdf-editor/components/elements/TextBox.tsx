@@ -17,6 +17,12 @@ interface TextBoxProps {
   onTextSelectionClick?: (id: string, event: React.MouseEvent) => void;
   autoFocusId?: string | null;
   onAutoFocusComplete?: (id: string) => void;
+  // Multi-selection props
+  isMultiSelected?: boolean;
+  selectedElementIds?: string[];
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
 }
 
 export const MemoizedTextBox = memo(
@@ -34,6 +40,12 @@ export const MemoizedTextBox = memo(
     onTextSelectionClick,
     autoFocusId,
     onAutoFocusComplete,
+    // Multi-selection props
+    isMultiSelected = false,
+    selectedElementIds = [],
+    onMultiSelectDragStart,
+    onMultiSelectDrag,
+    onMultiSelectDragStop,
   }: TextBoxProps) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -60,6 +72,70 @@ export const MemoizedTextBox = memo(
       onSelect(textBox.id);
     }, [textBox.id, onSelect]);
 
+    // Multi-selection drag handlers
+    const handleDragStart = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStart
+        ) {
+          onMultiSelectDragStart(textBox.id);
+        }
+      },
+      [isMultiSelected, selectedElementIds, onMultiSelectDragStart, textBox.id]
+    );
+
+    const handleDrag = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDrag
+        ) {
+          const deltaX = (d.x - textBox.x * scale) / scale;
+          const deltaY = (d.y - textBox.y * scale) / scale;
+          onMultiSelectDrag(textBox.id, deltaX, deltaY);
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDrag,
+        textBox.id,
+        textBox.x,
+        textBox.y,
+        scale,
+      ]
+    );
+
+    const handleDragStop = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStop
+        ) {
+          const deltaX = (d.x - textBox.x * scale) / scale;
+          const deltaY = (d.y - textBox.y * scale) / scale;
+          onMultiSelectDragStop(textBox.id, deltaX, deltaY);
+        } else {
+          // Regular single element update
+          onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale });
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDragStop,
+        textBox.id,
+        textBox.x,
+        textBox.y,
+        scale,
+        onUpdate,
+      ]
+    );
+
     // Auto-focus logic
     useEffect(() => {
       if (autoFocusId === textBox.id && onAutoFocusComplete) {
@@ -83,9 +159,9 @@ export const MemoizedTextBox = memo(
         disableDragging={isTextSelectionMode}
         dragHandleClassName="drag-handle"
         enableResizing={false}
-        onDragStop={(e, d) => {
-          onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale });
-        }}
+        onDragStart={handleDragStart}
+        onDrag={handleDrag}
+        onDragStop={handleDragStop}
         onResizeStop={(e, direction, ref, delta, position) => {
           onUpdate(textBox.id, {
             x: position.x / scale,
@@ -100,7 +176,7 @@ export const MemoizedTextBox = memo(
           isSelectedInTextMode
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
-        }`}
+        } ${isMultiSelected ? "ring-2 ring-blue-500 multi-selected" : ""}`}
         style={{ transform: "none" }}
         onClick={handleClick}
       >

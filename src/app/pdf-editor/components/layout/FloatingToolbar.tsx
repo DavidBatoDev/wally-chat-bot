@@ -60,7 +60,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   const isElementSelected =
     editorState.selectedFieldId ||
     editorState.selectedShapeId ||
-    editorState.selectedElementId;
+    editorState.multiSelection.selectedElements.length > 0;
 
   return (
     <>
@@ -72,15 +72,15 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
         <div className="bg-white rounded-lg shadow-lg border border-red-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
           <button
             onClick={() =>
-              onToolChange("textSelection", !editorState.isTextSelectionMode)
+              onToolChange("selection", !editorState.isSelectionMode)
             }
             disabled={!!isElementSelected}
             className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-              editorState.isTextSelectionMode
+              editorState.isSelectionMode
                 ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
                 : "text-gray-700 hover:text-red-600"
             } ${isElementSelected ? "opacity-50 cursor-not-allowed" : ""}`}
-            title="Add Text Field from Document (Click text to create editable field)"
+            title="Multi-Element Selection (Drag to select multiple elements)"
           >
             <MousePointer className="w-5 h-5" />
           </button>

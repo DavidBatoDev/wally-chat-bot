@@ -70,6 +70,12 @@
   z-index: 20000 !important;
 }
 
+/* Multi-selected elements styling */
+.rnd.multi-selected {
+  z-index: 20000 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.8) !important;
+}
+
 /* Ensure textboxes and shapes are visible above PDF */
 .text-field-overlay {
   position: absolute !important;
