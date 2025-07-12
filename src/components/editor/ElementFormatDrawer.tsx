@@ -39,7 +39,11 @@ const fontFamilies = [
   "Open Sans",
 ];
 
-const fontSizes = Array.from({ length: 20 }, (_, i) => i + 2); // 8px to 28px
+// Common font sizes for dropdown (2px to 72px)
+const fontSizes = [
+  2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+  24, 26, 28, 30, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72,
+];
 const borderWidths = [0, 1, 2, 3, 4, 5];
 const opacityValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
@@ -66,6 +70,7 @@ export const ElementFormatDrawer: React.FC = () => {
   const [showBorderRadiusPopup, setShowBorderRadiusPopup] = useState(false);
   const [showZIndexPopup, setShowZIndexPopup] = useState(false);
   const [showTextStylePopup, setShowTextStylePopup] = useState(false);
+  const [showFontSizePopup, setShowFontSizePopup] = useState(false);
 
   // Refs for positioning popups
   const spacingButtonRef = useRef<HTMLButtonElement>(null);
@@ -74,6 +79,7 @@ export const ElementFormatDrawer: React.FC = () => {
   const borderRadiusButtonRef = useRef<HTMLButtonElement>(null);
   const zIndexButtonRef = useRef<HTMLButtonElement>(null);
   const textStyleButtonRef = useRef<HTMLButtonElement>(null);
+  const fontSizeInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for popup containers
   const spacingPopupRef = useRef<HTMLDivElement>(null);
@@ -82,6 +88,7 @@ export const ElementFormatDrawer: React.FC = () => {
   const borderRadiusPopupRef = useRef<HTMLDivElement>(null);
   const zIndexPopupRef = useRef<HTMLDivElement>(null);
   const textStylePopupRef = useRef<HTMLDivElement>(null);
+  const fontSizePopupRef = useRef<HTMLDivElement>(null);
   const alignmentButtonRef = useRef<HTMLButtonElement>(null);
   const alignmentPopupRef = useRef<HTMLDivElement>(null);
 
@@ -159,6 +166,16 @@ export const ElementFormatDrawer: React.FC = () => {
       ) {
         setShowTextStylePopup(false);
       }
+
+      if (
+        showFontSizePopup &&
+        fontSizeInputRef.current &&
+        fontSizePopupRef.current &&
+        !fontSizeInputRef.current.contains(target) &&
+        !fontSizePopupRef.current.contains(target)
+      ) {
+        setShowFontSizePopup(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -173,6 +190,7 @@ export const ElementFormatDrawer: React.FC = () => {
     showAlignmentPopup,
     showZIndexPopup,
     showTextStylePopup,
+    showFontSizePopup,
   ]);
 
   // Add type guard functions
@@ -284,20 +302,26 @@ export const ElementFormatDrawer: React.FC = () => {
             </div>
 
             {/* Font Size */}
-            <div className="flex items-center gap-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex-shrink-0 transition-all duration-200">
-              <select
-                className="w-16 sm:w-20 bg-transparent outline-none p-2 text-sm rounded-lg"
-                value={safeFormat.fontSize}
-                onChange={(e) =>
-                  onFormatChange({ fontSize: Number(e.target.value) })
-                }
-              >
-                {fontSizes.map((size) => (
-                  <option key={size} value={size}>
-                    {size}px
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="relative">
+                <input
+                  ref={fontSizeInputRef}
+                  type="number"
+                  min="0.1"
+                  max="500"
+                  step="0.1"
+                  value={safeFormat.fontSize}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value);
+                    if (value >= 0.1 && value <= 500) {
+                      onFormatChange({ fontSize: value });
+                    }
+                  }}
+                  onFocus={() => setShowFontSizePopup(true)}
+                  className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="12"
+                />
+              </div>
             </div>
 
             {/* Text Style Buttons */}
@@ -701,7 +725,7 @@ export const ElementFormatDrawer: React.FC = () => {
                 <div className="w-4 h-4 border border-gray-600 rounded-sm flex items-center justify-center">
                   <div className="w-2 h-2 bg-gray-600 rounded-sm"></div>
                 </div>
-                <span className="text-xs">Reset Ratio</span>
+                <span className="text-xs">Fit Ratio</span>
               </button>
             </div>
 
@@ -1341,6 +1365,47 @@ export const ElementFormatDrawer: React.FC = () => {
                 <ArrowDown size={16} />
                 <span className="text-sm">Backward</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Font Size Popup */}
+      {showFontSizePopup && (
+        <div
+          ref={fontSizePopupRef}
+          className="fixed bg-white shadow-xl rounded-lg border border-gray-200 p-3 min-w-[200px] max-h-[300px] overflow-y-auto z-[60] animate-in slide-in-from-top-2 duration-200"
+          style={{
+            top: fontSizeInputRef.current
+              ? fontSizeInputRef.current.getBoundingClientRect().bottom + 8
+              : 0,
+            left: fontSizeInputRef.current
+              ? fontSizeInputRef.current.getBoundingClientRect().left
+              : 0,
+          }}
+        >
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-700 mb-3">
+              Font Size
+            </div>
+            <div className="grid grid-cols-2 gap-1 max-h-[200px] overflow-y-auto">
+              {fontSizes.map((size) => (
+                <button
+                  key={size}
+                  className={`p-2 rounded-lg transition-all duration-200 text-sm ${
+                    Math.abs((safeFormat.fontSize || 12) - size) < 0.1
+                      ? "bg-blue-500 text-white shadow-md"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                  onClick={() => {
+                    onFormatChange({ fontSize: size });
+                    setShowFontSizePopup(false);
+                  }}
+                  title={`${size}px`}
+                >
+                  {size}px
+                </button>
+              ))}
             </div>
           </div>
         </div>

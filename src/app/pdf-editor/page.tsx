@@ -231,6 +231,8 @@ const MemoizedTextBox = memo(
     isTextSelectionMode,
     isSelectedInTextMode,
     onTextSelectionClick,
+    autoFocusId,
+    onAutoFocusComplete,
   }: {
     textBox: TextField;
     isSelected: boolean;
@@ -243,6 +245,8 @@ const MemoizedTextBox = memo(
     isTextSelectionMode?: boolean;
     isSelectedInTextMode?: boolean;
     onTextSelectionClick?: (id: string, event: React.MouseEvent) => void;
+    autoFocusId?: string | null;
+    onAutoFocusComplete?: (id: string) => void;
   }) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -268,6 +272,20 @@ const MemoizedTextBox = memo(
     const handleFocus = useCallback(() => {
       onSelect(textBox.id);
     }, [textBox.id, onSelect]);
+
+    // Auto-focus logic
+    useEffect(() => {
+      if (autoFocusId === textBox.id && onAutoFocusComplete) {
+        const textareaElement = document.querySelector(
+          `[data-textbox-id="${textBox.id}"]`
+        ) as HTMLTextAreaElement;
+        if (textareaElement) {
+          textareaElement.focus();
+          textareaElement.setSelectionRange(0, 0); // Position cursor at the beginning
+          onAutoFocusComplete(textBox.id);
+        }
+      }
+    }, [autoFocusId, textBox.id, onAutoFocusComplete]);
 
     return (
       <Rnd
@@ -380,6 +398,7 @@ const MemoizedTextBox = memo(
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
+              data-textbox-id={textBox.id}
               className="absolute top-0 left-0 w-full h-full bg-transparent border-none outline-none cursor-text resize-none"
               style={{
                 fontSize: `${textBox.fontSize * scale}px`,
@@ -905,6 +924,9 @@ const PDFEditorContent: React.FC = () => {
   const [isImageUploadMode, setIsImageUploadMode] = useState<boolean>(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  // Additional file input ref for "Upload More Document"
+  const appendFileInputRef = useRef<HTMLInputElement>(null);
+
   // Helper functions to get current state arrays based on view
   const getCurrentTextBoxes = () => {
     return currentView === "original" ? originalTextBoxes : translatedTextBoxes;
@@ -1325,6 +1347,7 @@ const PDFEditorContent: React.FC = () => {
           `Switched to page ${currentPage} background color:`,
           pageBgColor
         );
+        console.log("Document URL:", documentUrl);
       }
     }
   }, [scale, currentPage, detectedPageBackgrounds]);
@@ -1464,29 +1487,337 @@ const PDFEditorContent: React.FC = () => {
   const detectFontProperties = (span: HTMLSpanElement) => {
     const computedStyle = window.getComputedStyle(span);
 
+    console.log("Raw computed style:", {
+      fontFamily: computedStyle.fontFamily,
+      fontWeight: computedStyle.fontWeight,
+      fontStyle: computedStyle.fontStyle,
+      fontSize: computedStyle.fontSize,
+      color: computedStyle.color,
+      textAlign: computedStyle.textAlign,
+      letterSpacing: computedStyle.letterSpacing,
+      lineHeight: computedStyle.lineHeight,
+      textDecoration: computedStyle.textDecoration,
+    });
+
     // Extract font family with fallbacks
     const fontFamily = computedStyle.fontFamily || "Arial, sans-serif";
 
-    // Detect bold
+    // Enhanced bold detection - check multiple sources
     const fontWeight = computedStyle.fontWeight;
-    const isBold =
+    let isBold = false;
+
+    console.log("Bold detection - initial values:", {
+      computedFontWeight: fontWeight,
+      fontWeightType: typeof fontWeight,
+      fontWeightNumber: parseInt(fontWeight),
+      spanClasses: Array.from(span.classList),
+      spanStyle: span.getAttribute("style"),
+      spanTagName: span.tagName,
+    });
+
+    // Check computed font weight
+    if (
       fontWeight === "bold" ||
       fontWeight === "700" ||
-      parseInt(fontWeight) >= 700;
+      parseInt(fontWeight) >= 700
+    ) {
+      isBold = true;
+      console.log("Bold detected from computed font weight:", fontWeight);
+    }
+
+    // Check if the span has any bold-related classes or attributes
+    if (
+      span.classList.contains("bold") ||
+      span.classList.contains("strong") ||
+      span.classList.contains("b") ||
+      span.tagName.toLowerCase() === "strong" ||
+      span.tagName.toLowerCase() === "b" ||
+      span.getAttribute("style")?.includes("font-weight: bold") ||
+      span.getAttribute("style")?.includes("font-weight:700") ||
+      span.getAttribute("style")?.includes("font-weight: bold") ||
+      span.getAttribute("style")?.includes("font-weight: 700")
+    ) {
+      isBold = true;
+      console.log("Bold detected from span classes/attributes");
+    }
+
+    // Check for inline font-weight styles with different formats
+    const styleAttr = span.getAttribute("style");
+    if (styleAttr) {
+      const fontWeightMatch = styleAttr.match(
+        /font-weight:\s*(bold|700|800|900)/i
+      );
+      if (fontWeightMatch) {
+        isBold = true;
+        console.log("Bold detected from inline style:", fontWeightMatch[1]);
+      }
+    }
+
+    // Check parent elements for bold styling
+    let parent = span.parentElement;
+    let parentLevel = 0;
+    while (parent && parent !== document.body && parentLevel < 5) {
+      const parentStyle = window.getComputedStyle(parent);
+      const parentFontWeight = parentStyle.fontWeight;
+
+      console.log(`Parent level ${parentLevel} bold check:`, {
+        tagName: parent.tagName,
+        classes: Array.from(parent.classList),
+        fontWeight: parentFontWeight,
+        fontWeightNumber: parseInt(parentFontWeight),
+      });
+
+      if (
+        parentFontWeight === "bold" ||
+        parentFontWeight === "700" ||
+        parseInt(parentFontWeight) >= 700 ||
+        parent.classList.contains("bold") ||
+        parent.classList.contains("strong") ||
+        parent.tagName.toLowerCase() === "strong" ||
+        parent.tagName.toLowerCase() === "b"
+      ) {
+        isBold = true;
+        console.log(
+          `Bold detected from parent level ${parentLevel}:`,
+          parent.tagName
+        );
+        break;
+      }
+
+      // Check parent's inline styles
+      const parentStyleAttr = parent.getAttribute("style");
+      if (parentStyleAttr) {
+        const parentFontWeightMatch = parentStyleAttr.match(
+          /font-weight:\s*(bold|700|800|900)/i
+        );
+        if (parentFontWeightMatch) {
+          isBold = true;
+          console.log(
+            `Bold detected from parent level ${parentLevel} inline style:`,
+            parentFontWeightMatch[1]
+          );
+          break;
+        }
+      }
+
+      parent = parent.parentElement;
+      parentLevel++;
+    }
+
+    // Additional checks for PDF-specific bold indicators
+    // Sometimes PDF text has different indicators for bold text
+    if (
+      span.style.fontWeight === "bold" ||
+      span.style.fontWeight === "700" ||
+      span.style.fontWeight === "800" ||
+      span.style.fontWeight === "900"
+    ) {
+      isBold = true;
+      console.log(
+        "Bold detected from span.style.fontWeight:",
+        span.style.fontWeight
+      );
+    }
+
+    // Check if the text appears visually bold by comparing font weight to normal
+    const normalFontWeight = parseInt(fontWeight) || 400;
+    if (normalFontWeight >= 600) {
+      isBold = true;
+      console.log(
+        "Bold detected from font weight comparison:",
+        normalFontWeight
+      );
+    }
+
+    // Additional visual check - sometimes PDF text has subtle bold indicators
+    // Check if the font weight is significantly higher than the default
+    const defaultFontWeight = 400;
+    const fontWeightDiff = normalFontWeight - defaultFontWeight;
+    if (fontWeightDiff >= 200) {
+      isBold = true;
+      console.log("Bold detected from font weight difference:", fontWeightDiff);
+    }
+
+    // Check for any CSS custom properties that might indicate bold
+    const cssVars = getComputedStyle(span);
+    for (let i = 0; i < cssVars.length; i++) {
+      const prop = cssVars[i];
+      if (prop.includes("weight") || prop.includes("bold")) {
+        const value = cssVars.getPropertyValue(prop);
+        if (value && (value.includes("bold") || parseInt(value) >= 600)) {
+          isBold = true;
+          console.log("Bold detected from CSS custom property:", prop, value);
+          break;
+        }
+      }
+    }
+
+    // Check font family for bold indicators
+    const fontFamilyLower = fontFamily.toLowerCase();
+    if (
+      fontFamilyLower.includes("bold") ||
+      fontFamilyLower.includes("heavy") ||
+      fontFamilyLower.includes("black") ||
+      fontFamilyLower.includes("extra-bold") ||
+      fontFamilyLower.includes("ultra-bold")
+    ) {
+      isBold = true;
+      console.log("Bold detected from font family:", fontFamily);
+    }
+
+    // Final fallback: check if the text appears visually different
+    // This is a heuristic based on the assumption that bold text often has different visual characteristics
+    const textContent = span.textContent || "";
+    if (textContent.length > 0) {
+      // Create a temporary element to compare rendering
+      const tempSpan = document.createElement("span");
+      tempSpan.style.fontFamily = fontFamily;
+      tempSpan.style.fontSize = computedStyle.fontSize;
+      tempSpan.style.fontWeight = "normal";
+      tempSpan.textContent = textContent;
+      tempSpan.style.position = "absolute";
+      tempSpan.style.visibility = "hidden";
+      document.body.appendChild(tempSpan);
+
+      const normalWidth = tempSpan.offsetWidth;
+      document.body.removeChild(tempSpan);
+
+      // Compare with the original span width
+      const originalWidth = span.offsetWidth;
+      const widthRatio = originalWidth / normalWidth;
+
+      // If the original text is significantly wider than normal, it might be bold
+      if (widthRatio > 1.1) {
+        isBold = true;
+        console.log("Bold detected from width comparison:", widthRatio);
+      }
+    }
+
+    console.log("Final bold detection result:", isBold);
 
     // Detect italic
     const fontStyle = computedStyle.fontStyle;
     const isItalic = fontStyle === "italic" || fontStyle === "oblique";
 
+    // Detect underline
+    const textDecoration = computedStyle.textDecoration;
+    const isUnderline = textDecoration.includes("underline");
+
     // Get font size
     const fontSize = parseFloat(computedStyle.fontSize) || 12;
 
-    return {
+    // Enhanced color detection - check multiple sources
+    let color = computedStyle.color || "#000000";
+
+    // If color is rgb(0, 0, 0) or similar, try to get a more specific color
+    if (color === "rgb(0, 0, 0)" || color === "rgba(0, 0, 0, 1)") {
+      // Check if there's a more specific color in the style attribute
+      const styleAttr = span.getAttribute("style");
+      if (styleAttr) {
+        const colorMatch = styleAttr.match(/color:\s*([^;]+)/i);
+        if (colorMatch) {
+          color = colorMatch[1].trim();
+        }
+      }
+
+      // Check parent elements for color
+      parent = span.parentElement;
+      while (parent && parent !== document.body) {
+        const parentStyle = window.getComputedStyle(parent);
+        const parentColor = parentStyle.color;
+        if (
+          parentColor &&
+          parentColor !== "rgb(0, 0, 0)" &&
+          parentColor !== "rgba(0, 0, 0, 1)"
+        ) {
+          color = parentColor;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    // Convert color to hex format for consistency
+    if (color.startsWith("rgb(") || color.startsWith("rgba(")) {
+      try {
+        // Extract RGB values from rgb/rgba string
+        const rgbMatch = color.match(
+          /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/
+        );
+        if (rgbMatch) {
+          const r = parseInt(rgbMatch[1]);
+          const g = parseInt(rgbMatch[2]);
+          const b = parseInt(rgbMatch[3]);
+          color = `#${r.toString(16).padStart(2, "0")}${g
+            .toString(16)
+            .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+        }
+      } catch (error) {
+        console.warn("Failed to convert color to hex:", color, error);
+        color = "#000000"; // Fallback to black
+      }
+    }
+
+    // Get text alignment
+    const textAlign = computedStyle.textAlign || "left";
+
+    // Get letter spacing (character spacing)
+    const letterSpacing = parseFloat(computedStyle.letterSpacing) || 0;
+
+    // Get line height
+    const lineHeight = parseFloat(computedStyle.lineHeight) || 1.2;
+
+    // Get text transform
+    const textTransform = computedStyle.textTransform || "none";
+
+    const result = {
       fontFamily,
       isBold,
       isItalic,
+      isUnderline,
       fontSize,
+      color,
+      textAlign,
+      letterSpacing,
+      lineHeight,
+      textTransform,
     };
+
+    console.log("Processed font properties:", result);
+
+    // Additional debugging for font detection
+    console.log("Font detection details:", {
+      spanElement: span,
+      spanClasses: Array.from(span.classList),
+      spanStyle: span.getAttribute("style"),
+      spanAttributes: Array.from(span.attributes).map(
+        (attr) => `${attr.name}="${attr.value}"`
+      ),
+      computedFontWeight: computedStyle.fontWeight,
+      computedColor: computedStyle.color,
+      detectedBold: isBold,
+      detectedColor: color,
+      parentElements: (() => {
+        const parents = [];
+        let parent = span.parentElement;
+        let level = 0;
+        while (parent && parent !== document.body && level < 5) {
+          const parentStyle = window.getComputedStyle(parent);
+          parents.push({
+            tagName: parent.tagName,
+            classes: Array.from(parent.classList),
+            fontWeight: parentStyle.fontWeight,
+            color: parentStyle.color,
+            style: parent.getAttribute("style"),
+          });
+          parent = parent.parentElement;
+          level++;
+        }
+        return parents;
+      })(),
+    });
+
+    return result;
   };
 
   // Capture PDF background color from the first pixel and store it per page
@@ -1560,10 +1891,18 @@ const PDFEditorContent: React.FC = () => {
   // Create text field from span and add deletion rectangle
   const createTextFieldFromSpan = (span: HTMLElement) => {
     const textContent = span.textContent || "";
-    if (!textContent.trim()) return;
+    console.log("Original text content:", textContent);
+
+    if (!textContent.trim()) {
+      console.log("Text content is empty after trim");
+      return;
+    }
 
     const pdfPage = documentRef.current?.querySelector(".react-pdf__Page");
-    if (!pdfPage) return;
+    if (!pdfPage) {
+      console.log("PDF page not found");
+      return;
+    }
 
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPage.getBoundingClientRect();
@@ -1574,38 +1913,119 @@ const PDFEditorContent: React.FC = () => {
     const pageX = (spanRect.left - pageRect.left) / scale;
     const pageY = (spanRect.top - pageRect.top) / scale;
 
-    // Clean text content by removing icon characters
-    const cleanedTextContent = textContent.replace(/×✎/g, "").trim();
+    // Enhanced text cleaning to handle newlines, whitespace, and special characters
+    let cleanedTextContent = textContent;
 
-    // Create text field with actual font size (no minimum limit)
-    const fontSize = Math.max(1, pageHeight * 0.8);
-    const fontFamily = "Arial, sans-serif";
+    // Remove icon characters if they exist
+    if (textContent.includes("×") || textContent.includes("✎")) {
+      cleanedTextContent = cleanedTextContent.replace(/×✎/g, "");
+    }
+
+    // More aggressive text cleaning to handle all types of newlines and whitespace
+    cleanedTextContent = cleanedTextContent
+      // Remove all types of line breaks and replace with single space
+      .replace(/\r\n|\r|\n/g, " ")
+      // Replace tabs with space
+      .replace(/\t/g, " ")
+      // Replace multiple consecutive spaces with single space
+      .replace(/\s+/g, " ")
+      // Remove any remaining invisible characters that might cause issues
+      .replace(/[\u200B-\u200D\uFEFF]/g, "") // Remove zero-width characters
+      // Remove any remaining control characters except space
+      .replace(/[\x00-\x1F\x7F]/g, " ")
+      // Trim leading and trailing whitespace
+      .trim();
+
+    console.log("Cleaned text content:", cleanedTextContent);
+    console.log("Text content length:", cleanedTextContent.length);
+    console.log(
+      "Text content bytes:",
+      new TextEncoder().encode(cleanedTextContent)
+    );
+    console.log(
+      "Text content character codes:",
+      Array.from(cleanedTextContent).map((c) => c.charCodeAt(0))
+    );
+    console.log("Text content has newlines:", /\r|\n/.test(cleanedTextContent));
+
+    if (!cleanedTextContent || cleanedTextContent.length === 0) {
+      console.log("Text content is empty after cleaning");
+      return;
+    }
+
+    // Ensure we have at least some visible content
+    if (cleanedTextContent.trim().length === 0) {
+      console.log("Text content is only whitespace after cleaning");
+      return;
+    }
+
+    // Detect all font properties from the span
+    const fontProperties = detectFontProperties(span as HTMLSpanElement);
+
+    // Debug: Log detected font properties
+    console.log("Detected font properties:", {
+      originalText: textContent,
+      cleanedText: cleanedTextContent,
+      fontFamily: fontProperties.fontFamily,
+      fontSize: fontProperties.fontSize,
+      isBold: fontProperties.isBold,
+      isItalic: fontProperties.isItalic,
+      isUnderline: fontProperties.isUnderline,
+      color: fontProperties.color,
+      textAlign: fontProperties.textAlign,
+      letterSpacing: fontProperties.letterSpacing,
+      lineHeight: fontProperties.lineHeight,
+    });
+
+    // Use the detected font size, but ensure it's not too small
+    // The font size from computed style is already in screen pixels, so we need to convert to PDF coordinates
+    const fontSize = Math.max(8, fontProperties.fontSize / scale);
+    console.log("Font size calculation:", {
+      originalFontSize: fontProperties.fontSize,
+      scale: scale,
+      calculatedFontSize: fontSize,
+    });
     const fieldId = generateUUID();
 
     const { width, height } = measureText(
       cleanedTextContent,
       fontSize,
-      fontFamily
+      fontProperties.fontFamily,
+      fontProperties.letterSpacing
     );
+
+    // Ensure minimum dimensions for the text field
+    const minWidth = Math.max(pageWidth, width || 50);
+    const minHeight = Math.max(pageHeight, height || 20);
+
+    // Final validation to ensure we have valid text content
+    const finalTextContent =
+      cleanedTextContent && cleanedTextContent.trim()
+        ? cleanedTextContent
+        : "Text";
 
     const newTextBox: TextField = {
       id: fieldId,
       x: pageX,
       y: pageY,
-      width: Math.max(pageWidth, width),
-      height: Math.max(pageHeight, height),
-      value: cleanedTextContent,
+      width: minWidth,
+      height: minHeight,
+      value: finalTextContent,
       fontSize: fontSize,
-      fontFamily: fontFamily,
+      fontFamily: fontProperties.fontFamily,
       page: currentPage,
-      color: "#000000",
-      bold: false,
-      italic: false,
-      underline: false,
-      textAlign: "left",
+      color: fontProperties.color,
+      bold: fontProperties.isBold,
+      italic: fontProperties.isItalic,
+      underline: fontProperties.isUnderline,
+      textAlign: fontProperties.textAlign as
+        | "left"
+        | "center"
+        | "right"
+        | "justify",
       listType: "none",
-      letterSpacing: 0,
-      lineHeight: 1.2,
+      letterSpacing: fontProperties.letterSpacing,
+      lineHeight: fontProperties.lineHeight,
       rotation: 0,
       borderRadius: 0,
       borderTopLeftRadius: 0,
@@ -1614,11 +2034,57 @@ const PDFEditorContent: React.FC = () => {
       borderBottomRightRadius: 0,
     };
 
+    console.log("Created text field:", {
+      id: fieldId,
+      value: newTextBox.value,
+      valueLength: newTextBox.value.length,
+      valueBytes: new TextEncoder().encode(newTextBox.value),
+      valueCharacterCodes: Array.from(newTextBox.value).map((c) =>
+        c.charCodeAt(0)
+      ),
+      hasNewlines: /\r|\n/.test(newTextBox.value),
+      fontSize: newTextBox.fontSize,
+      fontFamily: newTextBox.fontFamily,
+      color: newTextBox.color,
+      bold: newTextBox.bold,
+      italic: newTextBox.italic,
+      underline: newTextBox.underline,
+      textAlign: newTextBox.textAlign,
+      letterSpacing: newTextBox.letterSpacing,
+      lineHeight: newTextBox.lineHeight,
+      width: newTextBox.width,
+      height: newTextBox.height,
+    });
+
+    // Additional debugging for styling
+    console.log("Textbox styling details:", {
+      originalSpan: span,
+      spanTextContent: span.textContent,
+      spanComputedStyle: window.getComputedStyle(span),
+      detectedFontProperties: fontProperties,
+      finalTextBoxProperties: {
+        color: newTextBox.color,
+        bold: newTextBox.bold,
+        italic: newTextBox.italic,
+        underline: newTextBox.underline,
+        fontSize: newTextBox.fontSize,
+        fontFamily: newTextBox.fontFamily,
+      },
+    });
+
     // In split view, add to original document
     if (currentView === "split") {
-      setOriginalTextBoxes((prev) => [...prev, newTextBox]);
+      setOriginalTextBoxes((prev) => {
+        const newState = [...prev, newTextBox];
+        console.log("Added to original textboxes, new state:", newState);
+        return newState;
+      });
     } else {
-      setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+      setCurrentTextBoxes((prev) => {
+        const newState = [...prev, newTextBox];
+        console.log("Added to current textboxes, new state:", newState);
+        return newState;
+      });
     }
     setSelectedFieldId(fieldId);
 
@@ -1630,6 +2096,9 @@ const PDFEditorContent: React.FC = () => {
 
     // Exit add textfield mode
     setIsAddTextBoxMode(false);
+
+    // Set the textbox ID for auto-focusing
+    setAutoFocusTextBoxId(fieldId);
   };
 
   // Remove icons from span
@@ -1725,6 +2194,14 @@ const PDFEditorContent: React.FC = () => {
   // State to track if we're currently zooming to temporarily disable text layer
   const [isZooming, setIsZooming] = useState(false);
   const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
+    null
+  );
+
+  // Callback to clear auto-focus ID after focusing
+  const handleAutoFocusComplete = useCallback((id: string) => {
+    setAutoFocusTextBoxId(null);
+  }, []);
 
   // Handle zoom state changes
   useEffect(() => {
@@ -2135,6 +2612,148 @@ const PDFEditorContent: React.FC = () => {
 
         setTimeout(() => setIsLoading(false), 500);
       }
+    }
+  };
+
+  // Handler for appending documents to existing document
+  const handleAppendDocument = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const fileType = getFileType(file.name);
+
+    if (!documentUrl) {
+      toast.error("Please upload a document first before appending.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      if (fileType === "image") {
+        // For images, add a new page with the image as an interactive element
+        await appendImageAsNewPage(file);
+      } else {
+        // For PDFs, merge the documents
+        await appendPdfDocument(file);
+      }
+
+      // Switch to pages tab
+      setActiveSidebarTab("pages");
+    } catch (error) {
+      console.error("Error appending document:", error);
+      toast.error("Failed to append document. Please try again.");
+    } finally {
+      setIsLoading(false);
+      // Reset file input
+      if (appendFileInputRef.current) {
+        appendFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  // Helper function to append an image as a new page
+  const appendImageAsNewPage = async (imageFile: File) => {
+    try {
+      // Import pdf-lib dynamically to avoid SSR issues
+      const { PDFDocument } = await import("pdf-lib");
+
+      // Load the current document
+      const currentResponse = await fetch(documentUrl);
+      const currentArrayBuffer = await currentResponse.arrayBuffer();
+      const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+      // Add a new blank page (A4 size: 595.28 x 841.89 points)
+      const newPage = currentPdfDoc.addPage([595.28, 841.89]);
+
+      // Save the updated PDF as a new blob
+      const updatedPdfBytes = await currentPdfDoc.save();
+      const updatedBlob = new Blob([updatedPdfBytes], {
+        type: "application/pdf",
+      });
+      const newDocumentUrl = URL.createObjectURL(updatedBlob);
+
+      // Update the document URL
+      setDocumentUrl(newDocumentUrl);
+
+      // Update the number of pages
+      setNumPages(currentPdfDoc.getPageCount());
+
+      // Create image URL and add as interactive element on the new page
+      const imageUrl = URL.createObjectURL(imageFile);
+      const newPageNumber = currentPdfDoc.getPageCount(); // The page we just added
+
+      // Create a new image element
+      const newImage: Image = {
+        id: generateUUID(),
+        x: 50, // Center the image on the page
+        y: 50,
+        width: 300, // Default size
+        height: 200,
+        page: newPageNumber,
+        src: imageUrl,
+        rotation: 0,
+        opacity: 1,
+        borderColor: "#000000",
+        borderWidth: 0,
+        borderRadius: 0,
+      };
+
+      // Add the image to the original images array
+      setOriginalImages((prev) => [...prev, newImage]);
+      addToLayerOrder(newImage.id);
+      setSelectedElementId(newImage.id);
+      setSelectedElementType("image");
+      setCurrentFormat(newImage);
+
+      toast.success("Image appended as new page successfully!");
+    } catch (error) {
+      console.error("Error appending image:", error);
+      throw error;
+    }
+  };
+
+  // Helper function to append a PDF document
+  const appendPdfDocument = async (pdfFile: File) => {
+    try {
+      // Import pdf-lib dynamically to avoid SSR issues
+      const { PDFDocument } = await import("pdf-lib");
+
+      // Load the current document
+      const currentResponse = await fetch(documentUrl);
+      const currentArrayBuffer = await currentResponse.arrayBuffer();
+      const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+      // Load the new document to append
+      const newArrayBuffer = await pdfFile.arrayBuffer();
+      const newPdfDoc = await PDFDocument.load(newArrayBuffer);
+
+      // Copy all pages from the new document to the current document
+      const newPages = await currentPdfDoc.copyPages(
+        newPdfDoc,
+        newPdfDoc.getPageIndices()
+      );
+      newPages.forEach((page) => currentPdfDoc.addPage(page));
+
+      // Save the merged PDF as a new blob
+      const mergedPdfBytes = await currentPdfDoc.save();
+      const mergedBlob = new Blob([mergedPdfBytes], {
+        type: "application/pdf",
+      });
+      const newDocumentUrl = URL.createObjectURL(mergedBlob);
+
+      // Update the document URL
+      setDocumentUrl(newDocumentUrl);
+
+      // Update the number of pages
+      setNumPages(currentPdfDoc.getPageCount());
+
+      toast.success("PDF document appended successfully!");
+    } catch (error) {
+      console.error("Error appending PDF:", error);
+      throw error;
     }
   };
 
@@ -4241,6 +4860,49 @@ const PDFEditorContent: React.FC = () => {
           z-index: 10000 !important;
         }
 
+        /* In add text box mode, lower the z-index of interactive elements to allow PDF text selection */
+        .add-text-box-mode .rnd {
+          z-index: 100 !important;
+          pointer-events: none !important;
+        }
+
+        /* In add text box mode, selected elements should still be visible but not interfere */
+        .add-text-box-mode .rnd.selected {
+          z-index: 150 !important;
+          pointer-events: none !important;
+        }
+
+        /* In add text box mode, text field overlays should be lower */
+        .add-text-box-mode .text-field-overlay {
+          z-index: 100 !important;
+          pointer-events: none !important;
+        }
+
+        /* In text selection mode, lower the z-index of interactive elements to allow PDF text selection */
+        .text-selection-mode .rnd {
+          z-index: 100 !important;
+          pointer-events: none !important;
+        }
+
+        /* In text selection mode, selected elements should still be visible but not interfere */
+        .text-selection-mode .rnd.selected {
+          z-index: 150 !important;
+          pointer-events: none !important;
+        }
+
+        /* In text selection mode, text field overlays should be lower */
+        .text-selection-mode .text-field-overlay {
+          z-index: 100 !important;
+          pointer-events: none !important;
+        }
+
+        /* Ensure the interactive elements wrapper respects the mode */
+        .add-text-box-mode .interactive-elements-wrapper,
+        .text-selection-mode .interactive-elements-wrapper {
+          z-index: 100 !important;
+          pointer-events: none !important;
+        }
+
         /* Text spans positioning */
         .react-pdf__Page__textContent span {
           position: absolute !important;
@@ -4254,7 +4916,7 @@ const PDFEditorContent: React.FC = () => {
         /* Enable pointer events and styling only in add text box mode */
         .add-text-box-mode .react-pdf__Page__textContent {
           pointer-events: auto !important;
-          z-index: 50 !important;
+          z-index: 200 !important;
         }
 
                 .add-text-box-mode .react-pdf__Page__textContent span {
@@ -4264,6 +4926,7 @@ const PDFEditorContent: React.FC = () => {
           transition: background-color 0.2s !important;
           pointer-events: auto !important;
           border-radius: 2px !important;
+          z-index: 200 !important;
         }
         
         .add-text-box-mode .react-pdf__Page__textContent span:hover {
@@ -4355,7 +5018,7 @@ const PDFEditorContent: React.FC = () => {
         /* Keep text selection mode styles for text selection functionality */
         .text-selection-mode .react-pdf__Page__textContent {
           pointer-events: auto !important;
-          z-index: 50 !important;
+          z-index: 200 !important;
         }
 
         .text-selection-mode .react-pdf__Page__textContent span {
@@ -4367,6 +5030,7 @@ const PDFEditorContent: React.FC = () => {
           border-radius: 2px !important;
           border: 1px solid transparent !important;
           box-sizing: border-box !important;
+          z-index: 200 !important;
         }
 
         .text-selection-mode .react-pdf__Page__textContent span:hover {
@@ -4820,6 +5484,26 @@ const PDFEditorContent: React.FC = () => {
         .image-element:not(.edit-mode) .react-resizable-handle {
           display: none !important;
         }
+
+        /* Ensure the interactive elements wrapper respects the mode */
+        .add-text-box-mode .interactive-elements-wrapper,
+        .text-selection-mode .interactive-elements-wrapper {
+          z-index: 100 !important;
+          pointer-events: none !important;
+        }
+
+        /* Ensure deletion rectangles have lower z-index than interactive elements */
+        .deletion-rectangle {
+          z-index: -10 !important;
+          pointer-events: none !important;
+        }
+
+        /* In add text box mode and text selection mode, deletion rectangles should be even lower */
+        .add-text-box-mode .deletion-rectangle,
+        .text-selection-mode .deletion-rectangle {
+          z-index: -20 !important;
+          pointer-events: none !important;
+        }
       `}</style>
 
       {/* Header */}
@@ -4867,6 +5551,13 @@ const PDFEditorContent: React.FC = () => {
               ref={imageInputRef}
               onChange={handleImageUpload}
               accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.svg"
+              className="hidden"
+            />
+            <input
+              type="file"
+              ref={appendFileInputRef}
+              onChange={handleAppendDocument}
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
               className="hidden"
             />
             <Button
@@ -5105,8 +5796,8 @@ const PDFEditorContent: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Upload Button at Bottom */}
-                    <div className="border-t border-red-100 pt-4 mt-4">
+                    {/* Upload Buttons at Bottom */}
+                    <div className="border-t border-red-100 pt-4 mt-4 space-y-2">
                       <Button
                         onClick={() => fileInputRef.current?.click()}
                         className="w-full bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700 shadow-md transition-all duration-200 hover:shadow-lg"
@@ -5116,6 +5807,20 @@ const PDFEditorContent: React.FC = () => {
                           ? "Upload New Document"
                           : "Upload Document"}
                       </Button>
+
+                      {documentUrl && (
+                        <Button
+                          onClick={() => appendFileInputRef.current?.click()}
+                          variant="outline"
+                          className="w-full border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400 transition-all duration-200"
+                          disabled={isLoading}
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          {isLoading
+                            ? "Appending..."
+                            : "Upload More Document/Image"}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -5258,7 +5963,7 @@ const PDFEditorContent: React.FC = () => {
                 isSidebarCollapsed ? "left-4" : "left-4"
               }`}
               style={{
-                top: "300px", // Below the floating toolbar
+                top: "340px", // Below the floating toolbar
                 minWidth: "280px",
               }}
             >
@@ -5891,7 +6596,7 @@ const PDFEditorContent: React.FC = () => {
                                   top: rect.y * scale,
                                   width: rect.width * scale,
                                   height: rect.height * scale,
-                                  zIndex: showDeletionRectangles ? 40 : 25,
+                                  zIndex: showDeletionRectangles ? -10 : -20,
                                   backgroundColor: rect.background
                                     ? colorToRgba(
                                         rect.background,
@@ -5955,6 +6660,10 @@ const PDFEditorContent: React.FC = () => {
                                     )}
                                     onTextSelectionClick={
                                       handleTextBoxSelectionMode
+                                    }
+                                    autoFocusId={autoFocusTextBoxId}
+                                    onAutoFocusComplete={
+                                      handleAutoFocusComplete
                                     }
                                   />
                                 );
@@ -6119,7 +6828,7 @@ const PDFEditorContent: React.FC = () => {
                                   top: rect.y * scale,
                                   width: rect.width * scale,
                                   height: rect.height * scale,
-                                  zIndex: showDeletionRectangles ? 40 : 25,
+                                  zIndex: showDeletionRectangles ? -10 : -20,
                                   backgroundColor: rect.background
                                     ? colorToRgba(
                                         rect.background,
@@ -6183,6 +6892,10 @@ const PDFEditorContent: React.FC = () => {
                                     )}
                                     onTextSelectionClick={
                                       handleTextBoxSelectionMode
+                                    }
+                                    autoFocusId={autoFocusTextBoxId}
+                                    onAutoFocusComplete={
+                                      handleAutoFocusComplete
                                     }
                                   />
                                 );
@@ -6267,7 +6980,17 @@ const PDFEditorContent: React.FC = () => {
                   {/* Show interactive elements in both original and translated views */}
                   {(currentView === "original" ||
                     currentView === "translated") && (
-                    <div className="absolute inset-0" style={{ zIndex: 10000 }}>
+                    <div
+                      className="absolute inset-0 interactive-elements-wrapper"
+                      style={{
+                        zIndex:
+                          isTextSelectionMode || isAddTextBoxMode ? 100 : 10000,
+                        pointerEvents:
+                          isTextSelectionMode || isAddTextBoxMode
+                            ? "none"
+                            : "auto",
+                      }}
+                    >
                       {/* Deletion Rectangles */}
                       {getCurrentPageDeletionRectangles.map((rect) => (
                         <div
@@ -6282,7 +7005,7 @@ const PDFEditorContent: React.FC = () => {
                             top: rect.y * scale,
                             width: rect.width * scale,
                             height: rect.height * scale,
-                            zIndex: showDeletionRectangles ? 40 : 25,
+                            zIndex: showDeletionRectangles ? -10 : -20,
                             backgroundColor: rect.background
                               ? colorToRgba(
                                   rect.background,
@@ -6326,6 +7049,8 @@ const PDFEditorContent: React.FC = () => {
                                 textBox.id
                               )}
                               onTextSelectionClick={handleTextBoxSelectionMode}
+                              autoFocusId={autoFocusTextBoxId}
+                              onAutoFocusComplete={handleAutoFocusComplete}
                             />
                           );
                         } else if (type === "shape") {

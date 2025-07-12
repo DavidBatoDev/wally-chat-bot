@@ -110,10 +110,10 @@ def calculate_base_font_size(entities: List[Dict[str, Any]], page_height: float)
 
     if total_messenger_box_lines > 0:
         average_line_height = total_messenger_box_height / total_messenger_box_lines
-        base_font_size = average_line_height * 0.8
-        return max(10, min(base_font_size, 16))
+        base_font_size = average_line_height * 0.4  # Further reduced multiplier
+        return max(4, min(base_font_size, 10))  # Further reduced range
     
-    return 12.0  # Default font size
+    return 6.0  # Further reduced default font size
 
 def process_document_for_layout(file_content: bytes, mime_type: str) -> Dict[str, Any]:
     """Process document using Google Document AI and extract layout with styling."""
