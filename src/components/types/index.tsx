@@ -12,6 +12,7 @@ export interface Shape {
   fillOpacity: number;
   rotation?: number;
   borderRadius?: number; // Add border radius support
+  zIndex?: number; // Add z-index support for layering
 }
 
 export interface TextField {
@@ -24,6 +25,7 @@ export interface TextField {
   fontSize: number;
   fontFamily: string;
   page: number;
+  type?: "chat_time" | "MessengerTextBox" | string;
   color?: string;
   bold?: boolean;
   italic?: boolean;
@@ -46,6 +48,7 @@ export interface TextField {
   paddingBottom?: number;
   paddingLeft?: number;
   isEditing?: boolean;
+  zIndex?: number; // Add z-index support for layering
 }
 
 // Alias for backward compatibility

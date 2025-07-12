@@ -51,6 +51,26 @@ interface TextFormatContextType {
   // Padding popup state for visual indicator
   showPaddingPopup: boolean;
   setShowPaddingPopup: (show: boolean) => void;
+
+  // Layer ordering functions
+  moveToFront: (elementId: string) => void;
+  moveToBack: (elementId: string) => void;
+  moveForward: (elementId: string) => void;
+  moveBackward: (elementId: string) => void;
+  setLayerOrderFunctions: (functions: {
+    moveToFront: (elementId: string) => void;
+    moveToBack: (elementId: string) => void;
+    moveForward: (elementId: string) => void;
+    moveBackward: (elementId: string) => void;
+  }) => void;
+
+  // Layer position helper functions
+  isElementAtFront: (elementId: string) => boolean;
+  isElementAtBack: (elementId: string) => boolean;
+  setLayerPositionHelpers: (functions: {
+    isElementAtFront: (elementId: string) => boolean;
+    isElementAtBack: (elementId: string) => boolean;
+  }) => void;
 }
 
 const TextFormatContext = createContext<TextFormatContextType | undefined>(
@@ -107,6 +127,68 @@ export const TextFormatProvider: React.FC<TextFormatProviderProps> = ({
     }
   };
 
+  // Use refs to store layer ordering functions
+  const layerOrderFunctionsRef = useRef<{
+    moveToFront: (elementId: string) => void;
+    moveToBack: (elementId: string) => void;
+    moveForward: (elementId: string) => void;
+    moveBackward: (elementId: string) => void;
+  }>({
+    moveToFront: () => console.log("Default moveToFront called"),
+    moveToBack: () => console.log("Default moveToBack called"),
+    moveForward: () => console.log("Default moveForward called"),
+    moveBackward: () => console.log("Default moveBackward called"),
+  });
+
+  const setLayerOrderFunctions = (functions: {
+    moveToFront: (elementId: string) => void;
+    moveToBack: (elementId: string) => void;
+    moveForward: (elementId: string) => void;
+    moveBackward: (elementId: string) => void;
+  }) => {
+    layerOrderFunctionsRef.current = functions;
+  };
+
+  const moveToFront = (elementId: string) => {
+    layerOrderFunctionsRef.current.moveToFront(elementId);
+  };
+
+  const moveToBack = (elementId: string) => {
+    layerOrderFunctionsRef.current.moveToBack(elementId);
+  };
+
+  const moveForward = (elementId: string) => {
+    layerOrderFunctionsRef.current.moveForward(elementId);
+  };
+
+  const moveBackward = (elementId: string) => {
+    layerOrderFunctionsRef.current.moveBackward(elementId);
+  };
+
+  // Use refs to store layer position helper functions
+  const layerPositionHelpersRef = useRef<{
+    isElementAtFront: (elementId: string) => boolean;
+    isElementAtBack: (elementId: string) => boolean;
+  }>({
+    isElementAtFront: () => false,
+    isElementAtBack: () => false,
+  });
+
+  const setLayerPositionHelpers = (functions: {
+    isElementAtFront: (elementId: string) => boolean;
+    isElementAtBack: (elementId: string) => boolean;
+  }) => {
+    layerPositionHelpersRef.current = functions;
+  };
+
+  const isElementAtFront = (elementId: string) => {
+    return layerPositionHelpersRef.current.isElementAtFront(elementId);
+  };
+
+  const isElementAtBack = (elementId: string) => {
+    return layerPositionHelpersRef.current.isElementAtBack(elementId);
+  };
+
   const value: TextFormatContextType = {
     isDrawerOpen,
     setIsDrawerOpen,
@@ -120,6 +202,14 @@ export const TextFormatProvider: React.FC<TextFormatProviderProps> = ({
     setOnFormatChange,
     showPaddingPopup,
     setShowPaddingPopup,
+    moveToFront,
+    moveToBack,
+    moveForward,
+    moveBackward,
+    setLayerOrderFunctions,
+    isElementAtFront,
+    isElementAtBack,
+    setLayerPositionHelpers,
   };
 
   return (

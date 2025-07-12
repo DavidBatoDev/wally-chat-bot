@@ -9,8 +9,6 @@ import {
   AlignCenter,
   AlignRight,
   AlignJustify,
-  List,
-  ListOrdered,
   ChevronDown,
   Type,
   Palette,
@@ -21,8 +19,13 @@ import {
   Move3D,
   Circle,
   SquareIcon as Rectangle,
+  Layers,
+  SendToBack,
+  BringToFront,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
-import { useTextFormat } from "./TextFormatContext";
+import { useTextFormat } from "./ElementFormatContext";
 import { TextField, Shape } from "../types";
 
 const fontFamilies = [
@@ -40,7 +43,7 @@ const fontSizes = Array.from({ length: 20 }, (_, i) => i + 2); // 8px to 28px
 const borderWidths = [0, 1, 2, 3, 4, 5];
 const opacityValues = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 
-export const TextFormatDrawer: React.FC = () => {
+export const ElementFormatDrawer: React.FC = () => {
   const {
     isDrawerOpen,
     currentFormat,
@@ -49,24 +52,36 @@ export const TextFormatDrawer: React.FC = () => {
     selectedElementType,
     showPaddingPopup,
     setShowPaddingPopup,
+    moveToFront,
+    moveToBack,
+    moveForward,
+    moveBackward,
+    isElementAtFront,
+    isElementAtBack,
   } = useTextFormat();
 
   const [showSpacingTooltip, setShowSpacingTooltip] = useState(false);
   const [showCharSpacingTooltip, setShowCharSpacingTooltip] = useState(false);
   const [showAlignmentPopup, setShowAlignmentPopup] = useState(false);
   const [showBorderRadiusPopup, setShowBorderRadiusPopup] = useState(false);
+  const [showZIndexPopup, setShowZIndexPopup] = useState(false);
+  const [showTextStylePopup, setShowTextStylePopup] = useState(false);
 
   // Refs for positioning popups
   const spacingButtonRef = useRef<HTMLButtonElement>(null);
   const charSpacingButtonRef = useRef<HTMLButtonElement>(null);
   const paddingButtonRef = useRef<HTMLButtonElement>(null);
   const borderRadiusButtonRef = useRef<HTMLButtonElement>(null);
+  const zIndexButtonRef = useRef<HTMLButtonElement>(null);
+  const textStyleButtonRef = useRef<HTMLButtonElement>(null);
 
   // Refs for popup containers
   const spacingPopupRef = useRef<HTMLDivElement>(null);
   const charSpacingPopupRef = useRef<HTMLDivElement>(null);
   const paddingPopupRef = useRef<HTMLDivElement>(null);
   const borderRadiusPopupRef = useRef<HTMLDivElement>(null);
+  const zIndexPopupRef = useRef<HTMLDivElement>(null);
+  const textStylePopupRef = useRef<HTMLDivElement>(null);
   const alignmentButtonRef = useRef<HTMLButtonElement>(null);
   const alignmentPopupRef = useRef<HTMLDivElement>(null);
 
@@ -124,6 +139,26 @@ export const TextFormatDrawer: React.FC = () => {
       ) {
         setShowAlignmentPopup(false);
       }
+
+      if (
+        showZIndexPopup &&
+        zIndexButtonRef.current &&
+        zIndexPopupRef.current &&
+        !zIndexButtonRef.current.contains(target) &&
+        !zIndexPopupRef.current.contains(target)
+      ) {
+        setShowZIndexPopup(false);
+      }
+
+      if (
+        showTextStylePopup &&
+        textStyleButtonRef.current &&
+        textStylePopupRef.current &&
+        !textStyleButtonRef.current.contains(target) &&
+        !textStylePopupRef.current.contains(target)
+      ) {
+        setShowTextStylePopup(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -136,6 +171,8 @@ export const TextFormatDrawer: React.FC = () => {
     showPaddingPopup,
     showBorderRadiusPopup,
     showAlignmentPopup,
+    showZIndexPopup,
+    showTextStylePopup,
   ]);
 
   // Add type guard functions
@@ -163,7 +200,6 @@ export const TextFormatDrawer: React.FC = () => {
           italic: currentFormat.italic || false,
           underline: currentFormat.underline || false,
           textAlign: currentFormat.textAlign || "left",
-          listType: currentFormat.listType || "none",
           color: currentFormat.color || "#000000",
           borderColor: currentFormat.borderColor || "#000000",
           borderWidth: currentFormat.borderWidth || 0,
@@ -250,39 +286,21 @@ export const TextFormatDrawer: React.FC = () => {
             </div>
 
             {/* Text Style Buttons */}
-            <div className="flex items-center gap-1 border-l border-gray-300 pl-4 flex-shrink-0">
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.bold
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() => onFormatChange({ bold: !safeFormat.bold })}
-              >
-                <Bold size={16} />
-              </button>
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.italic
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() => onFormatChange({ italic: !safeFormat.italic })}
-              >
-                <Italic size={16} />
-              </button>
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.underline
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() =>
-                  onFormatChange({ underline: !safeFormat.underline })
-                }
-              >
-                <Underline size={16} />
-              </button>
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={textStyleButtonRef}
+                  className={`p-2 flex items-center gap-2 rounded-lg transition-all duration-200 ${
+                    showTextStylePopup
+                      ? "bg-blue-500 text-white shadow-md"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                  onClick={() => setShowTextStylePopup(!showTextStylePopup)}
+                  title="Text Style"
+                >
+                  <Type size={16} /> v
+                </button>
+              </div>
             </div>
 
             {/* Text Alignment - Popup Menu */}
@@ -308,42 +326,6 @@ export const TextFormatDrawer: React.FC = () => {
                   )}
                 </button>
               </div>
-            </div>
-
-            {/* List Style - Hidden on small screens */}
-            <div className="hidden md:flex items-center gap-1 border-l border-gray-300 pl-4 flex-shrink-0">
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.listType === "unordered"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() =>
-                  onFormatChange({
-                    listType:
-                      safeFormat.listType === "unordered"
-                        ? "none"
-                        : "unordered",
-                  })
-                }
-              >
-                <List size={16} />
-              </button>
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.listType === "ordered"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() =>
-                  onFormatChange({
-                    listType:
-                      safeFormat.listType === "ordered" ? "none" : "ordered",
-                  })
-                }
-              >
-                <ListOrdered size={16} />
-              </button>
             </div>
 
             {/* Colors */}
@@ -442,6 +424,24 @@ export const TextFormatDrawer: React.FC = () => {
                   title="Padding"
                 >
                   <Move3D size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Z-Index Controls */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={zIndexButtonRef}
+                  className={`p-2 rounded-lg transition-all duration-200 ${
+                    showZIndexPopup
+                      ? "bg-blue-500 text-white shadow-md"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                  onClick={() => setShowZIndexPopup(!showZIndexPopup)}
+                  title="Layer Order"
+                >
+                  <Layers size={16} />
                 </button>
               </div>
             </div>
@@ -557,6 +557,24 @@ export const TextFormatDrawer: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Z-Index Controls for Shapes */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={zIndexButtonRef}
+                  className={`p-2 rounded-lg transition-all duration-200 ${
+                    showZIndexPopup
+                      ? "bg-blue-500 text-white shadow-md"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                  onClick={() => setShowZIndexPopup(!showZIndexPopup)}
+                  title="Layer Order"
+                >
+                  <Layers size={16} />
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -1058,6 +1076,192 @@ export const TextFormatDrawer: React.FC = () => {
                 title="Justify"
               >
                 <AlignJustify size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Z-Index Popup */}
+      {showZIndexPopup && (
+        <div
+          ref={zIndexPopupRef}
+          className="fixed bg-white shadow-xl rounded-lg border border-gray-200 p-3 min-w-[200px] z-[60] animate-in slide-in-from-top-2 duration-200"
+          style={{
+            top: zIndexButtonRef.current
+              ? zIndexButtonRef.current.getBoundingClientRect().bottom + 8
+              : 0,
+            left: zIndexButtonRef.current
+              ? zIndexButtonRef.current.getBoundingClientRect().left - 50
+              : 0,
+          }}
+        >
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-700 mb-3">
+              Layer Order
+            </div>
+            <div className="space-y-1">
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  selectedElementId && isElementAtFront(selectedElementId)
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  if (
+                    selectedElementId &&
+                    !isElementAtFront(selectedElementId)
+                  ) {
+                    moveToFront(selectedElementId);
+                    setShowZIndexPopup(false);
+                  }
+                }}
+                disabled={
+                  selectedElementId ? isElementAtFront(selectedElementId) : true
+                }
+                title="Bring to Front"
+              >
+                <BringToFront size={16} />
+                <span className="text-sm">Bring to Front</span>
+              </button>
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  selectedElementId && isElementAtBack(selectedElementId)
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  if (
+                    selectedElementId &&
+                    !isElementAtBack(selectedElementId)
+                  ) {
+                    moveToBack(selectedElementId);
+                    setShowZIndexPopup(false);
+                  }
+                }}
+                disabled={
+                  selectedElementId ? isElementAtBack(selectedElementId) : true
+                }
+                title="Bring to Back"
+              >
+                <SendToBack size={16} />
+                <span className="text-sm">Bring to Back</span>
+              </button>
+              <div className="border-t border-gray-200 my-2"></div>
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  selectedElementId && isElementAtFront(selectedElementId)
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  if (
+                    selectedElementId &&
+                    !isElementAtFront(selectedElementId)
+                  ) {
+                    moveForward(selectedElementId);
+                    setShowZIndexPopup(false);
+                  }
+                }}
+                disabled={
+                  selectedElementId ? isElementAtFront(selectedElementId) : true
+                }
+                title="Forward"
+              >
+                <ArrowUp size={16} />
+                <span className="text-sm">Forward</span>
+              </button>
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  selectedElementId && isElementAtBack(selectedElementId)
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  if (
+                    selectedElementId &&
+                    !isElementAtBack(selectedElementId)
+                  ) {
+                    moveBackward(selectedElementId);
+                    setShowZIndexPopup(false);
+                  }
+                }}
+                disabled={
+                  selectedElementId ? isElementAtBack(selectedElementId) : true
+                }
+                title="Backward"
+              >
+                <ArrowDown size={16} />
+                <span className="text-sm">Backward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Text Style Popup */}
+      {showTextStylePopup && (
+        <div
+          ref={textStylePopupRef}
+          className="fixed bg-white shadow-xl rounded-lg border border-gray-200 p-3 min-w-[200px] z-[60] animate-in slide-in-from-top-2 duration-200"
+          style={{
+            top: textStyleButtonRef.current
+              ? textStyleButtonRef.current.getBoundingClientRect().bottom + 8
+              : 0,
+            left: textStyleButtonRef.current
+              ? textStyleButtonRef.current.getBoundingClientRect().left - 50
+              : 0,
+          }}
+        >
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-gray-700 mb-3">
+              Text Style
+            </div>
+            <div className="space-y-1">
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  safeFormat.bold
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  onFormatChange({ bold: !safeFormat.bold });
+                  setShowTextStylePopup(false);
+                }}
+                title="Bold"
+              >
+                <Bold size={16} />
+                <span className="text-sm">Bold</span>
+              </button>
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  safeFormat.italic
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  onFormatChange({ italic: !safeFormat.italic });
+                  setShowTextStylePopup(false);
+                }}
+                title="Italic"
+              >
+                <Italic size={16} />
+                <span className="text-sm">Italic</span>
+              </button>
+              <button
+                className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                  safeFormat.underline
+                    ? "bg-blue-500 text-white shadow-md"
+                    : "hover:bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  onFormatChange({ underline: !safeFormat.underline });
+                  setShowTextStylePopup(false);
+                }}
+                title="Underline"
+              >
+                <Underline size={16} />
+                <span className="text-sm">Underline</span>
               </button>
             </div>
           </div>

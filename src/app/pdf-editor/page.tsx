@@ -50,8 +50,8 @@ import { toast } from "sonner";
 import {
   TextFormatProvider,
   useTextFormat,
-} from "@/components/editor/TextFormatContext";
-import { TextFormatDrawer } from "@/components/editor/TextFormatDrawer";
+} from "@/components/editor/ElementFormatContext";
+import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { TextField } from "@/components/types";
 
 // Import react-pdf CSS for text layer support
@@ -107,7 +107,7 @@ const measureText = (
   context.font = `${fontSize}px ${fontFamily}`;
   const metrics = context.measureText(text);
   const width = metrics.width + characterSpacing * Math.max(0, text.length - 1);
-  const height = fontSize * 1.2; // Approximate line height
+  const height = fontSize * 1.1; // Reduced line height for more compact text
 
   return { width, height };
 };
@@ -275,108 +275,7 @@ const MemoizedTextBox = memo(
         bounds="parent"
         disableDragging={isTextSelectionMode}
         dragHandleClassName="drag-handle"
-        enableResizing={
-          isEditMode && isSelected && !isTextSelectionMode
-            ? {
-                top: true,
-                right: true,
-                bottom: true,
-                left: true,
-                topRight: true,
-                bottomRight: true,
-                bottomLeft: true,
-                topLeft: true,
-              }
-            : false
-        }
-        resizeHandleStyles={{
-          top: {
-            width: "10px",
-            height: "5px",
-            top: "-2.5px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            backgroundColor: "#6b7280",
-            borderRadius: "2px",
-            cursor: "ns-resize",
-          },
-          right: {
-            width: "5px",
-            height: "10px",
-            right: "-2.5px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            backgroundColor: "#6b7280",
-            borderRadius: "2px",
-            cursor: "ew-resize",
-          },
-          bottom: {
-            width: "10px",
-            height: "5px",
-            bottom: "-2.5px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            backgroundColor: "#6b7280",
-            borderRadius: "2px",
-            cursor: "ns-resize",
-          },
-          left: {
-            width: "5px",
-            height: "10px",
-            left: "-2.5px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            backgroundColor: "#6b7280",
-            borderRadius: "2px",
-            cursor: "ew-resize",
-          },
-          topRight: {
-            width: "8px",
-            height: "8px",
-            top: "-4px",
-            right: "-4px",
-            backgroundColor: "#6b7280",
-            borderRadius: "50%",
-            cursor: "ne-resize",
-          },
-          bottomRight: {
-            width: "8px",
-            height: "8px",
-            bottom: "-4px",
-            right: "-4px",
-            backgroundColor: "#6b7280",
-            borderRadius: "50%",
-            cursor: "se-resize",
-          },
-          bottomLeft: {
-            width: "8px",
-            height: "8px",
-            bottom: "-4px",
-            left: "-4px",
-            backgroundColor: "#6b7280",
-            borderRadius: "50%",
-            cursor: "sw-resize",
-          },
-          topLeft: {
-            width: "8px",
-            height: "8px",
-            top: "-4px",
-            left: "-4px",
-            backgroundColor: "#6b7280",
-            borderRadius: "50%",
-            cursor: "nw-resize",
-          },
-        }}
-        resizeHandleClasses={{
-          top: "resize-handle resize-handle-top",
-          right: "resize-handle resize-handle-right",
-          bottom: "resize-handle resize-handle-bottom",
-          left: "resize-handle resize-handle-left",
-          topRight: "resize-handle resize-handle-corner",
-          bottomRight: "resize-handle resize-handle-corner",
-          bottomLeft: "resize-handle resize-handle-corner",
-          topLeft: "resize-handle resize-handle-corner",
-        }}
+        enableResizing={false}
         onDragStop={(e, d) => {
           onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale });
         }}
@@ -395,7 +294,7 @@ const MemoizedTextBox = memo(
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
         }`}
-        style={{ zIndex: 30, transform: "none" }}
+        style={{ transform: "none" }}
         onClick={handleClick}
       >
         <div className="w-full h-full relative group">
@@ -420,6 +319,48 @@ const MemoizedTextBox = memo(
                 <Move size={10} />
               </div>
             </div>
+          )}
+
+          {/* Resize handle - only show when selected and in edit mode and NOT in text selection mode */}
+          {isEditMode && isSelected && !isTextSelectionMode && (
+            <div
+              className="absolute bottom-0 right-0 w-4 h-4 bg-gray-600 border-2 border-white rounded-full shadow-lg cursor-se-resize transform translate-x-1 translate-y-1 z-30 flex items-center justify-center hover:scale-110 transition-transform duration-200"
+              style={{
+                backgroundImage: `
+                  linear-gradient(45deg, transparent 30%, white 30%, white 40%, transparent 40%),
+                  linear-gradient(45deg, transparent 60%, white 60%, white 70%, transparent 70%)
+                `,
+                backgroundSize: "8px 8px",
+                backgroundRepeat: "no-repeat",
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startWidth = textBox.width * scale;
+                const startHeight = textBox.height * scale;
+
+                const handleMouseMove = (moveEvent: MouseEvent) => {
+                  const deltaX = moveEvent.clientX - startX;
+                  const deltaY = moveEvent.clientY - startY;
+                  const newWidth = Math.max(50, startWidth + deltaX) / scale;
+                  const newHeight = Math.max(20, startHeight + deltaY) / scale;
+
+                  onUpdate(textBox.id, {
+                    width: newWidth,
+                    height: newHeight,
+                  });
+                };
+
+                const handleMouseUp = () => {
+                  document.removeEventListener("mousemove", handleMouseMove);
+                  document.removeEventListener("mouseup", handleMouseUp);
+                };
+
+                document.addEventListener("mousemove", handleMouseMove);
+                document.addEventListener("mouseup", handleMouseUp);
+              }}
+            />
           )}
 
           {/* Text content */}
@@ -447,7 +388,7 @@ const MemoizedTextBox = memo(
                 letterSpacing: `${(textBox.letterSpacing || 0) * scale}px`,
                 textAlign: textBox.textAlign || "left",
                 textDecoration: textBox.underline ? "underline" : "none",
-                lineHeight: textBox.lineHeight || 1.2,
+                lineHeight: textBox.lineHeight || 1.1, // Reduced line height
                 backgroundColor: isSelected
                   ? "rgba(107, 114, 128, 0.1)"
                   : textBox.backgroundColor || "transparent",
@@ -467,11 +408,7 @@ const MemoizedTextBox = memo(
                         (textBox.borderBottomLeftRadius || 0) * scale
                       }px`
                     : `${(textBox.borderRadius || 0) * scale}px`,
-                padding: `${(textBox.paddingTop || 0) * scale}px ${
-                  (textBox.paddingRight || 0) * scale
-                }px ${(textBox.paddingBottom || 0) * scale}px ${
-                  (textBox.paddingLeft || 0) * scale
-                }px`,
+                padding: "0px",
                 overflow: "hidden",
                 whiteSpace: "pre-wrap",
                 wordWrap: "break-word",
@@ -598,7 +535,9 @@ const MemoizedShape = memo(
         className={`shape-element ${
           isSelected ? "ring-2 ring-gray-500 selected" : ""
         } ${isEditMode ? "edit-mode" : ""}`}
-        style={{ zIndex: isSelected ? 1000 : 200, transform: "none" }}
+        style={{
+          transform: "none",
+        }}
         onClick={handleClick}
       >
         <div className="w-full h-full relative group">
@@ -668,6 +607,8 @@ const PDFEditorContent: React.FC = () => {
     setOnFormatChange,
     showPaddingPopup,
     setShowPaddingPopup,
+    setLayerOrderFunctions,
+    setLayerPositionHelpers,
   } = useTextFormat();
   // Document state
   const [documentUrl, setDocumentUrl] = useState<string>("");
@@ -813,10 +754,22 @@ const PDFEditorContent: React.FC = () => {
   const [translatedDeletionRectangles, setTranslatedDeletionRectangles] =
     useState<DeletionRectangle[]>([]);
 
+  // Layer order arrays - determines rendering order (first = bottom, last = top)
+  const [originalLayerOrder, setOriginalLayerOrder] = useState<string[]>([]);
+  const [translatedLayerOrder, setTranslatedLayerOrder] = useState<string[]>(
+    []
+  );
+
   const [deletedPages, setDeletedPages] = useState<Set<number>>(new Set());
 
   // State for showing the transform button
   const [showTransformButton, setShowTransformButton] = useState(true);
+
+  // Add new states for page translation tracking
+  const [isPageTranslated, setIsPageTranslated] = useState<
+    Map<number, boolean>
+  >(new Map());
+  const [isTransforming, setIsTransforming] = useState<boolean>(false);
 
   // Helper functions to get current state arrays based on view
   const getCurrentTextBoxes = () => {
@@ -857,6 +810,135 @@ const PDFEditorContent: React.FC = () => {
     } else {
       setTranslatedDeletionRectangles(updater);
     }
+  };
+
+  // Helper functions for layer order management
+  const getCurrentLayerOrder = () => {
+    return currentView === "original"
+      ? originalLayerOrder
+      : translatedLayerOrder;
+  };
+
+  const setCurrentLayerOrder = (updater: React.SetStateAction<string[]>) => {
+    if (currentView === "original") {
+      setOriginalLayerOrder(updater);
+    } else {
+      setTranslatedLayerOrder(updater);
+    }
+  };
+
+  // Add element to layer order
+  const addToLayerOrder = (elementId: string) => {
+    setCurrentLayerOrder((prev) => [...prev, elementId]);
+  };
+
+  // Remove element from layer order
+  const removeFromLayerOrder = (elementId: string) => {
+    setCurrentLayerOrder((prev) => prev.filter((id) => id !== elementId));
+  };
+
+  // Move element to front (end of array)
+  const moveToFront = (elementId: string) => {
+    setCurrentLayerOrder((prev) => {
+      const filtered = prev.filter((id) => id !== elementId);
+      return [...filtered, elementId];
+    });
+  };
+
+  // Move element to back (beginning of array)
+  const moveToBack = (elementId: string) => {
+    setCurrentLayerOrder((prev) => {
+      const filtered = prev.filter((id) => id !== elementId);
+      return [elementId, ...filtered];
+    });
+  };
+
+  // Move element forward by one position
+  const moveForward = (elementId: string) => {
+    setCurrentLayerOrder((prev) => {
+      const index = prev.indexOf(elementId);
+      if (index === -1 || index === prev.length - 1) return prev;
+
+      const newOrder = [...prev];
+      [newOrder[index], newOrder[index + 1]] = [
+        newOrder[index + 1],
+        newOrder[index],
+      ];
+      return newOrder;
+    });
+  };
+
+  // Move element backward by one position
+  const moveBackward = (elementId: string) => {
+    setCurrentLayerOrder((prev) => {
+      const index = prev.indexOf(elementId);
+      if (index <= 0) return prev;
+
+      const newOrder = [...prev];
+      [newOrder[index], newOrder[index - 1]] = [
+        newOrder[index - 1],
+        newOrder[index],
+      ];
+      return newOrder;
+    });
+  };
+
+  // Helper functions to check if element is at front or back
+  const isElementAtFront = (elementId: string) => {
+    const layerOrder = getCurrentLayerOrder();
+    return (
+      layerOrder.length > 0 && layerOrder[layerOrder.length - 1] === elementId
+    );
+  };
+
+  const isElementAtBack = (elementId: string) => {
+    const layerOrder = getCurrentLayerOrder();
+    return layerOrder.length > 0 && layerOrder[0] === elementId;
+  };
+
+  // Get sorted elements based on layer order
+  const getSortedElements = () => {
+    const layerOrder = getCurrentLayerOrder();
+    const textBoxes = getCurrentTextBoxes().filter(
+      (box) => box.page === currentPage
+    );
+    const shapes = getCurrentShapes().filter(
+      (shape) => shape.page === currentPage
+    );
+
+    // Create a map of all elements
+    const elementMap = new Map<
+      string,
+      { type: "textbox" | "shape"; element: TextField | Shape }
+    >();
+    textBoxes.forEach((box) =>
+      elementMap.set(box.id, { type: "textbox", element: box })
+    );
+    shapes.forEach((shape) =>
+      elementMap.set(shape.id, { type: "shape", element: shape })
+    );
+
+    // Sort elements based on layer order
+    const sortedElements: Array<{
+      type: "textbox" | "shape";
+      element: TextField | Shape;
+    }> = [];
+
+    // Add elements in layer order
+    layerOrder.forEach((id) => {
+      const element = elementMap.get(id);
+      if (element) {
+        sortedElements.push(element);
+        elementMap.delete(id);
+      }
+    });
+
+    // Add any remaining elements (newly created ones not in layer order yet)
+    elementMap.forEach((element) => {
+      sortedElements.push(element);
+    });
+
+    return sortedElements;
   };
 
   // Refs
@@ -1104,6 +1186,16 @@ const PDFEditorContent: React.FC = () => {
       }, 200);
     }
   }, [isDocumentLoaded, isPageLoading, currentPage, detectedPageBackgrounds]);
+
+  // Clear textboxes for untranslated pages when switching pages
+  useEffect(() => {
+    if (!isPageTranslated.get(currentPage)) {
+      // Remove textboxes for the current page if it's not translated
+      setTranslatedTextBoxes((prev) =>
+        prev.filter((box) => box.page !== currentPage)
+      );
+    }
+  }, [currentPage, isPageTranslated]);
 
   // Track Ctrl key state for zoom indicator and handle keyboard shortcuts
   useEffect(() => {
@@ -2011,6 +2103,7 @@ const PDFEditorContent: React.FC = () => {
         borderTopRightRadius: 0,
         borderBottomLeftRadius: 0,
         borderBottomRightRadius: 0,
+        zIndex: 30, // Default z-index for new textboxes
       };
 
       // Determine which document to add to
@@ -2018,14 +2111,23 @@ const PDFEditorContent: React.FC = () => {
         // In split view, determine target based on click position or default to original
         if (targetView === "translated") {
           setTranslatedTextBoxes((prev) => [...prev, newTextBox]);
+          setTranslatedLayerOrder((prev) => [...prev, newTextBox.id]);
         } else {
           setOriginalTextBoxes((prev) => [...prev, newTextBox]);
+          setOriginalLayerOrder((prev) => [...prev, newTextBox.id]);
         }
       } else {
         setCurrentTextBoxes((prev) => [...prev, newTextBox]);
+        addToLayerOrder(newTextBox.id);
       }
 
+      // Automatically select the new textbox
       setSelectedFieldId(fieldId);
+      setSelectedElementId(fieldId);
+      setSelectedElementType("textbox");
+      setCurrentFormat(newTextBox);
+      setIsDrawerOpen(true);
+
       setIsAddTextBoxMode(false);
       setIsTextSelectionMode(false);
       setShapeDrawingMode(null);
@@ -2053,9 +2155,10 @@ const PDFEditorContent: React.FC = () => {
   const deleteTextBox = useCallback(
     (id: string) => {
       setCurrentTextBoxes((prev) => prev.filter((box) => box.id !== id));
+      removeFromLayerOrder(id);
       setSelectedFieldId((current) => (current === id ? null : current));
     },
-    [currentView]
+    [currentView, removeFromLayerOrder]
   );
 
   // Memoized callbacks for text box interactions to prevent re-renders
@@ -2181,7 +2284,7 @@ const PDFEditorContent: React.FC = () => {
     [selectedFieldId, selectedShapeId, selectedElementType, updateShapeCallback]
   );
 
-  // Effect to handle text box selection and TextFormatDrawer updates
+  // Effect to handle text box selection and ElementFormatDrawer updates
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
     const timeoutId = setTimeout(() => {
@@ -2280,6 +2383,30 @@ const PDFEditorContent: React.FC = () => {
     }
   }, [handleFormatChange, setOnFormatChange]);
 
+  // Effect to set up layer ordering functions
+  useEffect(() => {
+    setLayerOrderFunctions({
+      moveToFront,
+      moveToBack,
+      moveForward,
+      moveBackward,
+    });
+  }, [
+    moveToFront,
+    moveToBack,
+    moveForward,
+    moveBackward,
+    setLayerOrderFunctions,
+  ]);
+
+  // Effect to set up layer position helper functions
+  useEffect(() => {
+    setLayerPositionHelpers({
+      isElementAtFront,
+      isElementAtBack,
+    });
+  }, [isElementAtFront, isElementAtBack, setLayerPositionHelpers]);
+
   // Memoized callbacks for shape interactions to prevent re-renders
   const handleShapeSelect = useCallback(
     (id: string) => {
@@ -2346,9 +2473,10 @@ const PDFEditorContent: React.FC = () => {
   const deleteShapeCallback = useCallback(
     (id: string) => {
       setCurrentShapes((prev) => prev.filter((shape) => shape.id !== id));
+      removeFromLayerOrder(id);
       setSelectedShapeId((current) => (current === id ? null : current));
     },
-    [currentView]
+    [currentView, removeFromLayerOrder]
   );
 
   // Shape management
@@ -2382,15 +2510,19 @@ const PDFEditorContent: React.FC = () => {
         // In split view, determine target based on position or default to original
         if (targetView === "translated") {
           setTranslatedShapes((prev) => [...prev, newShape]);
+          setTranslatedLayerOrder((prev) => [...prev, newShape.id]);
         } else {
           setOriginalShapes((prev) => [...prev, newShape]);
+          setOriginalLayerOrder((prev) => [...prev, newShape.id]);
         }
       } else {
         setCurrentShapes((prev) => [...prev, newShape]);
+        addToLayerOrder(newShape.id);
       }
 
-      // Select the new shape and open the format drawer
+      // Automatically select the new shape and open the format drawer
       setSelectedShapeId(newShape.id);
+      setSelectedElementId(newShape.id);
       setSelectedElementType("shape");
       setCurrentFormat(newShape);
       setIsDrawerOpen(true);
@@ -2707,10 +2839,10 @@ const PDFEditorContent: React.FC = () => {
     if (currentView === "split") {
       const singleDocWidth = pageWidth;
       const gap = 20 / scale;
-      
+
       // Check if we're drawing on the translated side
       if (shapeDrawTargetView === "translated") {
-        x = (clickX - (pageWidth * scale) - 20) / scale; // Subtract document width and gap
+        x = (clickX - pageWidth * scale - 20) / scale; // Subtract document width and gap
       }
     }
 
@@ -2766,10 +2898,10 @@ const PDFEditorContent: React.FC = () => {
     if (currentView === "split") {
       const singleDocWidth = pageWidth;
       const gap = 20 / scale;
-      
+
       // Check if we're drawing on the translated side
       if (erasureDrawTargetView === "translated") {
-        x = (clickX - (pageWidth * scale) - 20) / scale; // Subtract document width and gap
+        x = (clickX - pageWidth * scale - 20) / scale; // Subtract document width and gap
       }
     }
 
@@ -2894,6 +3026,8 @@ const PDFEditorContent: React.FC = () => {
         translatedTextBoxes,
         translatedShapes,
         translatedDeletionRectangles,
+        originalLayerOrder,
+        translatedLayerOrder,
         documentUrl,
         currentPage,
       })
@@ -2916,6 +3050,8 @@ const PDFEditorContent: React.FC = () => {
         setTranslatedDeletionRectangles(
           data.translatedDeletionRectangles || []
         );
+        setOriginalLayerOrder(data.originalLayerOrder || []);
+        setTranslatedLayerOrder(data.translatedLayerOrder || []);
         if (data.documentUrl) {
           setDocumentUrl(data.documentUrl);
           setCurrentPage(data.currentPage || 1);
@@ -2941,7 +3077,25 @@ const PDFEditorContent: React.FC = () => {
 
       const newTextBoxes: TextField[] = [];
 
+      // Log all entities before processing
+      console.log(
+        "All entities before processing:",
+        jsonData.entities.map((e: any) => ({
+          type: e.type_,
+          text: e.text,
+          style: e.style,
+        }))
+      );
+
       jsonData.entities.forEach((entity: any) => {
+        // Log each entity as it's being processed
+        console.log("Processing entity:", {
+          type: entity.type_,
+          text: entity.text,
+          style: entity.style,
+          rawEntity: entity,
+        });
+
         if (
           !entity.bounding_poly ||
           !entity.bounding_poly.vertices ||
@@ -2992,24 +3146,66 @@ const PDFEditorContent: React.FC = () => {
         // Calculate font size more accurately for MessengerTextBox
         let estimatedFontSize = 12; // Default font size
 
-        if (entity.type === "MessengerTextBox") {
-          // Calculate available space inside the border
-          const borderAndPaddingHeight = borderWidth * 2 + padding * 2;
-          const availableHeight = height - borderAndPaddingHeight;
+        // Debug log for entity type and conditions
+        console.log("Font size calculation - entity check:", {
+          type: entity.type_,
+          isExactChatTime: entity.type_ === "chat_time",
+          isExactMessenger: entity.type_ === "MessengerTextBox",
+          height,
+          text: entity.text,
+          rawType: entity.type_,
+          typeComparison: {
+            typeValue: entity.type_,
+            chatTimeMatch: entity.type_ === "chat_time",
+            messengerMatch: entity.type_ === "MessengerTextBox",
+            typeof: typeof entity.type_,
+          },
+        });
+
+        if (entity.type_ === "chat_time") {
+          console.log("Applying chat_time font size rules:", {
+            initialHeight: height,
+            condition1: height > 14,
+            condition2: height > 16,
+          });
+          // For chat_time, force font size between 5-7px regardless of height
+          estimatedFontSize = 5; // Start with minimum
+          if (height > 14) {
+            // If height is large enough for 6px
+            estimatedFontSize = 6;
+          }
+          if (height > 16) {
+            // If height is large enough for 7px
+            estimatedFontSize = 7;
+          }
+
+          console.log("Final chat_time font size:", {
+            height,
+            estimatedFontSize,
+            text: entity.text,
+          });
+          // We'll adjust the height when creating the text box
+        } else if (entity.type === "MessengerTextBox") {
+          // Calculate available space inside the border, with extra padding
+          const borderHeight = borderWidth * 2;
+          const extraPadding = 1; // Vertical padding of 1px
+          const availableHeight = height - borderHeight - extraPadding * 2;
 
           // Count number of lines in the text
           const textLines = (entity.text || "").split("\n");
           const numberOfLines = textLines.length;
 
           // Calculate font size based on available height and number of lines
-          // Account for line height (1.2 is our default)
-          const lineHeight = 1.2;
+          // Account for line height (1.1 is our default now)
+          const lineHeight = 1.1;
           const fontSizeFromHeight =
             availableHeight / (numberOfLines * lineHeight);
 
-          // Also calculate based on the longest line to ensure text fits horizontally
-          const borderAndPaddingWidth = borderWidth * 2 + padding * 2;
-          const availableWidth = width - borderAndPaddingWidth;
+          // Calculate based on the longest line to ensure text fits horizontally
+          const borderWidth2x = borderWidth * 2;
+          const extraHorizontalPadding = 2; // Horizontal padding of 2px
+          const availableWidth =
+            width - borderWidth2x - extraHorizontalPadding * 2;
 
           // Find the longest line
           const longestLine = textLines.reduce(
@@ -3045,10 +3241,10 @@ const PDFEditorContent: React.FC = () => {
           // Use the smaller of the two calculations to ensure text fits both dimensions
           estimatedFontSize = Math.min(fontSizeFromHeight, fontSizeFromWidth);
 
-          // Apply reasonable bounds (minimum 6px, maximum 24px for messenger text)
+          // Apply reasonable bounds (minimum 3px, maximum 12px for messenger text)
           estimatedFontSize = Math.max(
-            6,
-            Math.min(24, Math.round(estimatedFontSize))
+            3,
+            Math.min(12, Math.round(estimatedFontSize))
           );
 
           // Debug logging for MessengerTextBox font size calculation
@@ -3064,23 +3260,43 @@ const PDFEditorContent: React.FC = () => {
             fontSizeFromWidth,
             finalFontSize: estimatedFontSize,
             borderWidth,
-            padding,
+            extraPadding,
+            extraHorizontalPadding,
           });
         } else {
           // For non-MessengerTextBox entities, use the original calculation
-          estimatedFontSize = Math.max(8, Math.round(height * 0.6));
+          estimatedFontSize = Math.max(6, Math.round(height * 0.4)); // Changed from 0.6 to 0.4
         }
+
+        // Adjust height for chat_time and MessengerTextBox
+        let adjustedHeight = height;
+        let adjustedWidth = width;
+
+        if (entity.type_ === "chat_time") {
+          adjustedHeight = height + 2;
+        } else if (entity.type_ === "MessengerTextBox") {
+          adjustedHeight = height + 2; // Extra height for padding (1px * 2)
+          adjustedWidth = width + 4; // Extra width for padding (2px * 2)
+        }
+
+        // Debug log for text box creation
+        console.log("Creating text box:", {
+          type: entity.type,
+          text: entity.text,
+          fontSize: estimatedFontSize,
+        });
 
         const newTextBox: TextField = {
           id: generateUUID(),
           x: x,
           y: y,
-          width: width,
-          height: height,
+          width: adjustedWidth,
+          height: adjustedHeight,
           value: entity.text || "",
           fontSize: estimatedFontSize,
           fontFamily: "Arial, sans-serif",
           page: currentPage,
+          type: entity.type_, // Fix: use entity.type_ instead of entity.type
           color: textColor,
           bold: fontWeight,
           italic: false,
@@ -3088,7 +3304,7 @@ const PDFEditorContent: React.FC = () => {
           textAlign: textAlign as "left" | "center" | "right" | "justify",
           listType: "none",
           letterSpacing: 0,
-          lineHeight: 1.2,
+          lineHeight: 1.1, // Reduced line height
           rotation: 0,
           backgroundColor: backgroundColor,
           borderColor: borderColor,
@@ -3098,10 +3314,10 @@ const PDFEditorContent: React.FC = () => {
           borderTopRightRadius: borderRadius,
           borderBottomLeftRadius: borderRadius,
           borderBottomRightRadius: borderRadius,
-          paddingTop: padding,
-          paddingRight: padding,
-          paddingBottom: padding,
-          paddingLeft: padding,
+          paddingTop: entity.type_ === "MessengerTextBox" ? 1 : 0,
+          paddingRight: entity.type_ === "MessengerTextBox" ? 2 : 0,
+          paddingBottom: entity.type_ === "MessengerTextBox" ? 1 : 0,
+          paddingLeft: entity.type_ === "MessengerTextBox" ? 2 : 0,
         };
 
         newTextBoxes.push(newTextBox);
@@ -3109,6 +3325,10 @@ const PDFEditorContent: React.FC = () => {
 
       // Add all textboxes to the translated document
       setTranslatedTextBoxes((prev) => [...prev, ...newTextBoxes]);
+
+      // Add new textbox IDs to the layer order
+      const newTextBoxIds = newTextBoxes.map((box) => box.id);
+      setTranslatedLayerOrder((prev) => [...prev, ...newTextBoxIds]);
 
       // Hide the transform button after transformation
       setShowTransformButton(false);
@@ -3123,6 +3343,261 @@ const PDFEditorContent: React.FC = () => {
     }
   }, [currentPage, pageWidth, pageHeight]);
 
+  // Transform page to textboxes using OCR
+  const handleTransformPageToTextbox = useCallback(async () => {
+    const previousView = currentView; // Declare at the top to fix scope
+
+    try {
+      setIsTransforming(true);
+
+      // Switch to original view
+      setCurrentView("original");
+
+      // Wait for the view change to apply and document to render
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Get the document element after view change
+      const documentElement = documentRef.current;
+      if (!documentElement) {
+        throw new Error("Document element not found");
+      }
+
+      // Get the PDF page element
+      const pdfPage = documentElement.querySelector(
+        ".react-pdf__Page"
+      ) as HTMLElement;
+      if (!pdfPage) {
+        throw new Error("PDF page element not found");
+      }
+
+      // Temporarily set scale to 500%
+      const originalScale = scale;
+      const captureScale = 5;
+
+      // Save original state
+      const wasAddTextBoxMode = isAddTextBoxMode;
+      setIsAddTextBoxMode(false);
+
+      // Set the scale
+      setScale(captureScale);
+
+      // Wait for the scale change to apply
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Import html2canvas dynamically
+      const html2canvasModule = await import("html2canvas");
+      const html2canvas = html2canvasModule.default;
+
+      // Capture the PDF page as an image
+      const canvas = await html2canvas(pdfPage, {
+        scale: 1,
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        ignoreElements: (element) => {
+          // Ignore any overlay elements, only capture the PDF content
+          return (
+            element.classList.contains("text-format-drawer") ||
+            element.classList.contains("rnd") ||
+            element.classList.contains("shape-element")
+          );
+        },
+      });
+
+      // Reset scale
+      setScale(originalScale);
+      setIsAddTextBoxMode(wasAddTextBoxMode);
+
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+        }, "image/png");
+      });
+
+      // Create FormData and send to API
+      const formData = new FormData();
+      formData.append("file", blob, `page-${currentPage}.png`);
+
+      // Call the OCR API
+      const response = await fetch("/api/proxy/process-file", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to process document");
+      }
+
+      const data = await response.json();
+
+      // Extract entities from the response
+      if (data.layout && data.layout.pages && data.layout.pages.length > 0) {
+        const entities = data.layout.pages[0].entities || [];
+
+        // Convert entities to textboxes
+        const newTextBoxes: TextField[] = [];
+
+        entities.forEach((entity: any) => {
+          if (
+            !entity.bounding_poly ||
+            !entity.bounding_poly.vertices ||
+            entity.bounding_poly.vertices.length < 4
+          ) {
+            return;
+          }
+
+          const vertices = entity.bounding_poly.vertices;
+          const x = Math.min(...vertices.map((v: any) => v.x)) * pageWidth;
+          const y = Math.min(...vertices.map((v: any) => v.y)) * pageHeight;
+          const maxX = Math.max(...vertices.map((v: any) => v.x)) * pageWidth;
+          const maxY = Math.max(...vertices.map((v: any) => v.y)) * pageHeight;
+          let width = maxX - x;
+          let height = maxY - y;
+
+          // Convert style colors from [0-1] range to hex
+          const rgbToHex = (rgb: number[]): string => {
+            if (!rgb || rgb.length !== 3) return "#000000";
+            const r = Math.round(rgb[0] * 255);
+            const g = Math.round(rgb[1] * 255);
+            const b = Math.round(rgb[2] * 255);
+            return `#${r.toString(16).padStart(2, "0")}${g
+              .toString(16)
+              .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+          };
+
+          // Extract styling information
+          const style = entity.style || {};
+          const backgroundColor = style.background_color
+            ? rgbToHex(style.background_color)
+            : "transparent";
+          const textColor = style.text_color
+            ? rgbToHex(style.text_color)
+            : "#000000";
+          const borderColor = style.border_color
+            ? rgbToHex(style.border_color)
+            : "#000000";
+          const borderWidth = style.has_border ? 1 : 0;
+          const borderRadius = style.border_radius || 0;
+          const padding = style.padding || 0;
+          const fontWeight = style.font_weight === "bold";
+          const textAlign = style.alignment || "left";
+
+          // Calculate text dimensions and font size for the textbox
+          const lineHeight = 1.2;
+          const textPadding = 5; // Small padding for visual comfort
+          const minFontSize = entity.type === "MessengerTextBox" ? 4 : 6; // Further reduced font sizes
+          const maxFontSize = entity.type === "MessengerTextBox" ? 10 : 14; // Further reduced font sizes
+          let estimatedFontSize = maxFontSize;
+
+          // Split text into lines
+          const textLines = (entity.text || "").split("\n");
+          const numberOfLines = textLines.length;
+
+          // Find the longest line
+          let longestLine = "";
+          for (const line of textLines) {
+            if (line.length > longestLine.length) {
+              longestLine = line;
+            }
+          }
+
+          // Calculate text dimensions
+          const { width: textWidth, height: textHeight } = measureText(
+            longestLine,
+            estimatedFontSize,
+            "Arial, sans-serif"
+          );
+
+          // No padding for maximum compactness
+          width = textWidth;
+          height = textHeight * numberOfLines * lineHeight;
+
+          // Add border space if present
+          if (borderWidth > 0) {
+            width += borderWidth * 2;
+            height += borderWidth * 2;
+          }
+
+          // Minimal extra padding for messenger text boxes
+          // No extra padding for messenger text boxes
+
+          const newTextBox: TextField = {
+            id: generateUUID(),
+            x: x,
+            y: y,
+            width: width,
+            height: height,
+            value: entity.text || "",
+            fontSize: estimatedFontSize,
+            fontFamily: "Arial, sans-serif",
+            page: currentPage,
+            color: textColor,
+            bold: fontWeight,
+            italic: false,
+            underline: false,
+            textAlign: textAlign as "left" | "center" | "right" | "justify",
+            listType: "none",
+            letterSpacing: 0,
+            lineHeight: 1.2,
+            rotation: 0,
+            backgroundColor: backgroundColor,
+            borderColor: borderColor,
+            borderWidth: borderWidth,
+            borderRadius: borderRadius,
+            borderTopLeftRadius: borderRadius,
+            borderTopRightRadius: borderRadius,
+            borderBottomLeftRadius: borderRadius,
+            borderBottomRightRadius: borderRadius,
+            paddingTop: padding,
+            paddingRight: padding,
+            paddingBottom: padding,
+            paddingLeft: padding,
+          };
+
+          newTextBoxes.push(newTextBox);
+        });
+
+        // Add all textboxes to the translated document
+        setTranslatedTextBoxes((prev) => [...prev, ...newTextBoxes]);
+
+        // Add new textbox IDs to the layer order
+        const newTextBoxIds = newTextBoxes.map((box) => box.id);
+        setTranslatedLayerOrder((prev) => [...prev, ...newTextBoxIds]);
+
+        // Mark the page as translated
+        setIsPageTranslated((prev) => new Map(prev).set(currentPage, true));
+
+        // Switch back to the previous view
+        setCurrentView(previousView);
+
+        console.log(
+          `Transformed ${newTextBoxes.length} entities into textboxes`
+        );
+        toast.success(
+          `Transformed ${newTextBoxes.length} entities into textboxes`
+        );
+      }
+
+      setIsTransforming(false);
+    } catch (error) {
+      console.error("Error transforming page to textboxes:", error);
+      toast.error("Failed to transform page to textboxes");
+      setIsTransforming(false);
+
+      // Reset view if error occurred
+      setCurrentView(previousView);
+    }
+  }, [
+    currentPage,
+    pageWidth,
+    pageHeight,
+    scale,
+    currentView,
+    isAddTextBoxMode,
+  ]);
+
   // Get current page items - memoized for performance
   const getCurrentPageTextBoxes = useMemo(
     () => getCurrentTextBoxes().filter((box) => box.page === currentPage),
@@ -3132,6 +3607,113 @@ const PDFEditorContent: React.FC = () => {
     () => getCurrentShapes().filter((shape) => shape.page === currentPage),
     [currentView, originalShapes, translatedShapes, currentPage]
   );
+
+  // Get sorted elements for current page - memoized for performance
+  const getCurrentPageSortedElements = useMemo(
+    () => getSortedElements(),
+    [
+      currentView,
+      originalTextBoxes,
+      originalShapes,
+      translatedTextBoxes,
+      translatedShapes,
+      originalLayerOrder,
+      translatedLayerOrder,
+      currentPage,
+    ]
+  );
+
+  // Helper functions for split view sorted elements
+  const getOriginalSortedElements = useMemo(() => {
+    const originalTextBoxesForPage = originalTextBoxes.filter(
+      (box) => box.page === currentPage
+    );
+    const originalShapesForPage = originalShapes.filter(
+      (shape) => shape.page === currentPage
+    );
+
+    // Create a map of all original elements
+    const elementMap = new Map<
+      string,
+      { type: "textbox" | "shape"; element: TextField | Shape }
+    >();
+    originalTextBoxesForPage.forEach((box) =>
+      elementMap.set(box.id, { type: "textbox", element: box })
+    );
+    originalShapesForPage.forEach((shape) =>
+      elementMap.set(shape.id, { type: "shape", element: shape })
+    );
+
+    // Sort elements based on original layer order
+    const sortedElements: Array<{
+      type: "textbox" | "shape";
+      element: TextField | Shape;
+    }> = [];
+
+    // Add elements in layer order
+    originalLayerOrder.forEach((id) => {
+      const element = elementMap.get(id);
+      if (element) {
+        sortedElements.push(element);
+        elementMap.delete(id);
+      }
+    });
+
+    // Add any remaining elements (newly created ones not in layer order yet)
+    elementMap.forEach((element) => {
+      sortedElements.push(element);
+    });
+
+    return sortedElements;
+  }, [originalTextBoxes, originalShapes, originalLayerOrder, currentPage]);
+
+  const getTranslatedSortedElements = useMemo(() => {
+    const translatedTextBoxesForPage = translatedTextBoxes.filter(
+      (box) => box.page === currentPage
+    );
+    const translatedShapesForPage = translatedShapes.filter(
+      (shape) => shape.page === currentPage
+    );
+
+    // Create a map of all translated elements
+    const elementMap = new Map<
+      string,
+      { type: "textbox" | "shape"; element: TextField | Shape }
+    >();
+    translatedTextBoxesForPage.forEach((box) =>
+      elementMap.set(box.id, { type: "textbox", element: box })
+    );
+    translatedShapesForPage.forEach((shape) =>
+      elementMap.set(shape.id, { type: "shape", element: shape })
+    );
+
+    // Sort elements based on translated layer order
+    const sortedElements: Array<{
+      type: "textbox" | "shape";
+      element: TextField | Shape;
+    }> = [];
+
+    // Add elements in layer order
+    translatedLayerOrder.forEach((id) => {
+      const element = elementMap.get(id);
+      if (element) {
+        sortedElements.push(element);
+        elementMap.delete(id);
+      }
+    });
+
+    // Add any remaining elements (newly created ones not in layer order yet)
+    elementMap.forEach((element) => {
+      sortedElements.push(element);
+    });
+
+    return sortedElements;
+  }, [
+    translatedTextBoxes,
+    translatedShapes,
+    translatedLayerOrder,
+    currentPage,
+  ]);
   const getCurrentPageDeletionRectangles = useMemo(
     () =>
       getCurrentDeletionRectangles().filter(
@@ -3197,6 +3779,60 @@ const PDFEditorContent: React.FC = () => {
           margin: 0 !important;
           padding: 0 !important;
           box-sizing: border-box !important;
+        }
+
+        /* CRITICAL: Force PDF content to stay below interactive elements */
+        .react-pdf__Document {
+          position: relative !important;
+          z-index: 1 !important;
+        }
+
+        .react-pdf__Page {
+          position: relative !important;
+          z-index: 1 !important;
+          pointer-events: none !important;
+        }
+
+        .react-pdf__Page__canvas {
+          z-index: 1 !important;
+          pointer-events: auto !important;
+        }
+
+        .react-pdf__Page__textContent {
+          z-index: 2 !important;
+          pointer-events: none !important;
+        }
+
+        /* Enable pointer events for text content only in specific modes */
+        .add-text-box-mode .react-pdf__Page__textContent {
+          pointer-events: auto !important;
+        }
+
+        .text-selection-mode .react-pdf__Page__textContent {
+          pointer-events: auto !important;
+        }
+
+        /* Ensure document container has proper stacking context */
+        .document-page {
+          position: relative !important;
+          z-index: 1 !important;
+        }
+
+        /* CRITICAL: Interactive elements must be above PDF */
+        .rnd {
+          z-index: 10000 !important;
+          position: absolute !important;
+        }
+
+        /* Ensure selected elements are on top */
+        .rnd.selected {
+          z-index: 20000 !important;
+        }
+
+        /* Ensure textboxes and shapes are visible above PDF */
+        .text-field-overlay {
+          position: absolute !important;
+          z-index: 10000 !important;
         }
 
         /* Text spans positioning */
@@ -3509,42 +4145,51 @@ const PDFEditorContent: React.FC = () => {
         .rnd .react-resizable-handle-se {
           background: none !important;
           border: none !important;
-          width: 12px !important;
-          height: 12px !important;
-          bottom: 0 !important;
-          right: 0 !important;
+          width: 14px !important;
+          height: 14px !important;
+          bottom: -7px !important;
+          right: -7px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          opacity: 1 !important;
+          transition: opacity 0.2s ease !important;
         }
 
         .rnd .react-resizable-handle-se::after {
-          content: "";
-          position: absolute;
-          bottom: 2px;
-          right: 2px;
-          width: 8px;
-          height: 8px;
-          background-image: linear-gradient(
-              45deg,
-              transparent 40%,
-              #666 40%,
-              #666 60%,
-              transparent 60%
-            ),
-            linear-gradient(
-              45deg,
-              transparent 40%,
-              #666 40%,
-              #666 60%,
-              transparent 60%
-            );
-          background-size: 4px 1px, 1px 4px;
-          background-position: 2px 6px, 6px 2px;
-          background-repeat: no-repeat;
-          opacity: 0.6;
-          transition: opacity 0.2s;
+          content: "" !important;
+          position: absolute !important;
+          width: 8px !important;
+          height: 8px !important;
+          background-image: 
+            linear-gradient(45deg, transparent 30%, white 30%, white 40%, transparent 40%),
+            linear-gradient(45deg, transparent 60%, white 60%, white 70%, transparent 70%) !important;
+          background-size: 8px 8px !important;
+          background-repeat: no-repeat !important;
+          opacity: 1 !important;
         }
 
-        .rnd:hover .react-resizable-handle-se::after {
-          opacity: 1;
+        .rnd:hover .react-resizable-handle-se,
+        .rnd.selected .react-resizable-handle-se {
+          opacity: 1 !important;
+        }
+
+        /* Also target the resize-handle class for better compatibility */
+        .rnd .resize-handle {
+          opacity: 1 !important;
+        }
+
+        .rnd .resize-handle::after {
+          content: "" !important;
+          position: absolute !important;
+          width: 8px !important;
+          height: 8px !important;
+          background-image: 
+            linear-gradient(45deg, transparent 30%, white 30%, white 40%, transparent 40%),
+            linear-gradient(45deg, transparent 60%, white 60%, white 70%, transparent 70%) !important;
+          background-size: 8px 8px !important;
+          background-repeat: no-repeat !important;
+          opacity: 1 !important;
         }
 
         .rnd .react-resizable-handle:not(.react-resizable-handle-se) {
@@ -4122,13 +4767,13 @@ const PDFEditorContent: React.FC = () => {
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          {/* TextFormatDrawer - Positioned at top of main content area */}
+          {/* ElementFormatDrawer - Positioned at top of main content area */}
           <div
             className={`relative z-40 transition-all duration-300 ${
               isSidebarCollapsed ? "" : ""
             }`}
           >
-            <TextFormatDrawer />
+            <ElementFormatDrawer />
           </div>
 
           {/* Erasure Tool Controls */}
@@ -4625,7 +5270,43 @@ const PDFEditorContent: React.FC = () => {
                           width: pageWidth * scale,
                           height: pageHeight * scale,
                         }}
-                      />
+                      >
+                        {/* Transform button if page not translated */}
+                        {!isPageTranslated.get(currentPage) && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <button
+                              onClick={handleTransformPageToTextbox}
+                              disabled={isTransforming}
+                              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
+                              title="Transform current page to textboxes using OCR"
+                            >
+                              {isTransforming ? (
+                                <>
+                                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  <span>Transforming...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <svg
+                                    className="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                                    />
+                                  </svg>
+                                  <span>Transform JSON to Textbox</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Page number indicator */}
                       <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
@@ -4737,69 +5418,77 @@ const PDFEditorContent: React.FC = () => {
                             </div>
                           ))}
 
-                        {/* Original Shapes */}
-                        {originalShapes
-                          .filter((shape) => shape.page === currentPage)
-                          .map((shape) => (
-                            <MemoizedShape
-                              key={`orig-shape-${shape.id}`}
-                              shape={shape}
-                              isSelected={selectedShapeId === shape.id}
-                              isEditMode={isEditMode}
-                              scale={scale}
-                              onSelect={handleShapeSelect}
-                              onUpdate={(id, updates) => {
-                                setOriginalShapes((prev) =>
-                                  prev.map((s) =>
-                                    s.id === id ? { ...s, ...updates } : s
-                                  )
-                                );
-                              }}
-                              onDelete={(id) => {
-                                setOriginalShapes((prev) =>
-                                  prev.filter((s) => s.id !== id)
-                                );
-                                if (selectedShapeId === id) {
-                                  setSelectedShapeId(null);
+                        {/* Original Elements in Layer Order */}
+                        {getOriginalSortedElements.map(({ type, element }) => {
+                          if (type === "textbox") {
+                            const textBox = element as TextField;
+                            return (
+                              <MemoizedTextBox
+                                key={`orig-text-${textBox.id}`}
+                                textBox={textBox}
+                                isSelected={selectedFieldId === textBox.id}
+                                isEditMode={isEditMode}
+                                scale={scale}
+                                showPaddingIndicator={showPaddingPopup}
+                                onSelect={handleTextBoxSelect}
+                                onUpdate={(id, updates) => {
+                                  setOriginalTextBoxes((prev) =>
+                                    prev.map((box) =>
+                                      box.id === id
+                                        ? { ...box, ...updates }
+                                        : box
+                                    )
+                                  );
+                                }}
+                                onDelete={(id) => {
+                                  setOriginalTextBoxes((prev) =>
+                                    prev.filter((box) => box.id !== id)
+                                  );
+                                  removeFromLayerOrder(id);
+                                  setSelectedFieldId((current) =>
+                                    current === id ? null : current
+                                  );
+                                }}
+                                isTextSelectionMode={isTextSelectionMode}
+                                isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                  textBox.id
+                                )}
+                                onTextSelectionClick={
+                                  handleTextBoxSelectionMode
                                 }
-                              }}
-                            />
-                          ))}
-
-                        {/* Original Text Boxes */}
-                        {originalTextBoxes
-                          .filter((box) => box.page === currentPage)
-                          .map((textBox) => (
-                            <MemoizedTextBox
-                              key={`orig-text-${textBox.id}`}
-                              textBox={textBox}
-                              isSelected={selectedFieldId === textBox.id}
-                              isEditMode={isEditMode}
-                              scale={scale}
-                              showPaddingIndicator={showPaddingPopup}
-                              onSelect={handleTextBoxSelect}
-                              onUpdate={(id, updates) => {
-                                setOriginalTextBoxes((prev) =>
-                                  prev.map((box) =>
-                                    box.id === id ? { ...box, ...updates } : box
-                                  )
-                                );
-                              }}
-                              onDelete={(id) => {
-                                setOriginalTextBoxes((prev) =>
-                                  prev.filter((box) => box.id !== id)
-                                );
-                                setSelectedFieldId((current) =>
-                                  current === id ? null : current
-                                );
-                              }}
-                              isTextSelectionMode={isTextSelectionMode}
-                              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
-                                textBox.id
-                              )}
-                              onTextSelectionClick={handleTextBoxSelectionMode}
-                            />
-                          ))}
+                              />
+                            );
+                          } else if (type === "shape") {
+                            const shape = element as Shape;
+                            return (
+                              <MemoizedShape
+                                key={`orig-shape-${shape.id}`}
+                                shape={shape}
+                                isSelected={selectedShapeId === shape.id}
+                                isEditMode={isEditMode}
+                                scale={scale}
+                                onSelect={handleShapeSelect}
+                                onUpdate={(id, updates) => {
+                                  setOriginalShapes((prev) =>
+                                    prev.map((s) =>
+                                      s.id === id ? { ...s, ...updates } : s
+                                    )
+                                  );
+                                }}
+                                onDelete={(id) => {
+                                  setOriginalShapes((prev) =>
+                                    prev.filter((s) => s.id !== id)
+                                  );
+                                  removeFromLayerOrder(id);
+                                  if (selectedShapeId === id) {
+                                    setSelectedShapeId(null);
+                                  }
+                                }}
+                              />
+                            );
+                          }
+                          return null;
+                        })}
                       </div>
 
                       {/* Gap between documents */}
@@ -4830,27 +5519,37 @@ const PDFEditorContent: React.FC = () => {
                           </div>
 
                           {/* Transform JSON Button - positioned in the middle */}
-                          {showTransformButton && (
+                          {!isPageTranslated.get(currentPage) && (
                             <div className="absolute inset-0 flex items-center justify-center">
                               <button
-                                onClick={transformJsonToTextboxes}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 flex items-center space-x-2"
-                                title="Transform example_to_textbox.json into textboxes"
+                                onClick={handleTransformPageToTextbox}
+                                disabled={isTransforming}
+                                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
+                                title="Transform current page to textboxes using OCR"
                               >
-                                <svg
-                                  className="w-5 h-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                                  />
-                                </svg>
-                                <span>Transform JSON to Textboxes</span>
+                                {isTransforming ? (
+                                  <>
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    <span>Transforming...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg
+                                      className="w-5 h-5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                                      />
+                                    </svg>
+                                    <span>Transform JSON to Textbox</span>
+                                  </>
+                                )}
                               </button>
                             </div>
                           )}
@@ -4899,69 +5598,79 @@ const PDFEditorContent: React.FC = () => {
                             </div>
                           ))}
 
-                        {/* Translated Shapes */}
-                        {translatedShapes
-                          .filter((shape) => shape.page === currentPage)
-                          .map((shape) => (
-                            <MemoizedShape
-                              key={`trans-shape-${shape.id}`}
-                              shape={shape}
-                              isSelected={selectedShapeId === shape.id}
-                              isEditMode={isEditMode}
-                              scale={scale}
-                              onSelect={handleShapeSelect}
-                              onUpdate={(id, updates) => {
-                                setTranslatedShapes((prev) =>
-                                  prev.map((s) =>
-                                    s.id === id ? { ...s, ...updates } : s
-                                  )
-                                );
-                              }}
-                              onDelete={(id) => {
-                                setTranslatedShapes((prev) =>
-                                  prev.filter((s) => s.id !== id)
-                                );
-                                if (selectedShapeId === id) {
-                                  setSelectedShapeId(null);
-                                }
-                              }}
-                            />
-                          ))}
-
-                        {/* Translated Text Boxes */}
-                        {translatedTextBoxes
-                          .filter((box) => box.page === currentPage)
-                          .map((textBox) => (
-                            <MemoizedTextBox
-                              key={`trans-text-${textBox.id}`}
-                              textBox={textBox}
-                              isSelected={selectedFieldId === textBox.id}
-                              isEditMode={isEditMode}
-                              scale={scale}
-                              showPaddingIndicator={showPaddingPopup}
-                              onSelect={handleTextBoxSelect}
-                              onUpdate={(id, updates) => {
-                                setTranslatedTextBoxes((prev) =>
-                                  prev.map((box) =>
-                                    box.id === id ? { ...box, ...updates } : box
-                                  )
-                                );
-                              }}
-                              onDelete={(id) => {
-                                setTranslatedTextBoxes((prev) =>
-                                  prev.filter((box) => box.id !== id)
-                                );
-                                setSelectedFieldId((current) =>
-                                  current === id ? null : current
-                                );
-                              }}
-                              isTextSelectionMode={isTextSelectionMode}
-                              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
-                                textBox.id
-                              )}
-                              onTextSelectionClick={handleTextBoxSelectionMode}
-                            />
-                          ))}
+                        {/* Translated Elements in Layer Order */}
+                        {getTranslatedSortedElements.map(
+                          ({ type, element }) => {
+                            if (type === "textbox") {
+                              const textBox = element as TextField;
+                              return (
+                                <MemoizedTextBox
+                                  key={`trans-text-${textBox.id}`}
+                                  textBox={textBox}
+                                  isSelected={selectedFieldId === textBox.id}
+                                  isEditMode={isEditMode}
+                                  scale={scale}
+                                  showPaddingIndicator={showPaddingPopup}
+                                  onSelect={handleTextBoxSelect}
+                                  onUpdate={(id, updates) => {
+                                    setTranslatedTextBoxes((prev) =>
+                                      prev.map((box) =>
+                                        box.id === id
+                                          ? { ...box, ...updates }
+                                          : box
+                                      )
+                                    );
+                                  }}
+                                  onDelete={(id) => {
+                                    setTranslatedTextBoxes((prev) =>
+                                      prev.filter((box) => box.id !== id)
+                                    );
+                                    removeFromLayerOrder(id);
+                                    setSelectedFieldId((current) =>
+                                      current === id ? null : current
+                                    );
+                                  }}
+                                  isTextSelectionMode={isTextSelectionMode}
+                                  isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                    textBox.id
+                                  )}
+                                  onTextSelectionClick={
+                                    handleTextBoxSelectionMode
+                                  }
+                                />
+                              );
+                            } else if (type === "shape") {
+                              const shape = element as Shape;
+                              return (
+                                <MemoizedShape
+                                  key={`trans-shape-${shape.id}`}
+                                  shape={shape}
+                                  isSelected={selectedShapeId === shape.id}
+                                  isEditMode={isEditMode}
+                                  scale={scale}
+                                  onSelect={handleShapeSelect}
+                                  onUpdate={(id, updates) => {
+                                    setTranslatedShapes((prev) =>
+                                      prev.map((s) =>
+                                        s.id === id ? { ...s, ...updates } : s
+                                      )
+                                    );
+                                  }}
+                                  onDelete={(id) => {
+                                    setTranslatedShapes((prev) =>
+                                      prev.filter((s) => s.id !== id)
+                                    );
+                                    removeFromLayerOrder(id);
+                                    if (selectedShapeId === id) {
+                                      setSelectedShapeId(null);
+                                    }
+                                  }}
+                                />
+                              );
+                            }
+                            return null;
+                          }
+                        )}
                       </div>
                     </div>
                   )}
@@ -4969,7 +5678,7 @@ const PDFEditorContent: React.FC = () => {
                   {/* Show interactive elements in both original and translated views */}
                   {(currentView === "original" ||
                     currentView === "translated") && (
-                    <>
+                    <div className="absolute inset-0" style={{ zIndex: 10000 }}>
                       {/* Deletion Rectangles */}
                       {getCurrentPageDeletionRectangles.map((rect) => (
                         <div
@@ -5008,39 +5717,45 @@ const PDFEditorContent: React.FC = () => {
                         </div>
                       ))}
 
-                      {/* Shapes */}
-                      {getCurrentPageShapes.map((shape) => (
-                        <MemoizedShape
-                          key={shape.id}
-                          shape={shape}
-                          isSelected={selectedShapeId === shape.id}
-                          isEditMode={isEditMode}
-                          scale={scale}
-                          onSelect={handleShapeSelect}
-                          onUpdate={updateShapeCallback}
-                          onDelete={deleteShapeCallback}
-                        />
-                      ))}
-
-                      {/* Text Boxes */}
-                      {getCurrentPageTextBoxes.map((textBox) => (
-                        <MemoizedTextBox
-                          key={textBox.id}
-                          textBox={textBox}
-                          isSelected={selectedFieldId === textBox.id}
-                          isEditMode={isEditMode}
-                          scale={scale}
-                          showPaddingIndicator={showPaddingPopup}
-                          onSelect={handleTextBoxSelect}
-                          onUpdate={updateTextBox}
-                          onDelete={deleteTextBox}
-                          isTextSelectionMode={isTextSelectionMode}
-                          isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
-                            textBox.id
-                          )}
-                          onTextSelectionClick={handleTextBoxSelectionMode}
-                        />
-                      ))}
+                      {/* Render elements in layer order */}
+                      {getCurrentPageSortedElements.map(({ type, element }) => {
+                        if (type === "textbox") {
+                          const textBox = element as TextField;
+                          return (
+                            <MemoizedTextBox
+                              key={textBox.id}
+                              textBox={textBox}
+                              isSelected={selectedFieldId === textBox.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              showPaddingIndicator={showPaddingPopup}
+                              onSelect={handleTextBoxSelect}
+                              onUpdate={updateTextBox}
+                              onDelete={deleteTextBox}
+                              isTextSelectionMode={isTextSelectionMode}
+                              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                                textBox.id
+                              )}
+                              onTextSelectionClick={handleTextBoxSelectionMode}
+                            />
+                          );
+                        } else if (type === "shape") {
+                          const shape = element as Shape;
+                          return (
+                            <MemoizedShape
+                              key={shape.id}
+                              shape={shape}
+                              isSelected={selectedShapeId === shape.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              onSelect={handleShapeSelect}
+                              onUpdate={updateShapeCallback}
+                              onDelete={deleteShapeCallback}
+                            />
+                          );
+                        }
+                        return null;
+                      })}
 
                       {/* Multi-Selection Overlay - Show in Text Selection mode */}
                       {isTextSelectionMode && selectedTextBoxes.bounds && (
@@ -5189,7 +5904,7 @@ const PDFEditorContent: React.FC = () => {
                             }}
                           />
                         )}
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
