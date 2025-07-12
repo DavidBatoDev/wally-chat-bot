@@ -7,25 +7,9 @@ import React, {
   useRef,
   ReactNode,
 } from "react";
-import { TextField } from "../types";
+import { TextField, Shape, Image } from "../types";
 
-// Add Shape type
-interface Shape {
-  id: string;
-  type: "circle" | "rectangle";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  page: number;
-  borderColor: string;
-  borderWidth: number;
-  fillColor: string;
-  fillOpacity: number;
-  rotation?: number;
-}
-
-type ElementType = "textbox" | "shape";
+type ElementType = "textbox" | "shape" | "image";
 
 interface TextFormatContextType {
   // Drawer state
@@ -39,13 +23,19 @@ interface TextFormatContextType {
   setSelectedElementType: (type: ElementType | null) => void;
 
   // Current format
-  currentFormat: TextField | Shape | null;
-  setCurrentFormat: (format: TextField | Shape | null) => void;
+  currentFormat: TextField | Shape | Image | null;
+  setCurrentFormat: (format: TextField | Shape | Image | null) => void;
 
   // Format change handler
-  onFormatChange: (format: Partial<TextField | Shape>) => void;
+  onFormatChange: (
+    format: Partial<TextField | Shape | Image> & { resetAspectRatio?: boolean }
+  ) => void;
   setOnFormatChange: (
-    handler: (format: Partial<TextField | Shape>) => void
+    handler: (
+      format: Partial<TextField | Shape | Image> & {
+        resetAspectRatio?: boolean;
+      }
+    ) => void
   ) => void;
 
   // Padding popup state for visual indicator
@@ -98,25 +88,27 @@ export const TextFormatProvider: React.FC<TextFormatProviderProps> = ({
   );
   const [selectedElementType, setSelectedElementType] =
     useState<ElementType | null>(null);
-  const [currentFormat, setCurrentFormat] = useState<TextField | Shape | null>(
-    null
-  );
+  const [currentFormat, setCurrentFormat] = useState<
+    TextField | Shape | Image | null
+  >(null);
   const [showPaddingPopup, setShowPaddingPopup] = useState(false);
 
   // Use ref to store the format change handler to avoid useState issues
   const onFormatChangeRef = useRef<
-    (format: Partial<TextField | Shape>) => void
-  >((format: Partial<TextField | Shape>) => {
+    (format: Partial<TextField | Shape | Image>) => void
+  >((format: Partial<TextField | Shape | Image>) => {
     console.log("Default onFormatChange called with:", format);
   });
 
   const setOnFormatChange = (
-    handler: (format: Partial<TextField | Shape>) => void
+    handler: (format: Partial<TextField | Shape | Image>) => void
   ) => {
     onFormatChangeRef.current = handler;
   };
 
-  const onFormatChange = (format: Partial<TextField | Shape>) => {
+  const onFormatChange = (
+    format: Partial<TextField | Shape | Image> & { resetAspectRatio?: boolean }
+  ) => {
     if (typeof onFormatChangeRef.current === "function") {
       onFormatChangeRef.current(format);
     } else {

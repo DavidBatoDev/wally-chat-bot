@@ -26,7 +26,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { useTextFormat } from "./ElementFormatContext";
-import { TextField, Shape } from "../types";
+import { TextField, Shape, Image } from "../types";
 
 const fontFamilies = [
   "Arial",
@@ -176,12 +176,18 @@ export const ElementFormatDrawer: React.FC = () => {
   ]);
 
   // Add type guard functions
-  const isTextField = (format: TextField | Shape): format is TextField => {
+  const isTextField = (
+    format: TextField | Shape | Image
+  ): format is TextField => {
     return "fontFamily" in format;
   };
 
-  const isShape = (format: TextField | Shape): format is Shape => {
-    return "type" in format;
+  const isShape = (format: TextField | Shape | Image): format is Shape => {
+    return "type" in format && format.type !== undefined;
+  };
+
+  const isImage = (format: TextField | Shape | Image): format is Image => {
+    return "src" in format;
   };
 
   // Don't render if drawer is not open or no element is selected
@@ -226,6 +232,15 @@ export const ElementFormatDrawer: React.FC = () => {
           rotation: currentFormat.rotation || 0,
           borderRadius: currentFormat.borderRadius || 0, // Add border radius support
         }
+      : selectedElementType === "image" && isImage(currentFormat)
+      ? {
+          // Image properties
+          opacity: currentFormat.opacity || 1,
+          borderColor: currentFormat.borderColor || "#000000",
+          borderWidth: currentFormat.borderWidth || 0,
+          borderRadius: currentFormat.borderRadius || 0,
+          rotation: currentFormat.rotation || 0,
+        }
       : null;
 
   // Don't render if we couldn't determine the format type
@@ -235,7 +250,7 @@ export const ElementFormatDrawer: React.FC = () => {
 
   return (
     <div className="absolute w-full flex justify-center bg-transparent">
-      <div className="mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 z-50 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
+      <div className="element-format-drawer mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 z-50 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
         {selectedElementType === "textbox" ? (
           <>
             {/* Text Content Input */}
@@ -446,7 +461,7 @@ export const ElementFormatDrawer: React.FC = () => {
               </div>
             </div>
           </>
-        ) : (
+        ) : selectedElementType === "shape" ? (
           <>
             {/* Shape Type */}
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -576,7 +591,139 @@ export const ElementFormatDrawer: React.FC = () => {
               </div>
             </div>
           </>
-        )}
+        ) : selectedElementType === "image" ? (
+          <>
+            {/* Image Opacity */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <div className="text-xs text-gray-600">Opacity</div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={safeFormat.opacity}
+                  onChange={(e) =>
+                    onFormatChange({ opacity: parseFloat(e.target.value) })
+                  }
+                  className="w-16 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={safeFormat.opacity}
+                  onChange={(e) =>
+                    onFormatChange({ opacity: parseFloat(e.target.value) })
+                  }
+                  className="w-12 px-1 py-1 text-xs border border-gray-300 rounded text-center"
+                />
+              </div>
+            </div>
+
+            {/* Border Color */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <Square size={14} />
+                <input
+                  type="color"
+                  value={safeFormat.borderColor}
+                  onChange={(e) =>
+                    onFormatChange({ borderColor: e.target.value })
+                  }
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
+                  title="Border Color"
+                />
+              </div>
+            </div>
+
+            {/* Border Width */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <select
+                className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
+                value={safeFormat.borderWidth}
+                onChange={(e) =>
+                  onFormatChange({ borderWidth: Number(e.target.value) })
+                }
+              >
+                {borderWidths.map((width) => (
+                  <option key={width} value={width}>
+                    {width}px
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Border Radius */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <div className="text-xs text-gray-600">Radius</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  value={safeFormat.borderRadius || 0}
+                  onChange={(e) =>
+                    onFormatChange({ borderRadius: Number(e.target.value) })
+                  }
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center"
+                />
+                <span className="text-xs text-gray-500">px</span>
+              </div>
+            </div>
+
+            {/* Rotation Control */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
+                <div className="text-xs text-gray-600">Rotate</div>
+                <input
+                  type="number"
+                  min="0"
+                  max="360"
+                  value={safeFormat.rotation || 0}
+                  onChange={(e) =>
+                    onFormatChange({ rotation: Number(e.target.value) })
+                  }
+                  className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-center"
+                />
+                <span className="text-xs text-gray-500">°</span>
+              </div>
+            </div>
+
+            {/* Aspect Ratio Button */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200 flex items-center gap-1"
+                onClick={() => onFormatChange({ resetAspectRatio: true })}
+                title="Reset to Original Aspect Ratio"
+              >
+                <div className="w-4 h-4 border border-gray-600 rounded-sm flex items-center justify-center">
+                  <div className="w-2 h-2 bg-gray-600 rounded-sm"></div>
+                </div>
+                <span className="text-xs">Reset Ratio</span>
+              </button>
+            </div>
+
+            {/* Z-Index Controls for Images */}
+            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={zIndexButtonRef}
+                  className={`p-2 rounded-lg transition-all duration-200 ${
+                    showZIndexPopup
+                      ? "bg-blue-500 text-white shadow-md"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
+                  onClick={() => setShowZIndexPopup(!showZIndexPopup)}
+                  title="Layer Order"
+                >
+                  <Layers size={16} />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
 
       {/* Line Spacing Popup - Outside drawer */}

@@ -45,6 +45,7 @@ import {
   Eye,
   SplitSquareHorizontal,
   Eraser,
+  Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -53,6 +54,7 @@ import {
 } from "@/components/editor/ElementFormatContext";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { TextField } from "@/components/types";
+import type { Image } from "@/components/types";
 
 // Import react-pdf CSS for text layer support
 import "react-pdf/dist/Page/TextLayer.css";
@@ -593,6 +595,130 @@ const MemoizedShape = memo(
 
 MemoizedShape.displayName = "MemoizedShape";
 
+// Memoized Image component to prevent unnecessary re-renders
+const MemoizedImage = memo(
+  ({
+    image,
+    isSelected,
+    isEditMode,
+    scale,
+    onSelect,
+    onUpdate,
+    onDelete,
+  }: {
+    image: Image;
+    isSelected: boolean;
+    isEditMode: boolean;
+    scale: number;
+    onSelect: (id: string) => void;
+    onUpdate: (id: string, updates: Partial<Image>) => void;
+    onDelete: (id: string) => void;
+  }) => {
+    const handleClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onSelect(image.id);
+      },
+      [image.id, onSelect]
+    );
+
+    return (
+      <Rnd
+        key={image.id}
+        position={{ x: image.x * scale, y: image.y * scale }}
+        size={{ width: image.width * scale, height: image.height * scale }}
+        bounds="parent"
+        dragHandleClassName="drag-handle"
+        disableDragging={!isEditMode}
+        enableResizing={
+          isEditMode && isSelected
+            ? {
+                top: true,
+                right: true,
+                bottom: true,
+                left: true,
+                topRight: true,
+                bottomRight: true,
+                bottomLeft: true,
+                topLeft: true,
+              }
+            : false
+        }
+        onDragStop={(e, d) => {
+          onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
+        }}
+        onResizeStop={(e, direction, ref, delta, position) => {
+          onUpdate(image.id, {
+            x: position.x / scale,
+            y: position.y / scale,
+            width: parseInt(ref.style.width) / scale,
+            height: parseInt(ref.style.height) / scale,
+          });
+        }}
+        className={`image-element ${
+          isSelected ? "ring-2 ring-blue-500 selected" : ""
+        } ${isEditMode ? "edit-mode" : ""}`}
+        style={{ transform: "none" }}
+        onClick={handleClick}
+      >
+        <div className="w-full h-full relative group">
+          {/* Delete button - only show when selected and in edit mode */}
+          {isEditMode && isSelected && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(image.id);
+              }}
+              className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+              title="Delete image"
+            >
+              <Trash2 size={10} />
+            </button>
+          )}
+
+          {/* Move handle - only show when selected and in edit mode */}
+          {isEditMode && isSelected && (
+            <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+              <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                <Move size={10} />
+              </div>
+            </div>
+          )}
+
+          {/* Image content */}
+          <div
+            className="w-full h-full absolute"
+            style={{
+              transform: image.rotation
+                ? `rotate(${image.rotation}deg)`
+                : "none",
+              transformOrigin: "center center",
+            }}
+          >
+            <img
+              src={image.src}
+              alt="Document image"
+              className="w-full h-full object-cover"
+              style={{
+                opacity: image.opacity || 1,
+                border: image.borderWidth
+                  ? `${image.borderWidth * scale}px solid ${
+                      image.borderColor || "#000000"
+                    }`
+                  : "none",
+                borderRadius: `${(image.borderRadius || 0) * scale}px`,
+              }}
+              draggable={false}
+            />
+          </div>
+        </div>
+      </Rnd>
+    );
+  }
+);
+
+MemoizedImage.displayName = "MemoizedImage";
+
 const PDFEditorContent: React.FC = () => {
   const {
     isDrawerOpen,
@@ -754,6 +880,10 @@ const PDFEditorContent: React.FC = () => {
   const [translatedDeletionRectangles, setTranslatedDeletionRectangles] =
     useState<DeletionRectangle[]>([]);
 
+  // Image state arrays for original and translated documents
+  const [originalImages, setOriginalImages] = useState<Image[]>([]);
+  const [translatedImages, setTranslatedImages] = useState<Image[]>([]);
+
   // Layer order arrays - determines rendering order (first = bottom, last = top)
   const [originalLayerOrder, setOriginalLayerOrder] = useState<string[]>([]);
   const [translatedLayerOrder, setTranslatedLayerOrder] = useState<string[]>(
@@ -771,6 +901,10 @@ const PDFEditorContent: React.FC = () => {
   >(new Map());
   const [isTransforming, setIsTransforming] = useState<boolean>(false);
 
+  // Image upload state
+  const [isImageUploadMode, setIsImageUploadMode] = useState<boolean>(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
   // Helper functions to get current state arrays based on view
   const getCurrentTextBoxes = () => {
     return currentView === "original" ? originalTextBoxes : translatedTextBoxes;
@@ -784,6 +918,10 @@ const PDFEditorContent: React.FC = () => {
     return currentView === "original"
       ? originalDeletionRectangles
       : translatedDeletionRectangles;
+  };
+
+  const getCurrentImages = () => {
+    return currentView === "original" ? originalImages : translatedImages;
   };
 
   const setCurrentTextBoxes = (updater: React.SetStateAction<TextField[]>) => {
@@ -809,6 +947,14 @@ const PDFEditorContent: React.FC = () => {
       setOriginalDeletionRectangles(updater);
     } else {
       setTranslatedDeletionRectangles(updater);
+    }
+  };
+
+  const setCurrentImages = (updater: React.SetStateAction<Image[]>) => {
+    if (currentView === "original") {
+      setOriginalImages(updater);
+    } else {
+      setTranslatedImages(updater);
     }
   };
 
@@ -905,11 +1051,17 @@ const PDFEditorContent: React.FC = () => {
     const shapes = getCurrentShapes().filter(
       (shape) => shape.page === currentPage
     );
+    const images = getCurrentImages().filter(
+      (image) => image.page === currentPage
+    );
 
     // Create a map of all elements
     const elementMap = new Map<
       string,
-      { type: "textbox" | "shape"; element: TextField | Shape }
+      {
+        type: "textbox" | "shape" | "image";
+        element: TextField | Shape | Image;
+      }
     >();
     textBoxes.forEach((box) =>
       elementMap.set(box.id, { type: "textbox", element: box })
@@ -917,11 +1069,14 @@ const PDFEditorContent: React.FC = () => {
     shapes.forEach((shape) =>
       elementMap.set(shape.id, { type: "shape", element: shape })
     );
+    images.forEach((image) =>
+      elementMap.set(image.id, { type: "image", element: image })
+    );
 
     // Sort elements based on layer order
     const sortedElements: Array<{
-      type: "textbox" | "shape";
-      element: TextField | Shape;
+      type: "textbox" | "shape" | "image";
+      element: TextField | Shape | Image;
     }> = [];
 
     // Add elements in layer order
@@ -1859,32 +2014,167 @@ const PDFEditorContent: React.FC = () => {
   };
 
   // File upload handler
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setDocumentUrl(url);
-      setFileType(getFileType(file.name));
+  // Function to create a blank PDF and add an image as an interactive element
+  const createBlankPdfAndAddImage = async (imageFile: File) => {
+    try {
       setIsLoading(true);
+
+      // Import pdf-lib dynamically to avoid SSR issues
+      const { PDFDocument, rgb } = await import("pdf-lib");
+
+      // Create a new PDF document
+      const pdfDoc = await PDFDocument.create();
+
+      // Add a blank page (A4 size: 595.28 x 841.89 points)
+      const page = pdfDoc.addPage([595.28, 841.89]);
+
+      // Convert the PDF to bytes
+      const pdfBytes = await pdfDoc.save();
+
+      // Create a blob URL for the blank PDF
+      const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+
+      // Set the blank PDF as the document
+      setDocumentUrl(pdfUrl);
+      setFileType("pdf");
       setCurrentPage(1);
 
       // Reset editor state
       setOriginalTextBoxes([]);
       setOriginalShapes([]);
       setOriginalDeletionRectangles([]);
+      setOriginalImages([]);
       setTranslatedTextBoxes([]);
       setTranslatedShapes([]);
       setTranslatedDeletionRectangles([]);
+      setTranslatedImages([]);
       setSelectedFieldId(null);
       setSelectedShapeId(null);
+      setSelectedElementId(null);
+      setSelectedElementType(null);
+      setCurrentFormat(null);
       setDeletedPages(new Set());
-      setPdfBackgroundColor("white"); // Reset background color for new document
-      setDetectedPageBackgrounds(new Map()); // Reset detected backgrounds for new document
+      setPdfBackgroundColor("white");
+      setDetectedPageBackgrounds(new Map());
 
-      // Switch to pages tab when document is uploaded
+      // Switch to pages tab
       setActiveSidebarTab("pages");
 
-      setTimeout(() => setIsLoading(false), 500);
+      // Create image URL and add as interactive element
+      const imageUrl = URL.createObjectURL(imageFile);
+
+      // Create a new image element
+      const newImage: Image = {
+        id: generateUUID(),
+        x: 50, // Center the image on the page
+        y: 50,
+        width: 300, // Default size
+        height: 200,
+        page: 1,
+        src: imageUrl,
+        rotation: 0,
+        opacity: 1,
+        borderColor: "#000000",
+        borderWidth: 0,
+        borderRadius: 0,
+      };
+
+      // Add the image to the original images array
+      setOriginalImages((prev) => [...prev, newImage]);
+      addToLayerOrder(newImage.id);
+      setSelectedElementId(newImage.id);
+      setSelectedElementType("image");
+      setCurrentFormat(newImage);
+
+      setIsLoading(false);
+      toast.success("Image uploaded as interactive element on blank PDF");
+    } catch (error) {
+      console.error("Error creating blank PDF:", error);
+      setIsLoading(false);
+      toast.error("Failed to create blank PDF");
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const fileType = getFileType(file.name);
+
+      if (fileType === "image") {
+        // For images, create a blank PDF and add the image as an interactive element
+        createBlankPdfAndAddImage(file);
+      } else {
+        // For PDFs, load normally
+        const url = URL.createObjectURL(file);
+        setDocumentUrl(url);
+        setFileType(fileType);
+        setIsLoading(true);
+        setCurrentPage(1);
+
+        // Reset editor state
+        setOriginalTextBoxes([]);
+        setOriginalShapes([]);
+        setOriginalDeletionRectangles([]);
+        setOriginalImages([]);
+        setTranslatedTextBoxes([]);
+        setTranslatedShapes([]);
+        setTranslatedDeletionRectangles([]);
+        setTranslatedImages([]);
+        setSelectedFieldId(null);
+        setSelectedShapeId(null);
+        setSelectedElementId(null);
+        setSelectedElementType(null);
+        setCurrentFormat(null);
+        setDeletedPages(new Set());
+        setPdfBackgroundColor("white"); // Reset background color for new document
+        setDetectedPageBackgrounds(new Map()); // Reset detected backgrounds for new document
+
+        // Switch to pages tab when document is uploaded
+        setActiveSidebarTab("pages");
+
+        setTimeout(() => setIsLoading(false), 500);
+      }
+    }
+  };
+
+  // Image upload handler for adding images to the document
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+
+      // Create a new image element
+      const newImage: Image = {
+        id: generateUUID(),
+        x: 100, // Default position
+        y: 100,
+        width: 200, // Default size
+        height: 150,
+        page: currentPage,
+        src: url,
+        rotation: 0,
+        opacity: 1,
+        borderColor: "#000000",
+        borderWidth: 0,
+        borderRadius: 0,
+      };
+
+      setCurrentImages((prev) => [...prev, newImage]);
+      addToLayerOrder(newImage.id);
+      setSelectedElementId(newImage.id);
+      setSelectedElementType("image");
+      setCurrentFormat(newImage);
+
+      // Reset file input
+      if (imageInputRef.current) {
+        imageInputRef.current.value = "";
+      }
+
+      // Reset image upload mode
+      setIsImageUploadMode(false);
+
+      toast.success("Image added to document");
     }
   };
 
@@ -1910,6 +2200,9 @@ const PDFEditorContent: React.FC = () => {
     setOriginalDeletionRectangles((prev) =>
       prev.filter((rect) => rect.page !== pageNumber)
     );
+    setOriginalImages((prev) =>
+      prev.filter((image) => image.page !== pageNumber)
+    );
     setTranslatedTextBoxes((prev) =>
       prev.filter((box) => box.page !== pageNumber)
     );
@@ -1918,6 +2211,9 @@ const PDFEditorContent: React.FC = () => {
     );
     setTranslatedDeletionRectangles((prev) =>
       prev.filter((rect) => rect.page !== pageNumber)
+    );
+    setTranslatedImages((prev) =>
+      prev.filter((image) => image.page !== pageNumber)
     );
 
     // If current page is being deleted, switch to the first available page
@@ -2279,9 +2575,79 @@ const PDFEditorContent: React.FC = () => {
 
         console.log("Updating shape with:", updates);
         updateShapeCallback(selectedShapeId, updates);
+      } else if (selectedElementType === "image" && selectedElementId) {
+        // Handle image format changes
+        const updates: Partial<Image> = {};
+
+        // Check for special resetAspectRatio command
+        if ("resetAspectRatio" in format && format.resetAspectRatio) {
+          // Find the current image
+          const currentImage = getCurrentImages().find(
+            (img) => img.id === selectedElementId
+          );
+          if (currentImage) {
+            // Create a temporary image element to get natural dimensions
+            const img = new Image();
+            img.onload = () => {
+              const originalAspectRatio = img.naturalWidth / img.naturalHeight;
+              const newHeight = currentImage.width / originalAspectRatio;
+
+              const aspectRatioUpdates: Partial<Image> = {
+                height: newHeight,
+              };
+
+              // Update the image with new height to maintain aspect ratio
+              setCurrentImages((prev) =>
+                prev.map((img) =>
+                  img.id === selectedElementId
+                    ? { ...img, ...aspectRatioUpdates }
+                    : img
+                )
+              );
+
+              // Update the current format to keep drawer in sync
+              if (currentFormat && "src" in currentFormat) {
+                setCurrentFormat({
+                  ...currentFormat,
+                  ...aspectRatioUpdates,
+                } as Image);
+              }
+            };
+            img.src = currentImage.src;
+            return; // Exit early since we're handling this specially
+          }
+        }
+
+        // Map image-specific format changes
+        if ("opacity" in format) updates.opacity = format.opacity;
+        if ("borderColor" in format) updates.borderColor = format.borderColor;
+        if ("borderWidth" in format) updates.borderWidth = format.borderWidth;
+        if ("borderRadius" in format)
+          updates.borderRadius = format.borderRadius;
+        if ("rotation" in format) updates.rotation = format.rotation;
+
+        console.log("Updating image with:", updates);
+
+        // Update the image in the current images array
+        setCurrentImages((prev) =>
+          prev.map((img) =>
+            img.id === selectedElementId ? { ...img, ...updates } : img
+          )
+        );
+
+        // Update the current format to keep drawer in sync
+        if (currentFormat && "src" in currentFormat) {
+          setCurrentFormat({ ...currentFormat, ...updates } as Image);
+        }
       }
     },
-    [selectedFieldId, selectedShapeId, selectedElementType, updateShapeCallback]
+    [
+      selectedFieldId,
+      selectedShapeId,
+      selectedElementType,
+      selectedElementId,
+      updateShapeCallback,
+    ]
   );
 
   // Effect to handle text box selection and ElementFormatDrawer updates
@@ -2760,7 +3126,8 @@ const PDFEditorContent: React.FC = () => {
       target.tagName === "INPUT" ||
       target.tagName === "TEXTAREA" ||
       target.closest(".rnd") ||
-      target.closest(".text-format-drawer")
+      target.closest(".text-format-drawer") ||
+      target.closest(".element-format-drawer")
     ) {
       return;
     }
@@ -2801,7 +3168,9 @@ const PDFEditorContent: React.FC = () => {
       if (!target.closest(".rnd")) {
         setSelectedFieldId(null);
         setSelectedShapeId(null);
+        setSelectedElementId(null);
         setSelectedElementType(null);
+        setCurrentFormat(null);
         setIsDrawerOpen(false);
         handleClearTextSelection();
       }
@@ -2989,9 +3358,11 @@ const PDFEditorContent: React.FC = () => {
       originalTextBoxes,
       originalShapes,
       originalDeletionRectangles,
+      originalImages,
       translatedTextBoxes,
       translatedShapes,
       translatedDeletionRectangles,
+      translatedImages,
       documentInfo: {
         url: documentUrl,
         currentPage,
@@ -3023,9 +3394,11 @@ const PDFEditorContent: React.FC = () => {
         originalTextBoxes,
         originalShapes,
         originalDeletionRectangles,
+        originalImages,
         translatedTextBoxes,
         translatedShapes,
         translatedDeletionRectangles,
+        translatedImages,
         originalLayerOrder,
         translatedLayerOrder,
         documentUrl,
@@ -3045,11 +3418,13 @@ const PDFEditorContent: React.FC = () => {
         setOriginalDeletionRectangles(
           data.originalDeletionRectangles || data.deletionRectangles || []
         );
+        setOriginalImages(data.originalImages || []);
         setTranslatedTextBoxes(data.translatedTextBoxes || []);
         setTranslatedShapes(data.translatedShapes || []);
         setTranslatedDeletionRectangles(
           data.translatedDeletionRectangles || []
         );
+        setTranslatedImages(data.translatedImages || []);
         setOriginalLayerOrder(data.originalLayerOrder || []);
         setTranslatedLayerOrder(data.translatedLayerOrder || []);
         if (data.documentUrl) {
@@ -3607,6 +3982,10 @@ const PDFEditorContent: React.FC = () => {
     () => getCurrentShapes().filter((shape) => shape.page === currentPage),
     [currentView, originalShapes, translatedShapes, currentPage]
   );
+  const getCurrentPageImages = useMemo(
+    () => getCurrentImages().filter((image) => image.page === currentPage),
+    [currentView, originalImages, translatedImages, currentPage]
+  );
 
   // Get sorted elements for current page - memoized for performance
   const getCurrentPageSortedElements = useMemo(
@@ -3615,8 +3994,10 @@ const PDFEditorContent: React.FC = () => {
       currentView,
       originalTextBoxes,
       originalShapes,
+      originalImages,
       translatedTextBoxes,
       translatedShapes,
+      translatedImages,
       originalLayerOrder,
       translatedLayerOrder,
       currentPage,
@@ -3631,11 +4012,17 @@ const PDFEditorContent: React.FC = () => {
     const originalShapesForPage = originalShapes.filter(
       (shape) => shape.page === currentPage
     );
+    const originalImagesForPage = originalImages.filter(
+      (image) => image.page === currentPage
+    );
 
     // Create a map of all original elements
     const elementMap = new Map<
       string,
-      { type: "textbox" | "shape"; element: TextField | Shape }
+      {
+        type: "textbox" | "shape" | "image";
+        element: TextField | Shape | Image;
+      }
     >();
     originalTextBoxesForPage.forEach((box) =>
       elementMap.set(box.id, { type: "textbox", element: box })
@@ -3643,11 +4030,14 @@ const PDFEditorContent: React.FC = () => {
     originalShapesForPage.forEach((shape) =>
       elementMap.set(shape.id, { type: "shape", element: shape })
     );
+    originalImagesForPage.forEach((image) =>
+      elementMap.set(image.id, { type: "image", element: image })
+    );
 
     // Sort elements based on original layer order
     const sortedElements: Array<{
-      type: "textbox" | "shape";
-      element: TextField | Shape;
+      type: "textbox" | "shape" | "image";
+      element: TextField | Shape | Image;
     }> = [];
 
     // Add elements in layer order
@@ -3665,7 +4055,13 @@ const PDFEditorContent: React.FC = () => {
     });
 
     return sortedElements;
-  }, [originalTextBoxes, originalShapes, originalLayerOrder, currentPage]);
+  }, [
+    originalTextBoxes,
+    originalShapes,
+    originalImages,
+    originalLayerOrder,
+    currentPage,
+  ]);
 
   const getTranslatedSortedElements = useMemo(() => {
     const translatedTextBoxesForPage = translatedTextBoxes.filter(
@@ -3674,11 +4070,17 @@ const PDFEditorContent: React.FC = () => {
     const translatedShapesForPage = translatedShapes.filter(
       (shape) => shape.page === currentPage
     );
+    const translatedImagesForPage = translatedImages.filter(
+      (image) => image.page === currentPage
+    );
 
     // Create a map of all translated elements
     const elementMap = new Map<
       string,
-      { type: "textbox" | "shape"; element: TextField | Shape }
+      {
+        type: "textbox" | "shape" | "image";
+        element: TextField | Shape | Image;
+      }
     >();
     translatedTextBoxesForPage.forEach((box) =>
       elementMap.set(box.id, { type: "textbox", element: box })
@@ -3686,11 +4088,14 @@ const PDFEditorContent: React.FC = () => {
     translatedShapesForPage.forEach((shape) =>
       elementMap.set(shape.id, { type: "shape", element: shape })
     );
+    translatedImagesForPage.forEach((image) =>
+      elementMap.set(image.id, { type: "image", element: image })
+    );
 
     // Sort elements based on translated layer order
     const sortedElements: Array<{
-      type: "textbox" | "shape";
-      element: TextField | Shape;
+      type: "textbox" | "shape" | "image";
+      element: TextField | Shape | Image;
     }> = [];
 
     // Add elements in layer order
@@ -3711,6 +4116,7 @@ const PDFEditorContent: React.FC = () => {
   }, [
     translatedTextBoxes,
     translatedShapes,
+    translatedImages,
     translatedLayerOrder,
     currentPage,
   ]);
@@ -4363,6 +4769,57 @@ const PDFEditorContent: React.FC = () => {
         .text-format-drawer {
           pointer-events: auto !important;
         }
+
+        /* Image element specific styles */
+        .image-element {
+          pointer-events: auto !important;
+        }
+
+        /* Image resize handle styles */
+        .image-element .react-resizable-handle {
+          background-color: #3b82f6 !important;
+          border: 2px solid #ffffff;
+          border-radius: 50%;
+          width: 12px !important;
+          height: 12px !important;
+          opacity: 0;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+          z-index: 100;
+        }
+
+        .image-element:hover .react-resizable-handle,
+        .image-element.selected .react-resizable-handle {
+          opacity: 1;
+        }
+
+        .image-element .react-resizable-handle:hover {
+          transform: scale(1.3);
+          background-color: #1d4ed8 !important;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Corner handles for images */
+        .image-element .react-resizable-handle-se,
+        .image-element .react-resizable-handle-sw,
+        .image-element .react-resizable-handle-ne,
+        .image-element .react-resizable-handle-nw {
+          width: 14px !important;
+          height: 14px !important;
+        }
+
+        /* Edge handles for images */
+        .image-element .react-resizable-handle-n,
+        .image-element .react-resizable-handle-s,
+        .image-element .react-resizable-handle-e,
+        .image-element .react-resizable-handle-w {
+          width: 12px !important;
+          height: 12px !important;
+        }
+
+        /* Hide image resize handles when not in edit mode */
+        .image-element:not(.edit-mode) .react-resizable-handle {
+          display: none !important;
+        }
       `}</style>
 
       {/* Header */}
@@ -4403,6 +4860,13 @@ const PDFEditorContent: React.FC = () => {
               ref={fileInputRef}
               onChange={handleFileUpload}
               accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+              className="hidden"
+            />
+            <input
+              type="file"
+              ref={imageInputRef}
+              onChange={handleImageUpload}
+              accept=".jpg,.jpeg,.png,.gif,.bmp,.webp,.svg"
               className="hidden"
             />
             <Button
@@ -4509,10 +4973,15 @@ const PDFEditorContent: React.FC = () => {
                               ...originalDeletionRectangles,
                               ...translatedDeletionRectangles,
                             ].filter((rect) => rect.page === pageNum);
+                            const pageImages = [
+                              ...originalImages,
+                              ...translatedImages,
+                            ].filter((image) => image.page === pageNum);
                             const totalElements =
                               pageTextBoxes.length +
                               pageShapes.length +
-                              pageDeletions.length;
+                              pageDeletions.length +
+                              pageImages.length;
 
                             return (
                               <div
@@ -4618,6 +5087,12 @@ const PDFEditorContent: React.FC = () => {
                                         <span className="flex items-center space-x-1">
                                           <Trash2 className="w-3 h-3" />
                                           <span>{pageDeletions.length}</span>
+                                        </span>
+                                      )}
+                                      {pageImages.length > 0 && (
+                                        <span className="flex items-center space-x-1">
+                                          <ImageIcon className="w-3 h-3" />
+                                          <span>{pageImages.length}</span>
                                         </span>
                                       )}
                                     </div>
@@ -4984,6 +5459,26 @@ const PDFEditorContent: React.FC = () => {
                 title="Erasure Tool (Draw deletion rectangles)"
               >
                 <Eraser className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => {
+                  // Disable other modes
+                  setIsTextSelectionMode(false);
+                  setIsAddTextBoxMode(false);
+                  setShapeDrawingMode(null);
+                  setIsErasureMode(false);
+                  setIsDrawingInProgress(false);
+                  setShapeDrawStart(null);
+                  setShapeDrawEnd(null);
+                  setShapeDrawTargetView(null);
+                  // Trigger file input directly
+                  imageInputRef.current?.click();
+                }}
+                className="p-2 rounded-md transition-all duration-200 hover:bg-red-50 text-gray-700 hover:text-red-600"
+                title="Add Image to Document"
+              >
+                <ImageIcon className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -5491,6 +5986,47 @@ const PDFEditorContent: React.FC = () => {
                                     }}
                                   />
                                 );
+                              } else if (type === "image") {
+                                const image = element as Image;
+                                return (
+                                  <MemoizedImage
+                                    key={`orig-image-${image.id}`}
+                                    image={image}
+                                    isSelected={selectedElementId === image.id}
+                                    isEditMode={isEditMode}
+                                    scale={scale}
+                                    onSelect={(id) => {
+                                      setSelectedElementId(id);
+                                      setSelectedElementType("image");
+                                      setCurrentFormat(image);
+                                      setIsDrawerOpen(true);
+                                    }}
+                                    onUpdate={(id, updates) => {
+                                      setOriginalImages((prev) =>
+                                        prev.map((img) =>
+                                          img.id === id
+                                            ? { ...img, ...updates }
+                                            : img
+                                        )
+                                      );
+                                      setCurrentFormat({
+                                        ...image,
+                                        ...updates,
+                                      });
+                                    }}
+                                    onDelete={(id) => {
+                                      setOriginalImages((prev) =>
+                                        prev.filter((img) => img.id !== id)
+                                      );
+                                      removeFromLayerOrder(id);
+                                      if (selectedElementId === id) {
+                                        setSelectedElementId(null);
+                                        setSelectedElementType(null);
+                                        setCurrentFormat(null);
+                                      }
+                                    }}
+                                  />
+                                );
                               }
                               return null;
                             }
@@ -5678,6 +6214,47 @@ const PDFEditorContent: React.FC = () => {
                                     }}
                                   />
                                 );
+                              } else if (type === "image") {
+                                const image = element as Image;
+                                return (
+                                  <MemoizedImage
+                                    key={`trans-image-${image.id}`}
+                                    image={image}
+                                    isSelected={selectedElementId === image.id}
+                                    isEditMode={isEditMode}
+                                    scale={scale}
+                                    onSelect={(id) => {
+                                      setSelectedElementId(id);
+                                      setSelectedElementType("image");
+                                      setCurrentFormat(image);
+                                      setIsDrawerOpen(true);
+                                    }}
+                                    onUpdate={(id, updates) => {
+                                      setTranslatedImages((prev) =>
+                                        prev.map((img) =>
+                                          img.id === id
+                                            ? { ...img, ...updates }
+                                            : img
+                                        )
+                                      );
+                                      setCurrentFormat({
+                                        ...image,
+                                        ...updates,
+                                      });
+                                    }}
+                                    onDelete={(id) => {
+                                      setTranslatedImages((prev) =>
+                                        prev.filter((img) => img.id !== id)
+                                      );
+                                      removeFromLayerOrder(id);
+                                      if (selectedElementId === id) {
+                                        setSelectedElementId(null);
+                                        setSelectedElementType(null);
+                                        setCurrentFormat(null);
+                                      }
+                                    }}
+                                  />
+                                );
                               }
                               return null;
                             }
@@ -5763,6 +6340,42 @@ const PDFEditorContent: React.FC = () => {
                               onSelect={handleShapeSelect}
                               onUpdate={updateShapeCallback}
                               onDelete={deleteShapeCallback}
+                            />
+                          );
+                        } else if (type === "image") {
+                          const image = element as Image;
+                          return (
+                            <MemoizedImage
+                              key={image.id}
+                              image={image}
+                              isSelected={selectedElementId === image.id}
+                              isEditMode={isEditMode}
+                              scale={scale}
+                              onSelect={(id) => {
+                                setSelectedElementId(id);
+                                setSelectedElementType("image");
+                                setCurrentFormat(image);
+                                setIsDrawerOpen(true);
+                              }}
+                              onUpdate={(id, updates) => {
+                                setCurrentImages((prev) =>
+                                  prev.map((img) =>
+                                    img.id === id ? { ...img, ...updates } : img
+                                  )
+                                );
+                                setCurrentFormat({ ...image, ...updates });
+                              }}
+                              onDelete={(id) => {
+                                setCurrentImages((prev) =>
+                                  prev.filter((img) => img.id !== id)
+                                );
+                                removeFromLayerOrder(id);
+                                if (selectedElementId === id) {
+                                  setSelectedElementId(null);
+                                  setSelectedElementType(null);
+                                  setCurrentFormat(null);
+                                }
+                              }}
                             />
                           );
                         }
@@ -5953,6 +6566,14 @@ const PDFEditorContent: React.FC = () => {
                   </span>
                   <span>
                     {
+                      originalImages.filter(
+                        (image) => image.page === currentPage
+                      ).length
+                    }{" "}
+                    images
+                  </span>
+                  <span>
+                    {
                       originalDeletionRectangles.filter(
                         (rect) => rect.page === currentPage
                       ).length
@@ -5983,6 +6604,14 @@ const PDFEditorContent: React.FC = () => {
                   </span>
                   <span>
                     {
+                      translatedImages.filter(
+                        (image) => image.page === currentPage
+                      ).length
+                    }{" "}
+                    images
+                  </span>
+                  <span>
+                    {
                       translatedDeletionRectangles.filter(
                         (rect) => rect.page === currentPage
                       ).length
@@ -5995,6 +6624,7 @@ const PDFEditorContent: React.FC = () => {
               <>
                 <span>Text Boxes: {getCurrentPageTextBoxes.length}</span>
                 <span>Shapes: {getCurrentPageShapes.length}</span>
+                <span>Images: {getCurrentPageImages.length}</span>
                 <span>
                   Deletion Areas: {getCurrentPageDeletionRectangles.length}
                 </span>

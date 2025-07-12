@@ -15,6 +15,22 @@ export interface Shape {
   zIndex?: number; // Add z-index support for layering
 }
 
+export interface Image {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  page: number;
+  src: string;
+  rotation?: number;
+  opacity?: number;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  zIndex?: number; // Add z-index support for layering
+}
+
 export interface TextField {
   id: string;
   x: number;
