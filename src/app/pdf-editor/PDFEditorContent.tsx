@@ -2144,17 +2144,22 @@ export const PDFEditorContent: React.FC = () => {
       if (!rect) return;
 
       // Convert screen coordinates to document coordinates
+      // Use the targetView from the current selection to ensure proper coordinate adjustment
       const { x, y } = screenToDocumentCoordinates(
         e.clientX,
         e.clientY,
         rect,
         documentState.scale,
-        null,
+        editorState.multiSelection.targetView,
         viewState.currentView,
         documentState.pageWidth
       );
 
-      console.log("Selection move coordinates", { x, y });
+      console.log("Selection move coordinates", {
+        x,
+        y,
+        targetView: editorState.multiSelection.targetView,
+      });
 
       setEditorState((prev) => ({
         ...prev,
@@ -2170,6 +2175,7 @@ export const PDFEditorContent: React.FC = () => {
       editorState.isSelectionMode,
       editorState.multiSelection.isDrawingSelection,
       editorState.multiSelection.selectionStart,
+      editorState.multiSelection.targetView,
       documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
@@ -2441,12 +2447,16 @@ export const PDFEditorContent: React.FC = () => {
         e.clientY,
         rect,
         documentState.scale,
-        null,
+        editorState.multiSelection.targetView,
         viewState.currentView,
         documentState.pageWidth
       );
 
-      console.log("Move selection mouse down", { x, y });
+      console.log("Move selection mouse down", {
+        x,
+        y,
+        targetView: editorState.multiSelection.targetView,
+      });
 
       setEditorState((prev) => ({
         ...prev,
@@ -2460,6 +2470,7 @@ export const PDFEditorContent: React.FC = () => {
     },
     [
       editorState.multiSelection.isMovingSelection,
+      editorState.multiSelection.targetView,
       documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
@@ -2489,7 +2500,7 @@ export const PDFEditorContent: React.FC = () => {
         e.clientY,
         rect,
         documentState.scale,
-        null,
+        editorState.multiSelection.targetView,
         viewState.currentView,
         documentState.pageWidth
       );
@@ -2497,7 +2508,13 @@ export const PDFEditorContent: React.FC = () => {
       const deltaX = x - editorState.multiSelection.moveStart.x;
       const deltaY = y - editorState.multiSelection.moveStart.y;
 
-      console.log("Move selection mouse move", { x, y, deltaX, deltaY });
+      console.log("Move selection mouse move", {
+        x,
+        y,
+        deltaX,
+        deltaY,
+        targetView: editorState.multiSelection.targetView,
+      });
 
       // Move all selected elements
       console.log("Calling moveSelectedElements with", {
@@ -2541,6 +2558,7 @@ export const PDFEditorContent: React.FC = () => {
       editorState.multiSelection.isMovingSelection,
       editorState.multiSelection.moveStart,
       editorState.multiSelection.selectedElements,
+      editorState.multiSelection.targetView,
       documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
