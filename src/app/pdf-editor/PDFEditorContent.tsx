@@ -2724,16 +2724,187 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
+  // Helper function to get file type
+  const getFileType = useCallback((filename: string): "pdf" | "image" => {
+    const extension = filename.split(".").pop()?.toLowerCase();
+    const imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "webp", "svg"];
+    return imageExtensions.includes(extension || "") ? "image" : "pdf";
+  }, []);
+
+  // Function to create a blank PDF and add an image as an interactive element
+  const createBlankPdfAndAddImage = useCallback(
+    async (imageFile: File) => {
+      try {
+        // Import pdf-lib dynamically to avoid SSR issues
+        const { PDFDocument, rgb } = await import("pdf-lib");
+
+        // Create a new PDF document
+        const pdfDoc = await PDFDocument.create();
+
+        // Add a blank page (A4 size: 595.28 x 841.89 points)
+        const page = pdfDoc.addPage([595.28, 841.89]);
+
+        // Convert the PDF to bytes
+        const pdfBytes = await pdfDoc.save();
+
+        // Create a blob URL for the blank PDF
+        const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+
+        // Convert Blob to File object
+        const pdfFile = new File([pdfBlob], "blank-document.pdf", {
+          type: "application/pdf",
+        });
+
+        // Load the blank PDF as the document
+        actions.loadDocument(pdfFile);
+        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+
+        // Create image URL and add as interactive element
+        const imageUrl = URL.createObjectURL(imageFile);
+
+        // Create a new image element
+        const imageId = addImage(
+          imageUrl,
+          50, // Center the image on the page
+          50,
+          300, // Default size
+          200,
+          1, // Page 1
+          "original" // Add to original view
+        );
+
+        // Select the image and open format drawer
+        handleImageSelect(imageId);
+
+        toast.success("Image uploaded as interactive element on blank PDF");
+      } catch (error) {
+        console.error("Error creating blank PDF:", error);
+        toast.error("Failed to create blank PDF");
+      }
+    },
+    [actions, addImage, handleImageSelect]
+  );
+
+  // Helper function to append an image as a new page
+  const appendImageAsNewPage = useCallback(
+    async (imageFile: File) => {
+      try {
+        // Import pdf-lib dynamically to avoid SSR issues
+        const { PDFDocument } = await import("pdf-lib");
+
+        // Load the current document
+        const currentResponse = await fetch(documentState.url);
+        const currentArrayBuffer = await currentResponse.arrayBuffer();
+        const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+        // Add a new blank page (A4 size: 595.28 x 841.89 points)
+        const newPage = currentPdfDoc.addPage([595.28, 841.89]);
+
+        // Save the updated PDF as a new blob
+        const updatedPdfBytes = await currentPdfDoc.save();
+        const updatedBlob = new Blob([updatedPdfBytes], {
+          type: "application/pdf",
+        });
+
+        // Convert Blob to File object
+        const updatedFile = new File([updatedBlob], "updated-document.pdf", {
+          type: "application/pdf",
+        });
+
+        // Load the updated PDF
+        actions.loadDocument(updatedFile);
+
+        // Create image URL and add as interactive element on the new page
+        const imageUrl = URL.createObjectURL(imageFile);
+        const newPageNumber = currentPdfDoc.getPageCount(); // The page we just added
+
+        // Create a new image element
+        const imageId = addImage(
+          imageUrl,
+          50, // Center the image on the page
+          50,
+          300, // Default size
+          200,
+          newPageNumber,
+          "original" // Add to original view
+        );
+
+        // Select the image and open format drawer
+        handleImageSelect(imageId);
+
+        toast.success("Image appended as new page successfully!");
+      } catch (error) {
+        console.error("Error appending image:", error);
+        toast.error("Failed to append image");
+      }
+    },
+    [documentState.url, actions, addImage, handleImageSelect]
+  );
+
+  // Helper function to append a PDF document
+  const appendPdfDocument = useCallback(
+    async (pdfFile: File) => {
+      try {
+        // Import pdf-lib dynamically to avoid SSR issues
+        const { PDFDocument } = await import("pdf-lib");
+
+        // Load the current document
+        const currentResponse = await fetch(documentState.url);
+        const currentArrayBuffer = await currentResponse.arrayBuffer();
+        const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+        // Load the new document to append
+        const newArrayBuffer = await pdfFile.arrayBuffer();
+        const newPdfDoc = await PDFDocument.load(newArrayBuffer);
+
+        // Copy all pages from the new document to the current document
+        const newPages = await currentPdfDoc.copyPages(
+          newPdfDoc,
+          newPdfDoc.getPageIndices()
+        );
+        newPages.forEach((page) => currentPdfDoc.addPage(page));
+
+        // Save the merged PDF as a new blob
+        const mergedPdfBytes = await currentPdfDoc.save();
+        const mergedBlob = new Blob([mergedPdfBytes], {
+          type: "application/pdf",
+        });
+
+        // Convert Blob to File object
+        const mergedFile = new File([mergedBlob], "merged-document.pdf", {
+          type: "application/pdf",
+        });
+
+        // Load the merged PDF
+        actions.loadDocument(mergedFile);
+
+        toast.success("PDF document appended successfully!");
+      } catch (error) {
+        console.error("Error appending PDF:", error);
+        toast.error("Failed to append PDF document");
+      }
+    },
+    [documentState.url, actions]
+  );
+
   // File handlers
   const handleFileUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
-        actions.loadDocument(file);
-        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+        const fileType = getFileType(file.name);
+
+        if (fileType === "image") {
+          // For images, create a blank PDF and add the image as an interactive element
+          createBlankPdfAndAddImage(file);
+        } else {
+          // For PDFs, load normally
+          actions.loadDocument(file);
+          setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+        }
       }
     },
-    [actions]
+    [getFileType, createBlankPdfAndAddImage, actions]
   );
 
   const handleImageFileUpload = useCallback(
@@ -2767,6 +2938,43 @@ export const PDFEditorContent: React.FC = () => {
       viewState.currentView,
       handleImageSelect,
     ]
+  );
+
+  // Handler for appending documents to existing document
+  const handleAppendDocument = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const fileType = getFileType(file.name);
+
+      if (!documentState.url) {
+        toast.error("Please upload a document first before appending.");
+        return;
+      }
+
+      try {
+        if (fileType === "image") {
+          // For images, add a new page with the image as an interactive element
+          await appendImageAsNewPage(file);
+        } else {
+          // For PDFs, merge the documents
+          await appendPdfDocument(file);
+        }
+
+        // Switch to pages tab
+        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+      } catch (error) {
+        console.error("Error appending document:", error);
+        toast.error("Failed to append document. Please try again.");
+      } finally {
+        // Reset file input
+        if (appendFileInputRef.current) {
+          appendFileInputRef.current.value = "";
+        }
+      }
+    },
+    [getFileType, documentState.url, appendImageAsNewPage, appendPdfDocument]
   );
 
   // Page handlers
@@ -3003,7 +3211,7 @@ export const PDFEditorContent: React.FC = () => {
         <input
           type="file"
           ref={appendFileInputRef}
-          onChange={handleFileUpload}
+          onChange={handleAppendDocument}
           accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.webp"
           className="hidden"
         />
