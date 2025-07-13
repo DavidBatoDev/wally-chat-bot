@@ -76,6 +76,22 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.8) !important;
 }
 
+/* Selection preview styling - blue dashed border for elements in selection preview */
+.rnd.selection-preview {
+  z-index: 15000 !important;
+  animation: selectionPreviewPulse 1.5s ease-in-out infinite !important;
+}
+
+@keyframes selectionPreviewPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.6) !important;
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.8) !important;
+  }
+}
+
 /* Ensure textboxes and shapes are visible above PDF */
 .text-field-overlay {
   position: absolute !important;

@@ -12,6 +12,8 @@ interface ShapeProps {
   onSelect: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Shape>) => void;
   onDelete: (id: string) => void;
+  // Selection preview prop
+  isInSelectionPreview?: boolean;
 }
 
 export const MemoizedShape = memo(
@@ -23,6 +25,8 @@ export const MemoizedShape = memo(
     onSelect,
     onUpdate,
     onDelete,
+    // Selection preview prop
+    isInSelectionPreview = false,
   }: ShapeProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -71,7 +75,9 @@ export const MemoizedShape = memo(
         }}
         className={`shape-element ${
           isSelected ? "ring-2 ring-gray-500 selected" : ""
-        } ${isEditMode ? "edit-mode" : ""}`}
+        } ${isEditMode ? "edit-mode" : ""} ${
+          isInSelectionPreview ? "ring-2 ring-blue-400 ring-dashed selection-preview" : ""
+        }`}
         style={{
           transform: "none",
         }}

@@ -127,12 +127,16 @@ export const moveSelectedElements = (
   getElementById: (
     id: string,
     type: "textbox" | "shape" | "image"
-  ) => TextField | Shape | Image | null
+  ) => TextField | Shape | Image | null,
+  pageWidth: number,
+  pageHeight: number
 ) => {
   console.log("moveSelectedElements called", {
     selectedElementsCount: selectedElements.length,
     deltaX,
     deltaY,
+    pageWidth,
+    pageHeight,
   });
 
   selectedElements.forEach((selectedElement) => {
@@ -143,6 +147,40 @@ export const moveSelectedElements = (
       const newX = selectedElement.originalPosition.x + deltaX;
       const newY = selectedElement.originalPosition.y + deltaY;
 
+      // Calculate boundary constraints
+      let constrainedX = newX;
+      let constrainedY = newY;
+
+      // Prevent element from going outside left boundary (x < 0)
+      if (newX < 0) {
+        constrainedX = 0;
+      }
+
+      // Prevent element from going outside top boundary (y < 0)
+      if (newY < 0) {
+        constrainedY = 0;
+      }
+
+      // Prevent element from going outside right boundary (x + width > pageWidth)
+      if (newX + element.width > pageWidth) {
+        constrainedX = pageWidth - element.width;
+      }
+
+      // Prevent element from going outside bottom boundary (y + height > pageHeight)
+      if (newY + element.height > pageHeight) {
+        constrainedY = pageHeight - element.height;
+      }
+
+      // Ensure element doesn't go outside boundaries (additional safety check)
+      constrainedX = Math.max(
+        0,
+        Math.min(constrainedX, pageWidth - element.width)
+      );
+      constrainedY = Math.max(
+        0,
+        Math.min(constrainedY, pageHeight - element.height)
+      );
+
       console.log("Moving element", {
         id: selectedElement.id,
         type: selectedElement.type,
@@ -150,18 +188,27 @@ export const moveSelectedElements = (
           x: selectedElement.originalPosition.x,
           y: selectedElement.originalPosition.y,
         },
-        to: { x: newX, y: newY },
+        to: { x: constrainedX, y: constrainedY },
+        originalDelta: { deltaX, deltaY },
+        constrained: {
+          deltaX: constrainedX - selectedElement.originalPosition.x,
+          deltaY: constrainedY - selectedElement.originalPosition.y,
+        },
+        pageBounds: { width: pageWidth, height: pageHeight },
       });
 
       switch (selectedElement.type) {
         case "textbox":
-          updateTextBox(selectedElement.id, { x: newX, y: newY });
+          updateTextBox(selectedElement.id, {
+            x: constrainedX,
+            y: constrainedY,
+          });
           break;
         case "shape":
-          updateShape(selectedElement.id, { x: newX, y: newY });
+          updateShape(selectedElement.id, { x: constrainedX, y: constrainedY });
           break;
         case "image":
-          updateImage(selectedElement.id, { x: newX, y: newY });
+          updateImage(selectedElement.id, { x: constrainedX, y: constrainedY });
           break;
       }
     } else {

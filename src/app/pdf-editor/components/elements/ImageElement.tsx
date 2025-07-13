@@ -11,6 +11,8 @@ interface ImageElementProps {
   onSelect: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Image>) => void;
   onDelete: (id: string) => void;
+  // Selection preview prop
+  isInSelectionPreview?: boolean;
 }
 
 export const MemoizedImage = memo(
@@ -22,6 +24,8 @@ export const MemoizedImage = memo(
     onSelect,
     onUpdate,
     onDelete,
+    // Selection preview prop
+    isInSelectionPreview = false,
   }: ImageElementProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -66,7 +70,11 @@ export const MemoizedImage = memo(
         }}
         className={`image-element ${
           isSelected ? "ring-2 ring-blue-500 selected" : ""
-        } ${isEditMode ? "edit-mode" : ""}`}
+        } ${isEditMode ? "edit-mode" : ""} ${
+          isInSelectionPreview
+            ? "ring-2 ring-blue-400 ring-dashed selection-preview"
+            : ""
+        }`}
         style={{ transform: "none" }}
         onClick={handleClick}
       >

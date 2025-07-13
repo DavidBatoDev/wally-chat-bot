@@ -244,6 +244,66 @@ export const PDFEditorContent: React.FC = () => {
     [getCurrentTextBoxes, getCurrentShapes, getCurrentImages]
   );
 
+  // Helper function to get elements that would be captured in the current selection preview
+  const getElementsInSelectionPreview = useCallback(() => {
+    if (
+      !editorState.isSelectionMode ||
+      !editorState.multiSelection.isDrawingSelection ||
+      !editorState.multiSelection.selectionStart ||
+      !editorState.multiSelection.selectionEnd
+    ) {
+      return new Set<string>();
+    }
+
+    const start = editorState.multiSelection.selectionStart;
+    const end = editorState.multiSelection.selectionEnd;
+
+    // Calculate selection rectangle
+    const selectionRect = {
+      x: Math.min(start.x, end.x),
+      y: Math.min(start.y, end.y),
+      width: Math.abs(end.x - start.x),
+      height: Math.abs(end.y - start.y),
+    };
+
+    // Only process if selection is large enough
+    if (selectionRect.width <= 5 || selectionRect.height <= 5) {
+      return new Set<string>();
+    }
+
+    // Get all elements from both views
+    const originalTextBoxes = getCurrentTextBoxes("original");
+    const originalShapes = getCurrentShapes("original");
+    const originalImages = getCurrentImages("original");
+    const translatedTextBoxes = getCurrentTextBoxes("translated");
+    const translatedShapes = getCurrentShapes("translated");
+    const translatedImages = getCurrentImages("translated");
+
+    // Combine elements from both views
+    const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
+    const allShapes = [...originalShapes, ...translatedShapes];
+    const allImages = [...originalImages, ...translatedImages];
+
+    // Find elements in selection
+    const selectedElements = findElementsInSelection(
+      selectionRect,
+      allTextBoxes,
+      allShapes,
+      allImages
+    );
+
+    // Return a Set of element IDs for efficient lookup
+    return new Set(selectedElements.map((el) => el.id));
+  }, [
+    editorState.isSelectionMode,
+    editorState.multiSelection.isDrawingSelection,
+    editorState.multiSelection.selectionStart,
+    editorState.multiSelection.selectionEnd,
+    getCurrentTextBoxes,
+    getCurrentShapes,
+    getCurrentImages,
+  ]);
+
   // Handle multi-selection move events
   const handleMultiSelectionMove = useCallback(
     (event: CustomEvent) => {
@@ -258,7 +318,9 @@ export const PDFEditorContent: React.FC = () => {
         updateTextBox,
         updateShape,
         updateImage,
-        getElementById
+        getElementById,
+        documentState.pageWidth,
+        documentState.pageHeight
       );
 
       // Update original positions for next move
@@ -342,25 +404,38 @@ export const PDFEditorContent: React.FC = () => {
       });
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
-        // Move all selected elements by the same delta
+        // Move all selected elements by the same delta with boundary constraints
         selectedElements.forEach((el) => {
           if (el.id !== id) {
             // Skip the actively dragged element (react-rnd handles it)
             const initialPos = initialPositionsRef.current[el.id];
             if (initialPos) {
-              const newX = initialPos.x + deltaX;
-              const newY = initialPos.y + deltaY;
+              const element = getElementById(el.id, el.type);
+              if (element) {
+                const newX = initialPos.x + deltaX;
+                const newY = initialPos.y + deltaY;
 
-              switch (el.type) {
-                case "textbox":
-                  updateTextBox(el.id, { x: newX, y: newY });
-                  break;
-                case "shape":
-                  updateShape(el.id, { x: newX, y: newY });
-                  break;
-                case "image":
-                  updateImage(el.id, { x: newX, y: newY });
-                  break;
+                // Apply boundary constraints
+                const constrainedX = Math.max(
+                  0,
+                  Math.min(newX, documentState.pageWidth - element.width)
+                );
+                const constrainedY = Math.max(
+                  0,
+                  Math.min(newY, documentState.pageHeight - element.height)
+                );
+
+                switch (el.type) {
+                  case "textbox":
+                    updateTextBox(el.id, { x: constrainedX, y: constrainedY });
+                    break;
+                  case "shape":
+                    updateShape(el.id, { x: constrainedX, y: constrainedY });
+                    break;
+                  case "image":
+                    updateImage(el.id, { x: constrainedX, y: constrainedY });
+                    break;
+                }
               }
             }
           }
@@ -372,6 +447,9 @@ export const PDFEditorContent: React.FC = () => {
       updateTextBox,
       updateShape,
       updateImage,
+      getElementById,
+      documentState.pageWidth,
+      documentState.pageHeight,
     ]
   );
 
@@ -703,13 +781,54 @@ export const PDFEditorContent: React.FC = () => {
       console.log("handleFormatChange called with:", format, {
         selectedElementId,
         selectedElementType,
+        multiSelectionCount: editorState.multiSelection.selectedElements.length,
       });
 
-      if (selectedElementType === "textbox" && selectedElementId) {
-        // Handle text field format changes
+      // Check if we're in multi-selection mode
+      const isMultiSelection =
+        currentFormat &&
+        "isMultiSelection" in currentFormat &&
+        currentFormat.isMultiSelection;
+
+      if (
+        isMultiSelection &&
+        editorState.multiSelection.selectedElements.length > 0
+      ) {
+        // Handle multi-selection format changes
+        const { selectedElements } = editorState.multiSelection;
+
+        if (selectedElementType === "textbox") {
+          // Apply text format changes to all selected textboxes
+          selectedElements.forEach((element) => {
+            if (element.type === "textbox") {
+              updateTextBox(element.id, format);
+            }
+          });
+        } else if (selectedElementType === "shape") {
+          // Apply shape format changes to all selected shapes
+          const updates: Partial<ShapeType> = {};
+
+          // Map shape-specific format changes
+          if ("type" in format) updates.type = format.type;
+          if ("fillColor" in format) updates.fillColor = format.fillColor;
+          if ("fillOpacity" in format) updates.fillOpacity = format.fillOpacity;
+          if ("borderColor" in format) updates.borderColor = format.borderColor;
+          if ("borderWidth" in format) updates.borderWidth = format.borderWidth;
+          if ("rotation" in format) updates.rotation = format.rotation;
+          if ("borderRadius" in format)
+            updates.borderRadius = format.borderRadius;
+
+          selectedElements.forEach((element) => {
+            if (element.type === "shape") {
+              updateShape(element.id, updates);
+            }
+          });
+        }
+      } else if (selectedElementType === "textbox" && selectedElementId) {
+        // Handle single text field format changes
         updateTextBox(selectedElementId, format);
       } else if (selectedElementType === "shape" && selectedElementId) {
-        // Handle shape format changes
+        // Handle single shape format changes
         const updates: Partial<ShapeType> = {};
 
         // Map shape-specific format changes
@@ -781,12 +900,13 @@ export const PDFEditorContent: React.FC = () => {
     [
       selectedElementId,
       selectedElementType,
+      editorState.multiSelection.selectedElements,
+      currentFormat,
       updateTextBox,
       updateShape,
       updateImage,
       getCurrentImages,
       viewState.currentView,
-      currentFormat,
       setCurrentFormat,
     ]
   );
@@ -795,7 +915,223 @@ export const PDFEditorContent: React.FC = () => {
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
     const timeoutId = setTimeout(() => {
-      if (selectedElementId && selectedElementType) {
+      const { selectedElements } = editorState.multiSelection;
+
+      // Handle multi-selection format drawer
+      if (selectedElements.length > 1) {
+        const elementTypes = new Set(selectedElements.map((el) => el.type));
+
+        // Only show format drawer if all elements are the same type
+        if (elementTypes.size === 1) {
+          const elementType = Array.from(elementTypes)[0];
+
+          if (elementType === "textbox") {
+            // For textboxes, create a composite format from all selected textboxes
+            const allTextBoxes = [
+              ...elementCollections.originalTextBoxes,
+              ...elementCollections.translatedTextBoxes,
+            ];
+
+            const selectedTextBoxes = selectedElements
+              .map((el) => allTextBoxes.find((tb) => tb.id === el.id))
+              .filter((tb): tb is TextField => tb !== undefined);
+
+            if (selectedTextBoxes.length > 0) {
+              // Check which properties are consistent across all selected textboxes
+              const firstTextBox = selectedTextBoxes[0];
+              const consistentProperties: Record<string, boolean> = {};
+
+              // Check font size consistency
+              const fontSizes = selectedTextBoxes.map(
+                (tb) => tb.fontSize || 12
+              );
+              consistentProperties.fontSize = fontSizes.every(
+                (size) => size === fontSizes[0]
+              );
+
+              // Check font family consistency
+              const fontFamilies = selectedTextBoxes.map(
+                (tb) => tb.fontFamily || "Arial"
+              );
+              consistentProperties.fontFamily = fontFamilies.every(
+                (font) => font === fontFamilies[0]
+              );
+
+              // Check color consistency
+              const colors = selectedTextBoxes.map(
+                (tb) => tb.color || "#000000"
+              );
+              consistentProperties.color = colors.every(
+                (color) => color === colors[0]
+              );
+
+              // Check bold consistency
+              const boldValues = selectedTextBoxes.map(
+                (tb) => tb.bold || false
+              );
+              consistentProperties.bold = boldValues.every(
+                (bold) => bold === boldValues[0]
+              );
+
+              // Check italic consistency
+              const italicValues = selectedTextBoxes.map(
+                (tb) => tb.italic || false
+              );
+              consistentProperties.italic = italicValues.every(
+                (italic) => italic === italicValues[0]
+              );
+
+              // Check underline consistency
+              const underlineValues = selectedTextBoxes.map(
+                (tb) => tb.underline || false
+              );
+              consistentProperties.underline = underlineValues.every(
+                (underline) => underline === underlineValues[0]
+              );
+
+              // Check text alignment consistency
+              const textAligns = selectedTextBoxes.map(
+                (tb) => tb.textAlign || "left"
+              );
+              consistentProperties.textAlign = textAligns.every(
+                (align) => align === textAligns[0]
+              );
+
+              // Check border color consistency
+              const borderColors = selectedTextBoxes.map(
+                (tb) => tb.borderColor || "#000000"
+              );
+              consistentProperties.borderColor = borderColors.every(
+                (color) => color === borderColors[0]
+              );
+
+              // Check border width consistency
+              const borderWidths = selectedTextBoxes.map(
+                (tb) => tb.borderWidth || 0
+              );
+              consistentProperties.borderWidth = borderWidths.every(
+                (width) => width === borderWidths[0]
+              );
+
+              // Check line height consistency
+              const lineHeights = selectedTextBoxes.map(
+                (tb) => tb.lineHeight || 1.2
+              );
+              consistentProperties.lineHeight = lineHeights.every(
+                (height) => height === lineHeights[0]
+              );
+
+              // Check letter spacing consistency
+              const letterSpacings = selectedTextBoxes.map(
+                (tb) => tb.letterSpacing || 0
+              );
+              consistentProperties.letterSpacing = letterSpacings.every(
+                (spacing) => spacing === letterSpacings[0]
+              );
+
+              // Check border radius consistency
+              const borderRadii = selectedTextBoxes.map(
+                (tb) => tb.borderRadius || 0
+              );
+              consistentProperties.borderRadius = borderRadii.every(
+                (radius) => radius === borderRadii[0]
+              );
+
+              // Check individual corner radius consistency
+              const borderTopLeftRadii = selectedTextBoxes.map(
+                (tb) => tb.borderTopLeftRadius || 0
+              );
+              consistentProperties.borderTopLeftRadius =
+                borderTopLeftRadii.every(
+                  (radius) => radius === borderTopLeftRadii[0]
+                );
+
+              const borderTopRightRadii = selectedTextBoxes.map(
+                (tb) => tb.borderTopRightRadius || 0
+              );
+              consistentProperties.borderTopRightRadius =
+                borderTopRightRadii.every(
+                  (radius) => radius === borderTopRightRadii[0]
+                );
+
+              const borderBottomLeftRadii = selectedTextBoxes.map(
+                (tb) => tb.borderBottomLeftRadius || 0
+              );
+              consistentProperties.borderBottomLeftRadius =
+                borderBottomLeftRadii.every(
+                  (radius) => radius === borderBottomLeftRadii[0]
+                );
+
+              const borderBottomRightRadii = selectedTextBoxes.map(
+                (tb) => tb.borderBottomRightRadius || 0
+              );
+              consistentProperties.borderBottomRightRadius =
+                borderBottomRightRadii.every(
+                  (radius) => radius === borderBottomRightRadii[0]
+                );
+
+              // Create a composite format that represents common properties
+              const compositeFormat = {
+                ...firstTextBox,
+                isMultiSelection: true,
+                selectedCount: selectedTextBoxes.length,
+                consistentProperties,
+              } as TextField & {
+                isMultiSelection: boolean;
+                selectedCount: number;
+                consistentProperties: Record<string, boolean>;
+              };
+
+              setCurrentFormat(compositeFormat);
+              setSelectedElementType("textbox");
+              setSelectedElementId(null); // Clear single selection
+              setIsDrawerOpen(true);
+              return;
+            }
+          } else if (elementType === "shape") {
+            // For shapes, create a composite format from all selected shapes
+            const allShapes = [
+              ...elementCollections.originalShapes,
+              ...elementCollections.translatedShapes,
+            ];
+
+            const selectedShapes = selectedElements
+              .map((el) => allShapes.find((shape) => shape.id === el.id))
+              .filter(Boolean);
+
+            if (selectedShapes.length > 0) {
+              // Create a composite format that represents common properties
+              const compositeFormat = {
+                ...selectedShapes[0],
+                isMultiSelection: true,
+                selectedCount: selectedShapes.length,
+              } as ShapeType & {
+                isMultiSelection: boolean;
+                selectedCount: number;
+              };
+
+              setCurrentFormat(compositeFormat);
+              setSelectedElementType("shape");
+              setSelectedElementId(null); // Clear single selection
+              setIsDrawerOpen(true);
+              return;
+            }
+          }
+        } else {
+          // Mixed element types - close drawer
+          setIsDrawerOpen(false);
+          setSelectedElementType(null);
+          setCurrentFormat(null);
+          return;
+        }
+      }
+
+      // Handle single element selection if we don't have multi-selection
+      if (
+        selectedElementId &&
+        selectedElementType &&
+        selectedElements.length === 0
+      ) {
         if (selectedElementType === "textbox") {
           // Find the selected text box from all text boxes
           const allTextBoxes = [
@@ -934,6 +1270,7 @@ export const PDFEditorContent: React.FC = () => {
   }, [
     selectedElementId,
     selectedElementType,
+    editorState.multiSelection.selectedElements,
     elementCollections,
     setIsDrawerOpen,
     setSelectedElementId,
@@ -1071,6 +1408,18 @@ export const PDFEditorContent: React.FC = () => {
         selectedShapeId: null,
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
+        isSelectionMode: false, // Turn off multi-selection mode
+        // Clear multi-selection when individual element is selected
+        multiSelection: {
+          ...prev.multiSelection,
+          selectedElements: [],
+          selectionBounds: null,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+          isMovingSelection: false,
+          moveStart: null,
+        },
       }));
       setToolState((prev) => ({
         ...prev,
@@ -1103,6 +1452,18 @@ export const PDFEditorContent: React.FC = () => {
         selectedShapeId: id,
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
+        isSelectionMode: false, // Turn off multi-selection mode
+        // Clear multi-selection when individual element is selected
+        multiSelection: {
+          ...prev.multiSelection,
+          selectedElements: [],
+          selectionBounds: null,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+          isMovingSelection: false,
+          moveStart: null,
+        },
       }));
       setToolState((prev) => ({
         ...prev,
@@ -1135,6 +1496,18 @@ export const PDFEditorContent: React.FC = () => {
         selectedShapeId: null,
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
+        isSelectionMode: false, // Turn off multi-selection mode
+        // Clear multi-selection when individual element is selected
+        multiSelection: {
+          ...prev.multiSelection,
+          selectedElements: [],
+          selectionBounds: null,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+          isMovingSelection: false,
+          moveStart: null,
+        },
       }));
       setToolState((prev) => ({
         ...prev,
@@ -1997,7 +2370,9 @@ export const PDFEditorContent: React.FC = () => {
         updateTextBox,
         updateShape,
         updateImage,
-        getElementById
+        getElementById,
+        documentState.pageWidth,
+        documentState.pageHeight
       );
 
       // Update original positions and recalculate selection bounds
@@ -2139,7 +2514,9 @@ export const PDFEditorContent: React.FC = () => {
         updateTextBox,
         updateShape,
         updateImage,
-        getElementById
+        getElementById,
+        documentState.pageWidth,
+        documentState.pageHeight
       );
 
       // Update original positions for next move
@@ -2245,6 +2622,18 @@ export const PDFEditorContent: React.FC = () => {
           ...prev,
           selectedFieldId: fieldId,
           isAddTextBoxMode: false,
+          isSelectionMode: false, // Turn off multi-selection mode
+          // Clear multi-selection when creating a new textbox
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: [],
+            selectionBounds: null,
+            isDrawingSelection: false,
+            selectionStart: null,
+            selectionEnd: null,
+            isMovingSelection: false,
+            moveStart: null,
+          },
         }));
         setSelectedElementId(fieldId);
         setSelectedElementType("textbox");
@@ -2282,6 +2671,18 @@ export const PDFEditorContent: React.FC = () => {
             ...prev,
             selectedFieldId: null,
             selectedShapeId: null,
+            isSelectionMode: false, // Turn off multi-selection mode
+            // Clear multi-selection when clicking outside elements
+            multiSelection: {
+              ...prev.multiSelection,
+              selectedElements: [],
+              selectionBounds: null,
+              isDrawingSelection: false,
+              selectionStart: null,
+              selectionEnd: null,
+              isMovingSelection: false,
+              moveStart: null,
+            },
           }));
           setSelectedElementId(null);
           setSelectedElementType(null);
@@ -2457,8 +2858,21 @@ export const PDFEditorContent: React.FC = () => {
     });
   }, [isDrawerOpen, selectedElementType, currentFormat, selectedElementId]);
 
+  // Add effect to monitor multi-selection state for debugging
+  useEffect(() => {
+    console.log("Multi-selection state changed:", {
+      selectedElementsCount: editorState.multiSelection.selectedElements.length,
+      isDrawingSelection: editorState.multiSelection.isDrawingSelection,
+      isMovingSelection: editorState.multiSelection.isMovingSelection,
+      selectionBounds: editorState.multiSelection.selectionBounds,
+    });
+  }, [editorState.multiSelection]);
+
   // Render elements
   const renderElement = (element: SortedElement) => {
+    // Get elements that would be captured in the current selection preview
+    const elementsInSelectionPreview = getElementsInSelectionPreview();
+
     if (element.type === "textbox") {
       const textBox = element.element as TextField;
       const isMultiSelected = editorState.multiSelection.selectedElements.some(
@@ -2466,6 +2880,7 @@ export const PDFEditorContent: React.FC = () => {
       );
       const selectedElementIds =
         editorState.multiSelection.selectedElements.map((el) => el.id);
+      const isInSelectionPreview = elementsInSelectionPreview.has(textBox.id);
 
       return (
         <MemoizedTextBox
@@ -2490,10 +2905,14 @@ export const PDFEditorContent: React.FC = () => {
           onMultiSelectDragStart={handleMultiSelectDragStart}
           onMultiSelectDrag={handleMultiSelectDrag}
           onMultiSelectDragStop={handleMultiSelectDragStop}
+          // Selection preview prop
+          isInSelectionPreview={isInSelectionPreview}
         />
       );
     } else if (element.type === "shape") {
       const shape = element.element as ShapeType;
+      const isInSelectionPreview = elementsInSelectionPreview.has(shape.id);
+
       return (
         <MemoizedShape
           key={shape.id}
@@ -2504,10 +2923,14 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleShapeSelect}
           onUpdate={updateShape}
           onDelete={(id) => deleteShape(id, viewState.currentView)}
+          // Selection preview prop
+          isInSelectionPreview={isInSelectionPreview}
         />
       );
     } else if (element.type === "image") {
       const image = element.element as ImageType;
+      const isInSelectionPreview = elementsInSelectionPreview.has(image.id);
+
       return (
         <MemoizedImage
           key={image.id}
@@ -2518,6 +2941,8 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleImageSelect}
           onUpdate={updateImage}
           onDelete={(id) => deleteImage(id, viewState.currentView)}
+          // Selection preview prop
+          isInSelectionPreview={isInSelectionPreview}
         />
       );
     }
@@ -3110,8 +3535,14 @@ export const PDFEditorContent: React.FC = () => {
                           {getOriginalSortedElements(
                             documentState.currentPage
                           ).map(({ type, element }) => {
+                            // Get elements that would be captured in the current selection preview
+                            const elementsInSelectionPreview =
+                              getElementsInSelectionPreview();
+
                             if (type === "textbox") {
                               const textBox = element as TextField;
+                              const isInSelectionPreview =
+                                elementsInSelectionPreview.has(textBox.id);
                               return (
                                 <MemoizedTextBox
                                   key={`orig-text-${textBox.id}`}
@@ -3135,10 +3566,14 @@ export const PDFEditorContent: React.FC = () => {
                                   )}
                                   autoFocusId={autoFocusTextBoxId}
                                   onAutoFocusComplete={handleAutoFocusComplete}
+                                  // Selection preview prop
+                                  isInSelectionPreview={isInSelectionPreview}
                                 />
                               );
                             } else if (type === "shape") {
                               const shape = element as ShapeType;
+                              const isInSelectionPreview =
+                                elementsInSelectionPreview.has(shape.id);
                               return (
                                 <MemoizedShape
                                   key={`orig-shape-${shape.id}`}
@@ -3153,10 +3588,14 @@ export const PDFEditorContent: React.FC = () => {
                                   onDelete={(id) =>
                                     deleteShape(id, viewState.currentView)
                                   }
+                                  // Selection preview prop
+                                  isInSelectionPreview={isInSelectionPreview}
                                 />
                               );
                             } else if (type === "image") {
                               const image = element as ImageType;
+                              const isInSelectionPreview =
+                                elementsInSelectionPreview.has(image.id);
                               return (
                                 <MemoizedImage
                                   key={`orig-image-${image.id}`}
@@ -3169,6 +3608,8 @@ export const PDFEditorContent: React.FC = () => {
                                   onDelete={(id) =>
                                     deleteImage(id, viewState.currentView)
                                   }
+                                  // Selection preview prop
+                                  isInSelectionPreview={isInSelectionPreview}
                                 />
                               );
                             }
@@ -3223,7 +3664,9 @@ export const PDFEditorContent: React.FC = () => {
                                         updateTextBox,
                                         updateShape,
                                         updateImage,
-                                        getElementById
+                                        getElementById,
+                                        documentState.pageWidth,
+                                        documentState.pageHeight
                                       );
                                       // Update selection bounds in real time
                                       setEditorState((prev) => {
@@ -3395,8 +3838,14 @@ export const PDFEditorContent: React.FC = () => {
                           {getTranslatedSortedElements(
                             documentState.currentPage
                           ).map(({ type, element }) => {
+                            // Get elements that would be captured in the current selection preview
+                            const elementsInSelectionPreview =
+                              getElementsInSelectionPreview();
+
                             if (type === "textbox") {
                               const textBox = element as TextField;
+                              const isInSelectionPreview =
+                                elementsInSelectionPreview.has(textBox.id);
                               return (
                                 <MemoizedTextBox
                                   key={`trans-text-${textBox.id}`}
@@ -3420,10 +3869,14 @@ export const PDFEditorContent: React.FC = () => {
                                   )}
                                   autoFocusId={autoFocusTextBoxId}
                                   onAutoFocusComplete={handleAutoFocusComplete}
+                                  // Selection preview prop
+                                  isInSelectionPreview={isInSelectionPreview}
                                 />
                               );
                             } else if (type === "shape") {
                               const shape = element as ShapeType;
+                              const isInSelectionPreview =
+                                elementsInSelectionPreview.has(shape.id);
                               return (
                                 <MemoizedShape
                                   key={`trans-shape-${shape.id}`}
@@ -3438,10 +3891,14 @@ export const PDFEditorContent: React.FC = () => {
                                   onDelete={(id) =>
                                     deleteShape(id, viewState.currentView)
                                   }
+                                  // Selection preview prop
+                                  isInSelectionPreview={isInSelectionPreview}
                                 />
                               );
                             } else if (type === "image") {
                               const image = element as ImageType;
+                              const isInSelectionPreview =
+                                elementsInSelectionPreview.has(image.id);
                               return (
                                 <MemoizedImage
                                   key={`trans-image-${image.id}`}
@@ -3454,6 +3911,8 @@ export const PDFEditorContent: React.FC = () => {
                                   onDelete={(id) =>
                                     deleteImage(id, viewState.currentView)
                                   }
+                                  // Selection preview prop
+                                  isInSelectionPreview={isInSelectionPreview}
                                 />
                               );
                             }
@@ -3508,7 +3967,9 @@ export const PDFEditorContent: React.FC = () => {
                                         updateTextBox,
                                         updateShape,
                                         updateImage,
-                                        getElementById
+                                        getElementById,
+                                        documentState.pageWidth,
+                                        documentState.pageHeight
                                       );
                                       // Update selection bounds in real time
                                       setEditorState((prev) => {
@@ -3668,7 +4129,9 @@ export const PDFEditorContent: React.FC = () => {
                                     updateTextBox,
                                     updateShape,
                                     updateImage,
-                                    getElementById
+                                    getElementById,
+                                    documentState.pageWidth,
+                                    documentState.pageHeight
                                   );
                                   // Update selection bounds in real time
                                   setEditorState((prev) => {

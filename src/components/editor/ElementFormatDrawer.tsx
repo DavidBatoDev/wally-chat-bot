@@ -208,8 +208,9 @@ export const ElementFormatDrawer: React.FC = () => {
     return "src" in format;
   };
 
-  // Don't render if drawer is not open or no element is selected
-  if (!isDrawerOpen || !selectedElementId || !currentFormat) {
+  // Don't render if drawer is not open or no format is available
+  // Allow multi-selection (selectedElementId can be null for multi-selection)
+  if (!isDrawerOpen || !currentFormat) {
     return null;
   }
 
@@ -269,29 +270,56 @@ export const ElementFormatDrawer: React.FC = () => {
   return (
     <div className="absolute w-full flex justify-center bg-transparent">
       <div className="element-format-drawer mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 z-50 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
+        {/* Multi-selection indicator */}
+        {!selectedElementId &&
+          currentFormat &&
+          "isMultiSelection" in currentFormat &&
+          (currentFormat as any).isMultiSelection &&
+          "selectedCount" in currentFormat && (
+            <div className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full shadow-md">
+              {(currentFormat as any).selectedCount || 0} selected
+            </div>
+          )}
         {selectedElementType === "textbox" ? (
           <>
-            {/* Text Content Input */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <input
-                type="text"
-                value={isTextField(currentFormat) ? currentFormat.value : ""}
-                onChange={(e) => onFormatChange({ value: e.target.value })}
-                placeholder="Enter text..."
-                className="w-32 sm:w-48 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
-              />
-            </div>
+            {/* Text Content Input - Only show for single selection */}
+            {selectedElementId && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <input
+                  type="text"
+                  value={isTextField(currentFormat) ? currentFormat.value : ""}
+                  onChange={(e) => onFormatChange({ value: e.target.value })}
+                  placeholder="Enter text..."
+                  className="w-32 sm:w-48 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
+                />
+              </div>
+            )}
 
             {/* Font Family */}
             <div className="flex items-center gap-2 flex-shrink-0">
               <div className="flex items-center gap-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-200">
                 <select
                   className="w-20 sm:w-32 bg-transparent outline-none p-2 text-sm rounded-lg"
-                  value={safeFormat.fontFamily}
+                  value={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.fontFamily
+                      ? ""
+                      : safeFormat.fontFamily
+                  }
                   onChange={(e) =>
                     onFormatChange({ fontFamily: e.target.value })
                   }
                 >
+                  <option value="">
+                    {!selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.fontFamily
+                      ? "--"
+                      : "Select font"}
+                  </option>
                   {fontFamilies.map((font) => (
                     <option key={font} value={font}>
                       {font}
@@ -310,7 +338,14 @@ export const ElementFormatDrawer: React.FC = () => {
                   min="0.1"
                   max="500"
                   step="0.1"
-                  value={safeFormat.fontSize}
+                  value={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.fontSize
+                      ? ""
+                      : safeFormat.fontSize
+                  }
                   onChange={(e) => {
                     const value = parseFloat(e.target.value);
                     if (value >= 0.1 && value <= 500) {
@@ -319,7 +354,14 @@ export const ElementFormatDrawer: React.FC = () => {
                   }}
                   onFocus={() => setShowFontSizePopup(true)}
                   className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="12"
+                  placeholder={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.fontSize
+                      ? "--"
+                      : "12"
+                  }
                 />
               </div>
             </div>
@@ -335,7 +377,16 @@ export const ElementFormatDrawer: React.FC = () => {
                       : "hover:bg-gray-100 text-gray-700"
                   }`}
                   onClick={() => setShowTextStylePopup(!showTextStylePopup)}
-                  title="Text Style"
+                  title={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    (!(currentFormat as any).consistentProperties.bold ||
+                      !(currentFormat as any).consistentProperties.italic ||
+                      !(currentFormat as any).consistentProperties.underline)
+                      ? "Text Style (Mixed)"
+                      : "Text Style"
+                  }
                 >
                   <Type size={16} /> v
                 </button>
@@ -353,7 +404,14 @@ export const ElementFormatDrawer: React.FC = () => {
                       : "hover:bg-gray-100 text-gray-700"
                   }`}
                   onClick={() => setShowAlignmentPopup(!showAlignmentPopup)}
-                  title="Text Alignment"
+                  title={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.textAlign
+                      ? "Text Alignment (Mixed)"
+                      : "Text Alignment"
+                  }
                 >
                   {safeFormat.textAlign === "left" && <AlignLeft size={16} />}
                   {safeFormat.textAlign === "center" && (
@@ -373,22 +431,50 @@ export const ElementFormatDrawer: React.FC = () => {
                 <Palette size={14} />
                 <input
                   type="color"
-                  value={safeFormat.color}
+                  value={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.color
+                      ? "#000000"
+                      : safeFormat.color
+                  }
                   onChange={(e) => onFormatChange({ color: e.target.value })}
                   className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
-                  title="Text Color"
+                  title={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.color
+                      ? "Text Color (Mixed)"
+                      : "Text Color"
+                  }
                 />
               </div>
               <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
                 <Square size={14} />
                 <input
                   type="color"
-                  value={safeFormat.borderColor}
+                  value={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderColor
+                      ? "#000000"
+                      : safeFormat.borderColor
+                  }
                   onChange={(e) =>
                     onFormatChange({ borderColor: e.target.value })
                   }
                   className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
-                  title="Border Color"
+                  title={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderColor
+                      ? "Border Color (Mixed)"
+                      : "Border Color"
+                  }
                 />
               </div>
             </div>
@@ -423,11 +509,26 @@ export const ElementFormatDrawer: React.FC = () => {
             <div className="hidden md:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
               <select
                 className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
-                value={safeFormat.borderWidth}
+                value={
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.borderWidth
+                    ? ""
+                    : safeFormat.borderWidth
+                }
                 onChange={(e) =>
                   onFormatChange({ borderWidth: Number(e.target.value) })
                 }
               >
+                <option value="">
+                  {!selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.borderWidth
+                    ? "--"
+                    : "Select width"}
+                </option>
                 {borderWidths.map((width) => (
                   <option key={width} value={width}>
                     {width}px
@@ -445,10 +546,24 @@ export const ElementFormatDrawer: React.FC = () => {
                   onClick={() =>
                     setShowBorderRadiusPopup(!showBorderRadiusPopup)
                   }
-                  title="Border Radius"
+                  title={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderRadius
+                      ? "Border Radius (Mixed)"
+                      : "Border Radius"
+                  }
                 >
                   <Square size={16} className="rounded" />
-                  <span className="text-xs">{safeFormat.borderRadius}px</span>
+                  <span className="text-xs">
+                    {!selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderRadius
+                      ? "--"
+                      : `${safeFormat.borderRadius}px`}
+                  </span>
                 </button>
               </div>
             </div>
@@ -1012,7 +1127,14 @@ export const ElementFormatDrawer: React.FC = () => {
                   type="range"
                   min="0"
                   max="50"
-                  value={safeFormat.borderRadius}
+                  value={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderRadius
+                      ? 0
+                      : safeFormat.borderRadius
+                  }
                   onChange={(e) =>
                     onFormatChange({
                       borderRadius: Number(e.target.value),
@@ -1028,7 +1150,14 @@ export const ElementFormatDrawer: React.FC = () => {
                   type="number"
                   min="0"
                   max="100"
-                  value={safeFormat.borderRadius}
+                  value={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderRadius
+                      ? ""
+                      : safeFormat.borderRadius
+                  }
                   onChange={(e) =>
                     onFormatChange({
                       borderRadius: Number(e.target.value),
@@ -1039,6 +1168,14 @@ export const ElementFormatDrawer: React.FC = () => {
                     })
                   }
                   className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                  placeholder={
+                    !selectedElementId &&
+                    currentFormat &&
+                    "consistentProperties" in currentFormat &&
+                    !(currentFormat as any).consistentProperties.borderRadius
+                      ? "--"
+                      : "0"
+                  }
                 />
               </div>
             </div>
@@ -1053,7 +1190,15 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="range"
                     min="0"
                     max="50"
-                    value={safeFormat.borderTopLeftRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderTopLeftRadius
+                        ? 0
+                        : safeFormat.borderTopLeftRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderTopLeftRadius: Number(e.target.value),
@@ -1065,13 +1210,30 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="number"
                     min="0"
                     max="100"
-                    value={safeFormat.borderTopLeftRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderTopLeftRadius
+                        ? ""
+                        : safeFormat.borderTopLeftRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderTopLeftRadius: Number(e.target.value),
                       })
                     }
                     className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    placeholder={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderTopLeftRadius
+                        ? "--"
+                        : "0"
+                    }
                   />
                 </div>
               </div>
@@ -1084,7 +1246,15 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="range"
                     min="0"
                     max="50"
-                    value={safeFormat.borderTopRightRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderTopRightRadius
+                        ? 0
+                        : safeFormat.borderTopRightRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderTopRightRadius: Number(e.target.value),
@@ -1096,13 +1266,30 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="number"
                     min="0"
                     max="100"
-                    value={safeFormat.borderTopRightRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderTopRightRadius
+                        ? ""
+                        : safeFormat.borderTopRightRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderTopRightRadius: Number(e.target.value),
                       })
                     }
                     className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    placeholder={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderTopRightRadius
+                        ? "--"
+                        : "0"
+                    }
                   />
                 </div>
               </div>
@@ -1115,7 +1302,15 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="range"
                     min="0"
                     max="50"
-                    value={safeFormat.borderBottomLeftRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderBottomLeftRadius
+                        ? 0
+                        : safeFormat.borderBottomLeftRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderBottomLeftRadius: Number(e.target.value),
@@ -1127,13 +1322,30 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="number"
                     min="0"
                     max="100"
-                    value={safeFormat.borderBottomLeftRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderBottomLeftRadius
+                        ? ""
+                        : safeFormat.borderBottomLeftRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderBottomLeftRadius: Number(e.target.value),
                       })
                     }
                     className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    placeholder={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderBottomLeftRadius
+                        ? "--"
+                        : "0"
+                    }
                   />
                 </div>
               </div>
@@ -1146,7 +1358,15 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="range"
                     min="0"
                     max="50"
-                    value={safeFormat.borderBottomRightRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderBottomRightRadius
+                        ? 0
+                        : safeFormat.borderBottomRightRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderBottomRightRadius: Number(e.target.value),
@@ -1158,13 +1378,30 @@ export const ElementFormatDrawer: React.FC = () => {
                     type="number"
                     min="0"
                     max="100"
-                    value={safeFormat.borderBottomRightRadius}
+                    value={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderBottomRightRadius
+                        ? ""
+                        : safeFormat.borderBottomRightRadius
+                    }
                     onChange={(e) =>
                       onFormatChange({
                         borderBottomRightRadius: Number(e.target.value),
                       })
                     }
                     className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    placeholder={
+                      !selectedElementId &&
+                      currentFormat &&
+                      "consistentProperties" in currentFormat &&
+                      !(currentFormat as any).consistentProperties
+                        .borderBottomRightRadius
+                        ? "--"
+                        : "0"
+                    }
                   />
                 </div>
               </div>
@@ -1432,7 +1669,12 @@ export const ElementFormatDrawer: React.FC = () => {
             <div className="space-y-1">
               <button
                 className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
-                  safeFormat.bold
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.bold
+                    ? "bg-gray-300 text-gray-600"
+                    : safeFormat.bold
                     ? "bg-blue-500 text-white shadow-md"
                     : "hover:bg-gray-100 text-gray-700"
                 }`}
@@ -1440,14 +1682,33 @@ export const ElementFormatDrawer: React.FC = () => {
                   onFormatChange({ bold: !safeFormat.bold });
                   setShowTextStylePopup(false);
                 }}
-                title="Bold"
+                title={
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.bold
+                    ? "Bold (Mixed)"
+                    : "Bold"
+                }
               >
                 <Bold size={16} />
-                <span className="text-sm">Bold</span>
+                <span className="text-sm">
+                  {!selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.bold
+                    ? "Bold (Mixed)"
+                    : "Bold"}
+                </span>
               </button>
               <button
                 className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
-                  safeFormat.italic
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.italic
+                    ? "bg-gray-300 text-gray-600"
+                    : safeFormat.italic
                     ? "bg-blue-500 text-white shadow-md"
                     : "hover:bg-gray-100 text-gray-700"
                 }`}
@@ -1455,14 +1716,33 @@ export const ElementFormatDrawer: React.FC = () => {
                   onFormatChange({ italic: !safeFormat.italic });
                   setShowTextStylePopup(false);
                 }}
-                title="Italic"
+                title={
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.italic
+                    ? "Italic (Mixed)"
+                    : "Italic"
+                }
               >
                 <Italic size={16} />
-                <span className="text-sm">Italic</span>
+                <span className="text-sm">
+                  {!selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.italic
+                    ? "Italic (Mixed)"
+                    : "Italic"}
+                </span>
               </button>
               <button
                 className={`w-full p-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
-                  safeFormat.underline
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.underline
+                    ? "bg-gray-300 text-gray-600"
+                    : safeFormat.underline
                     ? "bg-blue-500 text-white shadow-md"
                     : "hover:bg-gray-100 text-gray-700"
                 }`}
@@ -1470,10 +1750,24 @@ export const ElementFormatDrawer: React.FC = () => {
                   onFormatChange({ underline: !safeFormat.underline });
                   setShowTextStylePopup(false);
                 }}
-                title="Underline"
+                title={
+                  !selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.underline
+                    ? "Underline (Mixed)"
+                    : "Underline"
+                }
               >
                 <Underline size={16} />
-                <span className="text-sm">Underline</span>
+                <span className="text-sm">
+                  {!selectedElementId &&
+                  currentFormat &&
+                  "consistentProperties" in currentFormat &&
+                  !(currentFormat as any).consistentProperties.underline
+                    ? "Underline (Mixed)"
+                    : "Underline"}
+                </span>
               </button>
             </div>
           </div>

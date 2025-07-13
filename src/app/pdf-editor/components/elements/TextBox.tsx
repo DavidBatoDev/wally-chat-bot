@@ -23,6 +23,8 @@ interface TextBoxProps {
   onMultiSelectDragStart?: (id: string) => void;
   onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
   onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
+  // Selection preview prop
+  isInSelectionPreview?: boolean;
 }
 
 export const MemoizedTextBox = memo(
@@ -46,6 +48,8 @@ export const MemoizedTextBox = memo(
     onMultiSelectDragStart,
     onMultiSelectDrag,
     onMultiSelectDragStop,
+    // Selection preview prop
+    isInSelectionPreview = false,
   }: TextBoxProps) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -176,7 +180,11 @@ export const MemoizedTextBox = memo(
           isSelectedInTextMode
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
-        } ${isMultiSelected ? "ring-2 ring-blue-500 multi-selected" : ""}`}
+        } ${isMultiSelected ? "ring-2 ring-blue-500 multi-selected" : ""} ${
+          isInSelectionPreview
+            ? "ring-2 ring-blue-400 ring-dashed selection-preview"
+            : ""
+        }`}
         style={{ transform: "none" }}
         onClick={handleClick}
       >
