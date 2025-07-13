@@ -30,6 +30,19 @@ import {
 import { useDocumentState } from "./hooks/useDocumentState";
 import { useElementManagement } from "./hooks/useElementManagement";
 import { useTextSpanHandling } from "./hooks/useTextSpanHandling";
+import { useHistory } from "./hooks/useHistory";
+import {
+  AddTextBoxCommand,
+  UpdateTextBoxCommand,
+  DeleteTextBoxCommand,
+  AddShapeCommand,
+  UpdateShapeCommand,
+  DeleteShapeCommand,
+  AddDeletionRectangleCommand,
+  DeleteDeletionRectangleCommand,
+  AddImageCommand,
+  DeleteImageCommand,
+} from "./hooks/commands";
 
 // Import components
 import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";
@@ -115,6 +128,64 @@ export const PDFEditorContent: React.FC = () => {
     isElementAtBack,
   } = useElementManagement();
 
+  // Undo/Redo history
+  const history = useHistory();
+
+  // Undo/Redo handlers for text boxes
+  const handleAddTextBoxWithUndo = useCallback(
+    (
+      x: number,
+      y: number,
+      page: number,
+      view: ViewMode,
+      targetView?: "original" | "translated"
+    ) => {
+      let newId: string | null = null;
+      const idRef = { current: null as string | null };
+      const add = () => {
+        newId = addTextBox(x, y, page, view, targetView);
+        idRef.current = newId;
+        return newId;
+      };
+      const remove = (id: string) => {
+        deleteTextBox(id, view);
+      };
+      const cmd = new AddTextBoxCommand(add, remove, idRef);
+      cmd.execute();
+      history.push(page, view, cmd);
+      return idRef.current;
+    },
+    [addTextBox, deleteTextBox, history]
+  );
+
+  const handleUpdateTextBoxWithUndo = useCallback(
+    (
+      id: string,
+      before: Partial<TextField>,
+      after: Partial<TextField>,
+      page: number,
+      view: ViewMode
+    ) => {
+      const cmd = new UpdateTextBoxCommand(updateTextBox, id, before, after);
+      cmd.execute();
+      history.push(page, view, cmd);
+    },
+    [updateTextBox, history]
+  );
+
+  // Helper to get current text box state
+  const getCurrentTextBoxState = useCallback(
+    (id: string): Partial<TextField> | null => {
+      const allTextBoxes = [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+      ];
+      const textBox = allTextBoxes.find((tb) => tb.id === id);
+      return textBox ? { ...textBox } : null;
+    },
+    [elementCollections]
+  );
+
   // Editor state
   const [editorState, setEditorState] = useState<EditorState>({
     selectedFieldId: null,
@@ -196,6 +267,621 @@ export const PDFEditorContent: React.FC = () => {
     isTransforming: false,
     showTransformButton: true,
   });
+
+  // Performance optimization: Track ongoing operations to batch updates
+  const [ongoingOperations, setOngoingOperations] = useState<{
+    [elementId: string]: {
+      type: "resize" | "drag" | "text" | "multi-drag";
+      startState: any;
+      lastUpdate: number;
+    };
+  }>({});
+
+  // Use a ref to track ongoing operations for immediate access in timers
+  const ongoingOperationsRef = useRef<{
+    [elementId: string]: {
+      type: "resize" | "drag" | "text" | "multi-drag";
+      startState: any;
+      lastUpdate: number;
+    };
+  }>({});
+
+  // Debounce timer for batched updates
+  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({});
+
+  // Helper functions for managing ongoing operations
+  const startOngoingOperation = useCallback(
+    (
+      elementId: string,
+      type: "resize" | "drag" | "text" | "multi-drag",
+      startState: any
+    ) => {
+      setOngoingOperations((prev) => ({
+        ...prev,
+        [elementId]: {
+          type,
+          startState,
+          lastUpdate: Date.now(),
+        },
+      }));
+    },
+    []
+  );
+
+  const endOngoingOperation = useCallback((elementId: string) => {
+    // Clear the debounce timer
+    if (debounceTimersRef.current[elementId]) {
+      clearTimeout(debounceTimersRef.current[elementId]);
+      delete debounceTimersRef.current[elementId];
+    }
+
+    // Clear the ongoing operation
+    setOngoingOperations((prev) => {
+      const newState = { ...prev };
+      delete newState[elementId];
+      return newState;
+    });
+  }, []);
+
+  // Wrapper for updating text box with undo support
+  const updateTextBoxWithUndo = useCallback(
+    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
+      const currentState = getCurrentTextBoxState(id);
+      if (currentState) {
+        // Get the specific properties being updated
+        const before: Partial<TextField> = {};
+        const after: Partial<TextField> = {};
+
+        // Only include properties that are actually being changed
+        Object.keys(updates).forEach((key) => {
+          const k = key as keyof TextField;
+          if (currentState[k] !== updates[k]) {
+            before[k] = currentState[k] as any;
+            after[k] = updates[k] as any;
+          }
+        });
+
+        // Only create command if there are actual changes
+        if (Object.keys(after).length > 0) {
+          if (isOngoingOperation) {
+            console.log("TextBox ongoing operation:", { id, updates: after });
+            // For ongoing operations, update the state but don't create undo commands yet
+            updateTextBox(id, after);
+
+            // Update ongoing operation state
+            const newOperationState = {
+              type: "text" as const,
+              startState:
+                ongoingOperationsRef.current[id]?.startState || before,
+              lastUpdate: Date.now(),
+            };
+
+            setOngoingOperations((prev) => ({
+              ...prev,
+              [id]: newOperationState,
+            }));
+
+            // Also update the ref for immediate access
+            ongoingOperationsRef.current[id] = newOperationState;
+
+            // Clear existing debounce timer
+            if (debounceTimersRef.current[id]) {
+              clearTimeout(debounceTimersRef.current[id]);
+            }
+
+            // Set debounce timer to create undo command after operation completes
+            debounceTimersRef.current[id] = setTimeout(() => {
+              console.log("TextBox debounce timer fired for:", id);
+              const operation = ongoingOperationsRef.current[id];
+              if (operation) {
+                console.log(
+                  "Creating undo command for textbox:",
+                  id,
+                  operation.startState,
+                  after
+                );
+                handleUpdateTextBoxWithUndo(
+                  id,
+                  operation.startState,
+                  after,
+                  documentState.currentPage,
+                  viewState.currentView
+                );
+
+                // Clear ongoing operation
+                setOngoingOperations((prev) => {
+                  const newState = { ...prev };
+                  delete newState[id];
+                  return newState;
+                });
+                delete ongoingOperationsRef.current[id];
+                delete debounceTimersRef.current[id];
+              }
+            }, 500); // 500ms debounce
+          } else {
+            // For immediate operations, create undo command right away
+            console.log("TextBox immediate operation:", { id, before, after });
+            handleUpdateTextBoxWithUndo(
+              id,
+              before,
+              after,
+              documentState.currentPage,
+              viewState.currentView
+            );
+          }
+        }
+      }
+    },
+    [
+      getCurrentTextBoxState,
+      handleUpdateTextBoxWithUndo,
+      documentState.currentPage,
+      viewState.currentView,
+      ongoingOperations,
+      updateTextBox,
+    ]
+  );
+
+  // Undo/Redo handlers for shapes
+  const handleAddShapeWithUndo = useCallback(
+    (
+      type: "circle" | "rectangle",
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      page: number,
+      view: ViewMode,
+      targetView?: "original" | "translated"
+    ) => {
+      let newId: string | null = null;
+      const idRef = { current: null as string | null };
+      const add = () => {
+        newId = addShape(type, x, y, width, height, page, view, targetView);
+        idRef.current = newId;
+        return newId;
+      };
+      const remove = (id: string) => {
+        deleteShape(id, view);
+      };
+      const cmd = new AddShapeCommand(add, remove, idRef);
+      cmd.execute();
+      history.push(page, view, cmd);
+      return idRef.current;
+    },
+    [addShape, deleteShape, history]
+  );
+
+  const handleUpdateShapeWithUndo = useCallback(
+    (
+      id: string,
+      before: Partial<ShapeType>,
+      after: Partial<ShapeType>,
+      page: number,
+      view: ViewMode
+    ) => {
+      const cmd = new UpdateShapeCommand(updateShape, id, before, after);
+      cmd.execute();
+      history.push(page, view, cmd);
+    },
+    [updateShape, history]
+  );
+
+  // Helper to get current shape state
+  const getCurrentShapeState = useCallback(
+    (id: string): Partial<ShapeType> | null => {
+      const allShapes = [
+        ...elementCollections.originalShapes,
+        ...elementCollections.translatedShapes,
+      ];
+      const shape = allShapes.find((s) => s.id === id);
+      return shape ? { ...shape } : null;
+    },
+    [elementCollections]
+  );
+
+  // Wrapper for updating shape with undo support
+  const updateShapeWithUndo = useCallback(
+    (id: string, updates: Partial<ShapeType>, isOngoingOperation = false) => {
+      const currentState = getCurrentShapeState(id);
+      if (currentState) {
+        // Get the specific properties being updated
+        const before: Partial<ShapeType> = {};
+        const after: Partial<ShapeType> = {};
+
+        // Only include properties that are actually being changed
+        Object.keys(updates).forEach((key) => {
+          const k = key as keyof ShapeType;
+          if (currentState[k] !== updates[k]) {
+            before[k] = currentState[k] as any;
+            after[k] = updates[k] as any;
+          }
+        });
+
+        // Only create command if there are actual changes
+        if (Object.keys(after).length > 0) {
+          if (isOngoingOperation) {
+            console.log("Shape ongoing operation:", { id, updates: after });
+            // For ongoing operations, update the state but don't create undo commands yet
+            updateShape(id, after);
+
+            // Update ongoing operation state
+            const newOperationState = {
+              type: "drag" as const,
+              startState:
+                ongoingOperationsRef.current[id]?.startState || before,
+              lastUpdate: Date.now(),
+            };
+
+            setOngoingOperations((prev) => ({
+              ...prev,
+              [id]: newOperationState,
+            }));
+
+            // Also update the ref for immediate access
+            ongoingOperationsRef.current[id] = newOperationState;
+
+            // Clear existing debounce timer
+            if (debounceTimersRef.current[id]) {
+              clearTimeout(debounceTimersRef.current[id]);
+            }
+
+            // Set debounce timer to create undo command after operation completes
+            debounceTimersRef.current[id] = setTimeout(() => {
+              console.log("Shape debounce timer fired for:", id);
+              const operation = ongoingOperationsRef.current[id];
+              if (operation) {
+                const allShapes = [
+                  ...elementCollections.originalShapes,
+                  ...elementCollections.translatedShapes,
+                ];
+                const shape = allShapes.find((s) => s.id === id);
+                if (shape) {
+                  const view = elementCollections.originalShapes.some(
+                    (s) => s.id === id
+                  )
+                    ? "original"
+                    : "translated";
+                  console.log(
+                    "Creating undo command for shape:",
+                    id,
+                    operation.startState,
+                    after
+                  );
+                  handleUpdateShapeWithUndo(
+                    id,
+                    operation.startState,
+                    after,
+                    shape.page,
+                    view
+                  );
+                }
+
+                // Clear ongoing operation
+                setOngoingOperations((prev) => {
+                  const newState = { ...prev };
+                  delete newState[id];
+                  return newState;
+                });
+                delete ongoingOperationsRef.current[id];
+                delete debounceTimersRef.current[id];
+              }
+            }, 300); // 300ms debounce for drag operations
+          } else {
+            // For immediate operations, create undo command right away
+            console.log("Shape immediate operation:", { id, before, after });
+            const allShapes = [
+              ...elementCollections.originalShapes,
+              ...elementCollections.translatedShapes,
+            ];
+            const shape = allShapes.find((s) => s.id === id);
+            if (shape) {
+              const view = elementCollections.originalShapes.some(
+                (s) => s.id === id
+              )
+                ? "original"
+                : "translated";
+              handleUpdateShapeWithUndo(id, before, after, shape.page, view);
+            }
+          }
+        }
+      }
+    },
+    [
+      getCurrentShapeState,
+      handleUpdateShapeWithUndo,
+      elementCollections,
+      ongoingOperations,
+      updateShape,
+    ]
+  );
+
+  // Wrapper for deleting textbox with undo support
+  const handleDeleteTextBoxWithUndo = useCallback(
+    (id: string, view: ViewMode) => {
+      // Find the textbox to delete
+      const allTextBoxes = [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+      ];
+      const textBox = allTextBoxes.find((tb) => tb.id === id);
+      if (!textBox) return;
+
+      // Determine which view the textbox belongs to
+      const textBoxView = elementCollections.originalTextBoxes.some(
+        (tb) => tb.id === id
+      )
+        ? "original"
+        : "translated";
+
+      const remove = (id: string) => {
+        deleteTextBox(id, view);
+      };
+      const add = (textBox: TextField) => {
+        handleAddTextBoxWithUndo(
+          textBox.x,
+          textBox.y,
+          textBox.page,
+          textBoxView,
+          textBoxView
+        );
+      };
+      const cmd = new DeleteTextBoxCommand(remove, add, textBox);
+      cmd.execute();
+      history.push(textBox.page, textBoxView, cmd);
+    },
+    [elementCollections, deleteTextBox, addTextBox, history]
+  );
+
+  // Wrapper for deleting shape with undo support
+  const handleDeleteShapeWithUndo = useCallback(
+    (id: string, view: ViewMode) => {
+      // Find the shape to delete
+      const allShapes = [
+        ...elementCollections.originalShapes,
+        ...elementCollections.translatedShapes,
+      ];
+      const shape = allShapes.find((s) => s.id === id);
+      if (!shape) return;
+
+      // Determine which view the shape belongs to
+      const shapeView = elementCollections.originalShapes.some(
+        (s) => s.id === id
+      )
+        ? "original"
+        : "translated";
+
+      const remove = (id: string) => {
+        deleteShape(id, view);
+      };
+      const add = (shape: ShapeType) => {
+        addShape(
+          shape.type,
+          shape.x,
+          shape.y,
+          shape.width,
+          shape.height,
+          shape.page,
+          shapeView,
+          shapeView
+        );
+      };
+      const cmd = new DeleteShapeCommand(remove, add, shape);
+      cmd.execute();
+      history.push(shape.page, shapeView, cmd);
+    },
+    [elementCollections, deleteShape, addShape, history]
+  );
+
+  // Undo/Redo handlers for deletion rectangles
+  const handleAddDeletionRectangleWithUndo = useCallback(
+    (
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      page: number,
+      view: ViewMode,
+      background: string,
+      opacity: number,
+      targetView?: "original" | "translated"
+    ) => {
+      console.log("Adding deletion rectangle with undo:", {
+        x,
+        y,
+        width,
+        height,
+        page,
+        view,
+        background,
+        opacity,
+      });
+      let newId: string | null = null;
+      const idRef = { current: null as string | null };
+      const add = () => {
+        // Use the direct function from element management to avoid recursion
+        newId = addDeletionRectangle(
+          x,
+          y,
+          width,
+          height,
+          page,
+          view,
+          background,
+          opacity
+        );
+        idRef.current = newId;
+        console.log("Deletion rectangle added with ID:", newId);
+        return newId;
+      };
+      const remove = (id: string) => {
+        console.log("Removing deletion rectangle with ID:", id);
+        deleteDeletionRectangle(id, view);
+      };
+      const cmd = new AddDeletionRectangleCommand(add, remove, idRef);
+      cmd.execute();
+      history.push(page, view, cmd);
+      console.log("Command pushed to history for page:", page, "view:", view);
+      return idRef.current;
+    },
+    [addDeletionRectangle, deleteDeletionRectangle, history]
+  );
+
+  const handleDeleteDeletionRectangleWithUndo = useCallback(
+    (id: string, view: ViewMode) => {
+      console.log("Deleting deletion rectangle with undo:", { id, view });
+      // Find the deletion rectangle to delete
+      const allDeletionRectangles = [
+        ...elementCollections.originalDeletionRectangles,
+        ...elementCollections.translatedDeletionRectangles,
+      ];
+      const rect = allDeletionRectangles.find((r) => r.id === id);
+      if (!rect) {
+        console.log("Deletion rectangle not found:", id);
+        return;
+      }
+
+      // Determine which view the deletion rectangle belongs to
+      const rectView = elementCollections.originalDeletionRectangles.some(
+        (r) => r.id === id
+      )
+        ? "original"
+        : "translated";
+
+      console.log("Deletion rectangle found:", rect, "view:", rectView);
+
+      const remove = (id: string) => {
+        console.log("Executing remove for deletion rectangle:", id);
+        deleteDeletionRectangle(id, view);
+      };
+      const add = (rect: DeletionRectangle) => {
+        console.log("Executing add for deletion rectangle:", rect);
+        addDeletionRectangle(
+          rect.x,
+          rect.y,
+          rect.width,
+          rect.height,
+          rect.page,
+          rectView,
+          rect.background || "",
+          rect.opacity
+        );
+      };
+      const cmd = new DeleteDeletionRectangleCommand(remove, add, rect);
+      cmd.execute();
+      history.push(rect.page, rectView, cmd);
+      console.log(
+        "Delete command pushed to history for page:",
+        rect.page,
+        "view:",
+        rectView
+      );
+    },
+    [elementCollections, deleteDeletionRectangle, addDeletionRectangle, history]
+  );
+
+  // Undo/Redo handlers for images
+  const handleAddImageWithUndo = useCallback(
+    (
+      src: string,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+      page: number,
+      view: ViewMode,
+      targetView?: "original" | "translated"
+    ) => {
+      console.log("Adding image with undo:", {
+        src,
+        x,
+        y,
+        width,
+        height,
+        page,
+        view,
+        targetView,
+      });
+      let newId: string | null = null;
+      const idRef = { current: null as string | null };
+      const add = () => {
+        // Determine the correct view to use based on targetView and current view
+        const finalView = view === "split" && targetView ? targetView : view;
+        // Use the direct function from element management to avoid recursion
+        newId = addImage(src, x, y, width, height, page, finalView);
+        idRef.current = newId;
+        console.log("Image added with ID:", newId, "to view:", finalView);
+        return newId;
+      };
+      const remove = (id: string) => {
+        console.log("Removing image with ID:", id);
+        deleteImage(id, view);
+      };
+      const cmd = new AddImageCommand(add, remove, idRef);
+      cmd.execute();
+      history.push(page, view, cmd);
+      console.log(
+        "Image command pushed to history for page:",
+        page,
+        "view:",
+        view
+      );
+      return idRef.current;
+    },
+    [addImage, deleteImage, history]
+  );
+
+  const handleDeleteImageWithUndo = useCallback(
+    (id: string, view: ViewMode) => {
+      console.log("Deleting image with undo:", { id, view });
+      // Find the image to delete
+      const allImages = [
+        ...elementCollections.originalImages,
+        ...elementCollections.translatedImages,
+      ];
+      const image = allImages.find((img) => img.id === id);
+      if (!image) {
+        console.log("Image not found:", id);
+        return;
+      }
+
+      // Determine which view the image belongs to
+      const imageView = elementCollections.originalImages.some(
+        (img) => img.id === id
+      )
+        ? "original"
+        : "translated";
+
+      console.log("Image found:", image, "view:", imageView);
+
+      const remove = (id: string) => {
+        console.log("Executing remove for image:", id);
+        deleteImage(id, view);
+      };
+      const add = (image: ImageType) => {
+        console.log("Executing add for image:", image);
+        addImage(
+          image.src,
+          image.x,
+          image.y,
+          image.width,
+          image.height,
+          image.page,
+          imageView
+        );
+      };
+      const cmd = new DeleteImageCommand(remove, add, image);
+      cmd.execute();
+      history.push(image.page, imageView, cmd);
+      console.log(
+        "Delete image command pushed to history for page:",
+        image.page,
+        "view:",
+        imageView
+      );
+    },
+    [elementCollections, deleteImage, addImage, history]
+  );
 
   // Auto-focus state
   const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
@@ -315,8 +1001,8 @@ export const PDFEditorContent: React.FC = () => {
         editorState.multiSelection.selectedElements,
         deltaX,
         deltaY,
-        updateTextBox,
-        updateShape,
+        (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
+        (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
         updateImage,
         getElementById,
         documentState.pageWidth,
@@ -353,7 +1039,7 @@ export const PDFEditorContent: React.FC = () => {
     },
     [
       editorState.multiSelection.selectedElements,
-      updateTextBox,
+      updateTextBoxWithUndo,
       updateShape,
       updateImage,
       getElementById,
@@ -427,10 +1113,24 @@ export const PDFEditorContent: React.FC = () => {
 
                 switch (el.type) {
                   case "textbox":
-                    updateTextBox(el.id, { x: constrainedX, y: constrainedY });
+                    updateTextBoxWithUndo(
+                      el.id,
+                      {
+                        x: constrainedX,
+                        y: constrainedY,
+                      },
+                      true
+                    ); // Mark as ongoing operation
                     break;
                   case "shape":
-                    updateShape(el.id, { x: constrainedX, y: constrainedY });
+                    updateShapeWithUndo(
+                      el.id,
+                      {
+                        x: constrainedX,
+                        y: constrainedY,
+                      },
+                      true
+                    ); // Mark as ongoing operation
                     break;
                   case "image":
                     updateImage(el.id, { x: constrainedX, y: constrainedY });
@@ -444,8 +1144,8 @@ export const PDFEditorContent: React.FC = () => {
     },
     [
       editorState.multiSelection.selectedElements,
-      updateTextBox,
-      updateShape,
+      updateTextBoxWithUndo,
+      updateShapeWithUndo,
       updateImage,
       getElementById,
       documentState.pageWidth,
@@ -510,8 +1210,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.currentPage,
         targetView,
         documentState.scale,
-        (x, y, width, height, page, view, background, opacity) =>
-          addDeletionRectangle(
+        (x, y, width, height, page, view, background, opacity) => {
+          const result = handleAddDeletionRectangleWithUndo(
             x,
             y,
             width,
@@ -519,8 +1219,10 @@ export const PDFEditorContent: React.FC = () => {
             page,
             view,
             background || "",
-            opacity
-          ),
+            opacity || 1.0
+          );
+          return result || "";
+        },
         documentState.pdfBackgroundColor,
         erasureState.erasureSettings.opacity
       );
@@ -537,9 +1239,12 @@ export const PDFEditorContent: React.FC = () => {
         documentState.currentPage,
         targetView,
         documentState.scale,
-        (x, y, page, view) => addTextBox(x, y, page, view),
+        (x, y, page, view) => {
+          const result = handleAddTextBoxWithUndo(x, y, page, view);
+          return result || "";
+        },
         (x, y, width, height, page, view, background, opacity) => {
-          return addDeletionRectangle(
+          const result = handleAddDeletionRectangleWithUndo(
             x,
             y,
             width,
@@ -547,8 +1252,9 @@ export const PDFEditorContent: React.FC = () => {
             page,
             view,
             background || "",
-            opacity
+            opacity || 1.0
           );
+          return result || "";
         },
         documentState.pdfBackgroundColor,
         erasureState.erasureSettings.opacity
@@ -557,7 +1263,7 @@ export const PDFEditorContent: React.FC = () => {
     addDeletionRectangle: (x, y, width, height, page, background, opacity) => {
       const targetView =
         viewState.currentView === "split" ? "original" : viewState.currentView;
-      return addDeletionRectangle(
+      const result = handleAddDeletionRectangleWithUndo(
         x,
         y,
         width,
@@ -565,10 +1271,13 @@ export const PDFEditorContent: React.FC = () => {
         page,
         targetView,
         background || "",
-        opacity
+        opacity || 1.0
       );
+      return result || "";
     },
-    updateTextBox,
+    updateTextBox: (id: string, updates: any) => {
+      updateTextBoxWithUndo(id, updates, false); // Don't mark as ongoing operation for text span updates
+    },
     setAutoFocusTextBoxId,
   });
 
@@ -680,13 +1389,14 @@ export const PDFEditorContent: React.FC = () => {
           e.preventDefault();
           const selectedIds = editorState.selectedTextBoxes.textBoxIds;
           if (selectedIds.length > 0) {
-            // Create deletion rectangle for each selected text box
+            // For each selected textbox, create a deletion rectangle and delete the textbox
             selectedIds.forEach((textBoxId) => {
               const textBox = currentPageTextBoxes.find(
                 (tb) => tb.id === textBoxId
               );
               if (textBox) {
-                addDeletionRectangle(
+                // First, create the deletion rectangle with undo
+                handleAddDeletionRectangleWithUndo(
                   textBox.x,
                   textBox.y,
                   textBox.width,
@@ -696,11 +1406,65 @@ export const PDFEditorContent: React.FC = () => {
                   documentState.pdfBackgroundColor,
                   erasureState.erasureSettings.opacity
                 );
+
+                // Then delete the textbox with undo
+                // We need to create a proper delete command for textboxes
+                const deleteTextBoxCmd = {
+                  execute: () =>
+                    deleteTextBox(textBox.id, viewState.currentView),
+                  undo: () =>
+                    handleAddTextBoxWithUndo(
+                      textBox.x,
+                      textBox.y,
+                      documentState.currentPage,
+                      viewState.currentView
+                    ),
+                };
+                deleteTextBoxCmd.execute();
+                history.push(
+                  documentState.currentPage,
+                  viewState.currentView,
+                  deleteTextBoxCmd
+                );
               }
             });
             toast.success(
-              `Created deletion rectangles for ${selectedIds.length} selected text boxes`
+              `Replaced ${selectedIds.length} text boxes with deletion rectangles`
             );
+          }
+        }
+
+        // Ctrl+Z to undo
+        if (e.key === "z" || e.key === "Z") {
+          e.preventDefault();
+          console.log(
+            "Ctrl+Z pressed, canUndo:",
+            history.canUndo(documentState.currentPage, viewState.currentView)
+          );
+          if (
+            history.canUndo(documentState.currentPage, viewState.currentView)
+          ) {
+            history.undo(documentState.currentPage, viewState.currentView);
+            toast.success("Undo");
+          }
+        }
+
+        // Ctrl+Y or Ctrl+Shift+Z to redo
+        if (
+          e.key === "y" ||
+          e.key === "Y" ||
+          (e.shiftKey && (e.key === "z" || e.key === "Z"))
+        ) {
+          e.preventDefault();
+          console.log(
+            "Ctrl+Y/Ctrl+Shift+Z pressed, canRedo:",
+            history.canRedo(documentState.currentPage, viewState.currentView)
+          );
+          if (
+            history.canRedo(documentState.currentPage, viewState.currentView)
+          ) {
+            history.redo(documentState.currentPage, viewState.currentView);
+            toast.success("Redo");
           }
         }
       }
@@ -773,6 +1537,7 @@ export const PDFEditorContent: React.FC = () => {
     setEditorState,
     handleMultiSelectionMove,
     handleMultiSelectionMoveEnd,
+    history,
   ]);
 
   // Format change handler for ElementFormatDrawer
@@ -801,7 +1566,7 @@ export const PDFEditorContent: React.FC = () => {
           // Apply text format changes to all selected textboxes
           selectedElements.forEach((element) => {
             if (element.type === "textbox") {
-              updateTextBox(element.id, format);
+              updateTextBoxWithUndo(element.id, format);
             }
           });
         } else if (selectedElementType === "shape") {
@@ -820,13 +1585,13 @@ export const PDFEditorContent: React.FC = () => {
 
           selectedElements.forEach((element) => {
             if (element.type === "shape") {
-              updateShape(element.id, updates);
+              updateShapeWithUndo(element.id, updates);
             }
           });
         }
       } else if (selectedElementType === "textbox" && selectedElementId) {
         // Handle single text field format changes
-        updateTextBox(selectedElementId, format);
+        updateTextBoxWithUndo(selectedElementId, format);
       } else if (selectedElementType === "shape" && selectedElementId) {
         // Handle single shape format changes
         const updates: Partial<ShapeType> = {};
@@ -842,7 +1607,7 @@ export const PDFEditorContent: React.FC = () => {
           updates.borderRadius = format.borderRadius;
 
         console.log("Updating shape with:", updates);
-        updateShape(selectedElementId, updates);
+        updateShapeWithUndo(selectedElementId, updates);
       } else if (selectedElementType === "image" && selectedElementId) {
         // Handle image format changes
         const updates: Partial<ImageType> = {};
@@ -902,7 +1667,7 @@ export const PDFEditorContent: React.FC = () => {
       selectedElementType,
       editorState.multiSelection.selectedElements,
       currentFormat,
-      updateTextBox,
+      updateTextBoxWithUndo,
       updateShape,
       updateImage,
       getCurrentImages,
@@ -1636,7 +2401,7 @@ export const PDFEditorContent: React.FC = () => {
       const y = Math.min(toolState.shapeDrawStart.y, toolState.shapeDrawEnd.y);
 
       if (toolState.shapeDrawingMode) {
-        addShape(
+        handleAddShapeWithUndo(
           toolState.shapeDrawingMode,
           x,
           y,
@@ -1856,8 +2621,8 @@ export const PDFEditorContent: React.FC = () => {
                 const width = selectionRect.width / documentState.scale;
                 const height = selectionRect.height / documentState.scale;
 
-                // Create deletion rectangle
-                addDeletionRectangle(
+                // Create deletion rectangle with undo
+                handleAddDeletionRectangleWithUndo(
                   x,
                   y,
                   width,
@@ -1995,12 +2760,12 @@ export const PDFEditorContent: React.FC = () => {
         targetView
       );
 
-      // Use the addDeletionRectangle function from element management
+      // Use the undo-enabled addDeletionRectangle function
       // In split view, use the target view; otherwise use current view
       const targetViewForDeletion =
         viewState.currentView === "split" ? targetView : viewState.currentView;
 
-      addDeletionRectangle(
+      handleAddDeletionRectangleWithUndo(
         x,
         y,
         width,
@@ -2019,7 +2784,7 @@ export const PDFEditorContent: React.FC = () => {
     documentState.pdfBackgroundColor,
     erasureState.erasureSettings.opacity,
     viewState.currentView,
-    addDeletionRectangle,
+    handleAddDeletionRectangleWithUndo,
   ]);
 
   // Create deletion rectangle from selected text
@@ -2029,7 +2794,7 @@ export const PDFEditorContent: React.FC = () => {
       pagePosition: { x: number; y: number };
       pageSize: { width: number; height: number };
     }) => {
-      addDeletionRectangle(
+      handleAddDeletionRectangleWithUndo(
         selection.pagePosition.x,
         selection.pagePosition.y,
         selection.pageSize.width + 1, // Add 1px for better coverage
@@ -2040,7 +2805,11 @@ export const PDFEditorContent: React.FC = () => {
         erasureState.erasureSettings.opacity
       );
     },
-    [addDeletionRectangle, documentState.currentPage, viewState.currentView]
+    [
+      handleAddDeletionRectangleWithUndo,
+      documentState.currentPage,
+      viewState.currentView,
+    ]
   );
 
   // Multi-element selection handlers
@@ -2335,13 +3104,16 @@ export const PDFEditorContent: React.FC = () => {
     selectedElements.forEach((selectedElement) => {
       switch (selectedElement.type) {
         case "textbox":
-          deleteTextBox(selectedElement.id, viewState.currentView);
+          handleDeleteTextBoxWithUndo(
+            selectedElement.id,
+            viewState.currentView
+          );
           break;
         case "shape":
-          deleteShape(selectedElement.id, viewState.currentView);
+          handleDeleteShapeWithUndo(selectedElement.id, viewState.currentView);
           break;
         case "image":
-          deleteImage(selectedElement.id, viewState.currentView);
+          handleDeleteImageWithUndo(selectedElement.id, viewState.currentView);
           break;
       }
     });
@@ -2357,9 +3129,9 @@ export const PDFEditorContent: React.FC = () => {
     }));
   }, [
     editorState.multiSelection.selectedElements,
-    deleteTextBox,
-    deleteShape,
-    deleteImage,
+    handleDeleteTextBoxWithUndo,
+    handleDeleteShapeWithUndo,
+    handleDeleteImageWithUndo,
     viewState.currentView,
   ]);
 
@@ -2373,8 +3145,8 @@ export const PDFEditorContent: React.FC = () => {
         editorState.multiSelection.selectedElements,
         deltaX,
         deltaY,
-        updateTextBox,
-        updateShape,
+        (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
+        (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
         updateImage,
         getElementById,
         documentState.pageWidth,
@@ -2412,7 +3184,7 @@ export const PDFEditorContent: React.FC = () => {
     },
     [
       editorState.multiSelection.selectedElements,
-      updateTextBox,
+      updateTextBoxWithUndo,
       updateShape,
       updateImage,
       getElementById,
@@ -2528,8 +3300,8 @@ export const PDFEditorContent: React.FC = () => {
         editorState.multiSelection.selectedElements,
         deltaX,
         deltaY,
-        updateTextBox,
-        updateShape,
+        (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
+        (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
         updateImage,
         getElementById,
         documentState.pageWidth,
@@ -2628,7 +3400,7 @@ export const PDFEditorContent: React.FC = () => {
       );
 
       if (editorState.isAddTextBoxMode) {
-        const fieldId = addTextBox(
+        const fieldId = handleAddTextBoxWithUndo(
           x,
           y,
           documentState.currentPage,
@@ -2763,7 +3535,7 @@ export const PDFEditorContent: React.FC = () => {
         const imageUrl = URL.createObjectURL(imageFile);
 
         // Create a new image element
-        const imageId = addImage(
+        const imageId = handleAddImageWithUndo(
           imageUrl,
           50, // Center the image on the page
           50,
@@ -2774,7 +3546,9 @@ export const PDFEditorContent: React.FC = () => {
         );
 
         // Select the image and open format drawer
-        handleImageSelect(imageId);
+        if (imageId) {
+          handleImageSelect(imageId);
+        }
 
         toast.success("Image uploaded as interactive element on blank PDF");
       } catch (error) {
@@ -2782,7 +3556,7 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to create blank PDF");
       }
     },
-    [actions, addImage, handleImageSelect]
+    [actions, handleAddImageWithUndo, handleImageSelect]
   );
 
   // Helper function to append an image as a new page
@@ -2819,7 +3593,7 @@ export const PDFEditorContent: React.FC = () => {
         const newPageNumber = currentPdfDoc.getPageCount(); // The page we just added
 
         // Create a new image element
-        const imageId = addImage(
+        const imageId = handleAddImageWithUndo(
           imageUrl,
           50, // Center the image on the page
           50,
@@ -2830,7 +3604,9 @@ export const PDFEditorContent: React.FC = () => {
         );
 
         // Select the image and open format drawer
-        handleImageSelect(imageId);
+        if (imageId) {
+          handleImageSelect(imageId);
+        }
 
         toast.success("Image appended as new page successfully!");
       } catch (error) {
@@ -2838,7 +3614,7 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to append image");
       }
     },
-    [documentState.url, actions, addImage, handleImageSelect]
+    [documentState.url, actions, handleAddImageWithUndo, handleImageSelect]
   );
 
   // Helper function to append a PDF document
@@ -2913,7 +3689,7 @@ export const PDFEditorContent: React.FC = () => {
       if (file) {
         const url = URL.createObjectURL(file);
 
-        const imageId = addImage(
+        const imageId = handleAddImageWithUndo(
           url,
           100,
           100,
@@ -2923,7 +3699,9 @@ export const PDFEditorContent: React.FC = () => {
           viewState.currentView
         );
 
-        handleImageSelect(imageId);
+        if (imageId) {
+          handleImageSelect(imageId);
+        }
 
         if (imageInputRef.current) {
           imageInputRef.current.value = "";
@@ -2933,7 +3711,7 @@ export const PDFEditorContent: React.FC = () => {
       }
     },
     [
-      addImage,
+      handleAddImageWithUndo,
       documentState.currentPage,
       viewState.currentView,
       handleImageSelect,
@@ -3094,6 +3872,18 @@ export const PDFEditorContent: React.FC = () => {
     });
   }, [editorState.multiSelection]);
 
+  // Cleanup effect to clear any remaining debounce timers
+  useEffect(() => {
+    return () => {
+      // Clear all debounce timers on unmount
+      Object.values(debounceTimersRef.current).forEach((timer) => {
+        clearTimeout(timer);
+      });
+      debounceTimersRef.current = {};
+      ongoingOperationsRef.current = {};
+    };
+  }, []);
+
   // Render elements
   const renderElement = (element: SortedElement) => {
     // Get elements that would be captured in the current selection preview
@@ -3117,8 +3907,10 @@ export const PDFEditorContent: React.FC = () => {
           scale={documentState.scale}
           showPaddingIndicator={showPaddingPopup}
           onSelect={handleTextBoxSelect}
-          onUpdate={updateTextBox}
-          onDelete={(id) => deleteTextBox(id, viewState.currentView)}
+          onUpdate={updateTextBoxWithUndo}
+          onDelete={(id) =>
+            handleDeleteTextBoxWithUndo(id, viewState.currentView)
+          }
           isTextSelectionMode={editorState.isTextSelectionMode}
           isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
             textBox.id
@@ -3147,8 +3939,10 @@ export const PDFEditorContent: React.FC = () => {
           isEditMode={editorState.isEditMode}
           scale={documentState.scale}
           onSelect={handleShapeSelect}
-          onUpdate={updateShape}
-          onDelete={(id) => deleteShape(id, viewState.currentView)}
+          onUpdate={updateShapeWithUndo}
+          onDelete={(id) =>
+            handleDeleteShapeWithUndo(id, viewState.currentView)
+          }
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
         />
@@ -3166,7 +3960,9 @@ export const PDFEditorContent: React.FC = () => {
           scale={documentState.scale}
           onSelect={handleImageSelect}
           onUpdate={updateImage}
-          onDelete={(id) => deleteImage(id, viewState.currentView)}
+          onDelete={(id) =>
+            handleDeleteImageWithUndo(id, viewState.currentView)
+          }
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
         />
@@ -3189,10 +3985,63 @@ export const PDFEditorContent: React.FC = () => {
         onFileUpload={() => fileInputRef.current?.click()}
         onSaveProject={saveProject}
         onExportData={exportData}
+        onUndo={() => {
+          console.log(
+            "Undo button clicked, canUndo:",
+            history.canUndo(documentState.currentPage, viewState.currentView)
+          );
+          if (
+            history.canUndo(documentState.currentPage, viewState.currentView)
+          ) {
+            history.undo(documentState.currentPage, viewState.currentView);
+            toast.success("Undo");
+          }
+        }}
+        onRedo={() => {
+          console.log(
+            "Redo button clicked, canRedo:",
+            history.canRedo(documentState.currentPage, viewState.currentView)
+          );
+          if (
+            history.canRedo(documentState.currentPage, viewState.currentView)
+          ) {
+            history.redo(documentState.currentPage, viewState.currentView);
+            toast.success("Redo");
+          }
+        }}
+        canUndo={history.canUndo(
+          documentState.currentPage,
+          viewState.currentView
+        )}
+        canRedo={history.canRedo(
+          documentState.currentPage,
+          viewState.currentView
+        )}
       />
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden relative">
+        {/* Temporary test controls - remove after testing */}
+        <div className="absolute top-2 right-2 z-50 flex gap-2">
+          <button
+            onClick={() => {
+              if (selectedElementId && selectedElementType === "textbox") {
+                updateTextBoxWithUndo(selectedElementId, {
+                  fontSize: (Math.random() * 20 + 8).toFixed(1) as any,
+                  color: `#${Math.floor(Math.random() * 16777215).toString(
+                    16
+                  )}`,
+                });
+                toast.success("Text modified - try Ctrl+Z to undo!");
+              } else {
+                toast.error("Please select a text box first");
+              }
+            }}
+            className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
+          >
+            Test Modify
+          </button>
+        </div>
         {/* Hidden file inputs */}
         <input
           type="file"
@@ -3743,7 +4592,7 @@ export const PDFEditorContent: React.FC = () => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      deleteDeletionRectangle(
+                                      handleDeleteDeletionRectangleWithUndo(
                                         rect.id,
                                         "original"
                                       );
@@ -3780,9 +4629,12 @@ export const PDFEditorContent: React.FC = () => {
                                   scale={documentState.scale}
                                   showPaddingIndicator={showPaddingPopup}
                                   onSelect={handleTextBoxSelect}
-                                  onUpdate={updateTextBox}
+                                  onUpdate={updateTextBoxWithUndo}
                                   onDelete={(id) =>
-                                    deleteTextBox(id, viewState.currentView)
+                                    handleDeleteTextBoxWithUndo(
+                                      id,
+                                      viewState.currentView
+                                    )
                                   }
                                   isTextSelectionMode={
                                     editorState.isTextSelectionMode
@@ -3810,9 +4662,12 @@ export const PDFEditorContent: React.FC = () => {
                                   isEditMode={editorState.isEditMode}
                                   scale={documentState.scale}
                                   onSelect={handleShapeSelect}
-                                  onUpdate={updateShape}
+                                  onUpdate={updateShapeWithUndo}
                                   onDelete={(id) =>
-                                    deleteShape(id, viewState.currentView)
+                                    handleDeleteShapeWithUndo(
+                                      id,
+                                      viewState.currentView
+                                    )
                                   }
                                   // Selection preview prop
                                   isInSelectionPreview={isInSelectionPreview}
@@ -3832,7 +4687,10 @@ export const PDFEditorContent: React.FC = () => {
                                   onSelect={handleImageSelect}
                                   onUpdate={updateImage}
                                   onDelete={(id) =>
-                                    deleteImage(id, viewState.currentView)
+                                    handleDeleteImageWithUndo(
+                                      id,
+                                      viewState.currentView
+                                    )
                                   }
                                   // Selection preview prop
                                   isInSelectionPreview={isInSelectionPreview}
@@ -3887,7 +4745,7 @@ export const PDFEditorContent: React.FC = () => {
                                           .selectedElements,
                                         deltaX,
                                         deltaY,
-                                        updateTextBox,
+                                        updateTextBoxWithUndo,
                                         updateShape,
                                         updateImage,
                                         getElementById,
@@ -4046,7 +4904,7 @@ export const PDFEditorContent: React.FC = () => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      deleteDeletionRectangle(
+                                      handleDeleteDeletionRectangleWithUndo(
                                         rect.id,
                                         "translated"
                                       );
@@ -4083,9 +4941,12 @@ export const PDFEditorContent: React.FC = () => {
                                   scale={documentState.scale}
                                   showPaddingIndicator={showPaddingPopup}
                                   onSelect={handleTextBoxSelect}
-                                  onUpdate={updateTextBox}
+                                  onUpdate={updateTextBoxWithUndo}
                                   onDelete={(id) =>
-                                    deleteTextBox(id, viewState.currentView)
+                                    handleDeleteTextBoxWithUndo(
+                                      id,
+                                      viewState.currentView
+                                    )
                                   }
                                   isTextSelectionMode={
                                     editorState.isTextSelectionMode
@@ -4113,9 +4974,12 @@ export const PDFEditorContent: React.FC = () => {
                                   isEditMode={editorState.isEditMode}
                                   scale={documentState.scale}
                                   onSelect={handleShapeSelect}
-                                  onUpdate={updateShape}
+                                  onUpdate={updateShapeWithUndo}
                                   onDelete={(id) =>
-                                    deleteShape(id, viewState.currentView)
+                                    handleDeleteShapeWithUndo(
+                                      id,
+                                      viewState.currentView
+                                    )
                                   }
                                   // Selection preview prop
                                   isInSelectionPreview={isInSelectionPreview}
@@ -4135,7 +4999,10 @@ export const PDFEditorContent: React.FC = () => {
                                   onSelect={handleImageSelect}
                                   onUpdate={updateImage}
                                   onDelete={(id) =>
-                                    deleteImage(id, viewState.currentView)
+                                    handleDeleteImageWithUndo(
+                                      id,
+                                      viewState.currentView
+                                    )
                                   }
                                   // Selection preview prop
                                   isInSelectionPreview={isInSelectionPreview}
@@ -4190,7 +5057,7 @@ export const PDFEditorContent: React.FC = () => {
                                           .selectedElements,
                                         deltaX,
                                         deltaY,
-                                        updateTextBox,
+                                        updateTextBoxWithUndo,
                                         updateShape,
                                         updateImage,
                                         getElementById,
@@ -4287,7 +5154,7 @@ export const PDFEditorContent: React.FC = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                deleteDeletionRectangle(
+                                handleDeleteDeletionRectangleWithUndo(
                                   rect.id,
                                   viewState.currentView
                                 );
@@ -4352,8 +5219,10 @@ export const PDFEditorContent: React.FC = () => {
                                     editorState.multiSelection.selectedElements,
                                     deltaX,
                                     deltaY,
-                                    updateTextBox,
-                                    updateShape,
+                                    (id, updates) =>
+                                      updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
+                                    (id, updates) =>
+                                      updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
                                     updateImage,
                                     getElementById,
                                     documentState.pageWidth,

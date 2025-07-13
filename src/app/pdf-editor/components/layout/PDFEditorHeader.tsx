@@ -1,6 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Save, Menu } from "lucide-react";
+import { Upload, Download, Save, Menu, Undo2, Redo2 } from "lucide-react";
 
 interface PDFEditorHeaderProps {
   isSidebarCollapsed: boolean;
@@ -8,6 +8,10 @@ interface PDFEditorHeaderProps {
   onFileUpload: () => void;
   onSaveProject: () => void;
   onExportData: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -16,6 +20,10 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onFileUpload,
   onSaveProject,
   onExportData,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -50,6 +58,28 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-3">
+          <Button
+            onClick={onUndo}
+            variant="outline"
+            size="sm"
+            className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo2 className="w-4 h-4 mr-2" />
+            Undo
+          </Button>
+          <Button
+            onClick={onRedo}
+            variant="outline"
+            size="sm"
+            className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
+            disabled={!canRedo}
+            title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
+          >
+            <Redo2 className="w-4 h-4 mr-2" />
+            Redo
+          </Button>
           <Button
             onClick={onSaveProject}
             variant="outline"

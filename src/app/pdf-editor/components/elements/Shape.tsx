@@ -10,7 +10,11 @@ interface ShapeProps {
   isEditMode: boolean;
   scale: number;
   onSelect: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Shape>) => void;
+  onUpdate: (
+    id: string,
+    updates: Partial<Shape>,
+    isOngoingOperation?: boolean
+  ) => void;
   onDelete: (id: string) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
@@ -58,25 +62,35 @@ export const MemoizedShape = memo(
             : false
         }
         onDragStop={(e, d) => {
-          onUpdate(shape.id, {
-            x: d.x / scale,
-            y: d.y / scale,
-            type: shape.type,
-          });
+          onUpdate(
+            shape.id,
+            {
+              x: d.x / scale,
+              y: d.y / scale,
+              type: shape.type,
+            },
+            true
+          ); // Mark as ongoing operation
         }}
         onResizeStop={(e, direction, ref, delta, position) => {
-          onUpdate(shape.id, {
-            x: position.x / scale,
-            y: position.y / scale,
-            width: parseInt(ref.style.width) / scale,
-            height: parseInt(ref.style.height) / scale,
-            type: shape.type,
-          });
+          onUpdate(
+            shape.id,
+            {
+              x: position.x / scale,
+              y: position.y / scale,
+              width: parseInt(ref.style.width) / scale,
+              height: parseInt(ref.style.height) / scale,
+              type: shape.type,
+            },
+            false
+          ); // Don't mark as ongoing operation - resize is a one-time event
         }}
         className={`shape-element ${
           isSelected ? "ring-2 ring-gray-500 selected" : ""
         } ${isEditMode ? "edit-mode" : ""} ${
-          isInSelectionPreview ? "ring-2 ring-blue-400 ring-dashed selection-preview" : ""
+          isInSelectionPreview
+            ? "ring-2 ring-blue-400 ring-dashed selection-preview"
+            : ""
         }`}
         style={{
           transform: "none",

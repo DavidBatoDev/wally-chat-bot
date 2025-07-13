@@ -10,7 +10,11 @@ interface TextBoxProps {
   scale: number;
   showPaddingIndicator?: boolean;
   onSelect: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<TextField>) => void;
+  onUpdate: (
+    id: string,
+    updates: Partial<TextField>,
+    isOngoingOperation?: boolean
+  ) => void;
   onDelete: (id: string) => void;
   isTextSelectionMode?: boolean;
   isSelectedInTextMode?: boolean;
@@ -53,7 +57,7 @@ export const MemoizedTextBox = memo(
   }: TextBoxProps) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onUpdate(textBox.id, { value: e.target.value });
+        onUpdate(textBox.id, { value: e.target.value }, true); // Mark as ongoing operation
       },
       [textBox.id, onUpdate]
     );
@@ -125,7 +129,7 @@ export const MemoizedTextBox = memo(
           onMultiSelectDragStop(textBox.id, deltaX, deltaY);
         } else {
           // Regular single element update
-          onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale });
+          onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale }, true); // Mark as ongoing operation
         }
       },
       [
@@ -167,12 +171,16 @@ export const MemoizedTextBox = memo(
         onDrag={handleDrag}
         onDragStop={handleDragStop}
         onResizeStop={(e, direction, ref, delta, position) => {
-          onUpdate(textBox.id, {
-            x: position.x / scale,
-            y: position.y / scale,
-            width: parseInt(ref.style.width) / scale,
-            height: parseInt(ref.style.height) / scale,
-          });
+          onUpdate(
+            textBox.id,
+            {
+              x: position.x / scale,
+              y: position.y / scale,
+              width: parseInt(ref.style.width) / scale,
+              height: parseInt(ref.style.height) / scale,
+            },
+            false
+          ); // Don't mark as ongoing operation - resize is a one-time event
         }}
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
           isEditMode ? "edit-mode" : ""
@@ -237,15 +245,36 @@ export const MemoizedTextBox = memo(
                   const newWidth = Math.max(50, startWidth + deltaX) / scale;
                   const newHeight = Math.max(20, startHeight + deltaY) / scale;
 
-                  onUpdate(textBox.id, {
-                    width: newWidth,
-                    height: newHeight,
-                  });
+                  onUpdate(
+                    textBox.id,
+                    {
+                      width: newWidth,
+                      height: newHeight,
+                    },
+                    true
+                  ); // Mark as ongoing operation
                 };
 
-                const handleMouseUp = () => {
+                const handleMouseUp = (upEvent: MouseEvent) => {
                   document.removeEventListener("mousemove", handleMouseMove);
                   document.removeEventListener("mouseup", handleMouseUp);
+
+                  // Create final undo command when resize ends
+                  const finalWidth =
+                    Math.max(50, startWidth + (upEvent.clientX - startX)) /
+                    scale;
+                  const finalHeight =
+                    Math.max(20, startHeight + (upEvent.clientY - startY)) /
+                    scale;
+
+                  onUpdate(
+                    textBox.id,
+                    {
+                      width: finalWidth,
+                      height: finalHeight,
+                    },
+                    false
+                  ); // Don't mark as ongoing operation - resize is complete
                 };
 
                 document.addEventListener("mousemove", handleMouseMove);

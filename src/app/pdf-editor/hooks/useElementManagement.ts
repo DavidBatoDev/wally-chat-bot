@@ -1,3 +1,5 @@
+// NOTE: All element mutations (add, update, delete, move, etc.) should be wrapped in Command objects and pushed to the undo/redo history using useHistory.
+// See useHistory.ts and commands.ts for details.
 import { useState, useCallback, useMemo } from "react";
 import {
   ElementCollections,
