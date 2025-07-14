@@ -647,3 +647,31 @@
 .text-selection-highlight {
   background-color: rgba(59, 130, 246, 0.1) !important;
 }
+
+/* Textarea scrollbar styling */
+.rnd textarea {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent !important;
+}
+
+.rnd textarea::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.rnd textarea::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.rnd textarea::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border-radius: 3px !important;
+}
+
+.rnd textarea::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+.rnd textarea::-webkit-scrollbar-corner {
+  background: transparent !important;
+}

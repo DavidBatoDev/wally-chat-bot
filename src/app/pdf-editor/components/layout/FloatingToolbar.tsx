@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   MousePointer,
   Type,
@@ -12,6 +12,7 @@ import {
   Edit2,
   Trash2,
   Eye,
+  ChevronDown,
 } from "lucide-react";
 import {
   EditorState,
@@ -47,6 +48,25 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onDeletionToggle,
   onImageUpload,
 }) => {
+  const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
+  const shapeMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close shape menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        shapeMenuRef.current &&
+        !shapeMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsShapeMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const leftToolbarStyle = {
     top: "80px",
     left: isSidebarCollapsed ? "16px" : "16px",
@@ -62,6 +82,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
     editorState.selectedShapeId ||
     editorState.multiSelection.selectedElements.length > 0;
 
+  // Always enable controls when there's no selected element
+  const shouldEnableControls = !isElementSelected;
+
   return (
     <>
       {/* Left Floating Toolbar - Tools */}
@@ -74,12 +97,12 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             onClick={() =>
               onToolChange("selection", !editorState.isSelectionMode)
             }
-            disabled={!!isElementSelected}
+            disabled={!shouldEnableControls}
             className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
               editorState.isSelectionMode
                 ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
                 : "text-gray-700 hover:text-red-600"
-            } ${isElementSelected ? "opacity-50 cursor-not-allowed" : ""}`}
+            } ${!shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""}`}
             title="Multi-Element Selection (Drag to select multiple elements)"
           >
             <MousePointer className="w-5 h-5" />
@@ -89,58 +112,89 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             onClick={() =>
               onToolChange("addTextBox", !editorState.isAddTextBoxMode)
             }
-            disabled={!!isElementSelected}
+            disabled={!shouldEnableControls}
             className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
               editorState.isAddTextBoxMode
                 ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
                 : "text-gray-700 hover:text-red-600"
-            } ${isElementSelected ? "opacity-50 cursor-not-allowed" : ""}`}
+            } ${!shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""}`}
             title="Add Text Field"
           >
             <Type className="w-5 h-5" />
           </button>
 
-          <button
-            onClick={() =>
-              onToolChange(
-                "rectangle",
-                toolState.shapeDrawingMode === "rectangle"
-              )
-            }
-            disabled={!!isElementSelected}
-            className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-              toolState.shapeDrawingMode === "rectangle"
-                ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                : "text-gray-700 hover:text-red-600"
-            } ${isElementSelected ? "opacity-50 cursor-not-allowed" : ""}`}
-            title="Draw Rectangle"
-          >
-            <Square className="w-5 h-5" />
-          </button>
+          {/* Shape Tool with Dropdown Menu */}
+          <div className="relative" ref={shapeMenuRef}>
+            <button
+              onClick={() => setIsShapeMenuOpen(!isShapeMenuOpen)}
+              disabled={!shouldEnableControls}
+              className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 flex items-center gap-1 ${
+                toolState.shapeDrawingMode === "rectangle" ||
+                toolState.shapeDrawingMode === "circle"
+                  ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
+                  : "text-gray-700 hover:text-red-600"
+              } ${
+                !shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+              title="Draw Shapes"
+            >
+              {toolState.shapeDrawingMode === "circle" ? (
+                <Circle className="w-5 h-5" />
+              ) : (
+                <Square className="w-5 h-5" />
+              )}
+              <ChevronDown className="w-3 h-3" />
+            </button>
 
-          <button
-            onClick={() =>
-              onToolChange("circle", toolState.shapeDrawingMode === "circle")
-            }
-            disabled={!!isElementSelected}
-            className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
-              toolState.shapeDrawingMode === "circle"
-                ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
-                : "text-gray-700 hover:text-red-600"
-            } ${isElementSelected ? "opacity-50 cursor-not-allowed" : ""}`}
-            title="Draw Circle"
-          >
-            <Circle className="w-5 h-5" />
-          </button>
+            {/* Dropdown Menu */}
+            {isShapeMenuOpen && (
+              <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[120px] z-50">
+                <button
+                  onClick={() => {
+                    onToolChange(
+                      "rectangle",
+                      toolState.shapeDrawingMode !== "rectangle"
+                    );
+                    setIsShapeMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-gray-50 transition-colors ${
+                    toolState.shapeDrawingMode === "rectangle"
+                      ? "bg-red-50 text-red-600"
+                      : "text-gray-700"
+                  }`}
+                >
+                  <Square className="w-4 h-4" />
+                  Rectangle
+                </button>
+                <button
+                  onClick={() => {
+                    onToolChange(
+                      "circle",
+                      toolState.shapeDrawingMode !== "circle"
+                    );
+                    setIsShapeMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-gray-50 transition-colors ${
+                    toolState.shapeDrawingMode === "circle"
+                      ? "bg-red-50 text-red-600"
+                      : "text-gray-700"
+                  }`}
+                >
+                  <Circle className="w-4 h-4" />
+                  Circle
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => onToolChange("erasure", !erasureState.isErasureMode)}
-            disabled={!!isElementSelected}
+            disabled={!shouldEnableControls}
             className={`p-2 rounded-md transition-all duration-200 hover:bg-red-50 ${
               erasureState.isErasureMode
                 ? "bg-red-500 text-white hover:bg-red-600 shadow-md"
                 : "text-gray-700 hover:text-red-600"
-            } ${isElementSelected ? "opacity-50 cursor-not-allowed" : ""}`}
+            } ${!shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""}`}
             title="Erasure Tool (Draw deletion rectangles)"
           >
             <Eraser className="w-5 h-5" />

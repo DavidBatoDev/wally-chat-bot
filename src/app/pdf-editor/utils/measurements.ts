@@ -12,18 +12,60 @@ export const measureText = (
   text: string,
   fontSize: number,
   fontFamily: string,
-  characterSpacing: number = 0
+  characterSpacing: number = 0,
+  maxWidth?: number
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) return { width: 100, height: fontSize };
 
   context.font = `${fontSize}px ${fontFamily}`;
-  const metrics = context.measureText(text);
-  const width = metrics.width + characterSpacing * Math.max(0, text.length - 1);
-  const height = fontSize * 1.1; // Reduced line height for more compact text
 
-  return { width, height };
+  // Split text into lines
+  const lines = text.split("\n");
+  let maxLineWidth = 0;
+  let totalHeight = 0;
+  const lineHeight = fontSize * 1.2; // Line height for multi-line text
+
+  for (const line of lines) {
+    const metrics = context.measureText(line);
+    const lineWidth =
+      metrics.width + characterSpacing * Math.max(0, line.length - 1);
+    maxLineWidth = Math.max(maxLineWidth, lineWidth);
+    totalHeight += lineHeight;
+  }
+
+  // If maxWidth is provided, don't exceed it
+  const finalWidth = maxWidth ? Math.min(maxLineWidth, maxWidth) : maxLineWidth;
+  const finalHeight = Math.max(totalHeight, fontSize * 1.1); // Ensure minimum height
+
+  return { width: finalWidth, height: finalHeight };
+};
+
+export const measureWrappedTextHeight = (
+  text: string,
+  fontSize: number,
+  fontFamily: string,
+  width: number
+): number => {
+  // Create a hidden textarea for accurate measurement
+  const textarea = document.createElement("textarea");
+  textarea.style.position = "absolute";
+  textarea.style.visibility = "hidden";
+  textarea.style.height = "auto";
+  textarea.style.width = `${width}px`;
+  textarea.style.fontSize = `${fontSize}px`;
+  textarea.style.fontFamily = fontFamily;
+  textarea.style.lineHeight = "normal";
+  textarea.style.whiteSpace = "pre-wrap";
+  textarea.style.wordBreak = "break-word";
+  textarea.value = text;
+
+  document.body.appendChild(textarea);
+  const height = textarea.scrollHeight;
+  document.body.removeChild(textarea);
+
+  return height;
 };
 
 export const getCleanExtension = (url: string): string => {

@@ -2,6 +2,8 @@ import React, { memo, useCallback, useEffect } from "react";
 import { Rnd } from "react-rnd";
 import { Trash2, Move } from "lucide-react";
 import { TextField } from "@/components/types";
+import { measureText } from "../../utils/measurements";
+import { measureWrappedTextHeight } from "../../utils/measurements";
 
 interface TextBoxProps {
   textBox: TextField;
@@ -57,9 +59,75 @@ export const MemoizedTextBox = memo(
   }: TextBoxProps) => {
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onUpdate(textBox.id, { value: e.target.value }, true); // Mark as ongoing operation
+        const newValue = e.target.value;
+        onUpdate(textBox.id, { value: newValue }, true); // Mark as ongoing operation
+
+        // Auto-resize textbox based on content changes
+        if (newValue.length !== textBox.value.length) {
+          const isAddingText = newValue.length > textBox.value.length;
+          const isNewLine =
+            (newValue.includes("\n") && !textBox.value.includes("\n")) ||
+            newValue.split("\n").length > textBox.value.split("\n").length;
+          const hasBeenManuallyResized =
+            textBox.hasBeenManuallyResized || false;
+
+          if (isNewLine) {
+            // For new lines, only expand height, keep current width
+            const { height } = measureText(
+              newValue,
+              textBox.fontSize,
+              textBox.fontFamily,
+              0, // characterSpacing
+              textBox.width // maxWidth - don't exceed current width
+            );
+
+            const padding = 4;
+            const newHeight = Math.max(textBox.height, height + padding);
+
+            if (newHeight > textBox.height) {
+              onUpdate(textBox.id, { height: newHeight }, true);
+            }
+          } else if (isAddingText) {
+            // For regular text addition
+            const { width, height } = measureText(
+              newValue,
+              textBox.fontSize,
+              textBox.fontFamily
+            );
+
+            const padding = 4;
+            const newHeight = Math.max(textBox.height, height + padding);
+
+            // Only expand width if the textbox hasn't been manually resized
+            let updates: Partial<TextField> = {};
+
+            if (newHeight > textBox.height) {
+              updates.height = newHeight;
+            }
+
+            if (!hasBeenManuallyResized) {
+              const newWidth = Math.max(textBox.width, width + padding);
+              if (newWidth > textBox.width) {
+                updates.width = newWidth;
+              }
+            }
+
+            if (Object.keys(updates).length > 0) {
+              onUpdate(textBox.id, updates, true);
+            }
+          }
+          // Note: We don't shrink textboxes when text is deleted to avoid layout jumps
+        }
       },
-      [textBox.id, onUpdate]
+      [
+        textBox.id,
+        onUpdate,
+        textBox.value,
+        textBox.fontSize,
+        textBox.fontFamily,
+        textBox.width,
+        textBox.height,
+      ]
     );
 
     const handleClick = useCallback(
@@ -78,7 +146,12 @@ export const MemoizedTextBox = memo(
 
     const handleFocus = useCallback(() => {
       onSelect(textBox.id);
-    }, [textBox.id, onSelect]);
+
+      // Clear default text when manually focusing on a textbox with "New Text Field"
+      if (textBox.value === "New Text Field") {
+        onUpdate(textBox.id, { value: "" }, false);
+      }
+    }, [textBox.id, onSelect, textBox.value, onUpdate]);
 
     // Multi-selection drag handlers
     const handleDragStart = useCallback(
@@ -147,16 +220,33 @@ export const MemoizedTextBox = memo(
     // Auto-focus logic
     useEffect(() => {
       if (autoFocusId === textBox.id && onAutoFocusComplete) {
-        const textareaElement = document.querySelector(
-          `[data-textbox-id="${textBox.id}"]`
-        ) as HTMLTextAreaElement;
-        if (textareaElement) {
-          textareaElement.focus();
-          textareaElement.setSelectionRange(0, 0); // Position cursor at the beginning
-          onAutoFocusComplete(textBox.id);
-        }
+        // Use a timeout to ensure the DOM element is available after render
+        const timeoutId = setTimeout(() => {
+          const textareaElement = document.querySelector(
+            `[data-textbox-id="${textBox.id}"]`
+          ) as HTMLTextAreaElement;
+          if (textareaElement) {
+            textareaElement.focus();
+
+            // If the textbox has default "New Text Field" text, clear it and position cursor
+            if (textBox.value === "New Text Field") {
+              onUpdate(textBox.id, { value: "" }, false);
+              textareaElement.setSelectionRange(0, 0);
+            } else {
+              // Position cursor at the end of existing text
+              textareaElement.setSelectionRange(
+                textBox.value.length,
+                textBox.value.length
+              );
+            }
+
+            onAutoFocusComplete(textBox.id);
+          }
+        }, 50); // Small delay to ensure DOM is ready
+
+        return () => clearTimeout(timeoutId);
       }
-    }, [autoFocusId, textBox.id, onAutoFocusComplete]);
+    }, [autoFocusId, textBox.id, onAutoFocusComplete, textBox.value, onUpdate]);
 
     return (
       <Rnd
@@ -167,17 +257,36 @@ export const MemoizedTextBox = memo(
         disableDragging={isTextSelectionMode}
         dragHandleClassName="drag-handle"
         enableResizing={false}
+        minHeight={
+          measureWrappedTextHeight(
+            textBox.value,
+            textBox.fontSize,
+            textBox.fontFamily,
+            textBox.width * scale
+          ) / scale
+        }
         onDragStart={handleDragStart}
         onDrag={handleDrag}
         onDragStop={handleDragStop}
         onResizeStop={(e, direction, ref, delta, position) => {
+          const newWidth = parseInt(ref.style.width) / scale;
+          const userSetHeight = parseInt(ref.style.height) / scale;
+          const minHeight =
+            measureWrappedTextHeight(
+              textBox.value,
+              textBox.fontSize,
+              textBox.fontFamily,
+              newWidth * scale
+            ) / scale;
+          const finalHeight = Math.max(userSetHeight, minHeight);
           onUpdate(
             textBox.id,
             {
               x: position.x / scale,
               y: position.y / scale,
-              width: parseInt(ref.style.width) / scale,
-              height: parseInt(ref.style.height) / scale,
+              width: newWidth,
+              height: finalHeight,
+              hasBeenManuallyResized: true, // Mark as manually resized
             },
             false
           ); // Don't mark as ongoing operation - resize is a one-time event
@@ -243,16 +352,27 @@ export const MemoizedTextBox = memo(
                   const deltaX = moveEvent.clientX - startX;
                   const deltaY = moveEvent.clientY - startY;
                   const newWidth = Math.max(50, startWidth + deltaX) / scale;
-                  const newHeight = Math.max(20, startHeight + deltaY) / scale;
-
+                  const minHeight =
+                    measureWrappedTextHeight(
+                      textBox.value,
+                      textBox.fontSize,
+                      textBox.fontFamily,
+                      newWidth * scale
+                    ) / scale;
+                  const userSetHeight = Math.max(
+                    minHeight,
+                    Math.max(20, startHeight + deltaY) / scale
+                  );
+                  const finalHeight = Math.max(userSetHeight, minHeight);
                   onUpdate(
                     textBox.id,
                     {
                       width: newWidth,
-                      height: newHeight,
+                      height: finalHeight,
+                      hasBeenManuallyResized: true, // Mark as manually resized
                     },
                     true
-                  ); // Mark as ongoing operation
+                  );
                 };
 
                 const handleMouseUp = (upEvent: MouseEvent) => {
@@ -263,15 +383,25 @@ export const MemoizedTextBox = memo(
                   const finalWidth =
                     Math.max(50, startWidth + (upEvent.clientX - startX)) /
                     scale;
-                  const finalHeight =
+                  const minHeight =
+                    measureWrappedTextHeight(
+                      textBox.value,
+                      textBox.fontSize,
+                      textBox.fontFamily,
+                      finalWidth * scale
+                    ) / scale;
+                  const userSetHeight = Math.max(
+                    minHeight,
                     Math.max(20, startHeight + (upEvent.clientY - startY)) /
-                    scale;
-
+                      scale
+                  );
+                  const finalHeight = Math.max(userSetHeight, minHeight);
                   onUpdate(
                     textBox.id,
                     {
                       width: finalWidth,
                       height: finalHeight,
+                      hasBeenManuallyResized: true, // Mark as manually resized
                     },
                     false
                   ); // Don't mark as ongoing operation - resize is complete

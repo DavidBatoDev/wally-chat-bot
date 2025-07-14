@@ -138,12 +138,13 @@ export const PDFEditorContent: React.FC = () => {
       y: number,
       page: number,
       view: ViewMode,
-      targetView?: "original" | "translated"
+      targetView?: "original" | "translated",
+      initialProperties?: Partial<TextField>
     ) => {
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
-        newId = addTextBox(x, y, page, view, targetView);
+        newId = addTextBox(x, y, page, view, targetView, initialProperties);
         idRef.current = newId;
         return newId;
       };
@@ -596,6 +597,34 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
+  // Helper function to clear selection state
+  const clearSelectionState = useCallback(() => {
+    setEditorState((prev) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      multiSelection: {
+        ...prev.multiSelection,
+        selectedElements: [],
+        selectionBounds: null,
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        isMovingSelection: false,
+        moveStart: null,
+      },
+    }));
+    setSelectedElementId(null);
+    setSelectedElementType(null);
+    setCurrentFormat(null);
+    setIsDrawerOpen(false);
+  }, [
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setIsDrawerOpen,
+  ]);
+
   // Wrapper for deleting textbox with undo support
   const handleDeleteTextBoxWithUndo = useCallback(
     (id: string, view: ViewMode) => {
@@ -623,14 +652,40 @@ export const PDFEditorContent: React.FC = () => {
           textBox.y,
           textBox.page,
           textBoxView,
-          textBoxView
+          textBoxView,
+          {
+            value: textBox.value,
+            fontSize: textBox.fontSize,
+            fontFamily: textBox.fontFamily,
+            color: textBox.color,
+            bold: textBox.bold,
+            italic: textBox.italic,
+            underline: textBox.underline,
+            textAlign: textBox.textAlign,
+            letterSpacing: textBox.letterSpacing,
+            lineHeight: textBox.lineHeight,
+            width: textBox.width,
+            height: textBox.height,
+          }
         );
       };
       const cmd = new DeleteTextBoxCommand(remove, add, textBox);
       cmd.execute();
       history.push(textBox.page, textBoxView, cmd);
+
+      // Clear selection state if the deleted textbox was selected
+      if (editorState.selectedFieldId === id || selectedElementId === id) {
+        clearSelectionState();
+      }
     },
-    [elementCollections, deleteTextBox, addTextBox, history]
+    [
+      elementCollections,
+      deleteTextBox,
+      addTextBox,
+      history,
+      editorState.selectedFieldId,
+      selectedElementId,
+    ]
   );
 
   // Wrapper for deleting shape with undo support
@@ -669,8 +724,20 @@ export const PDFEditorContent: React.FC = () => {
       const cmd = new DeleteShapeCommand(remove, add, shape);
       cmd.execute();
       history.push(shape.page, shapeView, cmd);
+
+      // Clear selection state if the deleted shape was selected
+      if (editorState.selectedShapeId === id || selectedElementId === id) {
+        clearSelectionState();
+      }
     },
-    [elementCollections, deleteShape, addShape, history]
+    [
+      elementCollections,
+      deleteShape,
+      addShape,
+      history,
+      editorState.selectedShapeId,
+      selectedElementId,
+    ]
   );
 
   // Undo/Redo handlers for deletion rectangles
@@ -879,8 +946,13 @@ export const PDFEditorContent: React.FC = () => {
         "view:",
         imageView
       );
+
+      // Clear selection state if the deleted image was selected
+      if (selectedElementId === id) {
+        clearSelectionState();
+      }
     },
-    [elementCollections, deleteImage, addImage, history]
+    [elementCollections, deleteImage, addImage, history, selectedElementId]
   );
 
   // Auto-focus state
@@ -1239,8 +1311,15 @@ export const PDFEditorContent: React.FC = () => {
         documentState.currentPage,
         targetView,
         documentState.scale,
-        (x, y, page, view) => {
-          const result = handleAddTextBoxWithUndo(x, y, page, view);
+        (x, y, page, view, targetView, initialProperties) => {
+          const result = handleAddTextBoxWithUndo(
+            x,
+            y,
+            page,
+            view,
+            targetView,
+            initialProperties
+          );
           return result || "";
         },
         (x, y, width, height, page, view, background, opacity) => {
@@ -1417,7 +1496,22 @@ export const PDFEditorContent: React.FC = () => {
                       textBox.x,
                       textBox.y,
                       documentState.currentPage,
-                      viewState.currentView
+                      viewState.currentView,
+                      undefined,
+                      {
+                        value: textBox.value,
+                        fontSize: textBox.fontSize,
+                        fontFamily: textBox.fontFamily,
+                        color: textBox.color,
+                        bold: textBox.bold,
+                        italic: textBox.italic,
+                        underline: textBox.underline,
+                        textAlign: textBox.textAlign,
+                        letterSpacing: textBox.letterSpacing,
+                        lineHeight: textBox.lineHeight,
+                        width: textBox.width,
+                        height: textBox.height,
+                      }
                     ),
                 };
                 deleteTextBoxCmd.execute();
@@ -2146,12 +2240,12 @@ export const PDFEditorContent: React.FC = () => {
         }
         break;
       case "rectangle":
-        if (!enabled) {
+        if (enabled) {
           setToolState((prev) => ({ ...prev, shapeDrawingMode: "rectangle" }));
         }
         break;
       case "circle":
-        if (!enabled) {
+        if (enabled) {
           setToolState((prev) => ({ ...prev, shapeDrawingMode: "circle" }));
         }
         break;
@@ -3127,12 +3221,22 @@ export const PDFEditorContent: React.FC = () => {
         selectionBounds: null,
       },
     }));
+
+    // Also clear single element selection state
+    setSelectedElementId(null);
+    setSelectedElementType(null);
+    setCurrentFormat(null);
+    setIsDrawerOpen(false);
   }, [
     editorState.multiSelection.selectedElements,
     handleDeleteTextBoxWithUndo,
     handleDeleteShapeWithUndo,
     handleDeleteImageWithUndo,
     viewState.currentView,
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setIsDrawerOpen,
   ]);
 
   // Handle drag stop for selection rectangle
@@ -3405,7 +3509,8 @@ export const PDFEditorContent: React.FC = () => {
           y,
           documentState.currentPage,
           viewState.currentView,
-          targetView || undefined
+          targetView || undefined,
+          undefined // Use default properties for new text fields
         );
 
         setEditorState((prev) => ({
@@ -4021,27 +4126,6 @@ export const PDFEditorContent: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Temporary test controls - remove after testing */}
-        <div className="absolute top-2 right-2 z-50 flex gap-2">
-          <button
-            onClick={() => {
-              if (selectedElementId && selectedElementType === "textbox") {
-                updateTextBoxWithUndo(selectedElementId, {
-                  fontSize: (Math.random() * 20 + 8).toFixed(1) as any,
-                  color: `#${Math.floor(Math.random() * 16777215).toString(
-                    16
-                  )}`,
-                });
-                toast.success("Text modified - try Ctrl+Z to undo!");
-              } else {
-                toast.error("Please select a text box first");
-              }
-            }}
-            className="px-2 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600"
-          >
-            Test Modify
-          </button>
-        </div>
         {/* Hidden file inputs */}
         <input
           type="file"
@@ -4093,91 +4177,99 @@ export const PDFEditorContent: React.FC = () => {
             <ElementFormatDrawer />
           </div>
 
-          {/* Floating Toolbars */}
-          <FloatingToolbar
-            editorState={editorState}
-            toolState={toolState}
-            erasureState={erasureState}
-            currentView={viewState.currentView}
-            showDeletionRectangles={editorState.showDeletionRectangles}
-            isSidebarCollapsed={viewState.isSidebarCollapsed}
-            onToolChange={handleToolChange}
-            onViewChange={(view) =>
-              setViewState((prev) => ({ ...prev, currentView: view }))
-            }
-            onEditModeToggle={() =>
-              setEditorState((prev) => ({
-                ...prev,
-                isEditMode: !prev.isEditMode,
-              }))
-            }
-            onDeletionToggle={() =>
-              setEditorState((prev) => ({
-                ...prev,
-                showDeletionRectangles: !prev.showDeletionRectangles,
-              }))
-            }
-            onImageUpload={() => imageInputRef.current?.click()}
-          />
+          {/* Floating Toolbars - Only show when PDF is loaded */}
+          {documentState.url && !documentState.error && (
+            <FloatingToolbar
+              editorState={editorState}
+              toolState={toolState}
+              erasureState={erasureState}
+              currentView={viewState.currentView}
+              showDeletionRectangles={editorState.showDeletionRectangles}
+              isSidebarCollapsed={viewState.isSidebarCollapsed}
+              onToolChange={handleToolChange}
+              onViewChange={(view) =>
+                setViewState((prev) => ({ ...prev, currentView: view }))
+              }
+              onEditModeToggle={() =>
+                setEditorState((prev) => ({
+                  ...prev,
+                  isEditMode: !prev.isEditMode,
+                }))
+              }
+              onDeletionToggle={() =>
+                setEditorState((prev) => ({
+                  ...prev,
+                  showDeletionRectangles: !prev.showDeletionRectangles,
+                }))
+              }
+              onImageUpload={() => imageInputRef.current?.click()}
+            />
+          )}
 
-          {/* Erasure Settings Popup */}
-          {erasureState.isErasureMode && (
-            <div
-              className="absolute z-50 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-4 rounded-lg transition-all duration-300"
-              style={{
-                top: "340px", // Below the floating toolbar (80px + ~200px for toolbar height)
-                left: "16px", // Same left position as floating toolbar
-                minWidth: "280px",
-              }}
-            >
-              <div className="space-y-3">
-                {/* Opacity */}
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-600 w-20">Opacity:</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={erasureState.erasureSettings.opacity}
-                    onChange={(e) =>
-                      setErasureState((prev) => ({
-                        ...prev,
-                        erasureSettings: {
-                          ...prev.erasureSettings,
-                          opacity: parseFloat(e.target.value),
-                        },
-                      }))
-                    }
-                    className="flex-1 w-5"
-                  />
-                  <span className="text-xs text-gray-500 w-10">
-                    {Math.round(erasureState.erasureSettings.opacity * 100)}%
-                  </span>
-                </div>
-                {/* Page Background Color Picker */}
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-600 w-20">Page BG:</label>
-                  <input
-                    type="color"
-                    value={
-                      documentState.pdfBackgroundColor.startsWith("#")
-                        ? documentState.pdfBackgroundColor
-                        : rgbStringToHex(documentState.pdfBackgroundColor)
-                    }
-                    onChange={(e) => {
-                      const newColor = e.target.value;
-                      actions.updatePdfBackgroundColor(newColor);
-                    }}
-                    className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
-                  />
-                  <span className="text-xs text-gray-500">
-                    {documentState.pdfBackgroundColor}
-                  </span>
+          {/* Erasure Settings Popup - Only show when PDF is loaded */}
+          {erasureState.isErasureMode &&
+            documentState.url &&
+            !documentState.error && (
+              <div
+                className="absolute z-50 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-4 rounded-lg transition-all duration-300"
+                style={{
+                  top: "340px", // Below the floating toolbar (80px + ~200px for toolbar height)
+                  left: "16px", // Same left position as floating toolbar
+                  minWidth: "280px",
+                }}
+              >
+                <div className="space-y-3">
+                  {/* Opacity */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 w-20">
+                      Opacity:
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={erasureState.erasureSettings.opacity}
+                      onChange={(e) =>
+                        setErasureState((prev) => ({
+                          ...prev,
+                          erasureSettings: {
+                            ...prev.erasureSettings,
+                            opacity: parseFloat(e.target.value),
+                          },
+                        }))
+                      }
+                      className="flex-1 w-5"
+                    />
+                    <span className="text-xs text-gray-500 w-10">
+                      {Math.round(erasureState.erasureSettings.opacity * 100)}%
+                    </span>
+                  </div>
+                  {/* Page Background Color Picker */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 w-20">
+                      Page BG:
+                    </label>
+                    <input
+                      type="color"
+                      value={
+                        documentState.pdfBackgroundColor.startsWith("#")
+                          ? documentState.pdfBackgroundColor
+                          : rgbStringToHex(documentState.pdfBackgroundColor)
+                      }
+                      onChange={(e) => {
+                        const newColor = e.target.value;
+                        actions.updatePdfBackgroundColor(newColor);
+                      }}
+                      className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-500">
+                      {documentState.pdfBackgroundColor}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Document Viewer */}
           <div

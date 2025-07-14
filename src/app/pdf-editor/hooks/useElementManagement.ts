@@ -222,11 +222,12 @@ export const useElementManagement = () => {
       y: number,
       currentPage: number,
       currentView: ViewMode,
-      targetView?: "original" | "translated"
+      targetView?: "original" | "translated",
+      initialProperties?: Partial<TextField>
     ) => {
-      const value = "New Text Field";
-      const fontSize = 8;
-      const fontFamily = "Arial, sans-serif";
+      const value = initialProperties?.value || "New Text Field";
+      const fontSize = initialProperties?.fontSize || 8;
+      const fontFamily = initialProperties?.fontFamily || "Arial, sans-serif";
       const fieldId = generateUUID();
 
       const { width, height } = measureText(value, fontSize, fontFamily);
@@ -235,26 +236,28 @@ export const useElementManagement = () => {
         id: fieldId,
         x,
         y,
-        width,
-        height,
+        width: initialProperties?.width || width,
+        height: initialProperties?.height || height,
         value,
         fontSize,
         fontFamily,
         page: currentPage,
-        color: "#000000",
-        bold: false,
-        italic: false,
-        underline: false,
-        textAlign: "left",
-        listType: "none",
-        letterSpacing: 0,
-        lineHeight: 1.2,
-        rotation: 0,
-        borderRadius: 0,
-        borderTopLeftRadius: 0,
-        borderTopRightRadius: 0,
-        borderBottomLeftRadius: 0,
-        borderBottomRightRadius: 0,
+        color: initialProperties?.color || "#000000",
+        bold: initialProperties?.bold || false,
+        italic: initialProperties?.italic || false,
+        underline: initialProperties?.underline || false,
+        textAlign: initialProperties?.textAlign || "left",
+        listType: initialProperties?.listType || "none",
+        letterSpacing: initialProperties?.letterSpacing || 0,
+        lineHeight: initialProperties?.lineHeight || 1.2,
+        rotation: initialProperties?.rotation || 0,
+        borderRadius: initialProperties?.borderRadius || 0,
+        borderTopLeftRadius: initialProperties?.borderTopLeftRadius || 0,
+        borderTopRightRadius: initialProperties?.borderTopRightRadius || 0,
+        borderBottomLeftRadius: initialProperties?.borderBottomLeftRadius || 0,
+        borderBottomRightRadius:
+          initialProperties?.borderBottomRightRadius || 0,
+        hasBeenManuallyResized: false, // Initialize as not manually resized
       };
 
       // Determine which document to add to

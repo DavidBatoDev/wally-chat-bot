@@ -271,7 +271,9 @@ export const createTextFieldFromSpan = (
     x: number,
     y: number,
     currentPage: number,
-    currentView: "original" | "translated"
+    currentView: "original" | "translated",
+    targetView?: "original" | "translated",
+    initialProperties?: any
   ) => string,
   addDeletionRectangle: (
     x: number,
@@ -399,7 +401,33 @@ export const createTextFieldFromSpan = (
       : "Text";
 
   // Create text field with proper positioning and font properties
-  const textFieldId = addTextBox(pageX, pageY, currentPage, currentView);
+  const initialProperties = {
+    value: finalTextContent,
+    fontSize: fontSize,
+    fontFamily: fontProperties.fontFamily,
+    color: fontProperties.color,
+    bold: fontProperties.isBold,
+    italic: fontProperties.isItalic,
+    underline: fontProperties.isUnderline,
+    textAlign: fontProperties.textAlign as
+      | "left"
+      | "center"
+      | "right"
+      | "justify",
+    letterSpacing: fontProperties.letterSpacing,
+    lineHeight: fontProperties.lineHeight,
+    width: minWidth,
+    height: minHeight,
+  };
+
+  const textFieldId = addTextBox(
+    pageX,
+    pageY,
+    currentPage,
+    currentView,
+    undefined,
+    initialProperties
+  );
 
   // Create deletion rectangle to cover the original text
   addDeletionRectangle(
@@ -435,27 +463,10 @@ export const createTextFieldFromSpan = (
     height: minHeight,
   });
 
-  // Return the text field ID and properties for updating
+  // Return the text field ID and properties for updating (though they should already be set)
   return {
     textFieldId,
-    properties: {
-      value: finalTextContent,
-      fontSize: fontSize,
-      fontFamily: fontProperties.fontFamily,
-      color: fontProperties.color,
-      bold: fontProperties.isBold,
-      italic: fontProperties.isItalic,
-      underline: fontProperties.isUnderline,
-      textAlign: fontProperties.textAlign as
-        | "left"
-        | "center"
-        | "right"
-        | "justify",
-      letterSpacing: fontProperties.letterSpacing,
-      lineHeight: fontProperties.lineHeight,
-      width: minWidth,
-      height: minHeight,
-    },
+    properties: initialProperties,
   };
 };
 

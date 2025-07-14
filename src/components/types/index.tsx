@@ -64,6 +64,7 @@ export interface TextField {
   paddingBottom?: number;
   paddingLeft?: number;
   isEditing?: boolean;
+  hasBeenManuallyResized?: boolean; // Track if user has manually resized this textbox
   zIndex?: number; // Add z-index support for layering
 }
 
