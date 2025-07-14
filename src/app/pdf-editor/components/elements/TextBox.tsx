@@ -248,6 +248,37 @@ export const MemoizedTextBox = memo(
       }
     }, [autoFocusId, textBox.id, onAutoFocusComplete, textBox.value, onUpdate]);
 
+    // Auto-resize when font size changes
+    useEffect(() => {
+      // Only auto-resize if the textbox has content and is selected
+      if (textBox.value && textBox.value.trim() && isSelected) {
+        // Calculate new dimensions based on current content and font size
+        const { width, height } = measureText(
+          textBox.value,
+          textBox.fontSize,
+          textBox.fontFamily,
+          0, // characterSpacing
+          textBox.width // maxWidth - don't exceed current width
+        );
+
+        const padding = 4;
+        const minHeight = Math.max(height + padding, textBox.fontSize);
+
+        // Only auto-resize if the current height is smaller than the minimum required height
+        // This allows users to manually make the textbox taller than the minimum
+        if (textBox.height < minHeight) {
+          onUpdate(textBox.id, { height: minHeight }, false);
+        }
+      }
+    }, [
+      textBox.fontSize,
+      textBox.value,
+      textBox.width,
+      textBox.height,
+      isSelected,
+      onUpdate,
+    ]);
+
     return (
       <Rnd
         key={textBox.id}
@@ -257,27 +288,24 @@ export const MemoizedTextBox = memo(
         disableDragging={isTextSelectionMode}
         dragHandleClassName="drag-handle"
         enableResizing={false}
-        minHeight={
-          measureWrappedTextHeight(
-            textBox.value,
-            textBox.fontSize,
-            textBox.fontFamily,
-            textBox.width * scale
-          ) / scale
-        }
+        minHeight={measureWrappedTextHeight(
+          textBox.value,
+          textBox.fontSize,
+          textBox.fontFamily,
+          textBox.width
+        )}
         onDragStart={handleDragStart}
         onDrag={handleDrag}
         onDragStop={handleDragStop}
         onResizeStop={(e, direction, ref, delta, position) => {
           const newWidth = parseInt(ref.style.width) / scale;
           const userSetHeight = parseInt(ref.style.height) / scale;
-          const minHeight =
-            measureWrappedTextHeight(
-              textBox.value,
-              textBox.fontSize,
-              textBox.fontFamily,
-              newWidth * scale
-            ) / scale;
+          const minHeight = measureWrappedTextHeight(
+            textBox.value,
+            textBox.fontSize,
+            textBox.fontFamily,
+            newWidth
+          );
           const finalHeight = Math.max(userSetHeight, minHeight);
           onUpdate(
             textBox.id,
@@ -352,13 +380,12 @@ export const MemoizedTextBox = memo(
                   const deltaX = moveEvent.clientX - startX;
                   const deltaY = moveEvent.clientY - startY;
                   const newWidth = Math.max(50, startWidth + deltaX) / scale;
-                  const minHeight =
-                    measureWrappedTextHeight(
-                      textBox.value,
-                      textBox.fontSize,
-                      textBox.fontFamily,
-                      newWidth * scale
-                    ) / scale;
+                  const minHeight = measureWrappedTextHeight(
+                    textBox.value,
+                    textBox.fontSize,
+                    textBox.fontFamily,
+                    newWidth
+                  );
                   const userSetHeight = Math.max(
                     minHeight,
                     Math.max(20, startHeight + deltaY) / scale
@@ -383,13 +410,12 @@ export const MemoizedTextBox = memo(
                   const finalWidth =
                     Math.max(50, startWidth + (upEvent.clientX - startX)) /
                     scale;
-                  const minHeight =
-                    measureWrappedTextHeight(
-                      textBox.value,
-                      textBox.fontSize,
-                      textBox.fontFamily,
-                      finalWidth * scale
-                    ) / scale;
+                  const minHeight = measureWrappedTextHeight(
+                    textBox.value,
+                    textBox.fontSize,
+                    textBox.fontFamily,
+                    finalWidth
+                  );
                   const userSetHeight = Math.max(
                     minHeight,
                     Math.max(20, startHeight + (upEvent.clientY - startY)) /

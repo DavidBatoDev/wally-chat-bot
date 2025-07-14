@@ -290,6 +290,7 @@ export const ElementFormatDrawer: React.FC = () => {
                   value={isTextField(currentFormat) ? currentFormat.value : ""}
                   onChange={(e) => onFormatChange({ value: e.target.value })}
                   placeholder="Enter text..."
+                  disabled
                   className="w-32 sm:w-48 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-200"
                 />
               </div>

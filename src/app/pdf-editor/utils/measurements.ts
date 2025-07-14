@@ -25,7 +25,7 @@ export const measureText = (
   const lines = text.split("\n");
   let maxLineWidth = 0;
   let totalHeight = 0;
-  const lineHeight = fontSize * 1.2; // Line height for multi-line text
+  const lineHeight = fontSize * 1.1; // Use 1.1 line height to match DocumentCanvas
 
   for (const line of lines) {
     const metrics = context.measureText(line);
@@ -35,9 +35,42 @@ export const measureText = (
     totalHeight += lineHeight;
   }
 
-  // If maxWidth is provided, don't exceed it
-  const finalWidth = maxWidth ? Math.min(maxLineWidth, maxWidth) : maxLineWidth;
-  const finalHeight = Math.max(totalHeight, fontSize * 1.1); // Ensure minimum height
+  // If maxWidth is provided, calculate wrapped height using the same method as measureWrappedTextHeight
+  if (maxWidth) {
+    // Check if it's single line text
+    if (lines.length === 1 && !text.includes("\n")) {
+      // For single line, check if it fits within the width
+      // If text fits within width, return single line height
+      if (maxLineWidth <= maxWidth) {
+        return { width: maxWidth, height: fontSize * 1.1 }; // Exactly one line height
+      }
+    }
+
+    // If multi-line or single line exceeds width, use textarea measurement
+    const textarea = document.createElement("textarea");
+    textarea.style.position = "absolute";
+    textarea.style.visibility = "hidden";
+    textarea.style.height = "auto";
+    textarea.style.width = `${maxWidth}px`;
+    textarea.style.fontSize = `${fontSize}px`;
+    textarea.style.fontFamily = fontFamily;
+    textarea.style.lineHeight = "1.1"; // Match the actual textarea lineHeight
+    textarea.style.whiteSpace = "pre-wrap";
+    textarea.style.wordWrap = "break-word";
+    textarea.style.wordBreak = "break-word";
+    textarea.style.padding = "0px";
+    textarea.style.overflow = "hidden";
+    textarea.value = text;
+
+    document.body.appendChild(textarea);
+    const wrappedHeight = textarea.scrollHeight;
+    document.body.removeChild(textarea);
+
+    return { width: maxWidth, height: Math.max(wrappedHeight, fontSize * 1.1) };
+  }
+
+  const finalWidth = maxLineWidth;
+  const finalHeight = Math.max(totalHeight, fontSize); // Ensure minimum height is at least font size (not forcing 2 lines)
 
   return { width: finalWidth, height: finalHeight };
 };
@@ -48,7 +81,24 @@ export const measureWrappedTextHeight = (
   fontFamily: string,
   width: number
 ): number => {
-  // Create a hidden textarea for accurate measurement
+  // Check if it's single line text
+  const lines = text.split("\n");
+  if (lines.length === 1 && !text.includes("\n")) {
+    // For single line, check if it fits within the width
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (context) {
+      context.font = `${fontSize}px ${fontFamily}`;
+      const textWidth = context.measureText(text).width;
+
+      // If text fits within width, return single line height
+      if (textWidth <= width) {
+        return fontSize * 1.1; // Exactly one line height
+      }
+    }
+  }
+
+  // If multi-line or single line exceeds width, use textarea measurement
   const textarea = document.createElement("textarea");
   textarea.style.position = "absolute";
   textarea.style.visibility = "hidden";
@@ -56,16 +106,19 @@ export const measureWrappedTextHeight = (
   textarea.style.width = `${width}px`;
   textarea.style.fontSize = `${fontSize}px`;
   textarea.style.fontFamily = fontFamily;
-  textarea.style.lineHeight = "normal";
+  textarea.style.lineHeight = "1.1"; // Match the actual textarea lineHeight
   textarea.style.whiteSpace = "pre-wrap";
+  textarea.style.wordWrap = "break-word";
   textarea.style.wordBreak = "break-word";
+  textarea.style.padding = "0px";
+  textarea.style.overflow = "hidden";
   textarea.value = text;
 
   document.body.appendChild(textarea);
   const height = textarea.scrollHeight;
   document.body.removeChild(textarea);
 
-  return height;
+  return Math.max(height, fontSize * 1.1);
 };
 
 export const getCleanExtension = (url: string): string => {
