@@ -58,6 +58,48 @@ import { SelectionRectangle } from "./components/elements/SelectionRectangle";
 // Import utilities
 import { isPdfFile } from "./utils/measurements";
 import { colorToRgba, rgbStringToHex } from "./utils/colors";
+
+// Utility functions for text measurement and transformation
+const generateUUID = (): string => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+const measureText = (
+  text: string,
+  fontSize: number,
+  fontFamily: string,
+  characterSpacing: number = 0,
+  maxWidth?: number,
+  padding?: { top?: number; right?: number; bottom?: number; left?: number }
+): { width: number; height: number } => {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return { width: 100, height: fontSize };
+
+  context.font = `${fontSize}px ${fontFamily}`;
+  const metrics = context.measureText(text);
+  const textWidth =
+    metrics.width + characterSpacing * Math.max(0, text.length - 1);
+  const textHeight = fontSize * 1.1; // Reduced line height for more compact text
+
+  // If maxWidth is provided, account for padding
+  if (maxWidth && padding) {
+    const paddingLeft = padding.left || 0;
+    const paddingRight = padding.right || 0;
+    const availableWidth = maxWidth - paddingLeft - paddingRight;
+
+    // If text fits within available width, return the maxWidth
+    if (textWidth <= availableWidth) {
+      return { width: maxWidth, height: textHeight };
+    }
+  }
+
+  return { width: textWidth, height: textHeight };
+};
 import {
   screenToDocumentCoordinates,
   determineClickedView,
@@ -3908,6 +3950,399 @@ export const PDFEditorContent: React.FC = () => {
     [documentState.numPages, pageState.deletedPages]
   );
 
+  // Transform page to textbox functionality
+  const handleTransformPageToTextbox = useCallback(
+    async (pageNumber: number) => {
+      const previousView = viewState.currentView; // Store current view
+
+      try {
+        console.log("Starting transform for page:", pageNumber);
+
+        // Set transforming state
+        setPageState((prev) => ({
+          ...prev,
+          isTransforming: true,
+        }));
+
+        // Switch to original view
+        setViewState((prev) => ({ ...prev, currentView: "original" }));
+
+        // Wait for the view change to apply and document to render
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Get the document element after view change
+        const documentElement = documentRef.current;
+        if (!documentElement) {
+          throw new Error("Document element not found");
+        }
+
+        // Get the PDF page element
+        const pdfPage = documentElement.querySelector(
+          ".react-pdf__Page"
+        ) as HTMLElement;
+        if (!pdfPage) {
+          throw new Error("PDF page element not found");
+        }
+
+        // Temporarily set scale to 500% for better OCR
+        const originalScale = documentState.scale;
+        const captureScale = 5;
+
+        // Save original state
+        const wasAddTextBoxMode = editorState.isAddTextBoxMode;
+        setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
+
+        // Set the scale
+        actions.updateScale(captureScale);
+
+        // Wait for the scale change to apply
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Import html2canvas dynamically
+        const html2canvasModule = await import("html2canvas");
+        const html2canvas = html2canvasModule.default;
+
+        // Capture the PDF page as an image
+        const canvas = await html2canvas(pdfPage, {
+          scale: 1,
+          logging: false,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          ignoreElements: (element) => {
+            // Ignore any overlay elements, only capture the PDF content
+            return (
+              element.classList.contains("text-format-drawer") ||
+              element.classList.contains("rnd") ||
+              element.classList.contains("shape-element")
+            );
+          },
+        });
+
+        // Reset scale
+        actions.updateScale(originalScale);
+        setEditorState((prev) => ({
+          ...prev,
+          isAddTextBoxMode: wasAddTextBoxMode,
+        }));
+
+        // Convert canvas to blob
+        const blob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+          }, "image/png");
+        });
+
+        // Create FormData and send to API
+        const formData = new FormData();
+        formData.append("file", blob, `page-${pageNumber}.png`);
+
+        // Call the OCR API
+        const response = await fetch("/api/proxy/process-file", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to process document");
+        }
+
+        const data = await response.json();
+
+        // Extract entities from the response
+        if (data.layout && data.layout.pages && data.layout.pages.length > 0) {
+          const entities = data.layout.pages[0].entities || [];
+
+          // Convert entities to textboxes
+          const newTextBoxes: TextField[] = [];
+
+          entities.forEach((entity: any) => {
+            if (
+              !entity.bounding_poly ||
+              !entity.bounding_poly.vertices ||
+              entity.bounding_poly.vertices.length < 4
+            ) {
+              return;
+            }
+
+            const vertices = entity.bounding_poly.vertices;
+            const x =
+              Math.min(...vertices.map((v: any) => v.x)) *
+              documentState.pageWidth;
+            const y =
+              Math.min(...vertices.map((v: any) => v.y)) *
+              documentState.pageHeight;
+            const maxX =
+              Math.max(...vertices.map((v: any) => v.x)) *
+              documentState.pageWidth;
+            const maxY =
+              Math.max(...vertices.map((v: any) => v.y)) *
+              documentState.pageHeight;
+            let width = maxX - x;
+            let height = maxY - y;
+
+            // Convert style colors from [0-1] range to hex
+            const rgbToHex = (rgb: number[]): string => {
+              if (!rgb || rgb.length !== 3) return "#000000";
+              const r = Math.round(rgb[0] * 255);
+              const g = Math.round(rgb[1] * 255);
+              const b = Math.round(rgb[2] * 255);
+              return `#${r.toString(16).padStart(2, "0")}${g
+                .toString(16)
+                .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+            };
+
+            // Extract styling information
+            const style = entity.style || {};
+            const backgroundColor = style.background_color
+              ? rgbToHex(style.background_color)
+              : "transparent";
+            const textColor = style.text_color
+              ? rgbToHex(style.text_color)
+              : "#000000";
+            const borderColor = style.border_color
+              ? rgbToHex(style.border_color)
+              : "#000000";
+            const borderWidth = style.has_border ? 1 : 0;
+            const borderRadius = style.border_radius || 0;
+            const padding = style.padding || 0;
+            const fontWeight = style.font_weight === "bold";
+            const textAlign = style.alignment || "left";
+
+            // Calculate text dimensions and font size for the textbox
+            const lineHeight = 1.2;
+            const textPadding = 5; // Small padding for visual comfort
+            const minFontSize = entity.type === "MessengerTextBox" ? 4 : 6; // Further reduced font sizes
+            const maxFontSize = entity.type === "MessengerTextBox" ? 10 : 14; // Further reduced font sizes
+            let estimatedFontSize = maxFontSize;
+
+            // Split text into lines
+            const textLines = (entity.text || "").split("\n");
+            const numberOfLines = textLines.length;
+
+            // Find the longest line
+            let longestLine = "";
+            for (const line of textLines) {
+              if (line.length > longestLine.length) {
+                longestLine = line;
+              }
+            }
+
+            // Calculate text dimensions using our measureText function
+            const { width: textWidth, height: textHeight } = measureText(
+              longestLine,
+              estimatedFontSize,
+              "Arial, sans-serif",
+              0, // characterSpacing
+              undefined, // maxWidth
+              { top: 0, right: 0, bottom: 0, left: 0 } // padding
+            );
+
+            // No padding for maximum compactness
+            width = textWidth;
+            height = textHeight * numberOfLines * lineHeight;
+
+            // Add border space if present
+            if (borderWidth > 0) {
+              width += borderWidth * 2;
+              height += borderWidth * 2;
+            }
+
+            const newTextBox: TextField = {
+              id: generateUUID(),
+              x: x,
+              y: y,
+              width: width,
+              height: height,
+              value: entity.text || "",
+              fontSize: estimatedFontSize,
+              fontFamily: "Arial, sans-serif",
+              page: pageNumber,
+              color: textColor,
+              bold: fontWeight,
+              italic: false,
+              underline: false,
+              textAlign: textAlign as "left" | "center" | "right" | "justify",
+              listType: "none",
+              letterSpacing: 0,
+              lineHeight: 1.1,
+              rotation: 0,
+              backgroundColor: backgroundColor,
+              borderColor: borderColor,
+              borderWidth: borderWidth,
+              borderRadius: borderRadius,
+              borderTopLeftRadius: borderRadius,
+              borderTopRightRadius: borderRadius,
+              borderBottomLeftRadius: borderRadius,
+              borderBottomRightRadius: borderRadius,
+              paddingTop: padding,
+              paddingRight: padding,
+              paddingBottom: padding,
+              paddingLeft: padding,
+              isEditing: false,
+            };
+
+            newTextBoxes.push(newTextBox);
+          });
+
+          // Add all textboxes to the translated view using our undo system
+          newTextBoxes.forEach((textbox) => {
+            handleAddTextBoxWithUndo(
+              textbox.x,
+              textbox.y,
+              textbox.page,
+              "translated",
+              "translated",
+              {
+                value: textbox.value,
+                fontSize: textbox.fontSize,
+                fontFamily: textbox.fontFamily,
+                color: textbox.color,
+                bold: textbox.bold,
+                italic: textbox.italic,
+                underline: textbox.underline,
+                textAlign: textbox.textAlign,
+                letterSpacing: textbox.letterSpacing,
+                lineHeight: textbox.lineHeight,
+                width: textbox.width,
+                height: textbox.height,
+                borderColor: textbox.borderColor,
+                borderWidth: textbox.borderWidth,
+                backgroundColor: textbox.backgroundColor,
+                borderRadius: textbox.borderRadius,
+                borderTopLeftRadius: textbox.borderTopLeftRadius,
+                borderTopRightRadius: textbox.borderTopRightRadius,
+                borderBottomLeftRadius: textbox.borderBottomLeftRadius,
+                borderBottomRightRadius: textbox.borderBottomRightRadius,
+                paddingTop: textbox.paddingTop,
+                paddingRight: textbox.paddingRight,
+                paddingBottom: textbox.paddingBottom,
+                paddingLeft: textbox.paddingLeft,
+              }
+            );
+          });
+
+          // Mark the page as translated
+          setPageState((prev) => ({
+            ...prev,
+            isPageTranslated: new Map(
+              prev.isPageTranslated.set(pageNumber, true)
+            ),
+            isTransforming: false,
+          }));
+
+          console.log(
+            `Transformed ${newTextBoxes.length} entities into textboxes`
+          );
+          toast.success(
+            `Transformed ${newTextBoxes.length} entities into textboxes`
+          );
+
+          // Switch back to the previous view
+          setViewState((prev) => ({ ...prev, currentView: previousView }));
+        }
+      } catch (error) {
+        console.error("Error transforming page to textboxes:", error);
+        toast.error("Failed to transform page to textboxes");
+
+        // Reset transforming state on error
+        setPageState((prev) => ({
+          ...prev,
+          isTransforming: false,
+        }));
+
+        // Reset view if error occurred
+        setViewState((prev) => ({ ...prev, currentView: previousView }));
+      }
+    },
+    [
+      handleAddTextBoxWithUndo,
+      documentState.scale,
+      documentState.pageWidth,
+      documentState.pageHeight,
+      viewState.currentView,
+      editorState.isAddTextBoxMode,
+      actions,
+    ]
+  );
+
+  // Reset translation state for a specific page
+  const handleResetPageTranslation = useCallback(
+    (pageNumber: number) => {
+      // Remove all translated elements for this page
+      const translatedTextBoxes = getCurrentTextBoxes("translated").filter(
+        (tb) => tb.page === pageNumber
+      );
+      const translatedShapes = getCurrentShapes("translated").filter(
+        (s) => s.page === pageNumber
+      );
+      const translatedImages = getCurrentImages("translated").filter(
+        (img) => img.page === pageNumber
+      );
+
+      // Delete all translated elements for this page
+      translatedTextBoxes.forEach((tb) => {
+        deleteTextBox(tb.id, "translated");
+      });
+      translatedShapes.forEach((s) => {
+        deleteShape(s.id, "translated");
+      });
+      translatedImages.forEach((img) => {
+        deleteImage(img.id, "translated");
+      });
+
+      // Mark the page as not translated
+      setPageState((prev) => ({
+        ...prev,
+        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, false)),
+      }));
+
+      toast.success(`Page ${pageNumber} translation reset`);
+    },
+    [
+      getCurrentTextBoxes,
+      getCurrentShapes,
+      getCurrentImages,
+      deleteTextBox,
+      deleteShape,
+      deleteImage,
+    ]
+  );
+
+  // Clear all translations
+  const handleClearAllTranslations = useCallback(() => {
+    // Remove all translated elements
+    const allTranslatedTextBoxes = getCurrentTextBoxes("translated");
+    const allTranslatedShapes = getCurrentShapes("translated");
+    const allTranslatedImages = getCurrentImages("translated");
+
+    // Delete all translated elements
+    allTranslatedTextBoxes.forEach((tb) => {
+      deleteTextBox(tb.id, "translated");
+    });
+    allTranslatedShapes.forEach((s) => {
+      deleteShape(s.id, "translated");
+    });
+    allTranslatedImages.forEach((img) => {
+      deleteImage(img.id, "translated");
+    });
+
+    // Reset all page translation states
+    setPageState((prev) => ({
+      ...prev,
+      isPageTranslated: new Map(),
+    }));
+
+    toast.success("All translations cleared");
+  }, [
+    getCurrentTextBoxes,
+    getCurrentShapes,
+    getCurrentImages,
+    deleteTextBox,
+    deleteShape,
+    deleteImage,
+  ]);
+
   // Project management
   const saveProject = useCallback(() => {
     localStorage.setItem(
@@ -3996,6 +4431,22 @@ export const PDFEditorContent: React.FC = () => {
       selectionBounds: editorState.multiSelection.selectionBounds,
     });
   }, [editorState.multiSelection]);
+
+  // Add effect to monitor page translation state for debugging
+  useEffect(() => {
+    console.log("Page translation state changed:", {
+      currentPage: documentState.currentPage,
+      isPageTranslated: pageState.isPageTranslated.get(
+        documentState.currentPage
+      ),
+      allTranslatedPages: Array.from(pageState.isPageTranslated.entries()),
+      isTransforming: pageState.isTransforming,
+    });
+  }, [
+    pageState.isPageTranslated,
+    pageState.isTransforming,
+    documentState.currentPage,
+  ]);
 
   // Cleanup effect to clear any remaining debounce timers
   useEffect(() => {
@@ -4154,6 +4605,7 @@ export const PDFEditorContent: React.FC = () => {
           documentState.currentPage,
           viewState.currentView
         )}
+        onClearAllTranslations={handleClearAllTranslations}
       />
 
       {/* Main Content */}
@@ -4556,16 +5008,38 @@ export const PDFEditorContent: React.FC = () => {
                           {documentState.numPages}
                         </div>
 
+                        {/* Translation status indicator */}
+                        {pageState.isPageTranslated.get(
+                          documentState.currentPage
+                        ) && (
+                          <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded text-xs flex items-center space-x-1">
+                            <svg
+                              className="w-3 h-3"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            <span>Translated</span>
+                          </div>
+                        )}
+
                         {/* Transform JSON Button - positioned in the middle */}
                         {!pageState.isPageTranslated.get(
                           documentState.currentPage
                         ) && (
-                          <div className="absolute inset-0 flex items-center justify-center">
+                          <div
+                            className="absolute inset-0 flex items-center justify-center"
+                            style={{ zIndex: 20000 }}
+                          >
                             <button
                               onClick={() => {
-                                // TODO: Implement transform functionality
-                                toast.info(
-                                  "Transform functionality not yet implemented"
+                                handleTransformPageToTextbox(
+                                  documentState.currentPage
                                 );
                               }}
                               disabled={pageState.isTransforming}
@@ -4596,6 +5070,46 @@ export const PDFEditorContent: React.FC = () => {
                                 </>
                               )}
                             </button>
+                          </div>
+                        )}
+
+                        {/* Reset Translation Button - shown when page is already translated */}
+                        {pageState.isPageTranslated.get(
+                          documentState.currentPage
+                        ) && (
+                          <div
+                            className="absolute inset-0 flex items-center justify-center"
+                            style={{ zIndex: 20000 }}
+                          >
+                            <div className="text-center space-y-4">
+                              <div className="text-gray-600 text-sm">
+                                Page has been transformed
+                              </div>
+                              <button
+                                onClick={() => {
+                                  handleResetPageTranslation(
+                                    documentState.currentPage
+                                  );
+                                }}
+                                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 flex items-center space-x-2 mx-auto"
+                                title="Reset translation and allow re-transformation"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                  />
+                                </svg>
+                                <span>Reset Translation</span>
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -4946,16 +5460,38 @@ export const PDFEditorContent: React.FC = () => {
                             {documentState.numPages}
                           </div>
 
+                          {/* Translation status indicator */}
+                          {pageState.isPageTranslated.get(
+                            documentState.currentPage
+                          ) && (
+                            <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded text-xs flex items-center space-x-1">
+                              <svg
+                                className="w-3 h-3"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                              <span>Translated</span>
+                            </div>
+                          )}
+
                           {/* Transform JSON Button - positioned in the middle */}
                           {!pageState.isPageTranslated.get(
                             documentState.currentPage
                           ) && (
-                            <div className="absolute inset-0 flex items-center justify-center">
+                            <div
+                              className="absolute inset-0 flex items-center justify-center"
+                              style={{ zIndex: 20000 }}
+                            >
                               <button
                                 onClick={() => {
-                                  // TODO: Implement transform functionality
-                                  toast.info(
-                                    "Transform functionality not yet implemented"
+                                  handleTransformPageToTextbox(
+                                    documentState.currentPage
                                   );
                                 }}
                                 disabled={pageState.isTransforming}
@@ -4986,6 +5522,46 @@ export const PDFEditorContent: React.FC = () => {
                                   </>
                                 )}
                               </button>
+                            </div>
+                          )}
+
+                          {/* Reset Translation Button - shown when page is already translated */}
+                          {pageState.isPageTranslated.get(
+                            documentState.currentPage
+                          ) && (
+                            <div
+                              className="absolute inset-0 flex items-center justify-center"
+                              style={{ zIndex: 20000 }}
+                            >
+                              <div className="text-center space-y-4">
+                                <div className="text-gray-600 text-sm">
+                                  Page has been transformed
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    handleResetPageTranslation(
+                                      documentState.currentPage
+                                    );
+                                  }}
+                                  className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 flex items-center space-x-2 mx-auto"
+                                  title="Reset translation and allow re-transformation"
+                                >
+                                  <svg
+                                    className="w-4 h-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                    />
+                                  </svg>
+                                  <span>Reset Translation</span>
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>

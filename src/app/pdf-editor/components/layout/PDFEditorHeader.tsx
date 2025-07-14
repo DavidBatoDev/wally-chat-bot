@@ -1,6 +1,14 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Save, Menu, Undo2, Redo2 } from "lucide-react";
+import {
+  Upload,
+  Download,
+  Save,
+  Menu,
+  Undo2,
+  Redo2,
+  RotateCcw,
+} from "lucide-react";
 
 interface PDFEditorHeaderProps {
   isSidebarCollapsed: boolean;
@@ -12,6 +20,7 @@ interface PDFEditorHeaderProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  onClearAllTranslations?: () => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -24,6 +33,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onRedo,
   canUndo,
   canRedo,
+  onClearAllTranslations,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -80,6 +90,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             <Redo2 className="w-4 h-4 mr-2" />
             Redo
           </Button>
+          {onClearAllTranslations && (
+            <Button
+              onClick={onClearAllTranslations}
+              variant="outline"
+              size="sm"
+              className="border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 transition-colors"
+              title="Clear all translations"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Clear Translations
+            </Button>
+          )}
           <Button
             onClick={onSaveProject}
             variant="outline"
