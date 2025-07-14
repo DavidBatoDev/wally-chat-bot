@@ -4003,18 +4003,19 @@ export const PDFEditorContent: React.FC = () => {
         const html2canvas = html2canvasModule.default;
 
         // Capture the PDF page as an image
-        const canvas = await html2canvas(pdfPage, {
+        const containerEl = documentRef.current;
+        if (!containerEl) throw new Error("Document container not found");
+        const canvas = await html2canvas(containerEl, {
           scale: 1,
           logging: false,
           useCORS: true,
           allowTaint: true,
           backgroundColor: "#ffffff",
           ignoreElements: (element) => {
-            // Ignore any overlay elements, only capture the PDF content
+            // Optionally ignore toolbars, sidebars, etc.
             return (
               element.classList.contains("text-format-drawer") ||
-              element.classList.contains("rnd") ||
-              element.classList.contains("shape-element")
+              element.classList.contains("element-format-drawer")
             );
           },
         });
@@ -4037,21 +4038,74 @@ export const PDFEditorContent: React.FC = () => {
         const formData = new FormData();
         formData.append("file", blob, `page-${pageNumber}.png`);
 
-        // Call the OCR API
-        const response = await fetch("/api/proxy/process-file", {
-          method: "POST",
-          body: formData,
+        // Call the OCR API using our centralized API
+        const { processFile } = await import("@/lib/api");
+
+        console.log("=== OCR API REQUEST DEBUG ===");
+        console.log("FormData details:", {
+          fileSize: blob.size,
+          fileName: `page-${pageNumber}.png`,
+          formDataEntries: Array.from(formData.entries()).map(
+            ([key, value]) => ({
+              key,
+              valueType: typeof value,
+              valueSize: value instanceof Blob ? value.size : "N/A",
+            })
+          ),
+        });
+        console.log("Blob details:", {
+          size: blob.size,
+          type: blob.type,
         });
 
-        if (!response.ok) {
-          throw new Error("Failed to process document");
+        let data;
+        try {
+          console.log("Calling processFile API...");
+          data = await processFile(formData);
+          console.log("=== OCR API SUCCESS ===");
+          console.log("OCR API response:", data);
+          console.log("Response keys:", Object.keys(data));
+          if (data.styled_layout) {
+            console.log("Styled layout keys:", Object.keys(data.styled_layout));
+            if (data.styled_layout.pages) {
+              console.log("Pages count:", data.styled_layout.pages.length);
+            }
+          }
+        } catch (error: any) {
+          console.error("=== OCR API ERROR ===");
+          console.error("Error object:", error);
+          console.error("Error message:", error.message);
+          console.error("Error stack:", error.stack);
+
+          if (error.response) {
+            console.error("Response status:", error.response.status);
+            console.error("Response statusText:", error.response.statusText);
+            console.error("Response headers:", error.response.headers);
+            console.error("Response data:", error.response.data);
+
+            // For axios errors, the response data is already parsed
+            if (error.response.data) {
+              console.error("Response data:", error.response.data);
+              if (error.response.data.detail) {
+                console.error("Error detail:", error.response.data.detail);
+              }
+            }
+          }
+
+          if (error.request) {
+            console.error("Request details:", error.request);
+          }
+
+          throw error;
         }
 
-        const data = await response.json();
-
         // Extract entities from the response
-        if (data.layout && data.layout.pages && data.layout.pages.length > 0) {
-          const entities = data.layout.pages[0].entities || [];
+        if (
+          data.styled_layout &&
+          data.styled_layout.pages &&
+          data.styled_layout.pages.length > 0
+        ) {
+          const entities = data.styled_layout.pages[0].entities || [];
 
           // Convert entities to textboxes
           const newTextBoxes: TextField[] = [];
@@ -4065,60 +4119,76 @@ export const PDFEditorContent: React.FC = () => {
               return;
             }
 
-            const vertices = entity.bounding_poly.vertices;
-            const x =
-              Math.min(...vertices.map((v: any) => v.x)) *
-              documentState.pageWidth;
-            const y =
-              Math.min(...vertices.map((v: any) => v.y)) *
-              documentState.pageHeight;
-            const maxX =
-              Math.max(...vertices.map((v: any) => v.x)) *
-              documentState.pageWidth;
-            const maxY =
-              Math.max(...vertices.map((v: any) => v.y)) *
-              documentState.pageHeight;
-            let width = maxX - x;
-            let height = maxY - y;
+            // Use the styled entity dimensions if available, otherwise calculate from vertices
+            let x, y, width, height;
 
-            // Convert style colors from [0-1] range to hex
-            const rgbToHex = (rgb: number[]): string => {
-              if (!rgb || rgb.length !== 3) return "#000000";
-              const r = Math.round(rgb[0] * 255);
-              const g = Math.round(rgb[1] * 255);
-              const b = Math.round(rgb[2] * 255);
+            if (entity.dimensions) {
+              // Use pre-calculated dimensions from styled entity
+              x = entity.dimensions.box_x;
+              y = entity.dimensions.box_y;
+              width = entity.dimensions.box_width;
+              height = entity.dimensions.box_height;
+            } else {
+              // Fallback to calculating from vertices (original logic)
+              const vertices = entity.bounding_poly.vertices;
+              x =
+                Math.min(...vertices.map((v: any) => v.x)) *
+                documentState.pageWidth;
+              y =
+                Math.min(...vertices.map((v: any) => v.y)) *
+                documentState.pageHeight;
+              const maxX =
+                Math.max(...vertices.map((v: any) => v.x)) *
+                documentState.pageWidth;
+              const maxY =
+                Math.max(...vertices.map((v: any) => v.y)) *
+                documentState.pageHeight;
+              width = maxX - x;
+              height = maxY - y;
+            }
+
+            // Extract styling information from styled entity
+            const styling = entity.styling || {};
+            const colors = styling.colors || {};
+
+            // Convert RGB colors to hex
+            const rgbToHex = (rgb: {
+              r: number;
+              g: number;
+              b: number;
+              a?: number;
+            }): string => {
+              if (!rgb) return "#000000";
+              const r = Math.round(rgb.r * 255);
+              const g = Math.round(rgb.g * 255);
+              const b = Math.round(rgb.b * 255);
               return `#${r.toString(16).padStart(2, "0")}${g
                 .toString(16)
                 .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
             };
 
-            // Extract styling information
-            const style = entity.style || {};
-            const backgroundColor = style.background_color
-              ? rgbToHex(style.background_color)
+            const backgroundColor = colors.background_color
+              ? rgbToHex(colors.background_color)
               : "transparent";
-            const textColor = style.text_color
-              ? rgbToHex(style.text_color)
+            const textColor = colors.fill_color
+              ? rgbToHex(colors.fill_color)
               : "#000000";
-            const borderColor = style.border_color
-              ? rgbToHex(style.border_color)
+            const borderColor = colors.border_color
+              ? rgbToHex(colors.border_color)
               : "#000000";
-            const borderWidth = style.has_border ? 1 : 0;
-            const borderRadius = style.border_radius || 0;
-            const padding = style.padding || 0;
-            const fontWeight = style.font_weight === "bold";
-            const textAlign = style.alignment || "left";
+            const borderWidth = colors.border_color ? 1 : 0;
+            const borderRadius = styling.background?.border_radius || 0;
+            const padding = styling.text_padding || 0;
+            const fontWeight = styling.font_family === "Helvetica-Bold";
+            const textAlign = styling.text_alignment || "left";
 
-            // Calculate text dimensions and font size for the textbox
-            const lineHeight = 1.2;
-            const textPadding = 5; // Small padding for visual comfort
-            const minFontSize = entity.type === "MessengerTextBox" ? 4 : 6; // Further reduced font sizes
-            const maxFontSize = entity.type === "MessengerTextBox" ? 10 : 14; // Further reduced font sizes
-            let estimatedFontSize = maxFontSize;
-
-            // Split text into lines
-            const textLines = (entity.text || "").split("\n");
-            const numberOfLines = textLines.length;
+            // Use styled entity information for text dimensions and font size
+            const lineHeight = styling.line_spacing || 1.2;
+            const textPadding = styling.text_padding || 5;
+            const estimatedFontSize = styling.font_size || 12;
+            const textLines =
+              styling.text_lines || (entity.text || "").split("\n");
+            const numberOfLines = styling.line_count || textLines.length;
 
             // Find the longest line
             let longestLine = "";
@@ -4132,15 +4202,17 @@ export const PDFEditorContent: React.FC = () => {
             const { width: textWidth, height: textHeight } = measureText(
               longestLine,
               estimatedFontSize,
-              "Arial, sans-serif",
+              styling.font_family || "Arial, sans-serif",
               0, // characterSpacing
               undefined, // maxWidth
               { top: 0, right: 0, bottom: 0, left: 0 } // padding
             );
 
-            // No padding for maximum compactness
-            width = textWidth;
-            height = textHeight * numberOfLines * lineHeight;
+            // Use styled entity dimensions if available, otherwise calculate
+            if (!entity.dimensions) {
+              width = textWidth;
+              height = textHeight * numberOfLines * lineHeight;
+            }
 
             // Add border space if present
             if (borderWidth > 0) {
@@ -4151,34 +4223,38 @@ export const PDFEditorContent: React.FC = () => {
             const newTextBox: TextField = {
               id: generateUUID(),
               x: x,
-              y: y,
+              y: documentState.pageHeight - y - height, // Y-flip for PDF coordinate system
               width: width,
               height: height,
               value: entity.text || "",
-              fontSize: estimatedFontSize,
-              fontFamily: "Arial, sans-serif",
+              fontSize: styling.font_size || 12,
+              fontFamily: styling.font_family || "Arial, sans-serif",
               page: pageNumber,
-              color: textColor,
-              bold: fontWeight,
-              italic: false,
-              underline: false,
-              textAlign: textAlign as "left" | "center" | "right" | "justify",
+              color: textColor || "#000000",
+              bold: !!(styling.bold || fontWeight),
+              italic: !!styling.italic,
+              underline: !!styling.underline,
+              textAlign: styling.text_alignment || "left",
               listType: "none",
-              letterSpacing: 0,
-              lineHeight: 1.1,
+              letterSpacing: styling.letter_spacing || 0,
+              lineHeight: styling.line_spacing || 1.2,
               rotation: 0,
-              backgroundColor: backgroundColor,
-              borderColor: borderColor,
-              borderWidth: borderWidth,
-              borderRadius: borderRadius,
-              borderTopLeftRadius: borderRadius,
-              borderTopRightRadius: borderRadius,
-              borderBottomLeftRadius: borderRadius,
-              borderBottomRightRadius: borderRadius,
-              paddingTop: padding,
-              paddingRight: padding,
-              paddingBottom: padding,
-              paddingLeft: padding,
+              backgroundColor: backgroundColor || "transparent",
+              borderColor: borderColor || "#000000",
+              borderWidth: borderWidth || 0,
+              borderRadius: borderRadius || 0,
+              borderTopLeftRadius:
+                styling.border_top_left_radius || borderRadius || 0,
+              borderTopRightRadius:
+                styling.border_top_right_radius || borderRadius || 0,
+              borderBottomLeftRadius:
+                styling.border_bottom_left_radius || borderRadius || 0,
+              borderBottomRightRadius:
+                styling.border_bottom_right_radius || borderRadius || 0,
+              paddingTop: styling.text_padding || 0,
+              paddingRight: styling.text_padding || 0,
+              paddingBottom: styling.text_padding || 0,
+              paddingLeft: styling.text_padding || 0,
               isEditing: false,
             };
 
@@ -5028,7 +5104,7 @@ export const PDFEditorContent: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Transform JSON Button - positioned in the middle */}
+                        {/* Transform JSON Button - centered overlay if not translated */}
                         {!pageState.isPageTranslated.get(
                           documentState.currentPage
                         ) && (
@@ -5037,11 +5113,11 @@ export const PDFEditorContent: React.FC = () => {
                             style={{ zIndex: 20000 }}
                           >
                             <button
-                              onClick={() => {
+                              onClick={() =>
                                 handleTransformPageToTextbox(
                                   documentState.currentPage
-                                );
-                              }}
+                                )
+                              }
                               disabled={pageState.isTransforming}
                               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
                               title="Transform current page to textboxes using OCR"
@@ -5072,46 +5148,153 @@ export const PDFEditorContent: React.FC = () => {
                             </button>
                           </div>
                         )}
+                      </div>
 
-                        {/* Reset Translation Button - shown when page is already translated */}
-                        {pageState.isPageTranslated.get(
-                          documentState.currentPage
-                        ) && (
-                          <div
-                            className="absolute inset-0 flex items-center justify-center"
-                            style={{ zIndex: 20000 }}
-                          >
-                            <div className="text-center space-y-4">
-                              <div className="text-gray-600 text-sm">
-                                Page has been transformed
-                              </div>
-                              <button
-                                onClick={() => {
-                                  handleResetPageTranslation(
-                                    documentState.currentPage
-                                  );
-                                }}
-                                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 flex items-center space-x-2 mx-auto"
-                                title="Reset translation and allow re-transformation"
-                              >
-                                <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
+                      {/* Translated Document Elements - Wrapped for proper z-index */}
+                      <div
+                        className="absolute inset-0"
+                        style={{ zIndex: 10000 }}
+                      >
+                        {/* Deletion Rectangles */}
+                        {elementCollections.translatedDeletionRectangles
+                          .filter(
+                            (rect) => rect.page === documentState.currentPage
+                          )
+                          .map((rect) => (
+                            <div
+                              key={`trans-del-${rect.id}`}
+                              className={`absolute ${
+                                editorState.showDeletionRectangles
+                                  ? "border border-red-400"
+                                  : ""
+                              }`}
+                              style={{
+                                left: rect.x * documentState.scale,
+                                top: rect.y * documentState.scale,
+                                width: rect.width * documentState.scale,
+                                height: rect.height * documentState.scale,
+                                zIndex: editorState.showDeletionRectangles
+                                  ? -10
+                                  : -20,
+                                backgroundColor: rect.background
+                                  ? colorToRgba(
+                                      rect.background,
+                                      rect.opacity || 1.0
+                                    )
+                                  : "white",
+                              }}
+                            >
+                              {editorState.showDeletionRectangles && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteDeletionRectangleWithUndo(
+                                      rect.id,
+                                      "translated"
+                                    );
+                                  }}
+                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                  title="Delete area"
                                 >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                                  />
-                                </svg>
-                                <span>Reset Translation</span>
-                              </button>
+                                  ×
+                                </button>
+                              )}
                             </div>
-                          </div>
-                        )}
+                          ))}
+
+                        {/* Translated Elements in Layer Order */}
+                        {getTranslatedSortedElements(
+                          documentState.currentPage
+                        ).map(({ type, element }) => {
+                          // Get elements that would be captured in the current selection preview
+                          const elementsInSelectionPreview =
+                            getElementsInSelectionPreview();
+
+                          if (type === "textbox") {
+                            const textBox = element as TextField;
+                            const isInSelectionPreview =
+                              elementsInSelectionPreview.has(textBox.id);
+                            return (
+                              <MemoizedTextBox
+                                key={`trans-text-${textBox.id}`}
+                                textBox={textBox}
+                                isSelected={
+                                  editorState.selectedFieldId === textBox.id
+                                }
+                                isEditMode={editorState.isEditMode}
+                                scale={documentState.scale}
+                                showPaddingIndicator={showPaddingPopup}
+                                onSelect={handleTextBoxSelect}
+                                onUpdate={updateTextBoxWithUndo}
+                                onDelete={(id) =>
+                                  handleDeleteTextBoxWithUndo(
+                                    id,
+                                    viewState.currentView
+                                  )
+                                }
+                                isTextSelectionMode={
+                                  editorState.isTextSelectionMode
+                                }
+                                isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
+                                  textBox.id
+                                )}
+                                autoFocusId={autoFocusTextBoxId}
+                                onAutoFocusComplete={handleAutoFocusComplete}
+                                // Selection preview prop
+                                isInSelectionPreview={isInSelectionPreview}
+                              />
+                            );
+                          } else if (type === "shape") {
+                            const shape = element as ShapeType;
+                            const isInSelectionPreview =
+                              elementsInSelectionPreview.has(shape.id);
+                            return (
+                              <MemoizedShape
+                                key={`trans-shape-${shape.id}`}
+                                shape={shape}
+                                isSelected={
+                                  editorState.selectedShapeId === shape.id
+                                }
+                                isEditMode={editorState.isEditMode}
+                                scale={documentState.scale}
+                                onSelect={handleShapeSelect}
+                                onUpdate={updateShapeWithUndo}
+                                onDelete={(id) =>
+                                  handleDeleteShapeWithUndo(
+                                    id,
+                                    viewState.currentView
+                                  )
+                                }
+                                // Selection preview prop
+                                isInSelectionPreview={isInSelectionPreview}
+                              />
+                            );
+                          } else if (type === "image") {
+                            const image = element as ImageType;
+                            const isInSelectionPreview =
+                              elementsInSelectionPreview.has(image.id);
+                            return (
+                              <MemoizedImage
+                                key={`trans-image-${image.id}`}
+                                image={image}
+                                isSelected={selectedElementId === image.id}
+                                isEditMode={editorState.isEditMode}
+                                scale={documentState.scale}
+                                onSelect={handleImageSelect}
+                                onUpdate={updateImage}
+                                onDelete={(id) =>
+                                  handleDeleteImageWithUndo(
+                                    id,
+                                    viewState.currentView
+                                  )
+                                }
+                                // Selection preview prop
+                                isInSelectionPreview={isInSelectionPreview}
+                              />
+                            );
+                          }
+                          return null;
+                        })}
                       </div>
                     </>
                   )}
