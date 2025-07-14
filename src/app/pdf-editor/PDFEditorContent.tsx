@@ -960,6 +960,11 @@ export const PDFEditorContent: React.FC = () => {
     null
   );
 
+  // Undo/Redo debouncing state
+  const [lastUndoTime, setLastUndoTime] = useState<number>(0);
+  const [lastRedoTime, setLastRedoTime] = useState<number>(0);
+  const UNDO_REDO_DEBOUNCE_MS = 300; // 300ms debounce for undo/redo
+
   // Callback to clear auto-focus ID after focusing
   const handleAutoFocusComplete = useCallback((id: string) => {
     setAutoFocusTextBoxId(null);
@@ -1531,6 +1536,11 @@ export const PDFEditorContent: React.FC = () => {
         // Ctrl+Z to undo
         if (e.key === "z" || e.key === "Z") {
           e.preventDefault();
+          const now = Date.now();
+          if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
+            console.log("Undo debounced - too soon since last undo");
+            return;
+          }
           console.log(
             "Ctrl+Z pressed, canUndo:",
             history.canUndo(documentState.currentPage, viewState.currentView)
@@ -1539,6 +1549,7 @@ export const PDFEditorContent: React.FC = () => {
             history.canUndo(documentState.currentPage, viewState.currentView)
           ) {
             history.undo(documentState.currentPage, viewState.currentView);
+            setLastUndoTime(now);
             toast.success("Undo");
           }
         }
@@ -1550,6 +1561,11 @@ export const PDFEditorContent: React.FC = () => {
           (e.shiftKey && (e.key === "z" || e.key === "Z"))
         ) {
           e.preventDefault();
+          const now = Date.now();
+          if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
+            console.log("Redo debounced - too soon since last redo");
+            return;
+          }
           console.log(
             "Ctrl+Y/Ctrl+Shift+Z pressed, canRedo:",
             history.canRedo(documentState.currentPage, viewState.currentView)
@@ -1558,6 +1574,7 @@ export const PDFEditorContent: React.FC = () => {
             history.canRedo(documentState.currentPage, viewState.currentView)
           ) {
             history.redo(documentState.currentPage, viewState.currentView);
+            setLastRedoTime(now);
             toast.success("Redo");
           }
         }
@@ -1632,6 +1649,9 @@ export const PDFEditorContent: React.FC = () => {
     handleMultiSelectionMove,
     handleMultiSelectionMoveEnd,
     history,
+    lastUndoTime,
+    lastRedoTime,
+    UNDO_REDO_DEBOUNCE_MS,
   ]);
 
   // Format change handler for ElementFormatDrawer
@@ -4091,6 +4111,11 @@ export const PDFEditorContent: React.FC = () => {
         onSaveProject={saveProject}
         onExportData={exportData}
         onUndo={() => {
+          const now = Date.now();
+          if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
+            console.log("Undo button debounced - too soon since last undo");
+            return;
+          }
           console.log(
             "Undo button clicked, canUndo:",
             history.canUndo(documentState.currentPage, viewState.currentView)
@@ -4099,10 +4124,16 @@ export const PDFEditorContent: React.FC = () => {
             history.canUndo(documentState.currentPage, viewState.currentView)
           ) {
             history.undo(documentState.currentPage, viewState.currentView);
+            setLastUndoTime(now);
             toast.success("Undo");
           }
         }}
         onRedo={() => {
+          const now = Date.now();
+          if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
+            console.log("Redo button debounced - too soon since last redo");
+            return;
+          }
           console.log(
             "Redo button clicked, canRedo:",
             history.canRedo(documentState.currentPage, viewState.currentView)
@@ -4111,6 +4142,7 @@ export const PDFEditorContent: React.FC = () => {
             history.canRedo(documentState.currentPage, viewState.currentView)
           ) {
             history.redo(documentState.currentPage, viewState.currentView);
+            setLastRedoTime(now);
             toast.success("Redo");
           }
         }}

@@ -13,7 +13,8 @@ export const measureText = (
   fontSize: number,
   fontFamily: string,
   characterSpacing: number = 0,
-  maxWidth?: number
+  maxWidth?: number,
+  padding?: { top?: number; right?: number; bottom?: number; left?: number }
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
@@ -37,21 +38,26 @@ export const measureText = (
 
   // If maxWidth is provided, calculate wrapped height using the same method as measureWrappedTextHeight
   if (maxWidth) {
+    // Account for padding by reducing the available width for text
+    const paddingLeft = padding?.left || 0;
+    const paddingRight = padding?.right || 0;
+    const availableWidth = maxWidth - paddingLeft - paddingRight;
+
     // Check if it's single line text
     if (lines.length === 1 && !text.includes("\n")) {
-      // For single line, check if it fits within the width
-      // If text fits within width, return single line height
-      if (maxLineWidth <= maxWidth) {
+      // For single line, check if it fits within the available width
+      // If text fits within available width, return single line height
+      if (maxLineWidth <= availableWidth) {
         return { width: maxWidth, height: fontSize * 1.1 }; // Exactly one line height
       }
     }
 
-    // If multi-line or single line exceeds width, use textarea measurement
+    // If multi-line or single line exceeds available width, use textarea measurement
     const textarea = document.createElement("textarea");
     textarea.style.position = "absolute";
     textarea.style.visibility = "hidden";
     textarea.style.height = "auto";
-    textarea.style.width = `${maxWidth}px`;
+    textarea.style.width = `${availableWidth}px`;
     textarea.style.fontSize = `${fontSize}px`;
     textarea.style.fontFamily = fontFamily;
     textarea.style.lineHeight = "1.1"; // Match the actual textarea lineHeight
@@ -79,31 +85,37 @@ export const measureWrappedTextHeight = (
   text: string,
   fontSize: number,
   fontFamily: string,
-  width: number
+  width: number,
+  padding?: { top?: number; right?: number; bottom?: number; left?: number }
 ): number => {
+  // Account for padding by reducing the available width for text
+  const paddingLeft = padding?.left || 0;
+  const paddingRight = padding?.right || 0;
+  const availableWidth = width - paddingLeft - paddingRight;
+
   // Check if it's single line text
   const lines = text.split("\n");
   if (lines.length === 1 && !text.includes("\n")) {
-    // For single line, check if it fits within the width
+    // For single line, check if it fits within the available width
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (context) {
       context.font = `${fontSize}px ${fontFamily}`;
       const textWidth = context.measureText(text).width;
 
-      // If text fits within width, return single line height
-      if (textWidth <= width) {
+      // If text fits within available width, return single line height
+      if (textWidth <= availableWidth) {
         return fontSize * 1.1; // Exactly one line height
       }
     }
   }
 
-  // If multi-line or single line exceeds width, use textarea measurement
+  // If multi-line or single line exceeds available width, use textarea measurement
   const textarea = document.createElement("textarea");
   textarea.style.position = "absolute";
   textarea.style.visibility = "hidden";
   textarea.style.height = "auto";
-  textarea.style.width = `${width}px`;
+  textarea.style.width = `${availableWidth}px`;
   textarea.style.fontSize = `${fontSize}px`;
   textarea.style.fontFamily = fontFamily;
   textarea.style.lineHeight = "1.1"; // Match the actual textarea lineHeight

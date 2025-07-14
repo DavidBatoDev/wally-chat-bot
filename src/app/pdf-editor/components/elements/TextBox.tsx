@@ -57,6 +57,58 @@ export const MemoizedTextBox = memo(
     // Selection preview prop
     isInSelectionPreview = false,
   }: TextBoxProps) => {
+    // Helper function to get padding object from textbox
+    const getPadding = () => ({
+      top: textBox.paddingTop || 0,
+      right: textBox.paddingRight || 0,
+      bottom: textBox.paddingBottom || 0,
+      left: textBox.paddingLeft || 0,
+    });
+
+    // Helper function to check if resize would cause text clipping
+    const wouldResizeCauseClipping = (newWidth: number, newHeight: number) => {
+      const padding = getPadding();
+      // Calculate available space for text after padding
+      const availableWidth = newWidth - padding.left - padding.right;
+      const availableHeight = newHeight - padding.top - padding.bottom;
+      // Check if there's any space left for text
+      if (availableWidth <= 0 || availableHeight <= 0) {
+        // Only block if padding is nonzero
+        if (
+          padding.top > 0 ||
+          padding.right > 0 ||
+          padding.bottom > 0 ||
+          padding.left > 0
+        ) {
+          return true;
+        }
+        return false;
+      }
+      // Calculate the actual text dimensions
+      const textHeight = measureWrappedTextHeight(
+        textBox.value,
+        textBox.fontSize,
+        textBox.fontFamily,
+        availableWidth,
+        padding
+      );
+      const { width: textWidth } = measureText(
+        textBox.value,
+        textBox.fontSize,
+        textBox.fontFamily,
+        textBox.letterSpacing || 0
+      );
+      // Only block if text would be clipped AND padding is nonzero
+      const isClipped =
+        textHeight > availableHeight || textWidth > availableWidth;
+      const hasPadding =
+        padding.top > 0 ||
+        padding.right > 0 ||
+        padding.bottom > 0 ||
+        padding.left > 0;
+      return isClipped && hasPadding;
+    };
+
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
@@ -78,7 +130,8 @@ export const MemoizedTextBox = memo(
               textBox.fontSize,
               textBox.fontFamily,
               0, // characterSpacing
-              textBox.width // maxWidth - don't exceed current width
+              textBox.width, // maxWidth - don't exceed current width
+              getPadding()
             );
 
             const padding = 4;
@@ -92,7 +145,10 @@ export const MemoizedTextBox = memo(
             const { width, height } = measureText(
               newValue,
               textBox.fontSize,
-              textBox.fontFamily
+              textBox.fontFamily,
+              0, // characterSpacing
+              undefined, // maxWidth
+              getPadding()
             );
 
             const padding = 4;
@@ -127,6 +183,10 @@ export const MemoizedTextBox = memo(
         textBox.fontFamily,
         textBox.width,
         textBox.height,
+        textBox.paddingTop,
+        textBox.paddingRight,
+        textBox.paddingBottom,
+        textBox.paddingLeft,
       ]
     );
 
@@ -258,7 +318,8 @@ export const MemoizedTextBox = memo(
           textBox.fontSize,
           textBox.fontFamily,
           0, // characterSpacing
-          textBox.width // maxWidth - don't exceed current width
+          textBox.width, // maxWidth - don't exceed current width
+          getPadding()
         );
 
         const padding = 4;
@@ -275,6 +336,10 @@ export const MemoizedTextBox = memo(
       textBox.value,
       textBox.width,
       textBox.height,
+      textBox.paddingTop,
+      textBox.paddingRight,
+      textBox.paddingBottom,
+      textBox.paddingLeft,
       isSelected,
       onUpdate,
     ]);
@@ -292,7 +357,8 @@ export const MemoizedTextBox = memo(
           textBox.value,
           textBox.fontSize,
           textBox.fontFamily,
-          textBox.width
+          textBox.width,
+          getPadding()
         )}
         onDragStart={handleDragStart}
         onDrag={handleDrag}
@@ -304,20 +370,25 @@ export const MemoizedTextBox = memo(
             textBox.value,
             textBox.fontSize,
             textBox.fontFamily,
-            newWidth
+            newWidth,
+            getPadding()
           );
           const finalHeight = Math.max(userSetHeight, minHeight);
-          onUpdate(
-            textBox.id,
-            {
-              x: position.x / scale,
-              y: position.y / scale,
-              width: newWidth,
-              height: finalHeight,
-              hasBeenManuallyResized: true, // Mark as manually resized
-            },
-            false
-          ); // Don't mark as ongoing operation - resize is a one-time event
+
+          // Check if the resize would cause text clipping
+          if (!wouldResizeCauseClipping(newWidth, finalHeight)) {
+            onUpdate(
+              textBox.id,
+              {
+                x: position.x / scale,
+                y: position.y / scale,
+                width: newWidth,
+                height: finalHeight,
+                hasBeenManuallyResized: true, // Mark as manually resized
+              },
+              false
+            ); // Don't mark as ongoing operation - resize is a one-time event
+          }
         }}
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
           isEditMode ? "edit-mode" : ""
@@ -384,22 +455,27 @@ export const MemoizedTextBox = memo(
                     textBox.value,
                     textBox.fontSize,
                     textBox.fontFamily,
-                    newWidth
+                    newWidth,
+                    getPadding()
                   );
                   const userSetHeight = Math.max(
                     minHeight,
                     Math.max(20, startHeight + deltaY) / scale
                   );
                   const finalHeight = Math.max(userSetHeight, minHeight);
-                  onUpdate(
-                    textBox.id,
-                    {
-                      width: newWidth,
-                      height: finalHeight,
-                      hasBeenManuallyResized: true, // Mark as manually resized
-                    },
-                    true
-                  );
+
+                  // Check if the resize would cause text clipping
+                  if (!wouldResizeCauseClipping(newWidth, finalHeight)) {
+                    onUpdate(
+                      textBox.id,
+                      {
+                        width: newWidth,
+                        height: finalHeight,
+                        hasBeenManuallyResized: true, // Mark as manually resized
+                      },
+                      true
+                    );
+                  }
                 };
 
                 const handleMouseUp = (upEvent: MouseEvent) => {
@@ -414,7 +490,8 @@ export const MemoizedTextBox = memo(
                     textBox.value,
                     textBox.fontSize,
                     textBox.fontFamily,
-                    finalWidth
+                    finalWidth,
+                    getPadding()
                   );
                   const userSetHeight = Math.max(
                     minHeight,
@@ -422,15 +499,19 @@ export const MemoizedTextBox = memo(
                       scale
                   );
                   const finalHeight = Math.max(userSetHeight, minHeight);
-                  onUpdate(
-                    textBox.id,
-                    {
-                      width: finalWidth,
-                      height: finalHeight,
-                      hasBeenManuallyResized: true, // Mark as manually resized
-                    },
-                    false
-                  ); // Don't mark as ongoing operation - resize is complete
+
+                  // Check if the resize would cause text clipping
+                  if (!wouldResizeCauseClipping(finalWidth, finalHeight)) {
+                    onUpdate(
+                      textBox.id,
+                      {
+                        width: finalWidth,
+                        height: finalHeight,
+                        hasBeenManuallyResized: true, // Mark as manually resized
+                      },
+                      false
+                    ); // Don't mark as ongoing operation - resize is complete
+                  }
                 };
 
                 document.addEventListener("mousemove", handleMouseMove);
@@ -454,6 +535,7 @@ export const MemoizedTextBox = memo(
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
+              placeholder="Enter text..."
               data-textbox-id={textBox.id}
               className="absolute top-0 left-0 w-full h-full bg-transparent border-none outline-none cursor-text resize-none"
               style={{
@@ -485,7 +567,11 @@ export const MemoizedTextBox = memo(
                         (textBox.borderBottomLeftRadius || 0) * scale
                       }px`
                     : `${(textBox.borderRadius || 0) * scale}px`,
-                padding: "0px",
+                padding: `${(textBox.paddingTop || 0) * scale}px ${
+                  (textBox.paddingRight || 0) * scale
+                }px ${(textBox.paddingBottom || 0) * scale}px ${
+                  (textBox.paddingLeft || 0) * scale
+                }px`,
                 overflow: "hidden",
                 whiteSpace: "pre-wrap",
                 wordWrap: "break-word",

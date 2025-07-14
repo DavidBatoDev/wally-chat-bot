@@ -249,7 +249,7 @@ export const useElementManagement = () => {
         textAlign: initialProperties?.textAlign || "left",
         listType: initialProperties?.listType || "none",
         letterSpacing: initialProperties?.letterSpacing || 0,
-        lineHeight: initialProperties?.lineHeight || 1.2,
+        lineHeight: initialProperties?.lineHeight || 1.1,
         rotation: initialProperties?.rotation || 0,
         borderRadius: initialProperties?.borderRadius || 0,
         borderTopLeftRadius: initialProperties?.borderTopLeftRadius || 0,

@@ -100,7 +100,9 @@ const measureText = (
   text: string,
   fontSize: number,
   fontFamily: string,
-  characterSpacing: number = 0
+  characterSpacing: number = 0,
+  maxWidth?: number,
+  padding?: { top?: number; right?: number; bottom?: number; left?: number }
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
@@ -108,10 +110,23 @@ const measureText = (
 
   context.font = `${fontSize}px ${fontFamily}`;
   const metrics = context.measureText(text);
-  const width = metrics.width + characterSpacing * Math.max(0, text.length - 1);
-  const height = fontSize * 1.1; // Reduced line height for more compact text
+  const textWidth =
+    metrics.width + characterSpacing * Math.max(0, text.length - 1);
+  const textHeight = fontSize * 1.1; // Reduced line height for more compact text
 
-  return { width, height };
+  // If maxWidth is provided, account for padding
+  if (maxWidth && padding) {
+    const paddingLeft = padding.left || 0;
+    const paddingRight = padding.right || 0;
+    const availableWidth = maxWidth - paddingLeft - paddingRight;
+
+    // If text fits within available width, return the maxWidth
+    if (textWidth <= availableWidth) {
+      return { width: maxWidth, height: textHeight };
+    }
+  }
+
+  return { width: textWidth, height: textHeight };
 };
 
 const hexToRgba = (hex: string, opacity: number): string => {
@@ -429,7 +444,11 @@ const MemoizedTextBox = memo(
                         (textBox.borderBottomLeftRadius || 0) * scale
                       }px`
                     : `${(textBox.borderRadius || 0) * scale}px`,
-                padding: "0px",
+                padding: `${(textBox.paddingTop || 0) * scale}px ${
+                  (textBox.paddingRight || 0) * scale
+                }px ${(textBox.paddingBottom || 0) * scale}px ${
+                  (textBox.paddingLeft || 0) * scale
+                }px`,
                 overflow: "hidden",
                 whiteSpace: "pre-wrap",
                 wordWrap: "break-word",
@@ -1991,7 +2010,9 @@ const PDFEditorContent: React.FC = () => {
       cleanedTextContent,
       fontSize,
       fontProperties.fontFamily,
-      fontProperties.letterSpacing
+      fontProperties.letterSpacing,
+      undefined, // maxWidth
+      { top: 0, right: 0, bottom: 0, left: 0 } // padding
     );
 
     // Ensure minimum dimensions for the text field
@@ -2888,7 +2909,7 @@ const PDFEditorContent: React.FC = () => {
         textAlign: "left",
         listType: "none",
         letterSpacing: 0,
-        lineHeight: 1.2,
+        lineHeight: 1.1,
         rotation: 0,
         borderRadius: 0,
         borderTopLeftRadius: 0,
@@ -2969,7 +2990,7 @@ const PDFEditorContent: React.FC = () => {
         textAlign: "left",
         listType: "none",
         letterSpacing: 0,
-        lineHeight: 1.2,
+        lineHeight: 1.1,
         rotation: 0,
         borderRadius: 0,
         borderTopLeftRadius: 0,
@@ -2992,7 +3013,14 @@ const PDFEditorContent: React.FC = () => {
       const fontFamily = "Arial, sans-serif";
       const fieldId = generateUUID();
 
-      const { width, height } = measureText(value, fontSize, fontFamily);
+      const { width, height } = measureText(
+        value,
+        fontSize,
+        fontFamily,
+        0, // characterSpacing
+        undefined, // maxWidth
+        { top: 0, right: 0, bottom: 0, left: 0 } // padding
+      );
 
       const newTextBox: TextField = {
         id: fieldId,
@@ -3011,7 +3039,7 @@ const PDFEditorContent: React.FC = () => {
         textAlign: "left",
         listType: "none",
         letterSpacing: 0,
-        lineHeight: 1.2,
+        lineHeight: 1.1,
         rotation: 0,
         borderRadius: 0,
         borderTopLeftRadius: 0,
@@ -4221,7 +4249,10 @@ const PDFEditorContent: React.FC = () => {
             const { width: textWidth } = measureText(
               longestLine,
               testFontSize,
-              "Arial, sans-serif"
+              "Arial, sans-serif",
+              0, // characterSpacing
+              undefined, // maxWidth
+              { top: 0, right: 0, bottom: 0, left: 0 } // padding
             );
 
             if (textWidth <= availableWidth) {
@@ -4501,7 +4532,10 @@ const PDFEditorContent: React.FC = () => {
           const { width: textWidth, height: textHeight } = measureText(
             longestLine,
             estimatedFontSize,
-            "Arial, sans-serif"
+            "Arial, sans-serif",
+            0, // characterSpacing
+            undefined, // maxWidth
+            { top: 0, right: 0, bottom: 0, left: 0 } // padding
           );
 
           // No padding for maximum compactness
@@ -4534,7 +4568,7 @@ const PDFEditorContent: React.FC = () => {
             textAlign: textAlign as "left" | "center" | "right" | "justify",
             listType: "none",
             letterSpacing: 0,
-            lineHeight: 1.2,
+            lineHeight: 1.1,
             rotation: 0,
             backgroundColor: backgroundColor,
             borderColor: borderColor,

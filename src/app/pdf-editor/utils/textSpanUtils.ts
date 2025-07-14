@@ -230,14 +230,14 @@ export const detectFontProperties = (span: HTMLSpanElement) => {
     }
   }
 
-  // Get text alignment
-  const textAlign = computedStyle.textAlign || "left";
+  // Get text alignment - always return "left"
+  const textAlign = "left";
 
   // Get letter spacing (character spacing)
   const letterSpacing = parseFloat(computedStyle.letterSpacing) || 0;
 
-  // Get line height
-  const lineHeight = parseFloat(computedStyle.lineHeight) || 1.2;
+  // Get line height - always return 1.2
+  const lineHeight = 1.2;
 
   // Get text transform
   const textTransform = computedStyle.textTransform || "none";

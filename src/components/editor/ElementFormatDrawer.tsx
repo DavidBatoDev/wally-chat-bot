@@ -208,6 +208,166 @@ export const ElementFormatDrawer: React.FC = () => {
     return "src" in format;
   };
 
+  // Helper function to check if padding would cause text clipping
+  const checkPaddingValidation = (
+    textBox: TextField,
+    newPadding: { top?: number; right?: number; bottom?: number; left?: number }
+  ): {
+    isValid: boolean;
+    maxPadding: { top: number; right: number; bottom: number; left: number };
+  } => {
+    if (!isTextField(textBox)) {
+      return {
+        isValid: true,
+        maxPadding: { top: 50, right: 50, bottom: 50, left: 50 },
+      };
+    }
+
+    // Import the measurement functions dynamically to avoid circular dependencies
+    const {
+      measureWrappedTextHeight,
+      measureText,
+    } = require("@/app/pdf-editor/utils/measurements");
+
+    // Calculate the actual text height using the current padding
+    const currentPadding = {
+      top: textBox.paddingTop || 0,
+      right: textBox.paddingRight || 0,
+      bottom: textBox.paddingBottom || 0,
+      left: textBox.paddingLeft || 0,
+    };
+
+    // Calculate available space for text (accounting for current padding)
+    const availableWidth =
+      textBox.width - currentPadding.left - currentPadding.right;
+    const availableHeight =
+      textBox.height - currentPadding.top - currentPadding.bottom;
+
+    // Calculate the actual text dimensions
+    const textHeight = measureWrappedTextHeight(
+      textBox.value,
+      textBox.fontSize,
+      textBox.fontFamily,
+      availableWidth,
+      currentPadding
+    );
+
+    // Get accurate text width using measureText without any constraints
+    const { width: textWidth } = measureText(
+      textBox.value,
+      textBox.fontSize,
+      textBox.fontFamily,
+      textBox.letterSpacing || 0
+      // Don't pass maxWidth or padding to get the actual text width
+    );
+
+    // Calculate maximum allowed padding for each side
+    // Top/Bottom padding is based on text height
+    // Left/Right padding is based on available space after accounting for text width
+    // For left/right, we need to ensure that left + right padding doesn't exceed available space
+    const availableWidthForPadding = Math.max(0, textBox.width - textWidth);
+    const maxPadding = {
+      top: Math.max(0, Math.floor((textBox.height - textHeight) / 2)),
+      right: Math.floor(availableWidthForPadding / 2), // Allow up to half the available space for right padding
+      bottom: Math.max(0, Math.floor((textBox.height - textHeight) / 2)),
+      left: Math.floor(availableWidthForPadding / 2), // Allow up to half the available space for left padding
+    };
+
+    // Ensure we don't exceed reasonable limits (50px max)
+    const maxReasonablePadding = 50;
+    const finalMaxPadding = {
+      top: Math.min(maxPadding.top, maxReasonablePadding),
+      right: Math.min(maxPadding.right, maxReasonablePadding),
+      bottom: Math.min(maxPadding.bottom, maxReasonablePadding),
+      left: Math.min(maxPadding.left, maxReasonablePadding),
+    };
+
+    // Check if the new padding values would cause clipping
+    const proposedPadding = {
+      top: newPadding.top !== undefined ? newPadding.top : currentPadding.top,
+      right:
+        newPadding.right !== undefined
+          ? newPadding.right
+          : currentPadding.right,
+      bottom:
+        newPadding.bottom !== undefined
+          ? newPadding.bottom
+          : currentPadding.bottom,
+      left:
+        newPadding.left !== undefined ? newPadding.left : currentPadding.left,
+    };
+
+    // Check if padding would cause clipping
+    const isValid =
+      proposedPadding.top <= finalMaxPadding.top &&
+      proposedPadding.right <= finalMaxPadding.right &&
+      proposedPadding.bottom <= finalMaxPadding.bottom &&
+      proposedPadding.left <= finalMaxPadding.left;
+
+    return { isValid, maxPadding: finalMaxPadding };
+  };
+
+  // Helper function to check if current padding would cause text clipping
+  const checkCurrentPaddingClipping = (textBox: TextField): boolean => {
+    if (!isTextField(textBox)) {
+      return false;
+    }
+
+    const {
+      measureWrappedTextHeight,
+      measureText,
+    } = require("@/app/pdf-editor/utils/measurements");
+
+    const currentPadding = {
+      top: textBox.paddingTop || 0,
+      right: textBox.paddingRight || 0,
+      bottom: textBox.paddingBottom || 0,
+      left: textBox.paddingLeft || 0,
+    };
+
+    // Calculate available space for text
+    const availableWidth =
+      textBox.width - currentPadding.left - currentPadding.right;
+    const availableHeight =
+      textBox.height - currentPadding.top - currentPadding.bottom;
+
+    // Check if there's any space left for text
+    if (availableWidth <= 0 || availableHeight <= 0) {
+      return true;
+    }
+
+    // Calculate the actual text dimensions
+    const textHeight = measureWrappedTextHeight(
+      textBox.value,
+      textBox.fontSize,
+      textBox.fontFamily,
+      availableWidth,
+      currentPadding
+    );
+
+    const { width: textWidth } = measureText(
+      textBox.value,
+      textBox.fontSize,
+      textBox.fontFamily,
+      textBox.letterSpacing || 0
+      // Don't pass maxWidth or padding to get the actual text width
+    );
+
+    // Check if text would be clipped
+    return textHeight > availableHeight || textWidth > availableWidth;
+  };
+
+  // Helper to check if any padding is nonzero
+  const hasAnyPadding = (format: any) => {
+    if (!format) return false;
+    return (
+      (format.paddingTop || 0) > 0 ||
+      (format.paddingRight || 0) > 0 ||
+      (format.paddingBottom || 0) > 0 ||
+      (format.paddingLeft || 0) > 0
+    );
+  };
+
   // Don't render if drawer is not open or no format is available
   // Allow multi-selection (selectedElementId can be null for multi-selection)
   if (!isDrawerOpen || !currentFormat) {
@@ -228,7 +388,7 @@ export const ElementFormatDrawer: React.FC = () => {
           color: currentFormat.color || "#000000",
           borderColor: currentFormat.borderColor || "#000000",
           borderWidth: currentFormat.borderWidth || 0,
-          lineHeight: currentFormat.lineHeight || 1.2,
+          lineHeight: currentFormat.lineHeight || 1.1,
           letterSpacing: currentFormat.letterSpacing || 0,
           paddingTop: currentFormat.paddingTop || 0,
           paddingRight: currentFormat.paddingRight || 0,
@@ -574,11 +734,31 @@ export const ElementFormatDrawer: React.FC = () => {
               <div className="relative">
                 <button
                   ref={paddingButtonRef}
-                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
+                  className={`p-2 rounded-lg transition-all duration-200 ${
+                    showPaddingPopup
+                      ? "bg-blue-500 text-white shadow-md"
+                      : isTextField(currentFormat) &&
+                        checkCurrentPaddingClipping(currentFormat) &&
+                        hasAnyPadding(currentFormat)
+                      ? "bg-red-100 text-red-600 hover:bg-red-200"
+                      : "hover:bg-gray-100 text-gray-700"
+                  }`}
                   onClick={() => setShowPaddingPopup(!showPaddingPopup)}
-                  title="Padding"
+                  title={
+                    isTextField(currentFormat) &&
+                    checkCurrentPaddingClipping(currentFormat) &&
+                    hasAnyPadding(currentFormat)
+                      ? "Padding - Text may be clipped. Reduce padding to ensure text fits."
+                      : "Padding"
+                  }
                 >
                   <Move3D size={16} />
+                  {/* Warning indicator */}
+                  {isTextField(currentFormat) &&
+                    checkCurrentPaddingClipping(currentFormat) &&
+                    hasAnyPadding(currentFormat) && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white shadow-sm" />
+                    )}
                 </button>
               </div>
             </div>
@@ -987,32 +1167,88 @@ export const ElementFormatDrawer: React.FC = () => {
         >
           <div className="space-y-4">
             <div className="text-sm font-medium text-gray-700">Padding</div>
+            {/* Warning if current padding would cause clipping */}
+            {isTextField(currentFormat) &&
+              checkCurrentPaddingClipping(currentFormat) &&
+              hasAnyPadding(currentFormat) && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2">
+                  <div className="flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4 text-red-500"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <span className="text-xs text-red-700">
+                      Text may be clipped. Reduce padding to ensure text fits.
+                    </span>
+                  </div>
+                </div>
+              )}
             {/* Padding controls */}
             <div className="flex flex-col gap-2">
               {/* Top Padding */}
               <div className="space-y-1">
                 <label className="text-xs text-gray-600">Top</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={safeFormat.paddingTop}
-                    onChange={(e) =>
-                      onFormatChange({ paddingTop: Number(e.target.value) })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={safeFormat.paddingTop}
-                    onChange={(e) =>
-                      onFormatChange({ paddingTop: Number(e.target.value) })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                  />
+                  {(() => {
+                    const paddingTop = safeFormat.paddingTop || 0;
+                    const validation = checkPaddingValidation(
+                      currentFormat as TextField,
+                      { top: paddingTop }
+                    );
+                    const maxValue = validation.maxPadding.top;
+                    return (
+                      <>
+                        <input
+                          type="range"
+                          min="0"
+                          max={Math.max(50, maxValue)}
+                          value={paddingTop}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingTop || value <= maxValue) {
+                              onFormatChange({ paddingTop: value });
+                            }
+                          }}
+                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
+                            paddingTop > maxValue ? "bg-red-300" : "bg-gray-200"
+                          }`}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max={Math.max(100, maxValue)}
+                          value={paddingTop}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingTop || value <= maxValue) {
+                              onFormatChange({ paddingTop: value });
+                            }
+                          }}
+                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
+                            paddingTop > maxValue
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
+                        />
+                        {paddingTop > maxValue && (
+                          <span className="text-xs text-red-500">
+                            Max: {maxValue}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1020,26 +1256,62 @@ export const ElementFormatDrawer: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-xs text-gray-600">Right</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={safeFormat.paddingRight}
-                    onChange={(e) =>
-                      onFormatChange({ paddingRight: Number(e.target.value) })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={safeFormat.paddingRight}
-                    onChange={(e) =>
-                      onFormatChange({ paddingRight: Number(e.target.value) })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                  />
+                  {(() => {
+                    const paddingRight = safeFormat.paddingRight || 0;
+                    const validation = checkPaddingValidation(
+                      currentFormat as TextField,
+                      { right: paddingRight }
+                    );
+                    const maxValue = validation.maxPadding.right;
+
+                    return (
+                      <>
+                        <input
+                          type="range"
+                          min="0"
+                          max={Math.max(50, maxValue)}
+                          value={paddingRight}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingRight || value <= maxValue) {
+                              onFormatChange({ paddingRight: value });
+                            }
+                          }}
+                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
+                            paddingRight > maxValue
+                              ? "bg-red-300"
+                              : "bg-gray-200"
+                          }`}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max={Math.max(100, maxValue)}
+                          value={paddingRight}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingRight || value <= maxValue) {
+                              onFormatChange({ paddingRight: value });
+                            }
+                          }}
+                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
+                            paddingRight > maxValue
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
+                        />
+                        {paddingRight > maxValue && (
+                          <span className="text-xs text-red-500">
+                            Max: {maxValue}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1047,26 +1319,61 @@ export const ElementFormatDrawer: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-xs text-gray-600">Bottom</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={safeFormat.paddingBottom}
-                    onChange={(e) =>
-                      onFormatChange({ paddingBottom: Number(e.target.value) })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={safeFormat.paddingBottom}
-                    onChange={(e) =>
-                      onFormatChange({ paddingBottom: Number(e.target.value) })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                  />
+                  {(() => {
+                    const paddingBottom = safeFormat.paddingBottom || 0;
+                    const validation = checkPaddingValidation(
+                      currentFormat as TextField,
+                      { bottom: paddingBottom }
+                    );
+                    const maxValue = validation.maxPadding.bottom;
+                    return (
+                      <>
+                        <input
+                          type="range"
+                          min="0"
+                          max={Math.max(50, maxValue)}
+                          value={paddingBottom}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingBottom || value <= maxValue) {
+                              onFormatChange({ paddingBottom: value });
+                            }
+                          }}
+                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
+                            paddingBottom > maxValue
+                              ? "bg-red-300"
+                              : "bg-gray-200"
+                          }`}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max={Math.max(100, maxValue)}
+                          value={paddingBottom}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingBottom || value <= maxValue) {
+                              onFormatChange({ paddingBottom: value });
+                            }
+                          }}
+                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
+                            paddingBottom > maxValue
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
+                        />
+                        {paddingBottom > maxValue && (
+                          <span className="text-xs text-red-500">
+                            Max: {maxValue}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1074,26 +1381,62 @@ export const ElementFormatDrawer: React.FC = () => {
               <div className="space-y-1">
                 <label className="text-xs text-gray-600">Left</label>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={safeFormat.paddingLeft}
-                    onChange={(e) =>
-                      onFormatChange({ paddingLeft: Number(e.target.value) })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={safeFormat.paddingLeft}
-                    onChange={(e) =>
-                      onFormatChange({ paddingLeft: Number(e.target.value) })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                  />
+                  {(() => {
+                    const paddingLeft = safeFormat.paddingLeft || 0;
+                    const validation = checkPaddingValidation(
+                      currentFormat as TextField,
+                      { left: paddingLeft }
+                    );
+                    const maxValue = validation.maxPadding.left;
+
+                    return (
+                      <>
+                        <input
+                          type="range"
+                          min="0"
+                          max={Math.max(50, maxValue)}
+                          value={paddingLeft}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingLeft || value <= maxValue) {
+                              onFormatChange({ paddingLeft: value });
+                            }
+                          }}
+                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
+                            paddingLeft > maxValue
+                              ? "bg-red-300"
+                              : "bg-gray-200"
+                          }`}
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max={Math.max(100, maxValue)}
+                          value={paddingLeft}
+                          onChange={(e) => {
+                            const value = Number(e.target.value);
+                            // Allow reducing padding even if it causes clipping
+                            // Only prevent increasing padding beyond the maximum
+                            if (value <= paddingLeft || value <= maxValue) {
+                              onFormatChange({ paddingLeft: value });
+                            }
+                          }}
+                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
+                            paddingLeft > maxValue
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
+                        />
+                        {paddingLeft > maxValue && (
+                          <span className="text-xs text-red-500">
+                            Max: {maxValue}
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
