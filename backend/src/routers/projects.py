@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
 from fastapi.responses import JSONResponse
 from typing import List
 from db.supabase_client import supabase
@@ -150,6 +150,7 @@ async def process_file_ocr(
 ):
     """
     Process a file through OCR and return both the layout JSON and styled PDF.
+    Returns the raw layout data, styled JSON layout for frontend, and PDF content as base64.
     """
     try:
         # Read the file content
@@ -168,15 +169,59 @@ async def process_file_ocr(
                 mime_type = 'application/octet-stream'
 
         # Process with Document AI and get layout and PDF
-        pdf_bytes, ocr_layout = process_document(file_content, mime_type)
+        pdf_bytes, ocr_layout, styled_json = process_document(file_content, mime_type)
         
         # Encode PDF as base64 for JSON response
         pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
         
-        # Return both the layout and PDF
+        # Return both the styled JSON layout and PDF
         return JSONResponse({
-            "layout": ocr_layout,
+            "styled_layout": styled_json,
         })
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process file: {str(e)}"
+        )
+    finally:
+        await file.seek(0)  # Reset file pointer
+
+@router.post("/process-file/download")
+async def process_file_ocr_download(file: UploadFile = File(...)):
+    """
+    Process a file through OCR and return the styled PDF as a downloadable file.
+    """
+    try:
+        # Read the file content
+        file_content = await file.read()
+        if not file_content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+
+        # Determine MIME type
+        mime_type = file.content_type
+        if not mime_type:
+            if file.filename.lower().endswith('.pdf'):
+                mime_type = 'application/pdf'
+            elif file.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                mime_type = 'image/jpeg'
+            else:
+                mime_type = 'application/octet-stream'
+
+        # Process with Document AI and get layout and PDF
+        pdf_bytes, _, _ = process_document(file_content, mime_type)
+        
+        # Generate output filename
+        output_filename = f"processed_{file.filename.rsplit('.', 1)[0]}.pdf"
+        
+        # Return PDF as downloadable file
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{output_filename}"'
+            }
+        )
 
     except Exception as e:
         raise HTTPException(
