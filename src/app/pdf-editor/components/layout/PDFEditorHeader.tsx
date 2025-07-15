@@ -23,6 +23,10 @@ interface PDFEditorHeaderProps {
   canRedo: boolean;
   onClearAllTranslations?: () => void;
   onLoadSampleData?: () => void;
+  onRunOcrAllPages?: () => void;
+  isBulkOcrRunning?: boolean;
+  bulkOcrProgress?: { current: number; total: number } | null;
+  onCancelBulkOcr?: () => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -37,6 +41,10 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   canRedo,
   onClearAllTranslations,
   onLoadSampleData,
+  onRunOcrAllPages,
+  isBulkOcrRunning,
+  bulkOcrProgress,
+  onCancelBulkOcr,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -117,6 +125,34 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               Clear Translations
             </Button>
           )}
+          {/* Run OCR to All Page Button and Progress */}
+          {onRunOcrAllPages && !isBulkOcrRunning && (
+            <Button
+              onClick={onRunOcrAllPages}
+              variant="outline"
+              size="sm"
+              className="border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300 transition-colors"
+              title="Run OCR to all pages"
+            >
+              <span className="font-semibold">Run OCR to All Page</span>
+            </Button>
+          )}
+          {isBulkOcrRunning && (
+            <div className="flex items-center space-x-2">
+              <span className="text-green-700 font-medium text-sm">
+                Transforming: {bulkOcrProgress?.current ?? 0} /{" "}
+                {bulkOcrProgress?.total ?? 0} pages
+              </span>
+              <Button
+                onClick={onCancelBulkOcr}
+                variant="destructive"
+                size="sm"
+                className="ml-2"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
           <Button
             onClick={onSaveProject}
             variant="outline"
@@ -132,7 +168,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             size="sm"
           >
             <Download className="w-4 h-4 mr-2" />
-            Export
+            Export PDF
           </Button>
         </div>
       </div>

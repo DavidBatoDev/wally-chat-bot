@@ -9,6 +9,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import { toast } from "sonner";
 import { useTextFormat } from "@/components/editor/ElementFormatContext";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // Import types
 import {
@@ -127,6 +128,49 @@ import "./styles/pdf-editor.css";
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+// Simple confirmation modal component
+const ConfirmationModal: React.FC<{
+  open: boolean;
+  title: string;
+  description?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmText?: string;
+  cancelText?: string;
+}> = ({
+  open,
+  title,
+  description,
+  onConfirm,
+  onCancel,
+  confirmText = "Yes",
+  cancelText = "Cancel",
+}) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+      <div className="bg-white rounded-lg shadow-lg p-6 min-w-[320px] max-w-[90vw]">
+        <h2 className="text-lg font-bold mb-2">{title}</h2>
+        {description && <p className="text-gray-700 mb-4">{description}</p>}
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800"
+            onClick={onCancel}
+          >
+            {cancelText}
+          </button>
+          <button
+            className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold"
+            onClick={onConfirm}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const PDFEditorContent: React.FC = () => {
   const {
@@ -869,12 +913,10 @@ export const PDFEditorContent: React.FC = () => {
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
-        // Determine the correct view to use based on targetView and current view
-        const finalView = view === "split" && targetView ? targetView : view;
-        // Use the direct function from element management to avoid recursion
+        // Always default to 'original' if view is split and targetView is not set
+        const finalView = view === "split" ? targetView || "original" : view;
         newId = addImage(src, x, y, width, height, page, finalView);
         idRef.current = newId;
-
         return newId;
       };
       const remove = (id: string) => {
@@ -883,7 +925,6 @@ export const PDFEditorContent: React.FC = () => {
       const cmd = new AddImageCommand(add, remove, idRef);
       cmd.execute();
       history.push(page, view, cmd);
-
       return idRef.current;
     },
     [addImage, deleteImage, history]
@@ -1013,13 +1054,25 @@ export const PDFEditorContent: React.FC = () => {
       return new Set<string>();
     }
 
-    // Get all elements from both views
-    const originalTextBoxes = getCurrentTextBoxes("original");
-    const originalShapes = getCurrentShapes("original");
-    const originalImages = getCurrentImages("original");
-    const translatedTextBoxes = getCurrentTextBoxes("translated");
-    const translatedShapes = getCurrentShapes("translated");
-    const translatedImages = getCurrentImages("translated");
+    // Get all elements from both views, but only on the current page
+    const originalTextBoxes = getCurrentTextBoxes("original").filter(
+      (tb) => tb.page === documentState.currentPage
+    );
+    const originalShapes = getCurrentShapes("original").filter(
+      (s) => s.page === documentState.currentPage
+    );
+    const originalImages = getCurrentImages("original").filter(
+      (img) => img.page === documentState.currentPage
+    );
+    const translatedTextBoxes = getCurrentTextBoxes("translated").filter(
+      (tb) => tb.page === documentState.currentPage
+    );
+    const translatedShapes = getCurrentShapes("translated").filter(
+      (s) => s.page === documentState.currentPage
+    );
+    const translatedImages = getCurrentImages("translated").filter(
+      (img) => img.page === documentState.currentPage
+    );
 
     // Combine elements from both views
     const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
@@ -1044,6 +1097,7 @@ export const PDFEditorContent: React.FC = () => {
     getCurrentTextBoxes,
     getCurrentShapes,
     getCurrentImages,
+    documentState.currentPage,
   ]);
 
   // Handle multi-selection move events
@@ -3152,13 +3206,25 @@ export const PDFEditorContent: React.FC = () => {
 
       // Only process if selection is large enough
       if (selectionRect.width > 5 && selectionRect.height > 5) {
-        // Check elements in both views for now
-        const originalTextBoxes = getCurrentTextBoxes("original");
-        const originalShapes = getCurrentShapes("original");
-        const originalImages = getCurrentImages("original");
-        const translatedTextBoxes = getCurrentTextBoxes("translated");
-        const translatedShapes = getCurrentShapes("translated");
-        const translatedImages = getCurrentImages("translated");
+        // Only check elements on the current page
+        const originalTextBoxes = getCurrentTextBoxes("original").filter(
+          (tb) => tb.page === documentState.currentPage
+        );
+        const originalShapes = getCurrentShapes("original").filter(
+          (s) => s.page === documentState.currentPage
+        );
+        const originalImages = getCurrentImages("original").filter(
+          (img) => img.page === documentState.currentPage
+        );
+        const translatedTextBoxes = getCurrentTextBoxes("translated").filter(
+          (tb) => tb.page === documentState.currentPage
+        );
+        const translatedShapes = getCurrentShapes("translated").filter(
+          (s) => s.page === documentState.currentPage
+        );
+        const translatedImages = getCurrentImages("translated").filter(
+          (img) => img.page === documentState.currentPage
+        );
 
         // Combine elements from both views
         const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
@@ -3234,6 +3300,8 @@ export const PDFEditorContent: React.FC = () => {
       getCurrentTextBoxes,
       getCurrentShapes,
       getCurrentImages,
+      documentState.currentPage,
+      getElementById,
     ]
   );
 
@@ -3803,10 +3871,14 @@ export const PDFEditorContent: React.FC = () => {
         if (fileType === "image") {
           // For images, create a blank PDF and add the image as an interactive element
           createBlankPdfAndAddImage(file);
+          // Reset deletedPages after upload
+          setPageState((prev) => ({ ...prev, deletedPages: new Set() }));
         } else {
           // For PDFs, load normally
           actions.loadDocument(file);
           setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+          // Reset deletedPages after upload
+          setPageState((prev) => ({ ...prev, deletedPages: new Set() }));
         }
       }
     },
@@ -3818,32 +3890,51 @@ export const PDFEditorContent: React.FC = () => {
       const file = event.target.files?.[0];
       if (file) {
         const url = URL.createObjectURL(file);
-
-        const imageId = handleAddImageWithUndo(
-          url,
-          100,
-          100,
-          200,
-          150,
-          documentState.currentPage,
-          viewState.currentView
-        );
-
-        if (imageId) {
-          handleImageSelect(imageId);
-        }
-
-        if (imageInputRef.current) {
-          imageInputRef.current.value = "";
-        }
-
-        toast.success("Image added to document");
+        // Load the image to get its natural dimensions
+        const img = new window.Image();
+        img.onload = () => {
+          const pageWidth = documentState.pageWidth;
+          const pageHeight = documentState.pageHeight;
+          const aspectRatio = img.naturalWidth / img.naturalHeight;
+          let width = pageWidth * 0.8;
+          let height = width / aspectRatio;
+          if (height > pageHeight * 0.8) {
+            height = pageHeight * 0.8;
+            width = height * aspectRatio;
+          }
+          // Center the image on the page
+          const x = (pageWidth - width) / 2;
+          const y = (pageHeight - height) / 2;
+          // Always add to 'original' view and layer order
+          const imageId = handleAddImageWithUndo(
+            url,
+            x,
+            y,
+            width,
+            height,
+            documentState.currentPage,
+            "original",
+            "original"
+          );
+          if (imageId) {
+            handleImageSelect(imageId);
+          }
+          if (imageInputRef.current) {
+            imageInputRef.current.value = "";
+          }
+          toast.success("Image added to document");
+        };
+        img.onerror = () => {
+          toast.error("Failed to load image");
+        };
+        img.src = url;
       }
     },
     [
       handleAddImageWithUndo,
+      documentState.pageWidth,
+      documentState.pageHeight,
       documentState.currentPage,
-      viewState.currentView,
       handleImageSelect,
     ]
   );
@@ -4523,6 +4614,503 @@ export const PDFEditorContent: React.FC = () => {
     toast.success("Project saved!");
   }, [elementCollections, layerState, documentState]);
 
+  const exportToPDF = useCallback(async () => {
+    if (!documentRef.current) {
+      toast.error("Document not loaded");
+      return;
+    }
+
+    // Save current state
+    const originalScale = documentState.scale;
+    const originalView = viewState.currentView;
+    const originalSelectedField = editorState.selectedFieldId;
+    const originalSelectedShape = editorState.selectedShapeId;
+    const originalEditMode = editorState.isEditMode;
+
+    try {
+      toast.loading("Generating PDF...");
+
+      // Set up for export - hide UI elements and set optimal scale
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: null,
+        selectedShapeId: null,
+        isEditMode: false,
+        isTextSelectionMode: false,
+        isAddTextBoxMode: false,
+        isSelectionMode: false,
+      }));
+
+      // Set zoom to 500% for maximum quality
+      setDocumentState((prev) => ({ ...prev, scale: 5.0 }));
+
+      // Wait for zoom to update
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Import html2canvas dynamically
+      const html2canvas = (await import("html2canvas")).default;
+
+      // Create PDF document with letter size
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([612, 792]); // Letter size: 8.5" x 11" in points
+      const { width: pageWidth, height: pageHeight } = page.getSize();
+
+      // Calculate layout - split page into two halves
+      const halfWidth = pageWidth / 2;
+      const margin = 20;
+      const contentWidth = halfWidth - margin * 2;
+      const contentHeight = pageHeight - margin * 2;
+
+      // Embed fonts
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      // Add section labels - centered in their sections
+      const labelFontSize = 20;
+      const originalLabel = "ORIGINAL";
+      const translatedLabel = "TRANSLATED";
+
+      // Calculate label widths for centering
+      const originalLabelWidth = font.widthOfTextAtSize(
+        originalLabel,
+        labelFontSize
+      );
+      const translatedLabelWidth = font.widthOfTextAtSize(
+        translatedLabel,
+        labelFontSize
+      );
+
+      // Center ORIGINAL in the left half
+      const originalX = (halfWidth - originalLabelWidth) / 2;
+      page.drawText(originalLabel, {
+        x: originalX,
+        y: pageHeight - 60,
+        size: labelFontSize,
+        font: font,
+        color: rgb(0, 0, 0),
+      });
+
+      // Center TRANSLATED in the right half
+      const translatedX = halfWidth + (halfWidth - translatedLabelWidth) / 2;
+      page.drawText(translatedLabel, {
+        x: translatedX,
+        y: pageHeight - 60,
+        size: labelFontSize,
+        font: font,
+        color: rgb(0, 0, 0),
+      });
+
+      // Function to capture view as image for a specific page
+      const captureViewAsImage = async (
+        viewType: "original" | "translated",
+        pageNumber: number
+      ) => {
+        // Set view to the target type
+        setViewState((prev) => ({ ...prev, currentView: viewType }));
+
+        // Set page number
+        setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
+
+        // Wait for view and page to update
+        await new Promise((resolve) => setTimeout(resolve, 800));
+
+        // Use the entire document ref like DocumentCanvas does
+        const documentContainer = documentRef.current;
+
+        if (!documentContainer) {
+          throw new Error(
+            `Document container not found for ${viewType} view page ${pageNumber}`
+          );
+        }
+
+        console.log(
+          `Capturing ${viewType} view from page ${pageNumber}:`,
+          documentContainer
+        );
+
+        // Capture the view using the same approach as DocumentCanvas
+        const canvas = await html2canvas(documentContainer, {
+          scale: 1, // Use 1x scale since we already scaled the content to 500%
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          foreignObjectRendering: false, // Disable for better PDF.js compatibility
+          ignoreElements: (element) => {
+            // Only ignore control elements, NOT shapes themselves
+            return (
+              element.classList.contains("drag-handle") ||
+              element.tagName === "BUTTON" ||
+              element.classList.contains("settings-popup") ||
+              element.classList.contains("text-selection-popup") ||
+              element.classList.contains("shape-dropdown") ||
+              element.classList.contains("field-status-dropdown") ||
+              element.classList.contains("fixed") ||
+              element.closest(".fixed") !== null ||
+              // Ignore resize handles but not the shapes themselves
+              element.classList.contains("react-resizable-handle")
+            );
+          },
+          onclone: (clonedDoc) => {
+            console.log("Cloning document for export...");
+
+            // Find the cloned document container
+            const clonedContainer = clonedDoc.querySelector(
+              'div[style*="relative"]'
+            );
+
+            if (clonedContainer) {
+              // Remove control elements but keep shapes
+              clonedContainer
+                .querySelectorAll(
+                  "button, .drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
+                )
+                .forEach((el) => el.remove());
+
+              // Clean up Rnd containers (both text fields and shapes)
+              clonedContainer.querySelectorAll(".rnd").forEach((rnd) => {
+                if (rnd instanceof HTMLElement) {
+                  // Remove border and controls but keep the content
+                  rnd.style.border = "none";
+                  rnd.style.backgroundColor = "transparent";
+                  rnd.style.boxShadow = "none";
+                  rnd.style.outline = "none";
+                  rnd.style.cursor = "default";
+
+                  // Check if this is a text field container and raise it for better export appearance
+                  const textarea = rnd.querySelector("textarea");
+                  if (textarea && textarea instanceof HTMLElement) {
+                    // Raise ALL text field containers by adjusting position
+                    const currentTop = parseFloat(rnd.style.top || "0");
+                    rnd.style.top = `${currentTop - 5 * documentState.scale}px`; // Raise by 5px scaled
+
+                    // Clean up textarea styling
+                    textarea.style.border = "none";
+                    textarea.style.outline = "none";
+                    textarea.style.resize = "none";
+                    textarea.style.padding = "2px"; // Match live editor padding
+                    textarea.style.margin = "0";
+                    textarea.style.backgroundColor = "transparent";
+                    textarea.style.cursor = "default";
+                    textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
+                    textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
+                    textarea.style.wordWrap = "break-word"; // Ensure long words break properly
+                    textarea.style.wordBreak = "break-word"; // Additional word breaking support
+
+                    // Ensure adequate height for wrapped text during export
+                    const textContent = textarea.value || "";
+                    if (textContent.length > 0) {
+                      // Force explicit text wrapping styles
+                      textarea.style.whiteSpace = "pre-wrap";
+                      textarea.style.wordWrap = "break-word";
+                      textarea.style.wordBreak = "break-word";
+                      textarea.style.overflowWrap = "break-word";
+
+                      // Calculate estimated height based on content
+                      const fontSize = parseFloat(
+                        textarea.style.fontSize || "12"
+                      );
+                      const lineHeight = fontSize * 1.1;
+
+                      // Count explicit line breaks and estimate wrapped lines
+                      const explicitLines =
+                        (textContent.match(/\n/g) || []).length + 1;
+                      const avgCharsPerLine = Math.max(
+                        20,
+                        Math.floor(
+                          parseFloat(rnd.style.width || "200") /
+                            (fontSize * 0.6)
+                        )
+                      );
+                      const estimatedWrappedLines = Math.ceil(
+                        textContent.replace(/\n/g, " ").length / avgCharsPerLine
+                      );
+                      const totalEstimatedLines = Math.max(
+                        explicitLines,
+                        estimatedWrappedLines
+                      );
+
+                      // Apply generous height to ensure all text is visible
+                      const generousHeight =
+                        totalEstimatedLines * lineHeight + 20; // Extra 20px buffer
+                      const currentHeight = parseFloat(rnd.style.height || "0");
+
+                      // Always expand if we have multi-line content
+                      if (
+                        totalEstimatedLines > 1 ||
+                        generousHeight > currentHeight
+                      ) {
+                        rnd.style.height = `${generousHeight}px`;
+                        textarea.style.height = `${generousHeight - 8}px`; // Slightly smaller than container
+                      }
+
+                      // Ensure no text overflow
+                      textarea.style.overflow = "visible";
+                      textarea.style.textOverflow = "clip";
+                    }
+
+                    // No position adjustments - keep exactly what user sees in live editor
+                  }
+
+                  // Ensure shapes are visible and properly styled for export
+                  const shapeElement = rnd.querySelector(".shape-drag-handle");
+                  if (shapeElement && shapeElement instanceof HTMLElement) {
+                    // Keep the shape but remove interactive styling for export
+                    shapeElement.style.cursor = "default";
+                    shapeElement.style.pointerEvents = "none";
+                    // Ensure the shape maintains its visual properties
+                    shapeElement.style.display = "block";
+                    shapeElement.style.visibility = "visible";
+                    shapeElement.style.opacity = "1";
+                  }
+                }
+              });
+
+              // Also clean up any standalone shape elements that might not be in Rnd containers
+              clonedContainer
+                .querySelectorAll(".shape-drag-handle")
+                .forEach((shape) => {
+                  if (shape instanceof HTMLElement) {
+                    shape.style.cursor = "default";
+                    shape.style.pointerEvents = "none";
+                    shape.style.display = "block";
+                    shape.style.visibility = "visible";
+                    shape.style.opacity = "1";
+                  }
+                });
+
+              // Ensure the PDF canvas is visible in the clone
+              const clonedCanvas = clonedContainer.querySelector(
+                ".react-pdf__Page__canvas"
+              ) as HTMLCanvasElement;
+              if (clonedCanvas) {
+                clonedCanvas.style.display = "block";
+                clonedCanvas.style.position = "relative";
+                clonedCanvas.style.zIndex = "1";
+                console.log("Cloned canvas configured:", {
+                  width: clonedCanvas.width,
+                  height: clonedCanvas.height,
+                });
+              }
+            }
+          },
+        });
+
+        return canvas;
+      };
+
+      // Determine which pages to capture
+      const currentPage = documentState.currentPage;
+      const nextPage = currentPage + 1;
+      const hasNextPage = nextPage <= documentState.numPages;
+
+      // Capture all views (current page + next page if available)
+      const captures = [];
+
+      // Current page - Original view
+      captures.push({
+        canvas: await captureViewAsImage("original", currentPage),
+        type: "original",
+        page: currentPage,
+        position: "top-left",
+      });
+
+      // Current page - Translated view
+      captures.push({
+        canvas: await captureViewAsImage("translated", currentPage),
+        type: "translated",
+        page: currentPage,
+        position: "top-right",
+      });
+
+      if (hasNextPage) {
+        // Next page - Original view
+        captures.push({
+          canvas: await captureViewAsImage("original", nextPage),
+          type: "original",
+          page: nextPage,
+          position: "bottom-left",
+        });
+
+        // Next page - Translated view
+        captures.push({
+          canvas: await captureViewAsImage("translated", nextPage),
+          type: "translated",
+          page: nextPage,
+          position: "bottom-right",
+        });
+      }
+
+      // Convert all captures to images and embed in PDF
+      const embeddedImages = [];
+
+      for (const capture of captures) {
+        const dataUrl = capture.canvas.toDataURL("image/png", 1.0);
+        const imageBytes = await fetch(dataUrl).then((res) =>
+          res.arrayBuffer()
+        );
+        const embeddedImage = await pdfDoc.embedPng(imageBytes);
+        embeddedImages.push({
+          ...capture,
+          image: embeddedImage,
+          dims: embeddedImage.scale(1),
+        });
+      }
+
+      // Calculate grid layout - optimized for better space utilization
+      const gridMargin = 10; // Reduced margin for more content space
+      const gridSpacing = 8; // Reduced spacing for tighter layout
+      const labelSpace = 15; // Space reserved for labels
+      const availableWidth = pageWidth - gridMargin * 2;
+      const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
+
+      // For 2x2 grid, each quadrant gets half the available space minus spacing
+      const quadrantWidth = (availableWidth - gridSpacing) / 2;
+      const quadrantHeight = (availableHeight - gridSpacing) / 2;
+
+      // Draw each image in its grid position
+      for (const imageData of embeddedImages) {
+        const { image, dims, position, type, page: pageNumber } = imageData;
+
+        // Calculate scaling to fit in quadrant while maintaining aspect ratio
+        const scaleX = quadrantWidth / dims.width;
+        const scaleY = quadrantHeight / dims.height;
+        const imageScale = Math.min(scaleX, scaleY);
+
+        const scaledWidth = dims.width * imageScale;
+        const scaledHeight = dims.height * imageScale;
+
+        // Calculate position based on grid layout
+        let x, y;
+        switch (position) {
+          case "top-left":
+            x = gridMargin;
+            y = pageHeight - labelSpace - quadrantHeight;
+            break;
+          case "top-right":
+            x = gridMargin + quadrantWidth + gridSpacing;
+            y = pageHeight - labelSpace - quadrantHeight;
+            break;
+          case "bottom-left":
+            x = gridMargin;
+            y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
+            break;
+          case "bottom-right":
+            x = gridMargin + quadrantWidth + gridSpacing;
+            y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
+            break;
+          default:
+            x = gridMargin;
+            y = pageHeight - labelSpace - quadrantHeight;
+        }
+
+        // Center the image in its quadrant
+        x += (quadrantWidth - scaledWidth) / 2;
+        y += (quadrantHeight - scaledHeight) / 2;
+
+        // Draw the image
+        page.drawImage(image, {
+          x: x,
+          y: y,
+          width: scaledWidth,
+          height: scaledHeight,
+        });
+
+        // Add label for each quadrant - simplified labels
+        let label = "";
+        let labelX = 0;
+        let labelY = 0;
+
+        if (position === "top-left") {
+          label = "ORIGINAL";
+          labelX = x;
+          labelY = y + scaledHeight + 5;
+        } else if (position === "top-right") {
+          label = "TRANSLATED";
+          labelX = x;
+          labelY = y + scaledHeight + 5;
+        }
+        // No labels for bottom quadrants
+
+        if (label) {
+          const labelFontSize = 10;
+          page.drawText(label, {
+            x: labelX,
+            y: labelY,
+            size: labelFontSize,
+            font: font,
+            color: rgb(0.4, 0.4, 0.4),
+          });
+        }
+      }
+
+      // Add grid separator lines
+      const centerX = gridMargin + quadrantWidth + gridSpacing / 2;
+      const centerY =
+        pageHeight - labelSpace - quadrantHeight - gridSpacing / 2;
+
+      // Vertical line
+      page.drawLine({
+        start: { x: centerX, y: gridMargin },
+        end: { x: centerX, y: pageHeight - labelSpace },
+        thickness: 1,
+        color: rgb(0.8, 0.8, 0.8),
+      });
+
+      // Horizontal line
+      page.drawLine({
+        start: { x: gridMargin, y: centerY },
+        end: { x: pageWidth - gridMargin, y: centerY },
+        thickness: 1,
+        color: rgb(0.8, 0.8, 0.8),
+      });
+
+      // Save the PDF
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `pdf-editor-export-pages-${currentPage}${
+        hasNextPage ? `-${nextPage}` : ""
+      }.pdf`;
+      link.click();
+
+      URL.revokeObjectURL(url);
+
+      // Restore original state
+      setDocumentState((prev) => ({ ...prev, scale: originalScale }));
+      setViewState((prev) => ({ ...prev, currentView: originalView }));
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: originalSelectedField,
+        selectedShapeId: originalSelectedShape,
+        isEditMode: originalEditMode,
+      }));
+
+      toast.success("PDF exported successfully!");
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast.error("Failed to export PDF");
+
+      // Restore original state on error as well
+      setDocumentState((prev) => ({ ...prev, scale: originalScale }));
+      setViewState((prev) => ({ ...prev, currentView: originalView }));
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: originalSelectedField,
+        selectedShapeId: originalSelectedShape,
+        isEditMode: originalEditMode,
+      }));
+    }
+  }, [
+    documentState,
+    viewState.currentView,
+    editorState,
+    colorToRgba,
+    rgbStringToHex,
+  ]);
+
   const exportData = useCallback(() => {
     const data = {
       ...elementCollections,
@@ -4725,6 +5313,114 @@ export const PDFEditorContent: React.FC = () => {
     };
   }, [elementCollections.translatedTextBoxes]);
 
+  // Add state for bulk OCR
+  const [isBulkOcrRunning, setIsBulkOcrRunning] = useState(false);
+  const [bulkOcrProgress, setBulkOcrProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+  const bulkOcrCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+
+  // Handler to run OCR for all pages
+  const handleRunOcrAllPages = useCallback(async () => {
+    if (isBulkOcrRunning) return;
+    const deletedPages = pageState.deletedPages;
+    const totalPages = documentState.numPages;
+    // Build a list of non-deleted pages
+    const pagesToProcess = Array.from(
+      { length: totalPages },
+      (_, i) => i + 1
+    ).filter((page) => !deletedPages.has(page));
+    setIsBulkOcrRunning(true);
+    setBulkOcrProgress({ current: 0, total: pagesToProcess.length });
+    bulkOcrCancelRef.current.cancelled = false;
+
+    // Store the current page to restore later
+    const originalPage = documentState.currentPage;
+
+    for (let i = 0; i < pagesToProcess.length; i++) {
+      if (bulkOcrCancelRef.current.cancelled) break;
+      const page = pagesToProcess[i];
+      // Switch to the page
+      actions.changePage(page);
+      // Wait for the page to render (wait for isPageLoading to be false)
+      await new Promise((resolve) => {
+        let waited = 0;
+        const check = () => {
+          // If cancelled, resolve immediately
+          if (bulkOcrCancelRef.current.cancelled) return resolve(null);
+          // If page is loaded, resolve
+          if (!documentState.isPageLoading) return resolve(null);
+          // Otherwise, check again after a short delay
+          waited += 50;
+          if (waited > 5000) return resolve(null); // Timeout after 5s
+          setTimeout(check, 50);
+        };
+        check();
+      });
+      // Run OCR for this page
+      try {
+        await handleTransformPageToTextbox(page);
+      } catch (e) {
+        // Optionally handle error per page
+      }
+      setBulkOcrProgress({ current: i + 1, total: pagesToProcess.length });
+      // DO NOT restore the original page here; only do it after the loop
+    }
+
+    // Restore the original page only after all processing is done or cancelled
+    actions.changePage(originalPage);
+    setIsBulkOcrRunning(false);
+    setBulkOcrProgress(null);
+  }, [
+    isBulkOcrRunning,
+    documentState.numPages,
+    documentState.currentPage,
+    documentState.isPageLoading,
+    pageState.deletedPages,
+    handleTransformPageToTextbox,
+    actions,
+  ]);
+
+  // Handler to cancel bulk OCR
+  const handleCancelBulkOcr = useCallback(() => {
+    bulkOcrCancelRef.current.cancelled = true;
+    setIsBulkOcrRunning(false);
+  }, []);
+
+  // Add state for confirmation modal
+  const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
+  const [pendingFileUpload, setPendingFileUpload] = useState<
+    (() => void) | null
+  >(null);
+
+  // Intercept file upload to show confirmation if a document is loaded
+  const handleFileUploadIntercept = useCallback(() => {
+    if (documentState.url) {
+      setShowReplaceConfirm(true);
+      setPendingFileUpload(() => () => {
+        setShowReplaceConfirm(false);
+        setPendingFileUpload(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        fileInputRef.current?.click();
+      });
+    } else {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      fileInputRef.current?.click();
+    }
+  }, [documentState.url]);
+
+  // When confirmed, reset all state (including deletedPages) and proceed
+  const handleConfirmReplace = useCallback(() => {
+    setShowReplaceConfirm(false);
+    if (pendingFileUpload) pendingFileUpload();
+  }, [pendingFileUpload]);
+
+  const handleCancelReplace = useCallback(() => {
+    setShowReplaceConfirm(false);
+    setPendingFileUpload(null);
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
@@ -4736,9 +5432,9 @@ export const PDFEditorContent: React.FC = () => {
             isSidebarCollapsed: !prev.isSidebarCollapsed,
           }))
         }
-        onFileUpload={() => fileInputRef.current?.click()}
+        onFileUpload={handleFileUploadIntercept}
         onSaveProject={saveProject}
-        onExportData={exportData}
+        onExportData={exportToPDF}
         onUndo={() => {
           const now = Date.now();
           if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
@@ -4776,6 +5472,11 @@ export const PDFEditorContent: React.FC = () => {
           viewState.currentView
         )}
         onClearAllTranslations={handleClearAllTranslations}
+        // Bulk OCR props
+        onRunOcrAllPages={handleRunOcrAllPages}
+        isBulkOcrRunning={isBulkOcrRunning}
+        bulkOcrProgress={bulkOcrProgress}
+        onCancelBulkOcr={handleCancelBulkOcr}
       />
 
       {/* Main Content */}
@@ -4811,7 +5512,7 @@ export const PDFEditorContent: React.FC = () => {
           elementCollections={elementCollections}
           onPageChange={handlePageChange}
           onPageDelete={handlePageDelete}
-          onFileUpload={() => fileInputRef.current?.click()}
+          onFileUpload={handleFileUploadIntercept}
           onAppendDocument={() => appendFileInputRef.current?.click()}
           onSidebarToggle={() =>
             setViewState((prev) => ({
@@ -6057,8 +6758,8 @@ export const PDFEditorContent: React.FC = () => {
                         </div>
                       ))}
 
-                      {/* Render elements in layer order */}
-                      {memoizedTextBoxElements}
+                      {/* Render all elements in layer order */}
+                      {currentPageSortedElements.map(renderElement)}
 
                       {/* Single View Selection Components */}
                       {editorState.isSelectionMode && (
@@ -6254,6 +6955,17 @@ export const PDFEditorContent: React.FC = () => {
         onZoomIn={() => actions.updateScale(documentState.scale + 0.1)}
         onZoomOut={() => actions.updateScale(documentState.scale - 0.1)}
         onZoomReset={() => actions.updateScale(1.0)}
+      />
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        open={showReplaceConfirm}
+        title="Replace Document?"
+        description="Uploading a new document will remove all current pages, including deleted ones, and reset the editor. Continue?"
+        onConfirm={handleConfirmReplace}
+        onCancel={handleCancelReplace}
+        confirmText="Replace"
+        cancelText="Cancel"
       />
     </div>
   );
