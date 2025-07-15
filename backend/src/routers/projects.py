@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response, Form
 from fastapi.responses import JSONResponse
 from typing import List
 from db.supabase_client import supabase
@@ -8,9 +8,11 @@ from gotrue.types import User
 import uuid
 from datetime import datetime
 from google.cloud import documentai_v1 as documentai
-from services.ocr_service import process_document
+from services.ocr_service import process_document_for_layout, create_styled_json_from_layout, convert_image_to_pdf
 import base64
 import io
+import traceback
+from core.config import settings
 
 date_now = datetime.now().isoformat()
 router = APIRouter()
@@ -147,15 +149,65 @@ async def upload_project_file(project_id: uuid.UUID, file: UploadFile = File(...
 @router.post("/process-file")
 async def process_file_ocr(
     file: UploadFile = File(...),
+    frontend_page_width: str = Form(None),
+    frontend_page_height: str = Form(None),
+    frontend_scale: str = Form(None),
 ):
     """
     Process a file through OCR and return both the layout JSON and styled PDF.
     Returns the raw layout data, styled JSON layout for frontend, and PDF content as base64.
     """
+    print("=== BACKEND PROCESS-FILE DEBUG ===")
+    print(f"Request received for file: {file.filename}")
+    print(f"File content type: {file.content_type}")
+    print(f"File size: {file.size if hasattr(file, 'size') else 'unknown'}")
+    
+    # Parse frontend dimensions if provided
+    parsed_frontend_width = None
+    parsed_frontend_height = None
+    parsed_frontend_scale = None
+    
+    if frontend_page_width:
+        try:
+            parsed_frontend_width = float(frontend_page_width)
+            print(f"Frontend page width: {parsed_frontend_width}")
+        except ValueError:
+            print(f"Warning: Invalid frontend_page_width: {frontend_page_width}")
+    
+    if frontend_page_height:
+        try:
+            parsed_frontend_height = float(frontend_page_height)
+            print(f"Frontend page height: {parsed_frontend_height}")
+        except ValueError:
+            print(f"Warning: Invalid frontend_page_height: {frontend_page_height}")
+    
+    if frontend_scale:
+        try:
+            parsed_frontend_scale = float(frontend_scale)
+            print(f"Frontend scale: {parsed_frontend_scale}")
+        except ValueError:
+            print(f"Warning: Invalid frontend_scale: {frontend_scale}")
+    
+    print(f"Parsed frontend dimensions: width={parsed_frontend_width}, height={parsed_frontend_height}, scale={parsed_frontend_scale}")
+    
     try:
         # Read the file content
+        print("Reading file content...")
         file_content = await file.read()
+        print(f"Read file content size: {len(file_content)} bytes")
+
+        # --- DEBUG: Save uploaded image to disk ---
+        import os
+        debug_dir = "debug_uploaded_images"
+        os.makedirs(debug_dir, exist_ok=True)
+        debug_path = os.path.join(debug_dir, file.filename)
+        with open(debug_path, "wb") as f:
+            f.write(file_content)
+        print(f"Saved uploaded image for debugging: {debug_path}")
+        # --- END DEBUG ---
+        
         if not file_content:
+            print("ERROR: Empty file content")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
 
         # Determine MIME type
@@ -167,19 +219,104 @@ async def process_file_ocr(
                 mime_type = 'image/jpeg'
             else:
                 mime_type = 'application/octet-stream'
+        
+        print(f"Determined MIME type: {mime_type}")
 
-        # Process with Document AI and get layout and PDF
-        pdf_bytes, ocr_layout, styled_json = process_document(file_content, mime_type)
+        # Process with Document AI and get layout only (skip PDF generation)
+        print("Calling process_document_for_layout...")
+        try:
+            # First convert to PDF if needed and get Document AI document
+            if mime_type.startswith('image/'):
+                print("Converting image to PDF...")
+                try:
+                    file_content = convert_image_to_pdf(file_content)
+                    mime_type = 'application/pdf'
+                    print(f"Image converted to PDF, new content size: {len(file_content)} bytes")
+                except Exception as convert_error:
+                    print(f"ERROR converting image to PDF: {str(convert_error)}")
+                    print(f"Convert error traceback: {traceback.format_exc()}")
+                    raise convert_error
+            
+            # Process with Document AI
+            print("Setting up Document AI client...")
+            project_id = settings.GOOGLE_PROJECT_ID
+            location = settings.GOOGLE_DOCUMENT_AI_LOCATION
+            processor_id = settings.GOOGLE_DOCUMENT_AI_PROCESSOR_ID
+            
+            print(f"Project ID: {project_id}")
+            print(f"Location: {location}")
+            print(f"Processor ID: {processor_id}")
+            
+            if not all([project_id, processor_id]):
+                error_msg = "Google Cloud project ID and processor ID must be set in environment variables."
+                print(f"ERROR: {error_msg}")
+                raise ValueError(error_msg)
+
+            print("Creating Document AI client...")
+            try:
+                client = documentai.DocumentProcessorServiceClient()
+                print("Document AI client created successfully")
+            except Exception as client_error:
+                print(f"ERROR creating Document AI client: {str(client_error)}")
+                print(f"Client error traceback: {traceback.format_exc()}")
+                raise client_error
+            
+            processor_name = f"projects/{project_id}/locations/{location}/processors/{processor_id}"
+            print(f"Processor name: {processor_name}")
         
-        # Encode PDF as base64 for JSON response
-        pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+            raw_document = documentai.RawDocument(content=file_content, mime_type=mime_type)
+            request = documentai.ProcessRequest(name=processor_name, raw_document=raw_document)
         
-        # Return both the styled JSON layout and PDF
-        return JSONResponse({
+            print("Calling Document AI...")
+            try:
+                result = client.process_document(request=request)
+                document = result.document
+                print("Document AI call successful")
+            except Exception as e:
+                print(f"ERROR calling Document AI: {str(e)}")
+                print(f"Document AI error traceback: {traceback.format_exc()}")
+                raise e
+            
+            # Now call process_document_for_layout with the document and frontend dimensions
+            layout_data = process_document_for_layout(
+                document=document,
+                frontend_page_width=parsed_frontend_width,
+                frontend_page_height=parsed_frontend_height,
+                frontend_scale=parsed_frontend_scale
+            )
+            print(f"process_document_for_layout completed successfully")
+            print(f"Layout data keys: {list(layout_data.keys()) if layout_data else 'None'}")
+        except Exception as layout_error:
+            print(f"ERROR in process_document_for_layout call: {str(layout_error)}")
+            print(f"Layout error traceback: {traceback.format_exc()}")
+            raise layout_error
+        
+        # Generate styled JSON for frontend (skip PDF generation)
+        print("Calling create_styled_json_from_layout...")
+        try:
+            styled_json = create_styled_json_from_layout(layout_data)
+            print(f"create_styled_json_from_layout completed successfully")
+            print(f"Styled JSON keys: {list(styled_json.keys()) if styled_json else 'None'}")
+        except Exception as json_error:
+            print(f"ERROR in create_styled_json_from_layout call: {str(json_error)}")
+            print(f"JSON error traceback: {traceback.format_exc()}")
+            raise json_error
+        
+        # Return only the styled JSON layout (no PDF needed for frontend)
+        response_data = {
             "styled_layout": styled_json,
-        })
-
+        }
+        print(f"Returning response with styled_layout keys: {list(styled_json.keys()) if styled_json else 'None'}")
+        print("=== BACKEND PROCESS-FILE SUCCESS ===")
+        
+        return JSONResponse(response_data)
+        
     except Exception as e:
+        print("=== BACKEND PROCESS-FILE ERROR ===")
+        print(f"ERROR in process_file_ocr: {str(e)}")
+        print(f"Exception type: {type(e).__name__}")
+        print(f"Exception args: {e.args}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process file: {str(e)}"

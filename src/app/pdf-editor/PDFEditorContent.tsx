@@ -3984,6 +3984,17 @@ export const PDFEditorContent: React.FC = () => {
           throw new Error("PDF page element not found");
         }
 
+        // --- BEGIN: Calculate PDF offset in container ---
+        if (!containerRef.current) {
+          throw new Error("Container element not found");
+        }
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const pdfRect = pdfPage.getBoundingClientRect();
+        const offsetLeft = pdfRect.left - containerRect.left;
+        const centerOffsetX = (containerRect.width - pdfRect.width) / 2 + 30; // +30 moves it 30 points to the right
+        const offsetTop = pdfRect.top - containerRect.top + 20;
+        // --- END: Calculate PDF offset in container ---
+
         // Temporarily set scale to 500% for better OCR
         const originalScale = documentState.scale;
         const captureScale = 5;
@@ -4037,6 +4048,24 @@ export const PDFEditorContent: React.FC = () => {
         // Create FormData and send to API
         const formData = new FormData();
         formData.append("file", blob, `page-${pageNumber}.png`);
+        formData.append("page_number", "1");
+
+        // Send frontend document dimensions to backend for accurate coordinate calculations
+        formData.append(
+          "frontend_page_width",
+          documentState.pageWidth.toString()
+        );
+        formData.append(
+          "frontend_page_height",
+          documentState.pageHeight.toString()
+        );
+        formData.append("frontend_scale", documentState.scale.toString());
+
+        console.log("Sending frontend dimensions to backend:", {
+          pageWidth: documentState.pageWidth,
+          pageHeight: documentState.pageHeight,
+          scale: documentState.scale,
+        });
 
         // Call the OCR API using our centralized API
         const { processFile } = await import("@/lib/api");
@@ -4065,12 +4094,84 @@ export const PDFEditorContent: React.FC = () => {
           console.log("=== OCR API SUCCESS ===");
           console.log("OCR API response:", data);
           console.log("Response keys:", Object.keys(data));
+
+          // --- BEGIN: DETAILED RESPONSE DEBUG ---
+          console.log("=== DETAILED RESPONSE DEBUG ===");
+          if (data.styled_layout) {
+            console.log("Styled layout structure:", {
+              hasDocumentInfo: !!data.styled_layout.document_info,
+              hasPages: !!data.styled_layout.pages,
+              pagesCount: data.styled_layout.pages?.length || 0,
+            });
+
+            if (
+              data.styled_layout.pages &&
+              data.styled_layout.pages.length > 0
+            ) {
+              const firstPage = data.styled_layout.pages[0];
+              console.log("First page structure:", {
+                hasEntities: !!firstPage.entities,
+                entitiesCount: firstPage.entities?.length || 0,
+              });
+
+              if (firstPage.entities && firstPage.entities.length > 0) {
+                console.log("Sample entity structure:", firstPage.entities[0]);
+                console.log(
+                  "All entities:",
+                  firstPage.entities.map((entity: any, index: number) => ({
+                    index,
+                    type: entity.type,
+                    text: entity.text?.substring(0, 50) + "...",
+                    hasStyling: !!entity.styling,
+                    hasDimensions: !!entity.dimensions,
+                    colors: entity.styling?.colors || "No colors",
+                  }))
+                );
+              }
+            }
+          }
+          console.log("=== END DETAILED RESPONSE DEBUG ===");
+          // --- END: DETAILED RESPONSE DEBUG ---
+
+          // --- BEGIN: PAGE DIMENSIONS DEBUG ---
+          console.log("=== FRONTEND PAGE DIMENSIONS DEBUG ===");
+          console.log("Frontend documentState dimensions:", {
+            pageWidth: documentState.pageWidth,
+            pageHeight: documentState.pageHeight,
+            scale: documentState.scale,
+          });
+
           if (data.styled_layout) {
             console.log("Styled layout keys:", Object.keys(data.styled_layout));
+            if (data.styled_layout.document_info) {
+              console.log(
+                "Backend returned document_info:",
+                data.styled_layout.document_info
+              );
+              console.log("Backend page dimensions:", {
+                width: data.styled_layout.document_info.page_width,
+                height: data.styled_layout.document_info.page_height,
+              });
+            }
             if (data.styled_layout.pages) {
               console.log("Pages count:", data.styled_layout.pages.length);
             }
           }
+
+          if (data.layout) {
+            console.log("Layout keys:", Object.keys(data.layout));
+            if (data.layout.document_info) {
+              console.log(
+                "Backend layout document_info:",
+                data.layout.document_info
+              );
+            }
+            if (data.layout.pages) {
+              console.log("Layout pages count:", data.layout.pages.length);
+            }
+          }
+          console.log("=== END FRONTEND PAGE DIMENSIONS DEBUG ===");
+          // --- END: PAGE DIMENSIONS DEBUG ---
         } catch (error: any) {
           console.error("=== OCR API ERROR ===");
           console.error("Error object:", error);
@@ -4099,14 +4200,27 @@ export const PDFEditorContent: React.FC = () => {
           throw error;
         }
 
-        // Extract entities from the response
+        // Extract entities from the response (handle both old and new API formats)
+        let entities: any[] = [];
+
         if (
           data.styled_layout &&
           data.styled_layout.pages &&
           data.styled_layout.pages.length > 0
         ) {
-          const entities = data.styled_layout.pages[0].entities || [];
+          // New API format
+          entities = data.styled_layout.pages[0].entities || [];
+        } else if (
+          data.layout &&
+          data.layout.pages &&
+          data.layout.pages.length > 0
+        ) {
+          // Old API format
+          entities = data.layout.pages[0].entities || [];
+        }
 
+        if (entities.length > 0) {
+          console.log(`Processing ${entities.length} entities`);
           // Convert entities to textboxes
           const newTextBoxes: TextField[] = [];
 
@@ -4122,73 +4236,191 @@ export const PDFEditorContent: React.FC = () => {
             // Use the styled entity dimensions if available, otherwise calculate from vertices
             let x, y, width, height;
 
-            if (entity.dimensions) {
-              // Use pre-calculated dimensions from styled entity
-              x = entity.dimensions.box_x;
-              y = entity.dimensions.box_y;
-              width = entity.dimensions.box_width;
-              height = entity.dimensions.box_height;
-            } else {
-              // Fallback to calculating from vertices (original logic)
-              const vertices = entity.bounding_poly.vertices;
-              x =
-                Math.min(...vertices.map((v: any) => v.x)) *
-                documentState.pageWidth;
-              y =
-                Math.min(...vertices.map((v: any) => v.y)) *
-                documentState.pageHeight;
-              const maxX =
-                Math.max(...vertices.map((v: any) => v.x)) *
-                documentState.pageWidth;
-              const maxY =
-                Math.max(...vertices.map((v: any) => v.y)) *
-                documentState.pageHeight;
-              width = maxX - x;
-              height = maxY - y;
-            }
+            // Use pre-calculated dimensions from styled entity
+            // The backend now provides coordinates in frontend coordinate system (top-left origin)
+            // No additional Y-flip needed since backend already converted from PDF to frontend system
+            const pdfPageHeight = documentState.pageHeight;
+            const pdfPageWidth = documentState.pageWidth;
 
-            // Extract styling information from styled entity
-            const styling = entity.styling || {};
+            x = entity.dimensions.box_x;
+            width = entity.dimensions.box_width;
+            height = entity.dimensions.box_height;
+            // Use the Y coordinate directly from backend (already in frontend coordinate system)
+            y = entity.dimensions.box_y;
+
+            console.log(
+              `Using dimensions object: x=${x}, y=${y}, w=${width}, h=${height}`
+            );
+            console.log(
+              `Backend provided coordinates: box_x=${entity.dimensions.box_x}, box_y=${entity.dimensions.box_y}`
+            );
+            console.log(
+              `Document dimensions: pageWidth=${pdfPageWidth}, pageHeight=${pdfPageHeight}`
+            );
+
+            // --- BEGIN: COORDINATE CONVERSION DEBUG ---
+            console.log("=== COORDINATE CONVERSION DEBUG ===");
+            console.log("Backend entity.dimensions:", {
+              box_x: entity.dimensions.box_x,
+              box_y: entity.dimensions.box_y,
+              box_width: entity.dimensions.box_width,
+              box_height: entity.dimensions.box_height,
+            });
+            console.log("PDF page dimensions:", {
+              width: pdfPageWidth,
+              height: pdfPageHeight,
+            });
+            console.log(
+              "Using backend coordinates directly (no Y-flip needed):",
+              {
+                x: entity.dimensions.box_x,
+                y: entity.dimensions.box_y,
+                width: entity.dimensions.box_width,
+                height: entity.dimensions.box_height,
+              }
+            );
+            console.log("Final coordinates:", { x, y, width, height });
+            console.log("=== END COORDINATE CONVERSION DEBUG ===");
+            // --- END: COORDINATE CONVERSION DEBUG ---
+
+            // Extract styling information from styled entity (handle both old and new formats)
+            const styling = entity.styling || entity.style || {};
             const colors = styling.colors || {};
 
-            // Convert RGB colors to hex
-            const rgbToHex = (rgb: {
-              r: number;
-              g: number;
-              b: number;
-              a?: number;
-            }): string => {
+            // --- BEGIN: COLOR PROCESSING DEBUG ---
+            console.log(
+              `=== COLOR PROCESSING DEBUG for entity "${entity.type}" ===`
+            );
+            console.log("Raw styling object:", styling);
+            console.log("Raw colors object:", colors);
+            console.log("Entity text:", entity.text?.substring(0, 50) + "...");
+            // --- END: COLOR PROCESSING DEBUG ---
+
+            // Handle both old format (style) and new format (styling)
+            const getStyleValue = (key: string, fallback: any = null) => {
+              return styling[key] !== undefined ? styling[key] : fallback;
+            };
+
+            // Convert RGB/RGBA colors to hex (handles both object and array formats)
+            const rgbToHex = (
+              rgb:
+                | {
+                    r: number;
+                    g: number;
+                    b: number;
+                    a?: number;
+                  }
+                | number[]
+            ): string => {
               if (!rgb) return "#000000";
-              const r = Math.round(rgb.r * 255);
-              const g = Math.round(rgb.g * 255);
-              const b = Math.round(rgb.b * 255);
+
+              let r: number,
+                g: number,
+                b: number,
+                a: number = 1;
+
+              if (Array.isArray(rgb)) {
+                // Handle array format [r, g, b, a?] (0-1 range)
+                r = Math.round(rgb[0] * 255);
+                g = Math.round(rgb[1] * 255);
+                b = Math.round(rgb[2] * 255);
+                a = rgb[3] !== undefined ? rgb[3] : 1;
+              } else {
+                // Handle object format {r, g, b, a?} (0-1 range)
+                r = Math.round(rgb.r * 255);
+                g = Math.round(rgb.g * 255);
+                b = Math.round(rgb.b * 255);
+                a = rgb.a !== undefined ? rgb.a : 1;
+              }
+
+              // If alpha is less than 1, return transparent
+              if (a < 1) {
+                return "transparent";
+              }
+
               return `#${r.toString(16).padStart(2, "0")}${g
                 .toString(16)
                 .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
             };
 
+            // Handle both old and new color property names
+            // For background colors, handle RGBA properly
             const backgroundColor = colors.background_color
-              ? rgbToHex(colors.background_color)
+              ? (() => {
+                  const color = colors.background_color;
+                  if (!color) return "transparent";
+
+                  // Handle RGBA object format {r, g, b, a}
+                  if (typeof color === "object" && "r" in color) {
+                    const { r, g, b, a = 1 } = color;
+                    // If alpha is less than 1, return transparent
+                    if (a < 1) return "transparent";
+                    return `#${Math.round(r * 255)
+                      .toString(16)
+                      .padStart(2, "0")}${Math.round(g * 255)
+                      .toString(16)
+                      .padStart(2, "0")}${Math.round(b * 255)
+                      .toString(16)
+                      .padStart(2, "0")}`;
+                  }
+
+                  // Handle array format [r, g, b, a]
+                  if (Array.isArray(color)) {
+                    const [r, g, b, a = 1] = color;
+                    if (a < 1) return "transparent";
+                    return `#${Math.round(r * 255)
+                      .toString(16)
+                      .padStart(2, "0")}${Math.round(g * 255)
+                      .toString(16)
+                      .padStart(2, "0")}${Math.round(b * 255)
+                      .toString(16)
+                      .padStart(2, "0")}`;
+                  }
+
+                  return "transparent";
+                })()
               : "transparent";
-            const textColor = colors.fill_color
-              ? rgbToHex(colors.fill_color)
-              : "#000000";
+
+            // --- BEGIN: COLOR CONVERSION RESULTS DEBUG ---
+            console.log("Color conversion results:", {
+              backgroundColor,
+              background_color_input: colors.background_color,
+              textColor_input: colors.fill_color || colors.text_color,
+            });
+            // --- END: COLOR CONVERSION RESULTS DEBUG ---
+
+            const textColor =
+              colors.fill_color || colors.text_color
+                ? rgbToHex(colors.fill_color || colors.text_color)
+                : "#000000";
             const borderColor = colors.border_color
               ? rgbToHex(colors.border_color)
               : "#000000";
             const borderWidth = colors.border_color ? 1 : 0;
-            const borderRadius = styling.background?.border_radius || 0;
-            const padding = styling.text_padding || 0;
-            const fontWeight = styling.font_family === "Helvetica-Bold";
-            const textAlign = styling.text_alignment || "left";
+            const borderRadius =
+              styling.background?.border_radius ||
+              getStyleValue("border_radius", 0);
+            const padding = getStyleValue(
+              "text_padding",
+              getStyleValue("padding", 0)
+            );
+            const fontWeight =
+              getStyleValue("font_family", "") === "Helvetica-Bold" ||
+              getStyleValue("font_weight") === "bold";
+            const textAlign = getStyleValue(
+              "text_alignment",
+              getStyleValue("alignment", "left")
+            );
 
             // Use styled entity information for text dimensions and font size
-            const lineHeight = styling.line_spacing || 1.2;
-            const textPadding = styling.text_padding || 5;
-            const estimatedFontSize = styling.font_size || 12;
-            const textLines =
-              styling.text_lines || (entity.text || "").split("\n");
-            const numberOfLines = styling.line_count || textLines.length;
+            const lineHeight = getStyleValue("line_spacing", 1.2);
+            const textPadding = getStyleValue("text_padding", 5);
+            const estimatedFontSize = getStyleValue("font_size", 12);
+            const textLines = getStyleValue(
+              "text_lines",
+              (entity.text || "").split("\n")
+            );
+            const numberOfLines = getStyleValue("line_count", textLines.length);
 
             // Find the longest line
             let longestLine = "";
@@ -4208,10 +4440,40 @@ export const PDFEditorContent: React.FC = () => {
               { top: 0, right: 0, bottom: 0, left: 0 } // padding
             );
 
-            // Use styled entity dimensions if available, otherwise calculate
+            // Use styled entity dimensions if available, otherwise calculate from vertices
             if (!entity.dimensions) {
-              width = textWidth;
-              height = textHeight * numberOfLines * lineHeight;
+              // Fallback: calculate from bounding_poly vertices
+              const vertices = entity.bounding_poly.vertices;
+
+              // Calculate from vertices (these are normalized 0-1 coordinates)
+              const minX =
+                Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+              const maxX =
+                Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+              const minY =
+                Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+              const maxY =
+                Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+
+              x = minX;
+              // Convert Y coordinate from PDF system to frontend system
+              // Backend should handle this, but for fallback we do it here
+              y = pdfPageHeight - maxY;
+              width = maxX - minX;
+              height = maxY - minY;
+
+              console.log(
+                `Fallback calculation from vertices: x=${x}, y=${y}, w=${width}, h=${height}`
+              );
+
+              console.log(
+                `Fallback calculation from vertices: x=${x}, y=${y}, w=${width}, h=${height}`
+              );
+            } else {
+              // Use the dimensions we calculated above
+              console.log(
+                `Using entity.dimensions: x=${x}, y=${y}, w=${width}, h=${height}`
+              );
             }
 
             // Add border space if present
@@ -4223,40 +4485,70 @@ export const PDFEditorContent: React.FC = () => {
             const newTextBox: TextField = {
               id: generateUUID(),
               x: x,
-              y: documentState.pageHeight - y - height, // Y-flip for PDF coordinate system
+              y: y, // Use coordinates directly without Y-flip
               width: width,
               height: height,
               value: entity.text || "",
-              fontSize: styling.font_size || 12,
-              fontFamily: styling.font_family || "Arial, sans-serif",
+              fontSize: getStyleValue("font_size", 12),
+              fontFamily: getStyleValue("font_family", "Arial, sans-serif"),
               page: pageNumber,
               color: textColor || "#000000",
-              bold: !!(styling.bold || fontWeight),
-              italic: !!styling.italic,
-              underline: !!styling.underline,
-              textAlign: styling.text_alignment || "left",
+              bold: !!(getStyleValue("bold", false) || fontWeight),
+              italic: !!getStyleValue("italic", false),
+              underline: !!getStyleValue("underline", false),
+              textAlign: textAlign as "left" | "center" | "right" | "justify",
               listType: "none",
-              letterSpacing: styling.letter_spacing || 0,
-              lineHeight: styling.line_spacing || 1.2,
+              letterSpacing: getStyleValue("letter_spacing", 0),
+              lineHeight: getStyleValue("line_spacing", 1.2),
               rotation: 0,
               backgroundColor: backgroundColor || "transparent",
               borderColor: borderColor || "#000000",
               borderWidth: borderWidth || 0,
               borderRadius: borderRadius || 0,
-              borderTopLeftRadius:
-                styling.border_top_left_radius || borderRadius || 0,
-              borderTopRightRadius:
-                styling.border_top_right_radius || borderRadius || 0,
-              borderBottomLeftRadius:
-                styling.border_bottom_left_radius || borderRadius || 0,
-              borderBottomRightRadius:
-                styling.border_bottom_right_radius || borderRadius || 0,
-              paddingTop: styling.text_padding || 0,
-              paddingRight: styling.text_padding || 0,
-              paddingBottom: styling.text_padding || 0,
-              paddingLeft: styling.text_padding || 0,
+              borderTopLeftRadius: getStyleValue(
+                "border_top_left_radius",
+                borderRadius || 0
+              ),
+              borderTopRightRadius: getStyleValue(
+                "border_top_right_radius",
+                borderRadius || 0
+              ),
+              borderBottomLeftRadius: getStyleValue(
+                "border_bottom_left_radius",
+                borderRadius || 0
+              ),
+              borderBottomRightRadius: getStyleValue(
+                "border_bottom_right_radius",
+                borderRadius || 0
+              ),
+              paddingTop: padding || 0,
+              paddingRight: padding || 0,
+              paddingBottom: padding || 0,
+              paddingLeft: padding || 0,
               isEditing: false,
             };
+
+            // --- BEGIN: TEXTBOX CREATION DEBUG ---
+            console.log("Created textbox:", {
+              id: newTextBox.id,
+              type: entity.type,
+              text: newTextBox.value.substring(0, 50) + "...",
+              position: { x: newTextBox.x, y: newTextBox.y },
+              size: { width: newTextBox.width, height: newTextBox.height },
+              colors: {
+                text: newTextBox.color,
+                background: newTextBox.backgroundColor,
+                border: newTextBox.borderColor,
+              },
+              styling: {
+                fontSize: newTextBox.fontSize,
+                fontFamily: newTextBox.fontFamily,
+                bold: newTextBox.bold,
+                textAlign: newTextBox.textAlign,
+              },
+            });
+            console.log("=== END COLOR PROCESSING DEBUG ===");
+            // --- END: TEXTBOX CREATION DEBUG ---
 
             newTextBoxes.push(newTextBox);
           });
@@ -4316,6 +4608,9 @@ export const PDFEditorContent: React.FC = () => {
 
           // Switch back to the previous view
           setViewState((prev) => ({ ...prev, currentView: previousView }));
+        } else {
+          console.warn("No entities found in API response");
+          toast.error("No text entities found in the document");
         }
       } catch (error) {
         console.error("Error transforming page to textboxes:", error);
@@ -5084,26 +5379,6 @@ export const PDFEditorContent: React.FC = () => {
                           {documentState.numPages}
                         </div>
 
-                        {/* Translation status indicator */}
-                        {pageState.isPageTranslated.get(
-                          documentState.currentPage
-                        ) && (
-                          <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded text-xs flex items-center space-x-1">
-                            <svg
-                              className="w-3 h-3"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                            <span>Translated</span>
-                          </div>
-                        )}
-
                         {/* Transform JSON Button - centered overlay if not translated */}
                         {!pageState.isPageTranslated.get(
                           documentState.currentPage
@@ -5643,26 +5918,6 @@ export const PDFEditorContent: React.FC = () => {
                             {documentState.numPages}
                           </div>
 
-                          {/* Translation status indicator */}
-                          {pageState.isPageTranslated.get(
-                            documentState.currentPage
-                          ) && (
-                            <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded text-xs flex items-center space-x-1">
-                              <svg
-                                className="w-3 h-3"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                              <span>Translated</span>
-                            </div>
-                          )}
-
                           {/* Transform JSON Button - positioned in the middle */}
                           {!pageState.isPageTranslated.get(
                             documentState.currentPage
@@ -5705,46 +5960,6 @@ export const PDFEditorContent: React.FC = () => {
                                   </>
                                 )}
                               </button>
-                            </div>
-                          )}
-
-                          {/* Reset Translation Button - shown when page is already translated */}
-                          {pageState.isPageTranslated.get(
-                            documentState.currentPage
-                          ) && (
-                            <div
-                              className="absolute inset-0 flex items-center justify-center"
-                              style={{ zIndex: 20000 }}
-                            >
-                              <div className="text-center space-y-4">
-                                <div className="text-gray-600 text-sm">
-                                  Page has been transformed
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    handleResetPageTranslation(
-                                      documentState.currentPage
-                                    );
-                                  }}
-                                  className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 flex items-center space-x-2 mx-auto"
-                                  title="Reset translation and allow re-transformation"
-                                >
-                                  <svg
-                                    className="w-4 h-4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                                    />
-                                  </svg>
-                                  <span>Reset Translation</span>
-                                </button>
-                              </div>
                             </div>
                           )}
                         </div>
