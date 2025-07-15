@@ -808,7 +808,6 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleDeleteDeletionRectangleWithUndo = useCallback(
     (id: string, view: ViewMode) => {
-      ;
       // Find the deletion rectangle to delete
       const allDeletionRectangles = [
         ...elementCollections.originalDeletionRectangles,
@@ -816,7 +815,6 @@ export const PDFEditorContent: React.FC = () => {
       ];
       const rect = allDeletionRectangles.find((r) => r.id === id);
       if (!rect) {
-        
         return;
       }
 
@@ -827,14 +825,10 @@ export const PDFEditorContent: React.FC = () => {
         ? "original"
         : "translated";
 
-      
-
       const remove = (id: string) => {
-        
         deleteDeletionRectangle(id, view);
       };
       const add = (rect: DeletionRectangle) => {
-        
         addDeletionRectangle(
           rect.x,
           rect.y,
@@ -849,7 +843,6 @@ export const PDFEditorContent: React.FC = () => {
       const cmd = new DeleteDeletionRectangleCommand(remove, add, rect);
       cmd.execute();
       history.push(rect.page, rectView, cmd);
-      
     },
     [elementCollections, deleteDeletionRectangle, addDeletionRectangle, history]
   );
@@ -866,7 +859,6 @@ export const PDFEditorContent: React.FC = () => {
       view: ViewMode,
       targetView?: "original" | "translated"
     ) => {
-      
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
@@ -875,17 +867,16 @@ export const PDFEditorContent: React.FC = () => {
         // Use the direct function from element management to avoid recursion
         newId = addImage(src, x, y, width, height, page, finalView);
         idRef.current = newId;
-        
+
         return newId;
       };
       const remove = (id: string) => {
-        
         deleteImage(id, view);
       };
       const cmd = new AddImageCommand(add, remove, idRef);
       cmd.execute();
       history.push(page, view, cmd);
-      
+
       return idRef.current;
     },
     [addImage, deleteImage, history]
@@ -893,7 +884,6 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleDeleteImageWithUndo = useCallback(
     (id: string, view: ViewMode) => {
-      
       // Find the image to delete
       const allImages = [
         ...elementCollections.originalImages,
@@ -901,7 +891,6 @@ export const PDFEditorContent: React.FC = () => {
       ];
       const image = allImages.find((img) => img.id === id);
       if (!image) {
-        
         return;
       }
 
@@ -912,14 +901,10 @@ export const PDFEditorContent: React.FC = () => {
         ? "original"
         : "translated";
 
-      
-
       const remove = (id: string) => {
-        
         deleteImage(id, view);
       };
       const add = (image: ImageType) => {
-        
         addImage(
           image.src,
           image.x,
@@ -933,7 +918,6 @@ export const PDFEditorContent: React.FC = () => {
       const cmd = new DeleteImageCommand(remove, add, image);
       cmd.execute();
       history.push(image.page, imageView, cmd);
-      
 
       // Clear selection state if the deleted image was selected
       if (selectedElementId === id) {
@@ -1058,7 +1042,6 @@ export const PDFEditorContent: React.FC = () => {
   // Handle multi-selection move events
   const handleMultiSelectionMove = useCallback(
     (event: CustomEvent) => {
-      
       const { deltaX, deltaY } = event.detail;
 
       // Move all selected elements
@@ -1112,7 +1095,6 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   const handleMultiSelectionMoveEnd = useCallback(() => {
-    
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -1130,7 +1112,6 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMultiSelectDragStart = useCallback(
     (id: string) => {
-      
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
         // Store initial positions of all selected elements
@@ -1149,7 +1130,6 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMultiSelectDrag = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
-      
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
         // Move all selected elements by the same delta with boundary constraints
@@ -1217,7 +1197,6 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMultiSelectDragStop = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
-      
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
         // Update original positions for next drag
@@ -1353,10 +1332,7 @@ export const PDFEditorContent: React.FC = () => {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      
-
       if (e.ctrlKey || e.metaKey) {
-        
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1384,7 +1360,6 @@ export const PDFEditorContent: React.FC = () => {
     // Also try adding to document as backup
     const documentHandler = (e: WheelEvent) => {
       if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
-        
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1516,10 +1491,9 @@ export const PDFEditorContent: React.FC = () => {
           e.preventDefault();
           const now = Date.now();
           if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
-            
             return;
           }
-          
+
           if (
             history.canUndo(documentState.currentPage, viewState.currentView)
           ) {
@@ -1538,10 +1512,9 @@ export const PDFEditorContent: React.FC = () => {
           e.preventDefault();
           const now = Date.now();
           if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
-            
             return;
           }
-          
+
           if (
             history.canRedo(documentState.currentPage, viewState.currentView)
           ) {
@@ -1663,8 +1636,6 @@ export const PDFEditorContent: React.FC = () => {
   // Format change handler for ElementFormatDrawer
   const handleFormatChange = useCallback(
     (format: any) => {
-      
-
       // Check if we're in multi-selection mode
       const isMultiSelection =
         currentFormat &&
@@ -1775,7 +1746,6 @@ export const PDFEditorContent: React.FC = () => {
         if ("borderRadius" in format)
           updates.borderRadius = format.borderRadius;
 
-        
         updateShapeWithUndo(selectedElementId, updates);
       } else if (selectedElementType === "image" && selectedElementId) {
         // Handle image format changes
@@ -1822,7 +1792,6 @@ export const PDFEditorContent: React.FC = () => {
           updates.borderRadius = format.borderRadius;
         if ("rotation" in format) updates.rotation = format.rotation;
 
-        
         updateImage(selectedElementId, updates);
 
         // Update the current format to keep drawer in sync
@@ -2079,8 +2048,6 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedTextBox) {
-            
-
             // Ensure all required properties exist with safe defaults
             const safeTextBox = {
               id: selectedTextBox.id || "",
@@ -2132,13 +2099,10 @@ export const PDFEditorContent: React.FC = () => {
               isEditing: selectedTextBox.isEditing || false,
             };
 
-            
-
             // Update the format drawer state
             setCurrentFormat(safeTextBox);
             setIsDrawerOpen(true);
           } else {
-          
             // Close drawer if selected text box is not found
             setIsDrawerOpen(false);
             setSelectedElementId(null);
@@ -2155,8 +2119,6 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedShape) {
-            
-
             const shapeFormat = {
               id: selectedShape.id,
               type: selectedShape.type,
@@ -2173,11 +2135,9 @@ export const PDFEditorContent: React.FC = () => {
               borderRadius: selectedShape.borderRadius || 0,
             };
 
-            
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
           } else {
-          
             setIsDrawerOpen(false);
             setSelectedElementId(null);
             setCurrentFormat(null);
@@ -2193,11 +2153,9 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedImage) {
-            
             setCurrentFormat(selectedImage);
             setIsDrawerOpen(true);
           } else {
-          
             setIsDrawerOpen(false);
             setSelectedElementId(null);
             setCurrentFormat(null);
@@ -2224,7 +2182,6 @@ export const PDFEditorContent: React.FC = () => {
 
   // Set the format change handler when it changes
   useEffect(() => {
-    
     if (typeof handleFormatChange === "function") {
       setOnFormatChange(handleFormatChange);
     } else {
@@ -2278,9 +2235,10 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   // Debug: Log selection state
-  useEffect(() => {
-    
-  }, [editorState.isSelectionMode, editorState.multiSelection]);
+  useEffect(() => {}, [
+    editorState.isSelectionMode,
+    editorState.multiSelection,
+  ]);
 
   // Tool handlers
   const handleToolChange = useCallback((tool: string, enabled: boolean) => {
@@ -2308,7 +2266,6 @@ export const PDFEditorContent: React.FC = () => {
     switch (tool) {
       case "selection":
         if (enabled) {
-          
           setEditorState((prev) => ({ ...prev, isSelectionMode: true }));
         }
         break;
@@ -2882,8 +2839,6 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   const handleErasureDrawEnd = useCallback(() => {
-    
-
     // Always reset the drawing state, regardless of conditions
     const wasDrawing = erasureState.isDrawingErasure;
     const hadStart = erasureState.erasureDrawStart;
@@ -2901,14 +2856,11 @@ export const PDFEditorContent: React.FC = () => {
 
     // Only process if we were actually drawing
     if (!wasDrawing || !hadStart || !hadEnd) {
-      
       return;
     }
 
     const width = Math.abs(hadEnd.x - hadStart.x);
     const height = Math.abs(hadEnd.y - hadStart.y);
-
-    
 
     if (width > 5 && height > 5) {
       const x = Math.min(hadStart.x, hadEnd.x);
@@ -2926,8 +2878,6 @@ export const PDFEditorContent: React.FC = () => {
         opacity: erasureState.erasureSettings.opacity,
       };
 
-      
-
       // Use the undo-enabled addDeletionRectangle function
       // In split view, use the target view; otherwise use current view
       const targetViewForDeletion =
@@ -2944,8 +2894,6 @@ export const PDFEditorContent: React.FC = () => {
         erasureState.erasureSettings.opacity
       );
     }
-
-    
   }, [
     erasureState,
     documentState.currentPage,
@@ -2983,8 +2931,6 @@ export const PDFEditorContent: React.FC = () => {
   // Multi-element selection handlers
   const handleMultiSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      
-
       if (!editorState.isSelectionMode) return;
       if (e.button !== 0) return; // Only left click
 
@@ -3020,8 +2966,6 @@ export const PDFEditorContent: React.FC = () => {
         viewState.currentView,
         documentState.pageWidth
       );
-
-      
 
       setEditorState((prev) => ({
         ...prev,
@@ -3089,8 +3033,6 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth
       );
 
-      
-
       setEditorState((prev) => ({
         ...prev,
         multiSelection: {
@@ -3143,8 +3085,6 @@ export const PDFEditorContent: React.FC = () => {
         const translatedShapes = getCurrentShapes("translated");
         const translatedImages = getCurrentImages("translated");
 
-        
-
         // Combine elements from both views
         const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
         const allShapes = [...originalShapes, ...translatedShapes];
@@ -3156,8 +3096,6 @@ export const PDFEditorContent: React.FC = () => {
           allShapes,
           allImages
         );
-
-        
 
         // Update selection (merge with existing if Ctrl/Cmd held)
         if (e.ctrlKey || e.metaKey) {
@@ -3226,11 +3164,7 @@ export const PDFEditorContent: React.FC = () => {
 
   // Move selected elements - start moving mode
   const handleMoveSelection = useCallback(() => {
-    
-    
-
     setEditorState((prev) => {
-      
       return {
         ...prev,
         multiSelection: {
@@ -3297,8 +3231,6 @@ export const PDFEditorContent: React.FC = () => {
   // Handle drag stop for selection rectangle
   const handleDragStopSelection = useCallback(
     (deltaX: number, deltaY: number) => {
-      
-
       // Move all selected elements by the final delta
       moveSelectedElements(
         editorState.multiSelection.selectedElements,
@@ -3353,20 +3285,15 @@ export const PDFEditorContent: React.FC = () => {
   // Move selection mouse handlers
   const handleMoveSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      
-
       if (!editorState.multiSelection.isMovingSelection) {
-        
         return;
       }
       if (e.button !== 0) {
-        
         return; // Only left click
       }
 
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) {
-        
         return;
       }
 
@@ -3379,8 +3306,6 @@ export const PDFEditorContent: React.FC = () => {
         viewState.currentView,
         documentState.pageWidth
       );
-
-      
 
       setEditorState((prev) => ({
         ...prev,
@@ -3403,13 +3328,10 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMoveSelectionMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      
-
       if (
         !editorState.multiSelection.isMovingSelection ||
         !editorState.multiSelection.moveStart
       ) {
-        
         return;
       }
 
@@ -3429,10 +3351,7 @@ export const PDFEditorContent: React.FC = () => {
       const deltaX = x - editorState.multiSelection.moveStart.x;
       const deltaY = y - editorState.multiSelection.moveStart.y;
 
-      
-
       // Move all selected elements
-      
 
       moveSelectedElements(
         editorState.multiSelection.selectedElements,
@@ -3482,8 +3401,6 @@ export const PDFEditorContent: React.FC = () => {
   const handleMoveSelectionMouseUp = useCallback(() => {
     if (!editorState.multiSelection.isMovingSelection) return;
 
-    
-
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -3497,7 +3414,6 @@ export const PDFEditorContent: React.FC = () => {
   // Document click handler
   const handleDocumentContainerClick = useCallback(
     (e: React.MouseEvent) => {
-      
       if (!documentRef.current) return;
 
       const target = e.target as HTMLElement;
@@ -3925,12 +3841,9 @@ export const PDFEditorContent: React.FC = () => {
   // Transform page to textbox functionality
   const handleTransformPageToTextbox = useCallback(
     async (pageNumber: number) => {
-      
       const previousView = viewState.currentView; // Store current view
 
       try {
-        
-
         // Set transforming state
         setPageState((prev) => ({
           ...prev,
@@ -4034,69 +3947,41 @@ export const PDFEditorContent: React.FC = () => {
         );
         formData.append("frontend_scale", documentState.scale.toString());
 
-        
-
         // Call the OCR API using our centralized API
         const { processFile } = await import("@/lib/api");
 
-        
-        
-        
-
         let data;
         try {
-          
           data = await processFile(formData);
-          
-          
-          
 
           // --- BEGIN: DETAILED RESPONSE DEBUG ---
-          
-          if (data.styled_layout) {
-            
 
+          if (data.styled_layout) {
             if (
               data.styled_layout.pages &&
               data.styled_layout.pages.length > 0
             ) {
               const firstPage = data.styled_layout.pages[0];
-              
 
               if (firstPage.entities && firstPage.entities.length > 0) {
-                
-                
               }
             }
           }
-          
-          // --- END: DETAILED RESPONSE DEBUG ---
-
-          // --- BEGIN: PAGE DIMENSIONS DEBUG ---
-          
-          
 
           if (data.styled_layout) {
-            
             if (data.styled_layout.document_info) {
-              
-              
             }
             if (data.styled_layout.pages) {
-              
             }
           }
 
           if (data.layout) {
-            
             if (data.layout.document_info) {
-              
             }
             if (data.layout.pages) {
-              
             }
           }
-          
+
           // --- END: PAGE DIMENSIONS DEBUG ---
         } catch (error: any) {
           console.error("=== OCR API ERROR ===");
@@ -4145,8 +4030,9 @@ export const PDFEditorContent: React.FC = () => {
           entities = data.layout.pages[0].entities || [];
         }
 
+        console.log("Returned entities from OCR API:", entities);
+
         if (entities.length > 0) {
-          
           // Convert entities to textboxes
           const newTextBoxes: TextField[] = [];
 
@@ -4174,29 +4060,9 @@ export const PDFEditorContent: React.FC = () => {
             // Use the Y coordinate directly from backend (already in frontend coordinate system)
             y = entity.dimensions.box_y;
 
-            
-            
-            
-
-            // --- BEGIN: COORDINATE CONVERSION DEBUG ---
-            
-            
-            
-            
-            
-            
-            // --- END: COORDINATE CONVERSION DEBUG ---
-
             // Extract styling information from styled entity (handle both old and new formats)
             const styling = entity.styling || entity.style || {};
             const colors = styling.colors || {};
-
-            // --- BEGIN: COLOR PROCESSING DEBUG ---
-            
-            
-            
-            
-            // --- END: COLOR PROCESSING DEBUG ---
 
             // Handle both old format (style) and new format (styling)
             const getStyleValue = (key: string, fallback: any = null) => {
@@ -4236,7 +4102,7 @@ export const PDFEditorContent: React.FC = () => {
               }
 
               // If alpha is less than 1, return transparent
-              if (a < 1) {
+              if (a < 0.1) {
                 return "transparent";
               }
 
@@ -4245,49 +4111,31 @@ export const PDFEditorContent: React.FC = () => {
                 .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
             };
 
-            // --- Background color logic (keep as before) ---
+            // --- Background color logic (use same logic as text color) ---
             let backgroundColor = "transparent";
+            let backgroundOpacity = 1;
             if (colors.background_color) {
               const color = colors.background_color;
-              if (typeof color === "object" && "r" in color) {
-                const { r, g, b, a = 1 } = color;
-                if (a >= 1) {
-                  backgroundColor = `#${Math.round(r * 255)
-                    .toString(16)
-                    .padStart(2, "0")}${Math.round(g * 255)
-                    .toString(16)
-                    .padStart(2, "0")}${Math.round(b * 255)
-                    .toString(16)
-                    .padStart(2, "0")}`;
-                }
-              } else if (Array.isArray(color)) {
-                const [r, g, b, a = 1] = color;
-                if (a >= 1) {
-                  backgroundColor = `#${Math.round(r * 255)
-                    .toString(16)
-                    .padStart(2, "0")}${Math.round(g * 255)
-                    .toString(16)
-                    .padStart(2, "0")}${Math.round(b * 255)
-                    .toString(16)
-                    .padStart(2, "0")}`;
-                }
+              // Use the same rgbToHex function as for textColor
+              backgroundColor = rgbToHex(color);
+              console.log("🫡 BackgroundColor 1:", backgroundColor);
+              // Extract alpha if present
+              if (Array.isArray(color)) {
+                backgroundOpacity = color[3] !== undefined ? color[3] : 1;
+              } else if (typeof color === "object" && "a" in color) {
+                backgroundOpacity = color.a !== undefined ? color.a : 1;
               }
             }
+            console.log("🫡 BackgroundColor:", backgroundColor);
 
             // --- Border color and width logic fix ---
             let borderColor = "#000000";
             let borderWidth = 0;
             if (colors.border_color) {
-              // Convert decimal RGBA to hex
-              const borderHex = rgbToHex(colors.border_color);
-              // Convert hex to rgb string (opacity 1)
-              borderColor = colorToRgba(borderHex, 1);
+              // Use the same rgbToHex function as for textColor/backgroundColor
+              borderColor = rgbToHex(colors.border_color);
               borderWidth = 1;
             }
-
-            // --- BEGIN: COLOR CONVERSION RESULTS DEBUG ---
-            
-            // --- END: COLOR CONVERSION RESULTS DEBUG ---
 
             const textColor =
               colors.fill_color || colors.text_color
@@ -4357,13 +4205,8 @@ export const PDFEditorContent: React.FC = () => {
               y = pdfPageHeight - maxY;
               width = maxX - minX;
               height = maxY - minY;
-
-              
-
-              
             } else {
               // Use the dimensions we calculated above
-              
             }
 
             // Add border space if present
@@ -4392,6 +4235,7 @@ export const PDFEditorContent: React.FC = () => {
               lineHeight: getStyleValue("line_spacing", 1.2),
               rotation: 0,
               backgroundColor: backgroundColor,
+              backgroundOpacity: backgroundOpacity,
               borderColor: borderColor,
               borderWidth: borderWidth,
               borderRadius: borderRadius || 0,
@@ -4418,11 +4262,7 @@ export const PDFEditorContent: React.FC = () => {
               isEditing: false,
             };
 
-            // --- BEGIN: TEXTBOX CREATION DEBUG ---
-            
-            
-            // --- END: TEXTBOX CREATION DEBUG ---
-
+            console.log("New textbox:", newTextBox);
             newTextBoxes.push(newTextBox);
           });
 
@@ -4450,6 +4290,7 @@ export const PDFEditorContent: React.FC = () => {
                 borderColor: textbox.borderColor,
                 borderWidth: textbox.borderWidth,
                 backgroundColor: textbox.backgroundColor,
+                backgroundOpacity: textbox.backgroundOpacity,
                 borderRadius: textbox.borderRadius,
                 borderTopLeftRadius: textbox.borderTopLeftRadius,
                 borderTopRightRadius: textbox.borderTopRightRadius,
@@ -4472,7 +4313,6 @@ export const PDFEditorContent: React.FC = () => {
             isTransforming: false,
           }));
 
-          
           toast.success(
             `Transformed ${newTextBoxes.length} entities into textboxes`
           );
@@ -4480,7 +4320,6 @@ export const PDFEditorContent: React.FC = () => {
           // Switch back to the previous view
           setViewState((prev) => ({ ...prev, currentView: previousView }));
         } else {
-        
           toast.error("No text entities found in the document");
         }
       } catch (error) {
@@ -4655,19 +4494,18 @@ export const PDFEditorContent: React.FC = () => {
   ]);
 
   // Add effect to monitor drawer state for debugging
-  useEffect(() => {
-    
-  }, [isDrawerOpen, selectedElementType, currentFormat, selectedElementId]);
+  useEffect(() => {}, [
+    isDrawerOpen,
+    selectedElementType,
+    currentFormat,
+    selectedElementId,
+  ]);
 
   // Add effect to monitor multi-selection state for debugging
-  useEffect(() => {
-    
-  }, [editorState.multiSelection]);
+  useEffect(() => {}, [editorState.multiSelection]);
 
   // Add effect to monitor page translation state for debugging
-  useEffect(() => {
-    
-  }, [
+  useEffect(() => {}, [
     pageState.isPageTranslated,
     pageState.isTransforming,
     documentState.currentPage,
@@ -4788,6 +4626,20 @@ export const PDFEditorContent: React.FC = () => {
     autoFocusTextBoxId,
   ]);
 
+  // Add effect to log translatedTextBoxes on document click
+  useEffect(() => {
+    const handleClick = () => {
+      const originalTextBox = elementCollections.originalTextBoxes;
+      const translatedTextBoxes = elementCollections.translatedTextBoxes;
+      console.log("Current originalTextBoxes:", originalTextBox);
+      console.log("Current translatedTextBoxes:", translatedTextBoxes);
+    };
+    document.addEventListener("click", handleClick);
+    return () => {
+      document.removeEventListener("click", handleClick);
+    };
+  }, [elementCollections.translatedTextBoxes]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
@@ -4805,10 +4657,9 @@ export const PDFEditorContent: React.FC = () => {
         onUndo={() => {
           const now = Date.now();
           if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
-            
             return;
           }
-          
+
           if (
             history.canUndo(documentState.currentPage, viewState.currentView)
           ) {
@@ -4822,7 +4673,7 @@ export const PDFEditorContent: React.FC = () => {
           if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
             return;
           }
-          
+
           if (
             history.canRedo(documentState.currentPage, viewState.currentView)
           ) {

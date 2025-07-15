@@ -277,10 +277,17 @@ export const useElementManagement = () => {
         borderRadius: initialProperties?.borderRadius || 0,
         borderTopLeftRadius: initialProperties?.borderTopLeftRadius || 0,
         borderTopRightRadius: initialProperties?.borderTopRightRadius || 0,
+        borderWidth: initialProperties?.borderWidth || 0,
         borderBottomLeftRadius: initialProperties?.borderBottomLeftRadius || 0,
         borderBottomRightRadius:
           initialProperties?.borderBottomRightRadius || 0,
+        borderColor: initialProperties?.borderColor || "#000000",
         hasBeenManuallyResized: false, // Initialize as not manually resized
+        backgroundColor: initialProperties?.backgroundColor || "transparent",
+        backgroundOpacity:
+          initialProperties?.backgroundOpacity !== undefined
+            ? initialProperties.backgroundOpacity
+            : 1,
       };
 
       // Determine which document to add to

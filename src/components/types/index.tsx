@@ -52,7 +52,7 @@ export interface TextField {
   letterSpacing?: number;
   lineHeight?: number;
   rotation?: number;
-  backgroundColor?: string;
+  backgroundColor: string;
   backgroundOpacity?: number; // Opacity for background color
   borderColor?: string;
   borderWidth?: number;
