@@ -43,6 +43,7 @@ export interface TextField {
   page: number;
   type?: "chat_time" | "MessengerTextBox" | string;
   color?: string;
+  textOpacity?: number; // Opacity for text color
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -52,6 +53,7 @@ export interface TextField {
   lineHeight?: number;
   rotation?: number;
   backgroundColor?: string;
+  backgroundOpacity?: number; // Opacity for background color
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;

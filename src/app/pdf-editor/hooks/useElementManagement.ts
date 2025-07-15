@@ -228,7 +228,30 @@ export const useElementManagement = () => {
       const value = initialProperties?.value || "New Text Field";
       const fontSize = initialProperties?.fontSize || 8;
       const fontFamily = initialProperties?.fontFamily || "Arial, sans-serif";
-      const fieldId = generateUUID();
+      // Use provided ID if available, otherwise generate new one
+      const fieldId = initialProperties?.id || generateUUID();
+      console.log(
+        "Adding textbox with ID:",
+        fieldId,
+        "provided:",
+        !!initialProperties?.id
+      );
+
+      // Check if ID already exists to prevent duplicates
+      const existingTextBoxes = [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+      ];
+      const existingTextBox = existingTextBoxes.find((tb) => tb.id === fieldId);
+      if (existingTextBox) {
+        console.warn(
+          "Duplicate textbox ID detected:",
+          fieldId,
+          "existing:",
+          existingTextBox
+        );
+        return fieldId; // Return existing ID to prevent adding duplicate
+      }
 
       const { width, height } = measureText(value, fontSize, fontFamily);
 

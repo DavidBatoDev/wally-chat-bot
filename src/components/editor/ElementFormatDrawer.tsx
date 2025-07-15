@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { useTextFormat } from "./ElementFormatContext";
 import { TextField, Shape, Image } from "../types";
+import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
+import "../../app/pdf-editor/styles/pdf-editor.css";
 
 const fontFamilies = [
   "Arial",
@@ -71,6 +73,9 @@ export const ElementFormatDrawer: React.FC = () => {
   const [showZIndexPopup, setShowZIndexPopup] = useState(false);
   const [showTextStylePopup, setShowTextStylePopup] = useState(false);
   const [showFontSizePopup, setShowFontSizePopup] = useState(false);
+  const [borderRadiusMode, setBorderRadiusMode] = useState<"all" | "specific">(
+    "all"
+  );
 
   // Refs for positioning popups
   const spacingButtonRef = useRef<HTMLButtonElement>(null);
@@ -91,6 +96,60 @@ export const ElementFormatDrawer: React.FC = () => {
   const fontSizePopupRef = useRef<HTMLDivElement>(null);
   const alignmentButtonRef = useRef<HTMLButtonElement>(null);
   const alignmentPopupRef = useRef<HTMLDivElement>(null);
+
+  // Add slider styles
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = `
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #4f46e5;
+        cursor: pointer;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+      }
+      .slider::-webkit-slider-thumb:hover {
+        background: #4338ca;
+        transform: scale(1.1);
+      }
+      .slider::-webkit-slider-thumb:active {
+        background: #3730a3;
+        transform: scale(0.95);
+      }
+      .slider::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #4f46e5;
+        cursor: pointer;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        transition: all 0.2s ease;
+      }
+      .slider::-moz-range-thumb:hover {
+        background: #4338ca;
+        transform: scale(1.1);
+      }
+      .slider::-moz-range-thumb:active {
+        background: #3730a3;
+        transform: scale(0.95);
+      }
+      .slider::-moz-range-track {
+        background: #e5e7eb;
+        height: 2px;
+        border-radius: 2px;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   // Close popups when clicking outside
   useEffect(() => {
@@ -192,6 +251,24 @@ export const ElementFormatDrawer: React.FC = () => {
     showTextStylePopup,
     showFontSizePopup,
   ]);
+
+  // Update borderRadiusMode when currentFormat changes
+  useEffect(() => {
+    if (
+      currentFormat &&
+      selectedElementType === "textbox" &&
+      isTextField(currentFormat)
+    ) {
+      const isAllEqual =
+        (currentFormat.borderTopLeftRadius || 0) ===
+          (currentFormat.borderTopRightRadius || 0) &&
+        (currentFormat.borderTopLeftRadius || 0) ===
+          (currentFormat.borderBottomLeftRadius || 0) &&
+        (currentFormat.borderTopLeftRadius || 0) ===
+          (currentFormat.borderBottomRightRadius || 0);
+      setBorderRadiusMode(isAllEqual ? "all" : "specific");
+    }
+  }, [currentFormat, selectedElementType]);
 
   // Add type guard functions
   const isTextField = (
@@ -399,6 +476,15 @@ export const ElementFormatDrawer: React.FC = () => {
           borderTopRightRadius: currentFormat.borderTopRightRadius || 0,
           borderBottomLeftRadius: currentFormat.borderBottomLeftRadius || 0,
           borderBottomRightRadius: currentFormat.borderBottomRightRadius || 0,
+          textOpacity:
+            currentFormat.textOpacity !== undefined
+              ? currentFormat.textOpacity
+              : 1,
+          backgroundOpacity:
+            currentFormat.backgroundOpacity !== undefined
+              ? currentFormat.backgroundOpacity
+              : 1,
+          backgroundColor: currentFormat.backgroundColor || "#ffffff",
         }
       : selectedElementType === "shape" && isShape(currentFormat)
       ? {
@@ -554,6 +640,32 @@ export const ElementFormatDrawer: React.FC = () => {
               </div>
             </div>
 
+            {/* Spacing Controls - Hidden on small screens */}
+            <div className="hidden lg:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+              <div className="relative">
+                <button
+                  ref={spacingButtonRef}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
+                  onClick={() => setShowSpacingTooltip(!showSpacingTooltip)}
+                  title="Line Spacing"
+                >
+                  <Text size={16} />
+                </button>
+              </div>
+              <div className="relative">
+                <button
+                  ref={charSpacingButtonRef}
+                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
+                  onClick={() =>
+                    setShowCharSpacingTooltip(!showCharSpacingTooltip)
+                  }
+                  title="Character Spacing"
+                >
+                  <TextCursor size={16} />
+                </button>
+              </div>
+            </div>
+
             {/* Text Alignment - Popup Menu */}
             <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
               <div className="relative">
@@ -586,117 +698,259 @@ export const ElementFormatDrawer: React.FC = () => {
               </div>
             </div>
 
-            {/* Colors */}
-            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
-                <Palette size={14} />
-                <input
-                  type="color"
-                  value={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.color
-                      ? "#000000"
-                      : safeFormat.color
-                  }
-                  onChange={(e) => onFormatChange({ color: e.target.value })}
-                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
-                  title={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.color
-                      ? "Text Color (Mixed)"
-                      : "Text Color"
-                  }
-                />
-              </div>
-              <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
-                <Square size={14} />
-                <input
-                  type="color"
-                  value={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.borderColor
-                      ? "#000000"
-                      : safeFormat.borderColor
-                  }
-                  onChange={(e) =>
-                    onFormatChange({ borderColor: e.target.value })
-                  }
-                  className="w-6 h-6 sm:w-8 sm:h-8 rounded cursor-pointer"
-                  title={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.borderColor
-                      ? "Border Color (Mixed)"
-                      : "Border Color"
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Spacing Controls - Hidden on small screens */}
-            <div className="hidden lg:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-              <div className="relative">
+            {/* Colors Popup Trigger */}
+            <Popover>
+              <PopoverTrigger asChild>
                 <button
-                  ref={spacingButtonRef}
-                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
-                  onClick={() => setShowSpacingTooltip(!showSpacingTooltip)}
-                  title="Line Spacing"
+                  className="flex items-center gap-1 p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                  title="Text & Background Colors"
                 >
-                  <Text size={16} />
+                  <Palette size={18} />
+                  <span className="hidden sm:inline text-xs">Colors</span>
                 </button>
-              </div>
-              <div className="relative">
-                <button
-                  ref={charSpacingButtonRef}
-                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-700 transition-all duration-200"
-                  onClick={() =>
-                    setShowCharSpacingTooltip(!showCharSpacingTooltip)
-                  }
-                  title="Character Spacing"
-                >
-                  <TextCursor size={16} />
-                </button>
-              </div>
-            </div>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="flex flex-col gap-4">
+                  {/* Text Color Picker with Transparent and Opacity */}
+                  <div className="flex flex-col items-start gap-2">
+                    <label className="text-xs font-medium text-gray-700 mb-1">
+                      Text Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={
+                          !selectedElementId &&
+                          currentFormat &&
+                          "consistentProperties" in currentFormat &&
+                          !(currentFormat as any).consistentProperties.color
+                            ? "#000000"
+                            : safeFormat.color
+                        }
+                        onChange={(e) =>
+                          onFormatChange({ color: e.target.value })
+                        }
+                        className="w-7 h-7 rounded cursor-pointer"
+                        title="Text Color"
+                      />
+                      <button
+                        type="button"
+                        className="ml-1 px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 border border-gray-300"
+                        onClick={() => onFormatChange({ color: "transparent" })}
+                      >
+                        Transparent
+                      </button>
+                      <span className="text-xs text-gray-500 ml-2">
+                        Opacity
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={
+                            safeFormat.textOpacity !== undefined
+                              ? safeFormat.textOpacity
+                              : 1
+                          }
+                          onChange={(e) => {
+                            onFormatChange({
+                              textOpacity: parseFloat(e.target.value),
+                            });
+                          }}
+                          className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={
+                            safeFormat.textOpacity !== undefined
+                              ? safeFormat.textOpacity
+                              : 1
+                          }
+                          onChange={(e) => {
+                            onFormatChange({
+                              textOpacity: parseFloat(e.target.value),
+                            });
+                          }}
+                          className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                        />
+                      </div>
+                      <span className="text-xs w-8 text-right">
+                        {Math.round(
+                          (safeFormat.textOpacity !== undefined
+                            ? safeFormat.textOpacity
+                            : 1) * 100
+                        )}
+                        %
+                      </span>
+                    </div>
+                  </div>
+                  {/* Background Color Picker with Transparent and Opacity */}
+                  <div className="flex flex-col items-start gap-2">
+                    <label className="text-xs font-medium text-gray-700 mb-1">
+                      Background Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={
+                          !selectedElementId &&
+                          currentFormat &&
+                          "consistentProperties" in currentFormat &&
+                          !(currentFormat as any).consistentProperties
+                            .backgroundColor
+                            ? "#ffffff"
+                            : (isTextField(safeFormat as any) &&
+                                (safeFormat as TextField).backgroundColor) ||
+                              "#ffffff"
+                        }
+                        onChange={(e) =>
+                          onFormatChange({ backgroundColor: e.target.value })
+                        }
+                        className="w-7 h-7 rounded cursor-pointer"
+                        title="Background Color"
+                      />
+                      <button
+                        type="button"
+                        className="ml-1 px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200 border border-gray-300"
+                        onClick={() =>
+                          onFormatChange({ backgroundColor: "transparent" })
+                        }
+                      >
+                        Transparent
+                      </button>
+                      <span className="text-xs text-gray-500 ml-2">
+                        Opacity
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={
+                            safeFormat.backgroundOpacity !== undefined
+                              ? safeFormat.backgroundOpacity
+                              : 1
+                          }
+                          onChange={(e) => {
+                            onFormatChange({
+                              backgroundOpacity: parseFloat(e.target.value),
+                            });
+                          }}
+                          className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={
+                            safeFormat.backgroundOpacity !== undefined
+                              ? safeFormat.backgroundOpacity
+                              : 1
+                          }
+                          onChange={(e) => {
+                            onFormatChange({
+                              backgroundOpacity: parseFloat(e.target.value),
+                            });
+                          }}
+                          className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                        />
+                      </div>
+                      <span className="text-xs w-8 text-right">
+                        {Math.round(
+                          (safeFormat.backgroundOpacity !== undefined
+                            ? safeFormat.backgroundOpacity
+                            : 1) * 100
+                        )}
+                        %
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
-            {/* Border Width - Hidden on small screens */}
-            <div className="hidden md:flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
-              <select
-                className="w-16 sm:w-20 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
-                value={
-                  !selectedElementId &&
-                  currentFormat &&
-                  "consistentProperties" in currentFormat &&
-                  !(currentFormat as any).consistentProperties.borderWidth
-                    ? ""
-                    : safeFormat.borderWidth
-                }
-                onChange={(e) =>
-                  onFormatChange({ borderWidth: Number(e.target.value) })
-                }
-              >
-                <option value="">
-                  {!selectedElementId &&
-                  currentFormat &&
-                  "consistentProperties" in currentFormat &&
-                  !(currentFormat as any).consistentProperties.borderWidth
-                    ? "--"
-                    : "Select width"}
-                </option>
-                {borderWidths.map((width) => (
-                  <option key={width} value={width}>
-                    {width}px
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Border Color & Width Popup Trigger */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className="flex items-center gap-1 p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                  title="Border Color & Width"
+                >
+                  <Square size={18} />
+                  <span className="hidden sm:inline text-xs">Border</span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72">
+                <div className="flex flex-col gap-4">
+                  {/* Border Color Picker */}
+                  <div className="flex flex-col items-start gap-2">
+                    <label className="text-xs font-medium text-gray-700 mb-1">
+                      Border Color
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={
+                          !selectedElementId &&
+                          currentFormat &&
+                          "consistentProperties" in currentFormat &&
+                          !(currentFormat as any).consistentProperties
+                            .borderColor
+                            ? "#000000"
+                            : safeFormat.borderColor
+                        }
+                        onChange={(e) =>
+                          onFormatChange({ borderColor: e.target.value })
+                        }
+                        className="w-7 h-7 rounded cursor-pointer"
+                        title="Border Color"
+                      />
+                    </div>
+                  </div>
+                  {/* Border Width Select */}
+                  <div className="flex flex-col items-start gap-2">
+                    <label className="text-xs font-medium text-gray-700 mb-1">
+                      Border Width
+                    </label>
+                    <select
+                      className="w-24 bg-transparent outline-none p-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 hover:bg-gray-50"
+                      value={
+                        !selectedElementId &&
+                        currentFormat &&
+                        "consistentProperties" in currentFormat &&
+                        !(currentFormat as any).consistentProperties.borderWidth
+                          ? ""
+                          : safeFormat.borderWidth
+                      }
+                      onChange={(e) =>
+                        onFormatChange({ borderWidth: Number(e.target.value) })
+                      }
+                    >
+                      <option value="">
+                        {!selectedElementId &&
+                        currentFormat &&
+                        "consistentProperties" in currentFormat &&
+                        !(currentFormat as any).consistentProperties.borderWidth
+                          ? "--"
+                          : "Select width"}
+                      </option>
+                      {borderWidths.map((width) => (
+                        <option key={width} value={width}>
+                          {width}px
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
             {/* Border Radius Control - Hidden on small screens */}
             <div className="hidden md:flex items-center gap-2 flex-shrink-0">
@@ -1448,7 +1702,7 @@ export const ElementFormatDrawer: React.FC = () => {
       {showBorderRadiusPopup && (
         <div
           ref={borderRadiusPopupRef}
-          className="fixed bg-white shadow-xl rounded-lg border border-gray-200 p-4 min-w-[280px] z-[60] animate-in slide-in-from-top-2 duration-200"
+          className="fixed bg-white shadow-xl rounded-lg border border-gray-200 p-4 min-w-[250px] z-[60] animate-in slide-in-from-top-2 duration-200"
           style={{
             top: borderRadiusButtonRef.current
               ? borderRadiusButtonRef.current.getBoundingClientRect().bottom + 8
@@ -1458,298 +1712,200 @@ export const ElementFormatDrawer: React.FC = () => {
               : 0,
           }}
         >
-          <div className="space-y-4">
-            <div className="text-sm font-medium text-gray-700 mb-3">
-              Border Radius
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                className={`px-3 py-1 rounded-lg text-xs font-medium border ${
+                  borderRadiusMode === "all"
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => {
+                  setBorderRadiusMode("all");
+                  // If switching to all, set all corners to the current borderRadius
+                  onFormatChange({
+                    borderTopLeftRadius: safeFormat.borderRadius,
+                    borderTopRightRadius: safeFormat.borderRadius,
+                    borderBottomLeftRadius: safeFormat.borderRadius,
+                    borderBottomRightRadius: safeFormat.borderRadius,
+                  });
+                }}
+              >
+                All Sides
+              </button>
+              <button
+                className={`px-3 py-1 rounded-lg text-xs font-medium border ${
+                  borderRadiusMode === "specific"
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+                onClick={() => setBorderRadiusMode("specific")}
+              >
+                Specific Sides
+              </button>
             </div>
-
-            {/* Overall Border Radius */}
-            <div className="space-y-2">
-              <label className="text-xs text-gray-600">Overall</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.borderRadius
-                      ? 0
-                      : safeFormat.borderRadius
-                  }
-                  onChange={(e) =>
-                    onFormatChange({
-                      borderRadius: Number(e.target.value),
-                      borderTopLeftRadius: Number(e.target.value),
-                      borderTopRightRadius: Number(e.target.value),
-                      borderBottomLeftRadius: Number(e.target.value),
-                      borderBottomRightRadius: Number(e.target.value),
-                    })
-                  }
-                  className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.borderRadius
-                      ? ""
-                      : safeFormat.borderRadius
-                  }
-                  onChange={(e) =>
-                    onFormatChange({
-                      borderRadius: Number(e.target.value),
-                      borderTopLeftRadius: Number(e.target.value),
-                      borderTopRightRadius: Number(e.target.value),
-                      borderBottomLeftRadius: Number(e.target.value),
-                      borderBottomRightRadius: Number(e.target.value),
-                    })
-                  }
-                  className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                  placeholder={
-                    !selectedElementId &&
-                    currentFormat &&
-                    "consistentProperties" in currentFormat &&
-                    !(currentFormat as any).consistentProperties.borderRadius
-                      ? "--"
-                      : "0"
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Individual Corner Radius */}
-            <div className="grid grid-cols-2 gap-3">
-              {/* Top Left */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Top Left</label>
+            {borderRadiusMode === "all" ? (
+              <div className="flex flex-col gap-2">
+                <label className="text-xs text-gray-600">
+                  Border Radius (All Sides)
+                </label>
                 <div className="flex items-center gap-2">
                   <input
                     type="range"
                     min="0"
                     max="50"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderTopLeftRadius
-                        ? 0
-                        : safeFormat.borderTopLeftRadius
-                    }
-                    onChange={(e) =>
+                    value={safeFormat.borderRadius || 0}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
                       onFormatChange({
-                        borderTopLeftRadius: Number(e.target.value),
-                      })
-                    }
+                        borderRadius: value,
+                        borderTopLeftRadius: value,
+                        borderTopRightRadius: value,
+                        borderBottomLeftRadius: value,
+                        borderBottomRightRadius: value,
+                      });
+                    }}
                     className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                   />
                   <input
                     type="number"
                     min="0"
                     max="100"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderTopLeftRadius
-                        ? ""
-                        : safeFormat.borderTopLeftRadius
-                    }
-                    onChange={(e) =>
+                    value={safeFormat.borderRadius || 0}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
                       onFormatChange({
-                        borderTopLeftRadius: Number(e.target.value),
-                      })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                    placeholder={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderTopLeftRadius
-                        ? "--"
-                        : "0"
-                    }
+                        borderRadius: value,
+                        borderTopLeftRadius: value,
+                        borderTopRightRadius: value,
+                        borderBottomLeftRadius: value,
+                        borderBottomRightRadius: value,
+                      });
+                    }}
+                    className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
                   />
                 </div>
               </div>
-
-              {/* Top Right */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Top Right</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderTopRightRadius
-                        ? 0
-                        : safeFormat.borderTopRightRadius
-                    }
-                    onChange={(e) =>
-                      onFormatChange({
-                        borderTopRightRadius: Number(e.target.value),
-                      })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderTopRightRadius
-                        ? ""
-                        : safeFormat.borderTopRightRadius
-                    }
-                    onChange={(e) =>
-                      onFormatChange({
-                        borderTopRightRadius: Number(e.target.value),
-                      })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                    placeholder={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderTopRightRadius
-                        ? "--"
-                        : "0"
-                    }
-                  />
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-600">Top Left</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={safeFormat.borderTopLeftRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderTopLeftRadius: Number(e.target.value),
+                        })
+                      }
+                      className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={safeFormat.borderTopLeftRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderTopLeftRadius: Number(e.target.value),
+                        })
+                      }
+                      className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-600">Top Right</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={safeFormat.borderTopRightRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderTopRightRadius: Number(e.target.value),
+                        })
+                      }
+                      className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={safeFormat.borderTopRightRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderTopRightRadius: Number(e.target.value),
+                        })
+                      }
+                      className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-600">Bottom Left</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={safeFormat.borderBottomLeftRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderBottomLeftRadius: Number(e.target.value),
+                        })
+                      }
+                      className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={safeFormat.borderBottomLeftRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderBottomLeftRadius: Number(e.target.value),
+                        })
+                      }
+                      className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-600">Bottom Right</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={safeFormat.borderBottomRightRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderBottomRightRadius: Number(e.target.value),
+                        })
+                      }
+                      className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={safeFormat.borderBottomRightRadius || 0}
+                      onChange={(e) =>
+                        onFormatChange({
+                          borderBottomRightRadius: Number(e.target.value),
+                        })
+                      }
+                      className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
+                    />
+                  </div>
                 </div>
               </div>
-
-              {/* Bottom Left */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Bottom Left</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderBottomLeftRadius
-                        ? 0
-                        : safeFormat.borderBottomLeftRadius
-                    }
-                    onChange={(e) =>
-                      onFormatChange({
-                        borderBottomLeftRadius: Number(e.target.value),
-                      })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderBottomLeftRadius
-                        ? ""
-                        : safeFormat.borderBottomLeftRadius
-                    }
-                    onChange={(e) =>
-                      onFormatChange({
-                        borderBottomLeftRadius: Number(e.target.value),
-                      })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                    placeholder={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderBottomLeftRadius
-                        ? "--"
-                        : "0"
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Bottom Right */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Bottom Right</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="50"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderBottomRightRadius
-                        ? 0
-                        : safeFormat.borderBottomRightRadius
-                    }
-                    onChange={(e) =>
-                      onFormatChange({
-                        borderBottomRightRadius: Number(e.target.value),
-                      })
-                    }
-                    className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderBottomRightRadius
-                        ? ""
-                        : safeFormat.borderBottomRightRadius
-                    }
-                    onChange={(e) =>
-                      onFormatChange({
-                        borderBottomRightRadius: Number(e.target.value),
-                      })
-                    }
-                    className="w-8 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
-                    placeholder={
-                      !selectedElementId &&
-                      currentFormat &&
-                      "consistentProperties" in currentFormat &&
-                      !(currentFormat as any).consistentProperties
-                        .borderBottomRightRadius
-                        ? "--"
-                        : "0"
-                    }
-                  />
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}

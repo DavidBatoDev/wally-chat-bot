@@ -543,14 +543,54 @@ export const MemoizedTextBox = memo(
                 fontFamily: textBox.fontFamily,
                 fontWeight: textBox.bold ? "bold" : "normal",
                 fontStyle: textBox.italic ? "italic" : "normal",
-                color: textBox.color || "#000000",
+                color:
+                  textBox.color && textBox.color !== "transparent"
+                    ? textBox.textOpacity !== undefined &&
+                      textBox.textOpacity < 1 &&
+                      textBox.color.startsWith("#")
+                      ? `rgba(${parseInt(
+                          textBox.color.slice(1, 3),
+                          16
+                        )},${parseInt(
+                          textBox.color.slice(3, 5),
+                          16
+                        )},${parseInt(textBox.color.slice(5, 7), 16)},${
+                          textBox.textOpacity
+                        })`
+                      : textBox.color
+                    : `rgba(0,0,0,${
+                        textBox.textOpacity !== undefined
+                          ? textBox.textOpacity
+                          : 1
+                      })`,
                 letterSpacing: `${(textBox.letterSpacing || 0) * scale}px`,
                 textAlign: textBox.textAlign || "left",
                 textDecoration: textBox.underline ? "underline" : "none",
                 lineHeight: textBox.lineHeight || 1.1,
-                backgroundColor: isSelected
-                  ? "rgba(107, 114, 128, 0.1)"
-                  : textBox.backgroundColor || "transparent",
+                backgroundColor:
+                  textBox.backgroundColor &&
+                  textBox.backgroundColor !== "transparent"
+                    ? textBox.backgroundOpacity !== undefined &&
+                      textBox.backgroundOpacity < 1 &&
+                      textBox.backgroundColor.startsWith("#")
+                      ? `rgba(${parseInt(
+                          textBox.backgroundColor.slice(1, 3),
+                          16
+                        )},${parseInt(
+                          textBox.backgroundColor.slice(3, 5),
+                          16
+                        )},${parseInt(
+                          textBox.backgroundColor.slice(5, 7),
+                          16
+                        )},${textBox.backgroundOpacity})`
+                      : textBox.backgroundColor
+                    : isSelected
+                    ? "rgba(107, 114, 128, 0.1)"
+                    : `rgba(255,255,255,${
+                        textBox.backgroundOpacity !== undefined
+                          ? textBox.backgroundOpacity
+                          : 1
+                      })`,
                 border: textBox.borderWidth
                   ? `${textBox.borderWidth * scale}px solid ${
                       textBox.borderColor || "#000000"

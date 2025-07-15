@@ -8,6 +8,7 @@ import {
   Undo2,
   Redo2,
   RotateCcw,
+  FileText,
 } from "lucide-react";
 
 interface PDFEditorHeaderProps {
@@ -21,6 +22,7 @@ interface PDFEditorHeaderProps {
   canUndo: boolean;
   canRedo: boolean;
   onClearAllTranslations?: () => void;
+  onLoadSampleData?: () => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -34,6 +36,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   canUndo,
   canRedo,
   onClearAllTranslations,
+  onLoadSampleData,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -68,6 +71,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-3">
+          {onLoadSampleData && (
+            <Button
+              onClick={onLoadSampleData}
+              variant="outline"
+              size="sm"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+              title="Load sample data"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Load Sample
+            </Button>
+          )}
           <Button
             onClick={onUndo}
             variant="outline"

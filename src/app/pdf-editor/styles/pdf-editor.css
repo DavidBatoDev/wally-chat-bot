@@ -511,6 +511,66 @@
   );
 }
 
+/* General slider styles for range inputs */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e5e7eb;
+  outline: none;
+  border-radius: 2px;
+  height: 2px;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4f46e5;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: #4338ca;
+  transform: scale(1.1);
+}
+
+.slider::-webkit-slider-thumb:active {
+  background: #3730a3;
+  transform: scale(0.95);
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #4f46e5;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.slider::-moz-range-thumb:hover {
+  background: #4338ca;
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-thumb:active {
+  background: #3730a3;
+  transform: scale(0.95);
+}
+
+.slider::-moz-range-track {
+  background: #e5e7eb;
+  height: 2px;
+  border-radius: 2px;
+}
+
 /* Deletion rectangle styles */
 .deletion-rectangle {
   pointer-events: none;

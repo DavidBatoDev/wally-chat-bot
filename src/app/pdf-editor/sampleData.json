@@ -1,0 +1,1237 @@
+{
+    "styled_layout": {
+      "document_info": {
+        "total_pages": 1,
+        "mime_type": "application/pdf",
+        "page_width": 612,
+        "page_height": 792
+      },
+      "pages": [
+        {
+          "page_number": 2,
+          "text": "+\n06:31\n5G 99\nRichard Florendo Roncal\nSorry Di ko ugali yan\nSinusunod ko lang ang utos ng court\nEdited\nSignature at petsa Ng perma lang\nkailangan mo ilagay, pati pag balik niyan\nsa courte di mo kailangan problemahin,\nwala kang babayaran dian\nRichard replied to you\nSorry Di ko ugali yan\nNgayan\nBasta maabot kita hito dda..diri pa yna...\nSorry - Kung ano ang utos ng court yun\nang susundin ko\nWaray pa ako plano hito pagpirma..sorry\nla..maabot kita hito dda..ayaw la yna\nAmo la tak masisiring\nNo worries basta mapatunayan ko sa\ncourt na na serve sayo ang mga\nservices - I have proof na di galing\nsaken ang delay\n↓\nThank you\nAa\n",
+          "entities": [
+            {
+              "type": "chat_time",
+              "text": "06:31",
+              "confidence": 0.999848484992981,
+              "id": "10",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.26791808009147644,
+                    "y": 0.04703296720981598
+                  },
+                  {
+                    "x": 0.3310580253601074,
+                    "y": 0.04703296720981598
+                  },
+                  {
+                    "x": 0.3310580253601074,
+                    "y": 0.060659341514110565
+                  },
+                  {
+                    "x": 0.26791808009147644,
+                    "y": 0.060659341514110565
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0.5,
+                    "g": 0.5,
+                    "b": 0.5
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": null,
+                  "border_color": null
+                },
+                "text_alignment": "center",
+                "line_spacing": 1.2,
+                "line_height": 0.8920884490013119,
+                "text_padding": 4.95,
+                "text_lines": [
+                  "06:31"
+                ],
+                "line_count": 1
+              },
+              "dimensions": {
+                "box_width": 38.64164650440216,
+                "box_height": 10.792088449001312,
+                "box_x": 163.96586501598358,
+                "box_y": 743.9578015208244,
+                "text_y": 744.8498899698258,
+                "coordinates": {
+                  "x1": 163.96586501598358,
+                  "y1": 754.7498899698257,
+                  "x2": 202.60751152038574,
+                  "y2": 754.7498899698257,
+                  "x3": 202.60751152038574,
+                  "y3": 743.9578015208244,
+                  "x4": 163.96586501598358,
+                  "y4": 743.9578015208244
+                }
+              }
+            },
+            {
+              "type": "audience_name",
+              "text": "Richard Florendo Roncal",
+              "confidence": 0.9999439716339111,
+              "id": "7",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.3503981828689575,
+                    "y": 0.09450549632310867
+                  },
+                  {
+                    "x": 0.5807735919952393,
+                    "y": 0.09450549632310867
+                  },
+                  {
+                    "x": 0.5807735919952393,
+                    "y": 0.10769230872392654
+                  },
+                  {
+                    "x": 0.3503981828689575,
+                    "y": 0.10769230872392654
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica-Bold",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": null,
+                  "border_color": null
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": 0.5439554214477536,
+                "text_padding": 4.95,
+                "text_lines": [
+                  "Richard Florendo Roncal"
+                ],
+                "line_count": 1
+              },
+              "dimensions": {
+                "box_width": 140.98975038528442,
+                "box_height": 10.443955421447754,
+                "box_x": 214.443687915802,
+                "box_y": 706.7076914906502,
+                "text_y": 707.251646912098,
+                "coordinates": {
+                  "x1": 214.443687915802,
+                  "y1": 717.1516469120979,
+                  "x2": 355.4334383010864,
+                  "y2": 717.1516469120979,
+                  "x3": 355.4334383010864,
+                  "y3": 706.7076914906502,
+                  "x4": 214.443687915802,
+                  "y4": 706.7076914906502
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Sorry Di ko ugali yan",
+              "confidence": 0.5557023882865906,
+              "id": "14",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.57337886095047,
+                    "y": 0.14769230782985687
+                  },
+                  {
+                    "x": 0.7554038763046265,
+                    "y": 0.14769230782985687
+                  },
+                  {
+                    "x": 0.7554038763046265,
+                    "y": 0.1621977984905243
+                  },
+                  {
+                    "x": 0.57337886095047,
+                    "y": 0.1621977984905243
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -0.3916513967514046,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Sorry Di ko ugali yan"
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 344.9678629016876,
+                  "expanded_y": 657.5993435955047,
+                  "expanded_width": 123.27930939674377,
+                  "expanded_height": 23.3683486032486
+                }
+              },
+              "dimensions": {
+                "box_width": 111.39930939674377,
+                "box_height": 11.488348603248596,
+                "box_x": 350.9078629016876,
+                "box_y": 663.5393435955048,
+                "text_y": 663.1476921987534,
+                "coordinates": {
+                  "x1": 350.9078629016876,
+                  "y1": 675.0276921987534,
+                  "x2": 462.3071722984314,
+                  "y2": 675.0276921987534,
+                  "x3": 462.3071722984314,
+                  "y3": 663.5393435955048,
+                  "x4": 350.9078629016876,
+                  "y4": 663.5393435955048
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Sinusunod ko lang ang utos ng court",
+              "confidence": 0.9998888969421387,
+              "id": "0",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.4277588129043579,
+                    "y": 0.18593406677246094
+                  },
+                  {
+                    "x": 0.755972683429718,
+                    "y": 0.18593406677246094
+                  },
+                  {
+                    "x": 0.755972683429718,
+                    "y": 0.20087912678718567
+                  },
+                  {
+                    "x": 0.4277588129043579,
+                    "y": 0.20087912678718567
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -0.04351246833801348,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Sinusunod ko lang ang utos ng court"
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 255.84839349746704,
+                  "expanded_y": 626.9637315845489,
+                  "expanded_width": 212.74688876152038,
+                  "expanded_height": 23.71648753166199
+                }
+              },
+              "dimensions": {
+                "box_width": 200.86688876152039,
+                "box_height": 11.836487531661987,
+                "box_x": 261.78839349746704,
+                "box_y": 632.903731584549,
+                "text_y": 632.8602191162109,
+                "coordinates": {
+                  "x1": 261.78839349746704,
+                  "y1": 644.7402191162109,
+                  "x2": 462.6552822589874,
+                  "y2": 644.7402191162109,
+                  "x3": 462.6552822589874,
+                  "y3": 632.903731584549,
+                  "x4": 261.78839349746704,
+                  "y4": 632.903731584549
+                }
+              }
+            },
+            {
+              "type": "chat_label",
+              "text": "Edited",
+              "confidence": 0.9999499320983887,
+              "id": "8",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.713879406452179,
+                    "y": 0.22505494952201843
+                  },
+                  {
+                    "x": 0.7576791644096375,
+                    "y": 0.22505494952201843
+                  },
+                  {
+                    "x": 0.7576791644096375,
+                    "y": 0.23296703398227692
+                  },
+                  {
+                    "x": 0.713879406452179,
+                    "y": 0.23296703398227692
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0.6,
+                    "g": 0.6,
+                    "b": 0.6
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": null,
+                  "border_color": null
+                },
+                "text_alignment": "center",
+                "line_spacing": 1.2,
+                "line_height": -3.633629107475281,
+                "text_padding": 4.95,
+                "text_lines": [
+                  "Edited"
+                ],
+                "line_count": 1
+              },
+              "dimensions": {
+                "box_width": 26.8054518699646,
+                "box_height": 6.266370892524719,
+                "box_x": 436.8941967487335,
+                "box_y": 607.4901090860367,
+                "text_y": 603.8564799785614,
+                "coordinates": {
+                  "x1": 436.8941967487335,
+                  "y1": 613.7564799785614,
+                  "x2": 463.6996486186981,
+                  "y2": 613.7564799785614,
+                  "x3": 463.6996486186981,
+                  "y3": 607.4901090860367,
+                  "x4": 436.8941967487335,
+                  "y4": 607.4901090860367
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Signature at petsa Ng perma lang\nkailangan mo ilagay, pati pag balik niyan\nsa courte di mo kailangan problemahin,\nwala kang babayaran dian",
+              "confidence": 0.6390750408172607,
+              "id": "13",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.39192265272140503,
+                    "y": 0.2523076832294464
+                  },
+                  {
+                    "x": 0.7497155666351318,
+                    "y": 0.2523076832294464
+                  },
+                  {
+                    "x": 0.7497155666351318,
+                    "y": 0.3336263597011566
+                  },
+                  {
+                    "x": 0.39192265272140503,
+                    "y": 0.3336263597011566
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": 11.88,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Signature at petsa Ng perma lang",
+                  "kailangan mo ilagay, pati pag balik niyan",
+                  "sa courte di mo kailangan problemahin,",
+                  "wala kang babayaran dian"
+                ],
+                "line_count": 4,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 233.91666346549988,
+                  "expanded_y": 521.8279231166839,
+                  "expanded_width": 230.8492633152008,
+                  "expanded_height": 76.28439176559448
+                }
+              },
+              "dimensions": {
+                "box_width": 218.9692633152008,
+                "box_height": 64.40439176559448,
+                "box_x": 239.85666346549988,
+                "box_y": 527.767923116684,
+                "text_y": 577.7901189994811,
+                "coordinates": {
+                  "x1": 239.85666346549988,
+                  "y1": 592.1723148822784,
+                  "x2": 458.8259267807007,
+                  "y2": 592.1723148822784,
+                  "x3": 458.8259267807007,
+                  "y3": 527.767923116684,
+                  "x4": 239.85666346549988,
+                  "y4": 527.767923116684
+                }
+              }
+            },
+            {
+              "type": "chat_reply",
+              "text": "Richard replied to you",
+              "confidence": 0.999968409538269,
+              "id": "9",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.32992035150527954,
+                    "y": 0.358681321144104
+                  },
+                  {
+                    "x": 0.467576801776886,
+                    "y": 0.358681321144104
+                  },
+                  {
+                    "x": 0.467576801776886,
+                    "y": 0.36879122257232666
+                  },
+                  {
+                    "x": 0.32992035150527954,
+                    "y": 0.36879122257232666
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": null,
+                  "border_color": null
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -1.8929580688476566,
+                "text_padding": 4.95,
+                "text_lines": [
+                  "Richard replied to you"
+                ],
+                "line_count": 1
+              },
+              "dimensions": {
+                "box_width": 84.24574756622314,
+                "box_height": 8.007041931152344,
+                "box_x": 201.91125512123108,
+                "box_y": 499.9173517227173,
+                "text_y": 498.02439365386965,
+                "coordinates": {
+                  "x1": 201.91125512123108,
+                  "y1": 507.92439365386963,
+                  "x2": 286.1570026874542,
+                  "y2": 507.92439365386963,
+                  "x3": 286.1570026874542,
+                  "y3": 499.9173517227173,
+                  "x4": 201.91125512123108,
+                  "y4": 499.9173517227173
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Sorry Di ko ugali yan",
+              "confidence": 0.9976759552955627,
+              "id": "11",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.3060295879840851,
+                    "y": 0.38549450039863586
+                  },
+                  {
+                    "x": 0.467576801776886,
+                    "y": 0.38549450039863586
+                  },
+                  {
+                    "x": 0.467576801776886,
+                    "y": 0.39868131279945374
+                  },
+                  {
+                    "x": 0.3060295879840851,
+                    "y": 0.39868131279945374
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -1.4360445785522469,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Sorry Di ko ugali yan"
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 181.35010784626007,
+                  "expanded_y": 470.30440026283264,
+                  "expanded_width": 110.74689484119415,
+                  "expanded_height": 22.323955421447756
+                }
+              },
+              "dimensions": {
+                "box_width": 98.86689484119415,
+                "box_height": 10.443955421447754,
+                "box_x": 187.29010784626007,
+                "box_y": 476.24440026283264,
+                "text_y": 474.8083556842804,
+                "coordinates": {
+                  "x1": 187.29010784626007,
+                  "y1": 486.6883556842804,
+                  "x2": 286.1570026874542,
+                  "y2": 486.6883556842804,
+                  "x3": 286.1570026874542,
+                  "y3": 476.24440026283264,
+                  "x4": 187.29010784626007,
+                  "y4": 476.24440026283264
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Ngayan",
+              "confidence": 0.9999009370803833,
+              "id": "1",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.3071672320365906,
+                    "y": 0.42153847217559814
+                  },
+                  {
+                    "x": 0.37258246541023254,
+                    "y": 0.42153847217559814
+                  },
+                  {
+                    "x": 0.37258246541023254,
+                    "y": 0.43516483902931213
+                  },
+                  {
+                    "x": 0.3071672320365906,
+                    "y": 0.43516483902931213
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -1.0879174518585213,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Ngayan"
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 182.04634600639343,
+                  "expanded_y": 441.4094474887848,
+                  "expanded_width": 51.91412282466889,
+                  "expanded_height": 22.672082548141482
+                }
+              },
+              "dimensions": {
+                "box_width": 40.034122824668884,
+                "box_height": 10.79208254814148,
+                "box_x": 187.98634600639343,
+                "box_y": 447.3494474887848,
+                "text_y": 446.2615300369263,
+                "coordinates": {
+                  "x1": 187.98634600639343,
+                  "y1": 458.14153003692627,
+                  "x2": 228.02046883106232,
+                  "y2": 458.14153003692627,
+                  "x3": 228.02046883106232,
+                  "y3": 447.3494474887848,
+                  "x4": 187.98634600639343,
+                  "y4": 447.3494474887848
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Basta maabot kita hito dda..diri pa yna...",
+              "confidence": 0.9991067051887512,
+              "id": "2",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.3077360689640045,
+                    "y": 0.46945056319236755
+                  },
+                  {
+                    "x": 0.6660978198051453,
+                    "y": 0.46945056319236755
+                  },
+                  {
+                    "x": 0.6660978198051453,
+                    "y": 0.4843955934047699
+                  },
+                  {
+                    "x": 0.3077360689640045,
+                    "y": 0.4843955934047699
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -0.04353607177734453,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Basta maabot kita hito dda..diri pa yna..."
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 182.39447420597077,
+                  "expanded_y": 402.41869002342224,
+                  "expanded_width": 231.19739151477813,
+                  "expanded_height": 23.71646392822266
+                }
+              },
+              "dimensions": {
+                "box_width": 219.31739151477814,
+                "box_height": 11.836463928222656,
+                "box_x": 188.33447420597076,
+                "box_y": 408.35869002342224,
+                "text_y": 408.3151539516449,
+                "coordinates": {
+                  "x1": 188.33447420597076,
+                  "y1": 420.1951539516449,
+                  "x2": 407.6518657207489,
+                  "y2": 420.1951539516449,
+                  "x3": 407.6518657207489,
+                  "y3": 408.35869002342224,
+                  "x4": 188.33447420597076,
+                  "y4": 408.35869002342224
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Sorry - Kung ano ang utos ng court yun\nang susundin ko",
+              "confidence": 0.9998217821121216,
+              "id": "3",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.3964732587337494,
+                    "y": 0.5191208720207214
+                  },
+                  {
+                    "x": 0.7502844333648682,
+                    "y": 0.5191208720207214
+                  },
+                  {
+                    "x": 0.7502844333648682,
+                    "y": 0.5556043982505798
+                  },
+                  {
+                    "x": 0.3964732587337494,
+                    "y": 0.5556043982505798
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": 8.507476387023925,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Sorry - Kung ano ang utos ng court yun",
+                  "ang susundin ko"
+                ],
+                "line_count": 2,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 236.70163434505463,
+                  "expanded_y": 346.0213165855408,
+                  "expanded_width": 228.41243887424469,
+                  "expanded_height": 40.774952774047854
+                }
+              },
+              "dimensions": {
+                "box_width": 216.5324388742447,
+                "box_height": 28.89495277404785,
+                "box_x": 242.64163434505463,
+                "box_y": 351.96131658554077,
+                "text_y": 368.9762693595886,
+                "coordinates": {
+                  "x1": 242.64163434505463,
+                  "y1": 380.8562693595886,
+                  "x2": 459.1740732192993,
+                  "y2": 380.8562693595886,
+                  "x3": 459.1740732192993,
+                  "y3": 351.96131658554077,
+                  "x4": 242.64163434505463,
+                  "y4": 351.96131658554077
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Waray pa ako plano hito pagpirma..sorry\nla..maabot kita hito dda..ayaw la yna",
+              "confidence": 0.9993631839752197,
+              "id": "4",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.30659839510917664,
+                    "y": 0.5898901224136353
+                  },
+                  {
+                    "x": 0.6695107817649841,
+                    "y": 0.5898901224136353
+                  },
+                  {
+                    "x": 0.6695107817649841,
+                    "y": 0.6272527575492859
+                  },
+                  {
+                    "x": 0.30659839510917664,
+                    "y": 0.6272527575492859
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": 8.85560351371765,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Waray pa ako plano hito pagpirma..sorry",
+                  "la..maabot kita hito dda..ayaw la yna"
+                ],
+                "line_count": 2,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 181.6982178068161,
+                  "expanded_y": 289.2758160209656,
+                  "expanded_width": 233.98238063335418,
+                  "expanded_height": 41.471207027435305
+                }
+              },
+              "dimensions": {
+                "box_width": 222.1023806333542,
+                "box_height": 29.591207027435303,
+                "box_x": 187.6382178068161,
+                "box_y": 295.2158160209656,
+                "text_y": 312.9270230484009,
+                "coordinates": {
+                  "x1": 187.6382178068161,
+                  "y1": 324.8070230484009,
+                  "x2": 409.7405984401703,
+                  "y2": 324.8070230484009,
+                  "x3": 409.7405984401703,
+                  "y3": 295.2158160209656,
+                  "x4": 187.6382178068161,
+                  "y4": 295.2158160209656
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Amo la tak masisiring",
+              "confidence": 0.9996042251586914,
+              "id": "5",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.3060295879840851,
+                    "y": 0.6509889960289001
+                  },
+                  {
+                    "x": 0.4960182011127472,
+                    "y": 0.6509889960289001
+                  },
+                  {
+                    "x": 0.4960182011127472,
+                    "y": 0.6650549173355103
+                  },
+                  {
+                    "x": 0.3060295879840851,
+                    "y": 0.6650549173355103
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -0.7397903251647957,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Amo la tak masisiring"
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 181.35010784626007,
+                  "expanded_y": 259.3365054702759,
+                  "expanded_width": 128.1530312347412,
+                  "expanded_height": 23.020209674835208
+                }
+              },
+              "dimensions": {
+                "box_width": 116.27303123474121,
+                "box_height": 11.140209674835205,
+                "box_x": 187.29010784626007,
+                "box_y": 265.2765054702759,
+                "text_y": 264.5367151451111,
+                "coordinates": {
+                  "x1": 187.29010784626007,
+                  "y1": 276.4167151451111,
+                  "x2": 303.5631390810013,
+                  "y2": 276.4167151451111,
+                  "x3": 303.5631390810013,
+                  "y3": 265.2765054702759,
+                  "x4": 187.29010784626007,
+                  "y4": 265.2765054702759
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "No worries basta mapatunayan ko sa\ncourt na na serve sayo ang mga\nservices - I have proof na di galing\nsaken ang delay",
+              "confidence": 0.992185115814209,
+              "id": "12",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.4209328889846802,
+                    "y": 0.7006593346595764
+                  },
+                  {
+                    "x": 0.7508532404899597,
+                    "y": 0.7006593346595764
+                  },
+                  {
+                    "x": 0.7508532404899597,
+                    "y": 0.7819780111312866
+                  },
+                  {
+                    "x": 0.4209328889846802,
+                    "y": 0.7819780111312866
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": 11.88,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "No worries basta mapatunayan ko sa",
+                  "court na na serve sayo ang mga",
+                  "services - I have proof na di galing",
+                  "saken ang delay"
+                ],
+                "line_count": 4,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 251.67092805862427,
+                  "expanded_y": 166.733415184021,
+                  "expanded_width": 213.79125512123107,
+                  "expanded_height": 76.28439176559448
+                }
+              },
+              "dimensions": {
+                "box_width": 201.91125512123108,
+                "box_height": 64.40439176559448,
+                "box_x": 257.61092805862427,
+                "box_y": 172.673415184021,
+                "text_y": 222.69561106681826,
+                "coordinates": {
+                  "x1": 257.61092805862427,
+                  "y1": 237.07780694961548,
+                  "x2": 459.52218317985535,
+                  "y2": 237.07780694961548,
+                  "x3": 459.52218317985535,
+                  "y3": 172.673415184021,
+                  "x4": 257.61092805862427,
+                  "y4": 172.673415184021
+                }
+              }
+            },
+            {
+              "type": "MessengerTextBox",
+              "text": "Thank you",
+              "confidence": 0.9997370839118958,
+              "id": "6",
+              "bounding_poly": {
+                "vertices": [
+                  {
+                    "x": 0.6638225317001343,
+                    "y": 0.8360439538955688
+                  },
+                  {
+                    "x": 0.7554038763046265,
+                    "y": 0.8360439538955688
+                  },
+                  {
+                    "x": 0.7554038763046265,
+                    "y": 0.8505494594573975
+                  },
+                  {
+                    "x": 0.6638225317001343,
+                    "y": 0.8505494594573975
+                  }
+                ]
+              },
+              "styling": {
+                "font_size": 9.9,
+                "font_family": "Helvetica",
+                "colors": {
+                  "fill_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "stroke_color": {
+                    "r": 0,
+                    "g": 0,
+                    "b": 0
+                  },
+                  "background_color": {
+                    "r": 0.95,
+                    "g": 0.95,
+                    "b": 0.95,
+                    "a": 0.5
+                  },
+                  "border_color": {
+                    "r": 0.7,
+                    "g": 0.7,
+                    "b": 0.7
+                  }
+                },
+                "text_alignment": "left",
+                "line_spacing": 1.2,
+                "line_height": -0.39163959503173906,
+                "text_padding": 5.94,
+                "text_lines": [
+                  "Thank you"
+                ],
+                "line_count": 1,
+                "background": {
+                  "border_radius": 4.95,
+                  "expanded_x": 400.3193894004822,
+                  "expanded_y": 112.42482810974121,
+                  "expanded_width": 67.92778289794921,
+                  "expanded_height": 23.368360404968264
+                }
+              },
+              "dimensions": {
+                "box_width": 56.04778289794922,
+                "box_height": 11.488360404968262,
+                "box_x": 406.2593894004822,
+                "box_y": 118.36482810974121,
+                "text_y": 117.97318851470948,
+                "coordinates": {
+                  "x1": 406.2593894004822,
+                  "y1": 129.85318851470947,
+                  "x2": 462.3071722984314,
+                  "y2": 129.85318851470947,
+                  "x3": 462.3071722984314,
+                  "y3": 118.36482810974121,
+                  "x4": 406.2593894004822,
+                  "y4": 118.36482810974121
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
