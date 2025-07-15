@@ -759,7 +759,7 @@ export const ElementFormatDrawer: React.FC = () => {
                               textOpacity: parseFloat(e.target.value),
                             });
                           }}
-                          className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                          className="h-1 w-14 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                         />
                         <input
                           type="number"
@@ -779,14 +779,6 @@ export const ElementFormatDrawer: React.FC = () => {
                           className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
                         />
                       </div>
-                      <span className="text-xs w-8 text-right">
-                        {Math.round(
-                          (safeFormat.textOpacity !== undefined
-                            ? safeFormat.textOpacity
-                            : 1) * 100
-                        )}
-                        %
-                      </span>
                     </div>
                   </div>
                   {/* Background Color Picker with Transparent and Opacity */}
@@ -842,7 +834,7 @@ export const ElementFormatDrawer: React.FC = () => {
                               backgroundOpacity: parseFloat(e.target.value),
                             });
                           }}
-                          className="h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+                          className="h-1 w-14 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
                         />
                         <input
                           type="number"
@@ -862,14 +854,6 @@ export const ElementFormatDrawer: React.FC = () => {
                           className="w-12 px-1 py-0.5 text-xs border border-gray-300 rounded text-center"
                         />
                       </div>
-                      <span className="text-xs w-8 text-right">
-                        {Math.round(
-                          (safeFormat.backgroundOpacity !== undefined
-                            ? safeFormat.backgroundOpacity
-                            : 1) * 100
-                        )}
-                        %
-                      </span>
                     </div>
                   </div>
                 </div>

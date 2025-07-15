@@ -2193,6 +2193,15 @@ export const PDFEditorContent: React.FC = () => {
               paddingRight: selectedTextBox.paddingRight || 0,
               paddingBottom: selectedTextBox.paddingBottom || 0,
               paddingLeft: selectedTextBox.paddingLeft || 0,
+              // Opacity fields
+              textOpacity:
+                selectedTextBox.textOpacity !== undefined
+                  ? selectedTextBox.textOpacity
+                  : 1,
+              backgroundOpacity:
+                selectedTextBox.backgroundOpacity !== undefined
+                  ? selectedTextBox.backgroundOpacity
+                  : 1,
               // State
               isEditing: selectedTextBox.isEditing || false,
             };
@@ -4042,6 +4051,7 @@ export const PDFEditorContent: React.FC = () => {
   // Transform page to textbox functionality
   const handleTransformPageToTextbox = useCallback(
     async (pageNumber: number) => {
+      console.log("Transforming page to textboxes for page:", pageNumber);
       const previousView = viewState.currentView; // Store current view
 
       try {
@@ -4432,43 +4442,45 @@ export const PDFEditorContent: React.FC = () => {
                 .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
             };
 
-            // Handle both old and new color property names
-            // For background colors, handle RGBA properly
-            const backgroundColor = colors.background_color
-              ? (() => {
-                  const color = colors.background_color;
-                  if (!color) return "transparent";
+            // --- Background color logic (keep as before) ---
+            let backgroundColor = "transparent";
+            if (colors.background_color) {
+              const color = colors.background_color;
+              if (typeof color === "object" && "r" in color) {
+                const { r, g, b, a = 1 } = color;
+                if (a >= 1) {
+                  backgroundColor = `#${Math.round(r * 255)
+                    .toString(16)
+                    .padStart(2, "0")}${Math.round(g * 255)
+                    .toString(16)
+                    .padStart(2, "0")}${Math.round(b * 255)
+                    .toString(16)
+                    .padStart(2, "0")}`;
+                }
+              } else if (Array.isArray(color)) {
+                const [r, g, b, a = 1] = color;
+                if (a >= 1) {
+                  backgroundColor = `#${Math.round(r * 255)
+                    .toString(16)
+                    .padStart(2, "0")}${Math.round(g * 255)
+                    .toString(16)
+                    .padStart(2, "0")}${Math.round(b * 255)
+                    .toString(16)
+                    .padStart(2, "0")}`;
+                }
+              }
+            }
 
-                  // Handle RGBA object format {r, g, b, a}
-                  if (typeof color === "object" && "r" in color) {
-                    const { r, g, b, a = 1 } = color;
-                    // If alpha is less than 1, return transparent
-                    if (a < 1) return "transparent";
-                    return `#${Math.round(r * 255)
-                      .toString(16)
-                      .padStart(2, "0")}${Math.round(g * 255)
-                      .toString(16)
-                      .padStart(2, "0")}${Math.round(b * 255)
-                      .toString(16)
-                      .padStart(2, "0")}`;
-                  }
-
-                  // Handle array format [r, g, b, a]
-                  if (Array.isArray(color)) {
-                    const [r, g, b, a = 1] = color;
-                    if (a < 1) return "transparent";
-                    return `#${Math.round(r * 255)
-                      .toString(16)
-                      .padStart(2, "0")}${Math.round(g * 255)
-                      .toString(16)
-                      .padStart(2, "0")}${Math.round(b * 255)
-                      .toString(16)
-                      .padStart(2, "0")}`;
-                  }
-
-                  return "transparent";
-                })()
-              : "transparent";
+            // --- Border color and width logic fix ---
+            let borderColor = "#000000";
+            let borderWidth = 0;
+            if (colors.border_color) {
+              // Convert decimal RGBA to hex
+              const borderHex = rgbToHex(colors.border_color);
+              // Convert hex to rgb string (opacity 1)
+              borderColor = colorToRgba(borderHex, 1);
+              borderWidth = 1;
+            }
 
             // --- BEGIN: COLOR CONVERSION RESULTS DEBUG ---
             console.log("Color conversion results:", {
@@ -4482,10 +4494,6 @@ export const PDFEditorContent: React.FC = () => {
               colors.fill_color || colors.text_color
                 ? rgbToHex(colors.fill_color || colors.text_color)
                 : "#000000";
-            const borderColor = colors.border_color
-              ? rgbToHex(colors.border_color)
-              : "#000000";
-            const borderWidth = colors.border_color ? 1 : 0;
             const borderRadius =
               styling.background?.border_radius ||
               getStyleValue("border_radius", 0);
@@ -4590,9 +4598,9 @@ export const PDFEditorContent: React.FC = () => {
               letterSpacing: getStyleValue("letter_spacing", 0),
               lineHeight: getStyleValue("line_spacing", 1.2),
               rotation: 0,
-              backgroundColor: backgroundColor || "transparent",
-              borderColor: borderColor || "#000000",
-              borderWidth: borderWidth || 0,
+              backgroundColor: backgroundColor,
+              borderColor: borderColor,
+              borderWidth: borderWidth,
               borderRadius: borderRadius || 0,
               borderTopLeftRadius: getStyleValue(
                 "border_top_left_radius",
