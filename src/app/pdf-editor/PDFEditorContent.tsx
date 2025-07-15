@@ -387,7 +387,6 @@ export const PDFEditorContent: React.FC = () => {
         // Only create command if there are actual changes
         if (Object.keys(after).length > 0) {
           if (isOngoingOperation) {
-            console.log("TextBox ongoing operation:", { id, updates: after });
             // For ongoing operations, update the state but don't create undo commands yet
             updateTextBox(id, after);
 
@@ -414,15 +413,8 @@ export const PDFEditorContent: React.FC = () => {
 
             // Set debounce timer to create undo command after operation completes
             debounceTimersRef.current[id] = setTimeout(() => {
-              console.log("TextBox debounce timer fired for:", id);
               const operation = ongoingOperationsRef.current[id];
               if (operation) {
-                console.log(
-                  "Creating undo command for textbox:",
-                  id,
-                  operation.startState,
-                  after
-                );
                 handleUpdateTextBoxWithUndo(
                   id,
                   operation.startState,
@@ -443,7 +435,6 @@ export const PDFEditorContent: React.FC = () => {
             }, 500); // 500ms debounce
           } else {
             // For immediate operations, create undo command right away
-            console.log("TextBox immediate operation:", { id, before, after });
             handleUpdateTextBoxWithUndo(
               id,
               before,
@@ -544,7 +535,6 @@ export const PDFEditorContent: React.FC = () => {
         // Only create command if there are actual changes
         if (Object.keys(after).length > 0) {
           if (isOngoingOperation) {
-            console.log("Shape ongoing operation:", { id, updates: after });
             // For ongoing operations, update the state but don't create undo commands yet
             updateShape(id, after);
 
@@ -571,7 +561,6 @@ export const PDFEditorContent: React.FC = () => {
 
             // Set debounce timer to create undo command after operation completes
             debounceTimersRef.current[id] = setTimeout(() => {
-              console.log("Shape debounce timer fired for:", id);
               const operation = ongoingOperationsRef.current[id];
               if (operation) {
                 const allShapes = [
@@ -585,12 +574,6 @@ export const PDFEditorContent: React.FC = () => {
                   )
                     ? "original"
                     : "translated";
-                  console.log(
-                    "Creating undo command for shape:",
-                    id,
-                    operation.startState,
-                    after
-                  );
                   handleUpdateShapeWithUndo(
                     id,
                     operation.startState,
@@ -612,7 +595,6 @@ export const PDFEditorContent: React.FC = () => {
             }, 300); // 300ms debounce for drag operations
           } else {
             // For immediate operations, create undo command right away
-            console.log("Shape immediate operation:", { id, before, after });
             const allShapes = [
               ...elementCollections.originalShapes,
               ...elementCollections.translatedShapes,
@@ -795,16 +777,6 @@ export const PDFEditorContent: React.FC = () => {
       opacity: number,
       targetView?: "original" | "translated"
     ) => {
-      console.log("Adding deletion rectangle with undo:", {
-        x,
-        y,
-        width,
-        height,
-        page,
-        view,
-        background,
-        opacity,
-      });
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
@@ -820,17 +792,15 @@ export const PDFEditorContent: React.FC = () => {
           opacity
         );
         idRef.current = newId;
-        console.log("Deletion rectangle added with ID:", newId);
         return newId;
       };
       const remove = (id: string) => {
-        console.log("Removing deletion rectangle with ID:", id);
         deleteDeletionRectangle(id, view);
       };
       const cmd = new AddDeletionRectangleCommand(add, remove, idRef);
       cmd.execute();
       history.push(page, view, cmd);
-      console.log("Command pushed to history for page:", page, "view:", view);
+
       return idRef.current;
     },
     [addDeletionRectangle, deleteDeletionRectangle, history]
@@ -838,7 +808,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleDeleteDeletionRectangleWithUndo = useCallback(
     (id: string, view: ViewMode) => {
-      console.log("Deleting deletion rectangle with undo:", { id, view });
+      ;
       // Find the deletion rectangle to delete
       const allDeletionRectangles = [
         ...elementCollections.originalDeletionRectangles,
@@ -846,7 +816,7 @@ export const PDFEditorContent: React.FC = () => {
       ];
       const rect = allDeletionRectangles.find((r) => r.id === id);
       if (!rect) {
-        console.log("Deletion rectangle not found:", id);
+        
         return;
       }
 
@@ -857,14 +827,14 @@ export const PDFEditorContent: React.FC = () => {
         ? "original"
         : "translated";
 
-      console.log("Deletion rectangle found:", rect, "view:", rectView);
+      
 
       const remove = (id: string) => {
-        console.log("Executing remove for deletion rectangle:", id);
+        
         deleteDeletionRectangle(id, view);
       };
       const add = (rect: DeletionRectangle) => {
-        console.log("Executing add for deletion rectangle:", rect);
+        
         addDeletionRectangle(
           rect.x,
           rect.y,
@@ -879,12 +849,7 @@ export const PDFEditorContent: React.FC = () => {
       const cmd = new DeleteDeletionRectangleCommand(remove, add, rect);
       cmd.execute();
       history.push(rect.page, rectView, cmd);
-      console.log(
-        "Delete command pushed to history for page:",
-        rect.page,
-        "view:",
-        rectView
-      );
+      
     },
     [elementCollections, deleteDeletionRectangle, addDeletionRectangle, history]
   );
@@ -901,16 +866,7 @@ export const PDFEditorContent: React.FC = () => {
       view: ViewMode,
       targetView?: "original" | "translated"
     ) => {
-      console.log("Adding image with undo:", {
-        src,
-        x,
-        y,
-        width,
-        height,
-        page,
-        view,
-        targetView,
-      });
+      
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
@@ -919,22 +875,17 @@ export const PDFEditorContent: React.FC = () => {
         // Use the direct function from element management to avoid recursion
         newId = addImage(src, x, y, width, height, page, finalView);
         idRef.current = newId;
-        console.log("Image added with ID:", newId, "to view:", finalView);
+        
         return newId;
       };
       const remove = (id: string) => {
-        console.log("Removing image with ID:", id);
+        
         deleteImage(id, view);
       };
       const cmd = new AddImageCommand(add, remove, idRef);
       cmd.execute();
       history.push(page, view, cmd);
-      console.log(
-        "Image command pushed to history for page:",
-        page,
-        "view:",
-        view
-      );
+      
       return idRef.current;
     },
     [addImage, deleteImage, history]
@@ -942,7 +893,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleDeleteImageWithUndo = useCallback(
     (id: string, view: ViewMode) => {
-      console.log("Deleting image with undo:", { id, view });
+      
       // Find the image to delete
       const allImages = [
         ...elementCollections.originalImages,
@@ -950,7 +901,7 @@ export const PDFEditorContent: React.FC = () => {
       ];
       const image = allImages.find((img) => img.id === id);
       if (!image) {
-        console.log("Image not found:", id);
+        
         return;
       }
 
@@ -961,14 +912,14 @@ export const PDFEditorContent: React.FC = () => {
         ? "original"
         : "translated";
 
-      console.log("Image found:", image, "view:", imageView);
+      
 
       const remove = (id: string) => {
-        console.log("Executing remove for image:", id);
+        
         deleteImage(id, view);
       };
       const add = (image: ImageType) => {
-        console.log("Executing add for image:", image);
+        
         addImage(
           image.src,
           image.x,
@@ -982,12 +933,7 @@ export const PDFEditorContent: React.FC = () => {
       const cmd = new DeleteImageCommand(remove, add, image);
       cmd.execute();
       history.push(image.page, imageView, cmd);
-      console.log(
-        "Delete image command pushed to history for page:",
-        image.page,
-        "view:",
-        imageView
-      );
+      
 
       // Clear selection state if the deleted image was selected
       if (selectedElementId === id) {
@@ -1112,7 +1058,7 @@ export const PDFEditorContent: React.FC = () => {
   // Handle multi-selection move events
   const handleMultiSelectionMove = useCallback(
     (event: CustomEvent) => {
-      console.log("Multi-selection move event received:", event.detail);
+      
       const { deltaX, deltaY } = event.detail;
 
       // Move all selected elements
@@ -1166,7 +1112,7 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   const handleMultiSelectionMoveEnd = useCallback(() => {
-    console.log("Multi-selection move end event received");
+    
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -1184,7 +1130,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMultiSelectDragStart = useCallback(
     (id: string) => {
-      console.log("Multi-select drag start for element:", id);
+      
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
         // Store initial positions of all selected elements
@@ -1203,10 +1149,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMultiSelectDrag = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
-      console.log("Multi-select drag for element:", id, "delta:", {
-        deltaX,
-        deltaY,
-      });
+      
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
         // Move all selected elements by the same delta with boundary constraints
@@ -1274,10 +1217,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMultiSelectDragStop = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
-      console.log("Multi-select drag stop for element:", id, "delta:", {
-        deltaX,
-        deltaY,
-      });
+      
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
         // Update original positions for next drag
@@ -1413,14 +1353,10 @@ export const PDFEditorContent: React.FC = () => {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      console.log("Wheel event detected:", {
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        deltaY: e.deltaY,
-      });
+      
 
       if (e.ctrlKey || e.metaKey) {
-        console.log("Ctrl+wheel detected - preventing default and zooming");
+        
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1448,7 +1384,7 @@ export const PDFEditorContent: React.FC = () => {
     // Also try adding to document as backup
     const documentHandler = (e: WheelEvent) => {
       if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
-        console.log("Document-level wheel handler triggered");
+        
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -1580,13 +1516,10 @@ export const PDFEditorContent: React.FC = () => {
           e.preventDefault();
           const now = Date.now();
           if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
-            console.log("Undo debounced - too soon since last undo");
+            
             return;
           }
-          console.log(
-            "Ctrl+Z pressed, canUndo:",
-            history.canUndo(documentState.currentPage, viewState.currentView)
-          );
+          
           if (
             history.canUndo(documentState.currentPage, viewState.currentView)
           ) {
@@ -1605,13 +1538,10 @@ export const PDFEditorContent: React.FC = () => {
           e.preventDefault();
           const now = Date.now();
           if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
-            console.log("Redo debounced - too soon since last redo");
+            
             return;
           }
-          console.log(
-            "Ctrl+Y/Ctrl+Shift+Z pressed, canRedo:",
-            history.canRedo(documentState.currentPage, viewState.currentView)
-          );
+          
           if (
             history.canRedo(documentState.currentPage, viewState.currentView)
           ) {
@@ -1733,11 +1663,7 @@ export const PDFEditorContent: React.FC = () => {
   // Format change handler for ElementFormatDrawer
   const handleFormatChange = useCallback(
     (format: any) => {
-      console.log("handleFormatChange called with:", format, {
-        selectedElementId,
-        selectedElementType,
-        multiSelectionCount: editorState.multiSelection.selectedElements.length,
-      });
+      
 
       // Check if we're in multi-selection mode
       const isMultiSelection =
@@ -1849,7 +1775,7 @@ export const PDFEditorContent: React.FC = () => {
         if ("borderRadius" in format)
           updates.borderRadius = format.borderRadius;
 
-        console.log("Updating shape with:", updates);
+        
         updateShapeWithUndo(selectedElementId, updates);
       } else if (selectedElementType === "image" && selectedElementId) {
         // Handle image format changes
@@ -1896,7 +1822,7 @@ export const PDFEditorContent: React.FC = () => {
           updates.borderRadius = format.borderRadius;
         if ("rotation" in format) updates.rotation = format.rotation;
 
-        console.log("Updating image with:", updates);
+        
         updateImage(selectedElementId, updates);
 
         // Update the current format to keep drawer in sync
@@ -2153,7 +2079,7 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedTextBox) {
-            console.log("Selected text box:", selectedTextBox);
+            
 
             // Ensure all required properties exist with safe defaults
             const safeTextBox = {
@@ -2206,13 +2132,13 @@ export const PDFEditorContent: React.FC = () => {
               isEditing: selectedTextBox.isEditing || false,
             };
 
-            console.log("Setting safeTextBox format:", safeTextBox);
+            
 
             // Update the format drawer state
             setCurrentFormat(safeTextBox);
             setIsDrawerOpen(true);
           } else {
-            console.warn("Selected text box not found:", selectedElementId);
+          
             // Close drawer if selected text box is not found
             setIsDrawerOpen(false);
             setSelectedElementId(null);
@@ -2229,7 +2155,7 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedShape) {
-            console.log("Selected shape:", selectedShape);
+            
 
             const shapeFormat = {
               id: selectedShape.id,
@@ -2247,11 +2173,11 @@ export const PDFEditorContent: React.FC = () => {
               borderRadius: selectedShape.borderRadius || 0,
             };
 
-            console.log("Setting shape format:", shapeFormat);
+            
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
           } else {
-            console.warn("Selected shape not found:", selectedElementId);
+          
             setIsDrawerOpen(false);
             setSelectedElementId(null);
             setCurrentFormat(null);
@@ -2267,11 +2193,11 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedImage) {
-            console.log("Selected image:", selectedImage);
+            
             setCurrentFormat(selectedImage);
             setIsDrawerOpen(true);
           } else {
-            console.warn("Selected image not found:", selectedElementId);
+          
             setIsDrawerOpen(false);
             setSelectedElementId(null);
             setCurrentFormat(null);
@@ -2298,7 +2224,7 @@ export const PDFEditorContent: React.FC = () => {
 
   // Set the format change handler when it changes
   useEffect(() => {
-    console.log("Setting onFormatChange handler:", handleFormatChange);
+    
     if (typeof handleFormatChange === "function") {
       setOnFormatChange(handleFormatChange);
     } else {
@@ -2353,10 +2279,7 @@ export const PDFEditorContent: React.FC = () => {
 
   // Debug: Log selection state
   useEffect(() => {
-    console.log("Selection state:", {
-      isSelectionMode: editorState.isSelectionMode,
-      multiSelection: editorState.multiSelection,
-    });
+    
   }, [editorState.isSelectionMode, editorState.multiSelection]);
 
   // Tool handlers
@@ -2385,7 +2308,7 @@ export const PDFEditorContent: React.FC = () => {
     switch (tool) {
       case "selection":
         if (enabled) {
-          console.log("Enabling selection mode");
+          
           setEditorState((prev) => ({ ...prev, isSelectionMode: true }));
         }
         break;
@@ -2959,11 +2882,7 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   const handleErasureDrawEnd = useCallback(() => {
-    console.log("handleErasureDrawEnd called", {
-      isDrawingErasure: erasureState.isDrawingErasure,
-      erasureDrawStart: erasureState.erasureDrawStart,
-      erasureDrawEnd: erasureState.erasureDrawEnd,
-    });
+    
 
     // Always reset the drawing state, regardless of conditions
     const wasDrawing = erasureState.isDrawingErasure;
@@ -2982,14 +2901,14 @@ export const PDFEditorContent: React.FC = () => {
 
     // Only process if we were actually drawing
     if (!wasDrawing || !hadStart || !hadEnd) {
-      console.log("Early return - not drawing or no start/end point");
+      
       return;
     }
 
     const width = Math.abs(hadEnd.x - hadStart.x);
     const height = Math.abs(hadEnd.y - hadStart.y);
 
-    console.log("Drawing dimensions", { width, height });
+    
 
     if (width > 5 && height > 5) {
       const x = Math.min(hadStart.x, hadEnd.x);
@@ -3007,12 +2926,7 @@ export const PDFEditorContent: React.FC = () => {
         opacity: erasureState.erasureSettings.opacity,
       };
 
-      console.log(
-        "Creating deletion rectangle",
-        deletionRect,
-        "for view:",
-        targetView
-      );
+      
 
       // Use the undo-enabled addDeletionRectangle function
       // In split view, use the target view; otherwise use current view
@@ -3031,7 +2945,7 @@ export const PDFEditorContent: React.FC = () => {
       );
     }
 
-    console.log("Erasure drawing completed and state reset");
+    
   }, [
     erasureState,
     documentState.currentPage,
@@ -3069,10 +2983,7 @@ export const PDFEditorContent: React.FC = () => {
   // Multi-element selection handlers
   const handleMultiSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      console.log("Multi-selection mouse down", {
-        isSelectionMode: editorState.isSelectionMode,
-        button: e.button,
-      });
+      
 
       if (!editorState.isSelectionMode) return;
       if (e.button !== 0) return; // Only left click
@@ -3110,7 +3021,7 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth
       );
 
-      console.log("Selection start coordinates", { x, y, clickedView });
+      
 
       setEditorState((prev) => ({
         ...prev,
@@ -3178,11 +3089,7 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth
       );
 
-      console.log("Selection move coordinates", {
-        x,
-        y,
-        targetView: editorState.multiSelection.targetView,
-      });
+      
 
       setEditorState((prev) => ({
         ...prev,
@@ -3236,15 +3143,7 @@ export const PDFEditorContent: React.FC = () => {
         const translatedShapes = getCurrentShapes("translated");
         const translatedImages = getCurrentImages("translated");
 
-        console.log("Finding elements in selection", {
-          selectionRect,
-          originalTextBoxesCount: originalTextBoxes.length,
-          originalShapesCount: originalShapes.length,
-          originalImagesCount: originalImages.length,
-          translatedTextBoxesCount: translatedTextBoxes.length,
-          translatedShapesCount: translatedShapes.length,
-          translatedImagesCount: translatedImages.length,
-        });
+        
 
         // Combine elements from both views
         const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
@@ -3258,7 +3157,7 @@ export const PDFEditorContent: React.FC = () => {
           allImages
         );
 
-        console.log("Selected elements", selectedElements);
+        
 
         // Update selection (merge with existing if Ctrl/Cmd held)
         if (e.ctrlKey || e.metaKey) {
@@ -3327,15 +3226,11 @@ export const PDFEditorContent: React.FC = () => {
 
   // Move selected elements - start moving mode
   const handleMoveSelection = useCallback(() => {
-    console.log("=== handleMoveSelection called - starting move mode ===");
-    console.log("Current state:", {
-      isSelectionMode: editorState.isSelectionMode,
-      selectedElementsCount: editorState.multiSelection.selectedElements.length,
-      isMovingSelection: editorState.multiSelection.isMovingSelection,
-    });
+    
+    
 
     setEditorState((prev) => {
-      console.log("Setting isMovingSelection to true");
+      
       return {
         ...prev,
         multiSelection: {
@@ -3402,7 +3297,7 @@ export const PDFEditorContent: React.FC = () => {
   // Handle drag stop for selection rectangle
   const handleDragStopSelection = useCallback(
     (deltaX: number, deltaY: number) => {
-      console.log("=== handleDragStopSelection called ===", { deltaX, deltaY });
+      
 
       // Move all selected elements by the final delta
       moveSelectedElements(
@@ -3458,23 +3353,20 @@ export const PDFEditorContent: React.FC = () => {
   // Move selection mouse handlers
   const handleMoveSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      console.log("handleMoveSelectionMouseDown called", {
-        isMovingSelection: editorState.multiSelection.isMovingSelection,
-        button: e.button,
-      });
+      
 
       if (!editorState.multiSelection.isMovingSelection) {
-        console.log("Not in moving selection mode, returning");
+        
         return;
       }
       if (e.button !== 0) {
-        console.log("Not left click, returning");
+        
         return; // Only left click
       }
 
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) {
-        console.log("No document rect, returning");
+        
         return;
       }
 
@@ -3488,11 +3380,7 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth
       );
 
-      console.log("Move selection mouse down", {
-        x,
-        y,
-        targetView: editorState.multiSelection.targetView,
-      });
+      
 
       setEditorState((prev) => ({
         ...prev,
@@ -3515,16 +3403,13 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleMoveSelectionMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      console.log("handleMoveSelectionMouseMove called", {
-        isMovingSelection: editorState.multiSelection.isMovingSelection,
-        hasMoveStart: !!editorState.multiSelection.moveStart,
-      });
+      
 
       if (
         !editorState.multiSelection.isMovingSelection ||
         !editorState.multiSelection.moveStart
       ) {
-        console.log("Not in moving mode or no move start, returning");
+        
         return;
       }
 
@@ -3544,21 +3429,10 @@ export const PDFEditorContent: React.FC = () => {
       const deltaX = x - editorState.multiSelection.moveStart.x;
       const deltaY = y - editorState.multiSelection.moveStart.y;
 
-      console.log("Move selection mouse move", {
-        x,
-        y,
-        deltaX,
-        deltaY,
-        targetView: editorState.multiSelection.targetView,
-      });
+      
 
       // Move all selected elements
-      console.log("Calling moveSelectedElements with", {
-        selectedElementsCount:
-          editorState.multiSelection.selectedElements.length,
-        deltaX,
-        deltaY,
-      });
+      
 
       moveSelectedElements(
         editorState.multiSelection.selectedElements,
@@ -3608,7 +3482,7 @@ export const PDFEditorContent: React.FC = () => {
   const handleMoveSelectionMouseUp = useCallback(() => {
     if (!editorState.multiSelection.isMovingSelection) return;
 
-    console.log("Move selection mouse up");
+    
 
     setEditorState((prev) => ({
       ...prev,
@@ -3623,7 +3497,7 @@ export const PDFEditorContent: React.FC = () => {
   // Document click handler
   const handleDocumentContainerClick = useCallback(
     (e: React.MouseEvent) => {
-      console.log("Document click handler called");
+      
       if (!documentRef.current) return;
 
       const target = e.target as HTMLElement;
@@ -4051,11 +3925,11 @@ export const PDFEditorContent: React.FC = () => {
   // Transform page to textbox functionality
   const handleTransformPageToTextbox = useCallback(
     async (pageNumber: number) => {
-      console.log("Transforming page to textboxes for page:", pageNumber);
+      
       const previousView = viewState.currentView; // Store current view
 
       try {
-        console.log("Starting transform for page:", pageNumber);
+        
 
         // Set transforming state
         setPageState((prev) => ({
@@ -4160,116 +4034,69 @@ export const PDFEditorContent: React.FC = () => {
         );
         formData.append("frontend_scale", documentState.scale.toString());
 
-        console.log("Sending frontend dimensions to backend:", {
-          pageWidth: documentState.pageWidth,
-          pageHeight: documentState.pageHeight,
-          scale: documentState.scale,
-        });
+        
 
         // Call the OCR API using our centralized API
         const { processFile } = await import("@/lib/api");
 
-        console.log("=== OCR API REQUEST DEBUG ===");
-        console.log("FormData details:", {
-          fileSize: blob.size,
-          fileName: `page-${pageNumber}.png`,
-          formDataEntries: Array.from(formData.entries()).map(
-            ([key, value]) => ({
-              key,
-              valueType: typeof value,
-              valueSize: value instanceof Blob ? value.size : "N/A",
-            })
-          ),
-        });
-        console.log("Blob details:", {
-          size: blob.size,
-          type: blob.type,
-        });
+        
+        
+        
 
         let data;
         try {
-          console.log("Calling processFile API...");
+          
           data = await processFile(formData);
-          console.log("=== OCR API SUCCESS ===");
-          console.log("OCR API response:", data);
-          console.log("Response keys:", Object.keys(data));
+          
+          
+          
 
           // --- BEGIN: DETAILED RESPONSE DEBUG ---
-          console.log("=== DETAILED RESPONSE DEBUG ===");
+          
           if (data.styled_layout) {
-            console.log("Styled layout structure:", {
-              hasDocumentInfo: !!data.styled_layout.document_info,
-              hasPages: !!data.styled_layout.pages,
-              pagesCount: data.styled_layout.pages?.length || 0,
-            });
+            
 
             if (
               data.styled_layout.pages &&
               data.styled_layout.pages.length > 0
             ) {
               const firstPage = data.styled_layout.pages[0];
-              console.log("First page structure:", {
-                hasEntities: !!firstPage.entities,
-                entitiesCount: firstPage.entities?.length || 0,
-              });
+              
 
               if (firstPage.entities && firstPage.entities.length > 0) {
-                console.log("Sample entity structure:", firstPage.entities[0]);
-                console.log(
-                  "All entities:",
-                  firstPage.entities.map((entity: any, index: number) => ({
-                    index,
-                    type: entity.type,
-                    text: entity.text?.substring(0, 50) + "...",
-                    hasStyling: !!entity.styling,
-                    hasDimensions: !!entity.dimensions,
-                    colors: entity.styling?.colors || "No colors",
-                  }))
-                );
+                
+                
               }
             }
           }
-          console.log("=== END DETAILED RESPONSE DEBUG ===");
+          
           // --- END: DETAILED RESPONSE DEBUG ---
 
           // --- BEGIN: PAGE DIMENSIONS DEBUG ---
-          console.log("=== FRONTEND PAGE DIMENSIONS DEBUG ===");
-          console.log("Frontend documentState dimensions:", {
-            pageWidth: documentState.pageWidth,
-            pageHeight: documentState.pageHeight,
-            scale: documentState.scale,
-          });
+          
+          
 
           if (data.styled_layout) {
-            console.log("Styled layout keys:", Object.keys(data.styled_layout));
+            
             if (data.styled_layout.document_info) {
-              console.log(
-                "Backend returned document_info:",
-                data.styled_layout.document_info
-              );
-              console.log("Backend page dimensions:", {
-                width: data.styled_layout.document_info.page_width,
-                height: data.styled_layout.document_info.page_height,
-              });
+              
+              
             }
             if (data.styled_layout.pages) {
-              console.log("Pages count:", data.styled_layout.pages.length);
+              
             }
           }
 
           if (data.layout) {
-            console.log("Layout keys:", Object.keys(data.layout));
+            
             if (data.layout.document_info) {
-              console.log(
-                "Backend layout document_info:",
-                data.layout.document_info
-              );
+              
             }
             if (data.layout.pages) {
-              console.log("Layout pages count:", data.layout.pages.length);
+              
             }
           }
-          console.log("=== END FRONTEND PAGE DIMENSIONS DEBUG ===");
+          
           // --- END: PAGE DIMENSIONS DEBUG ---
         } catch (error: any) {
           console.error("=== OCR API ERROR ===");
@@ -4319,7 +4146,7 @@ export const PDFEditorContent: React.FC = () => {
         }
 
         if (entities.length > 0) {
-          console.log(`Processing ${entities.length} entities`);
+          
           // Convert entities to textboxes
           const newTextBoxes: TextField[] = [];
 
@@ -4347,39 +4174,17 @@ export const PDFEditorContent: React.FC = () => {
             // Use the Y coordinate directly from backend (already in frontend coordinate system)
             y = entity.dimensions.box_y;
 
-            console.log(
-              `Using dimensions object: x=${x}, y=${y}, w=${width}, h=${height}`
-            );
-            console.log(
-              `Backend provided coordinates: box_x=${entity.dimensions.box_x}, box_y=${entity.dimensions.box_y}`
-            );
-            console.log(
-              `Document dimensions: pageWidth=${pdfPageWidth}, pageHeight=${pdfPageHeight}`
-            );
+            
+            
+            
 
             // --- BEGIN: COORDINATE CONVERSION DEBUG ---
-            console.log("=== COORDINATE CONVERSION DEBUG ===");
-            console.log("Backend entity.dimensions:", {
-              box_x: entity.dimensions.box_x,
-              box_y: entity.dimensions.box_y,
-              box_width: entity.dimensions.box_width,
-              box_height: entity.dimensions.box_height,
-            });
-            console.log("PDF page dimensions:", {
-              width: pdfPageWidth,
-              height: pdfPageHeight,
-            });
-            console.log(
-              "Using backend coordinates directly (no Y-flip needed):",
-              {
-                x: entity.dimensions.box_x,
-                y: entity.dimensions.box_y,
-                width: entity.dimensions.box_width,
-                height: entity.dimensions.box_height,
-              }
-            );
-            console.log("Final coordinates:", { x, y, width, height });
-            console.log("=== END COORDINATE CONVERSION DEBUG ===");
+            
+            
+            
+            
+            
+            
             // --- END: COORDINATE CONVERSION DEBUG ---
 
             // Extract styling information from styled entity (handle both old and new formats)
@@ -4387,12 +4192,10 @@ export const PDFEditorContent: React.FC = () => {
             const colors = styling.colors || {};
 
             // --- BEGIN: COLOR PROCESSING DEBUG ---
-            console.log(
-              `=== COLOR PROCESSING DEBUG for entity "${entity.type}" ===`
-            );
-            console.log("Raw styling object:", styling);
-            console.log("Raw colors object:", colors);
-            console.log("Entity text:", entity.text?.substring(0, 50) + "...");
+            
+            
+            
+            
             // --- END: COLOR PROCESSING DEBUG ---
 
             // Handle both old format (style) and new format (styling)
@@ -4483,11 +4286,7 @@ export const PDFEditorContent: React.FC = () => {
             }
 
             // --- BEGIN: COLOR CONVERSION RESULTS DEBUG ---
-            console.log("Color conversion results:", {
-              backgroundColor,
-              background_color_input: colors.background_color,
-              textColor_input: colors.fill_color || colors.text_color,
-            });
+            
             // --- END: COLOR CONVERSION RESULTS DEBUG ---
 
             const textColor =
@@ -4559,18 +4358,12 @@ export const PDFEditorContent: React.FC = () => {
               width = maxX - minX;
               height = maxY - minY;
 
-              console.log(
-                `Fallback calculation from vertices: x=${x}, y=${y}, w=${width}, h=${height}`
-              );
+              
 
-              console.log(
-                `Fallback calculation from vertices: x=${x}, y=${y}, w=${width}, h=${height}`
-              );
+              
             } else {
               // Use the dimensions we calculated above
-              console.log(
-                `Using entity.dimensions: x=${x}, y=${y}, w=${width}, h=${height}`
-              );
+              
             }
 
             // Add border space if present
@@ -4626,25 +4419,8 @@ export const PDFEditorContent: React.FC = () => {
             };
 
             // --- BEGIN: TEXTBOX CREATION DEBUG ---
-            console.log("Created textbox:", {
-              id: newTextBox.id,
-              type: entity.type,
-              text: newTextBox.value.substring(0, 50) + "...",
-              position: { x: newTextBox.x, y: newTextBox.y },
-              size: { width: newTextBox.width, height: newTextBox.height },
-              colors: {
-                text: newTextBox.color,
-                background: newTextBox.backgroundColor,
-                border: newTextBox.borderColor,
-              },
-              styling: {
-                fontSize: newTextBox.fontSize,
-                fontFamily: newTextBox.fontFamily,
-                bold: newTextBox.bold,
-                textAlign: newTextBox.textAlign,
-              },
-            });
-            console.log("=== END COLOR PROCESSING DEBUG ===");
+            
+            
             // --- END: TEXTBOX CREATION DEBUG ---
 
             newTextBoxes.push(newTextBox);
@@ -4696,9 +4472,7 @@ export const PDFEditorContent: React.FC = () => {
             isTransforming: false,
           }));
 
-          console.log(
-            `Transformed ${newTextBoxes.length} entities into textboxes`
-          );
+          
           toast.success(
             `Transformed ${newTextBoxes.length} entities into textboxes`
           );
@@ -4706,7 +4480,7 @@ export const PDFEditorContent: React.FC = () => {
           // Switch back to the previous view
           setViewState((prev) => ({ ...prev, currentView: previousView }));
         } else {
-          console.warn("No entities found in API response");
+        
           toast.error("No text entities found in the document");
         }
       } catch (error) {
@@ -4882,34 +4656,17 @@ export const PDFEditorContent: React.FC = () => {
 
   // Add effect to monitor drawer state for debugging
   useEffect(() => {
-    console.log("Drawer state changed:", {
-      isDrawerOpen,
-      selectedElementType,
-      currentFormat,
-      selectedElementId,
-    });
+    
   }, [isDrawerOpen, selectedElementType, currentFormat, selectedElementId]);
 
   // Add effect to monitor multi-selection state for debugging
   useEffect(() => {
-    console.log("Multi-selection state changed:", {
-      selectedElementsCount: editorState.multiSelection.selectedElements.length,
-      isDrawingSelection: editorState.multiSelection.isDrawingSelection,
-      isMovingSelection: editorState.multiSelection.isMovingSelection,
-      selectionBounds: editorState.multiSelection.selectionBounds,
-    });
+    
   }, [editorState.multiSelection]);
 
   // Add effect to monitor page translation state for debugging
   useEffect(() => {
-    console.log("Page translation state changed:", {
-      currentPage: documentState.currentPage,
-      isPageTranslated: pageState.isPageTranslated.get(
-        documentState.currentPage
-      ),
-      allTranslatedPages: Array.from(pageState.isPageTranslated.entries()),
-      isTransforming: pageState.isTransforming,
-    });
+    
   }, [
     pageState.isPageTranslated,
     pageState.isTransforming,
@@ -5048,13 +4805,10 @@ export const PDFEditorContent: React.FC = () => {
         onUndo={() => {
           const now = Date.now();
           if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
-            console.log("Undo button debounced - too soon since last undo");
+            
             return;
           }
-          console.log(
-            "Undo button clicked, canUndo:",
-            history.canUndo(documentState.currentPage, viewState.currentView)
-          );
+          
           if (
             history.canUndo(documentState.currentPage, viewState.currentView)
           ) {
@@ -5066,13 +4820,9 @@ export const PDFEditorContent: React.FC = () => {
         onRedo={() => {
           const now = Date.now();
           if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
-            console.log("Redo button debounced - too soon since last redo");
             return;
           }
-          console.log(
-            "Redo button clicked, canRedo:",
-            history.canRedo(documentState.currentPage, viewState.currentView)
-          );
+          
           if (
             history.canRedo(documentState.currentPage, viewState.currentView)
           ) {
@@ -5323,14 +5073,6 @@ export const PDFEditorContent: React.FC = () => {
                   } ${viewState.isCtrlPressed ? "cursor-zoom-in" : ""}`}
                   onClick={handleDocumentContainerClick}
                   onMouseDown={(e) => {
-                    console.log("Document mouse down event", {
-                      isTextSelectionMode: editorState.isTextSelectionMode,
-                      isErasureMode: erasureState.isErasureMode,
-                      isSelectionMode: editorState.isSelectionMode,
-                      isMovingSelection:
-                        editorState.multiSelection.isMovingSelection,
-                    });
-
                     if (
                       editorState.isTextSelectionMode ||
                       erasureState.isErasureMode ||
