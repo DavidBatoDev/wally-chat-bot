@@ -4650,54 +4650,8 @@ export const PDFEditorContent: React.FC = () => {
       // Import html2canvas dynamically
       const html2canvas = (await import("html2canvas")).default;
 
-      // Create PDF document with letter size
+      // Create PDF document
       const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage([612, 792]); // Letter size: 8.5" x 11" in points
-      const { width: pageWidth, height: pageHeight } = page.getSize();
-
-      // Calculate layout - split page into two halves
-      const halfWidth = pageWidth / 2;
-      const margin = 20;
-      const contentWidth = halfWidth - margin * 2;
-      const contentHeight = pageHeight - margin * 2;
-
-      // Embed fonts
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-      // Add section labels - centered in their sections
-      const labelFontSize = 20;
-      const originalLabel = "ORIGINAL";
-      const translatedLabel = "TRANSLATED";
-
-      // Calculate label widths for centering
-      const originalLabelWidth = font.widthOfTextAtSize(
-        originalLabel,
-        labelFontSize
-      );
-      const translatedLabelWidth = font.widthOfTextAtSize(
-        translatedLabel,
-        labelFontSize
-      );
-
-      // Center ORIGINAL in the left half
-      const originalX = (halfWidth - originalLabelWidth) / 2;
-      page.drawText(originalLabel, {
-        x: originalX,
-        y: pageHeight - 60,
-        size: labelFontSize,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
-
-      // Center TRANSLATED in the right half
-      const translatedX = halfWidth + (halfWidth - translatedLabelWidth) / 2;
-      page.drawText(translatedLabel, {
-        x: translatedX,
-        y: pageHeight - 60,
-        size: labelFontSize,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
 
       // Function to capture view as image for a specific page
       const captureViewAsImage = async (
@@ -4898,171 +4852,236 @@ export const PDFEditorContent: React.FC = () => {
         return canvas;
       };
 
-      // Determine which pages to capture
-      const currentPage = documentState.currentPage;
-      const nextPage = currentPage + 1;
-      const hasNextPage = nextPage <= documentState.numPages;
+      // Capture all pages in the document
+      const totalPages = documentState.numPages;
+      const allCaptures = [];
 
-      // Capture all views (current page + next page if available)
-      const captures = [];
+      // Process pages in pairs (2 pages per PDF page)
+      for (let pageIndex = 1; pageIndex <= totalPages; pageIndex += 2) {
+        const page1 = pageIndex;
+        const page2 = pageIndex + 1;
+        const hasPage2 = page2 <= totalPages;
 
-      // Current page - Original view
-      captures.push({
-        canvas: await captureViewAsImage("original", currentPage),
-        type: "original",
-        page: currentPage,
-        position: "top-left",
-      });
+        const pageCaptures = [];
 
-      // Current page - Translated view
-      captures.push({
-        canvas: await captureViewAsImage("translated", currentPage),
-        type: "translated",
-        page: currentPage,
-        position: "top-right",
-      });
-
-      if (hasNextPage) {
-        // Next page - Original view
-        captures.push({
-          canvas: await captureViewAsImage("original", nextPage),
+        // Page 1 - Original view
+        pageCaptures.push({
+          canvas: await captureViewAsImage("original", page1),
           type: "original",
-          page: nextPage,
-          position: "bottom-left",
+          page: page1,
+          position: "top-left",
         });
 
-        // Next page - Translated view
-        captures.push({
-          canvas: await captureViewAsImage("translated", nextPage),
+        // Page 1 - Translated view
+        pageCaptures.push({
+          canvas: await captureViewAsImage("translated", page1),
           type: "translated",
-          page: nextPage,
-          position: "bottom-right",
-        });
-      }
-
-      // Convert all captures to images and embed in PDF
-      const embeddedImages = [];
-
-      for (const capture of captures) {
-        const dataUrl = capture.canvas.toDataURL("image/png", 1.0);
-        const imageBytes = await fetch(dataUrl).then((res) =>
-          res.arrayBuffer()
-        );
-        const embeddedImage = await pdfDoc.embedPng(imageBytes);
-        embeddedImages.push({
-          ...capture,
-          image: embeddedImage,
-          dims: embeddedImage.scale(1),
-        });
-      }
-
-      // Calculate grid layout - optimized for better space utilization
-      const gridMargin = 10; // Reduced margin for more content space
-      const gridSpacing = 8; // Reduced spacing for tighter layout
-      const labelSpace = 15; // Space reserved for labels
-      const availableWidth = pageWidth - gridMargin * 2;
-      const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
-
-      // For 2x2 grid, each quadrant gets half the available space minus spacing
-      const quadrantWidth = (availableWidth - gridSpacing) / 2;
-      const quadrantHeight = (availableHeight - gridSpacing) / 2;
-
-      // Draw each image in its grid position
-      for (const imageData of embeddedImages) {
-        const { image, dims, position, type, page: pageNumber } = imageData;
-
-        // Calculate scaling to fit in quadrant while maintaining aspect ratio
-        const scaleX = quadrantWidth / dims.width;
-        const scaleY = quadrantHeight / dims.height;
-        const imageScale = Math.min(scaleX, scaleY);
-
-        const scaledWidth = dims.width * imageScale;
-        const scaledHeight = dims.height * imageScale;
-
-        // Calculate position based on grid layout
-        let x, y;
-        switch (position) {
-          case "top-left":
-            x = gridMargin;
-            y = pageHeight - labelSpace - quadrantHeight;
-            break;
-          case "top-right":
-            x = gridMargin + quadrantWidth + gridSpacing;
-            y = pageHeight - labelSpace - quadrantHeight;
-            break;
-          case "bottom-left":
-            x = gridMargin;
-            y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
-            break;
-          case "bottom-right":
-            x = gridMargin + quadrantWidth + gridSpacing;
-            y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
-            break;
-          default:
-            x = gridMargin;
-            y = pageHeight - labelSpace - quadrantHeight;
-        }
-
-        // Center the image in its quadrant
-        x += (quadrantWidth - scaledWidth) / 2;
-        y += (quadrantHeight - scaledHeight) / 2;
-
-        // Draw the image
-        page.drawImage(image, {
-          x: x,
-          y: y,
-          width: scaledWidth,
-          height: scaledHeight,
+          page: page1,
+          position: "top-right",
         });
 
-        // Add label for each quadrant - simplified labels
-        let label = "";
-        let labelX = 0;
-        let labelY = 0;
+        if (hasPage2) {
+          // Page 2 - Original view
+          pageCaptures.push({
+            canvas: await captureViewAsImage("original", page2),
+            type: "original",
+            page: page2,
+            position: "bottom-left",
+          });
 
-        if (position === "top-left") {
-          label = "ORIGINAL";
-          labelX = x;
-          labelY = y + scaledHeight + 5;
-        } else if (position === "top-right") {
-          label = "TRANSLATED";
-          labelX = x;
-          labelY = y + scaledHeight + 5;
-        }
-        // No labels for bottom quadrants
-
-        if (label) {
-          const labelFontSize = 10;
-          page.drawText(label, {
-            x: labelX,
-            y: labelY,
-            size: labelFontSize,
-            font: font,
-            color: rgb(0.4, 0.4, 0.4),
+          // Page 2 - Translated view
+          pageCaptures.push({
+            canvas: await captureViewAsImage("translated", page2),
+            type: "translated",
+            page: page2,
+            position: "bottom-right",
           });
         }
+
+        allCaptures.push({
+          pageNumber: Math.ceil(pageIndex / 2),
+          captures: pageCaptures,
+          page1,
+          page2: hasPage2 ? page2 : null,
+        });
       }
 
-      // Add grid separator lines
-      const centerX = gridMargin + quadrantWidth + gridSpacing / 2;
-      const centerY =
-        pageHeight - labelSpace - quadrantHeight - gridSpacing / 2;
+      // Process each page pair and create PDF pages
+      for (const pageData of allCaptures) {
+        const { pageNumber, captures, page1, page2 } = pageData;
 
-      // Vertical line
-      page.drawLine({
-        start: { x: centerX, y: gridMargin },
-        end: { x: centerX, y: pageHeight - labelSpace },
-        thickness: 1,
-        color: rgb(0.8, 0.8, 0.8),
-      });
+        // Convert captures to images and embed in PDF
+        const embeddedImages = [];
 
-      // Horizontal line
-      page.drawLine({
-        start: { x: gridMargin, y: centerY },
-        end: { x: pageWidth - gridMargin, y: centerY },
-        thickness: 1,
-        color: rgb(0.8, 0.8, 0.8),
-      });
+        for (const capture of captures) {
+          const dataUrl = capture.canvas.toDataURL("image/png", 1.0);
+          const imageBytes = await fetch(dataUrl).then((res) =>
+            res.arrayBuffer()
+          );
+          const embeddedImage = await pdfDoc.embedPng(imageBytes);
+          embeddedImages.push({
+            ...capture,
+            image: embeddedImage,
+            dims: embeddedImage.scale(1),
+          });
+        }
+
+        // Create a new page for this pair
+        const page = pdfDoc.addPage([612, 792]); // Letter size: 8.5" x 11" in points
+        const { width: pageWidth, height: pageHeight } = page.getSize();
+
+        // Calculate layout - split page into two halves
+        const halfWidth = pageWidth / 2;
+        const margin = 20;
+        const contentWidth = halfWidth - margin * 2;
+        const contentHeight = pageHeight - margin * 2;
+
+        // Embed fonts
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+        // Add section labels - centered in their sections
+        const labelFontSize = 20;
+        const originalLabel = "ORIGINAL";
+        const translatedLabel = "TRANSLATED";
+
+        // Calculate label widths for centering
+        const originalLabelWidth = font.widthOfTextAtSize(
+          originalLabel,
+          labelFontSize
+        );
+        const translatedLabelWidth = font.widthOfTextAtSize(
+          translatedLabel,
+          labelFontSize
+        );
+
+        // Center ORIGINAL in the left half
+        const originalX = (halfWidth - originalLabelWidth) / 2;
+        page.drawText(originalLabel, {
+          x: originalX,
+          y: pageHeight - 60,
+          size: labelFontSize,
+          font: font,
+          color: rgb(0, 0, 0),
+        });
+
+        // Center TRANSLATED in the right half
+        const translatedX = halfWidth + (halfWidth - translatedLabelWidth) / 2;
+        page.drawText(translatedLabel, {
+          x: translatedX,
+          y: pageHeight - 60,
+          size: labelFontSize,
+          font: font,
+          color: rgb(0, 0, 0),
+        });
+
+        // Calculate grid layout - optimized for better space utilization
+        const gridMargin = 10; // Reduced margin for more content space
+        const gridSpacing = 8; // Reduced spacing for tighter layout
+        const labelSpace = 15; // Space reserved for labels
+        const availableWidth = pageWidth - gridMargin * 2;
+        const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
+
+        // For 2x2 grid, each quadrant gets half the available space minus spacing
+        const quadrantWidth = (availableWidth - gridSpacing) / 2;
+        const quadrantHeight = (availableHeight - gridSpacing) / 2;
+
+        // Draw each image in its grid position
+        for (const imageData of embeddedImages) {
+          const { image, dims, position, type, page: pageNumber } = imageData;
+
+          // Calculate scaling to fit in quadrant while maintaining aspect ratio
+          const scaleX = quadrantWidth / dims.width;
+          const scaleY = quadrantHeight / dims.height;
+          const imageScale = Math.min(scaleX, scaleY);
+
+          const scaledWidth = dims.width * imageScale;
+          const scaledHeight = dims.height * imageScale;
+
+          // Calculate position based on grid layout
+          let x, y;
+          switch (position) {
+            case "top-left":
+              x = gridMargin;
+              y = pageHeight - labelSpace - quadrantHeight;
+              break;
+            case "top-right":
+              x = gridMargin + quadrantWidth + gridSpacing;
+              y = pageHeight - labelSpace - quadrantHeight;
+              break;
+            case "bottom-left":
+              x = gridMargin;
+              y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
+              break;
+            case "bottom-right":
+              x = gridMargin + quadrantWidth + gridSpacing;
+              y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
+              break;
+            default:
+              x = gridMargin;
+              y = pageHeight - labelSpace - quadrantHeight;
+          }
+
+          // Center the image in its quadrant
+          x += (quadrantWidth - scaledWidth) / 2;
+          y += (quadrantHeight - scaledHeight) / 2;
+
+          // Draw the image
+          page.drawImage(image, {
+            x: x,
+            y: y,
+            width: scaledWidth,
+            height: scaledHeight,
+          });
+
+          // Add label for each quadrant - simplified labels
+          let label = "";
+          let labelX = 0;
+          let labelY = 0;
+
+          if (position === "top-left") {
+            label = "ORIGINAL";
+            labelX = x;
+            labelY = y + scaledHeight + 5;
+          } else if (position === "top-right") {
+            label = "TRANSLATED";
+            labelX = x;
+            labelY = y + scaledHeight + 5;
+          }
+          // No labels for bottom quadrants
+
+          if (label) {
+            const labelFontSize = 10;
+            page.drawText(label, {
+              x: labelX,
+              y: labelY,
+              size: labelFontSize,
+              font: font,
+              color: rgb(0.4, 0.4, 0.4),
+            });
+          }
+        }
+
+        // Add grid separator lines
+        const centerX = gridMargin + quadrantWidth + gridSpacing / 2;
+        const centerY =
+          pageHeight - labelSpace - quadrantHeight - gridSpacing / 2;
+
+        // Vertical line
+        page.drawLine({
+          start: { x: centerX, y: gridMargin },
+          end: { x: centerX, y: pageHeight - labelSpace },
+          thickness: 1,
+          color: rgb(0.8, 0.8, 0.8),
+        });
+
+        // Horizontal line
+        page.drawLine({
+          start: { x: gridMargin, y: centerY },
+          end: { x: pageWidth - gridMargin, y: centerY },
+          thickness: 1,
+          color: rgb(0.8, 0.8, 0.8),
+        });
+      }
 
       // Save the PDF
       const pdfBytes = await pdfDoc.save();
@@ -5071,9 +5090,7 @@ export const PDFEditorContent: React.FC = () => {
 
       const link = document.createElement("a");
       link.href = url;
-      link.download = `pdf-editor-export-pages-${currentPage}${
-        hasNextPage ? `-${nextPage}` : ""
-      }.pdf`;
+      link.download = `pdf-editor-export-all-pages.pdf`;
       link.click();
 
       URL.revokeObjectURL(url);
