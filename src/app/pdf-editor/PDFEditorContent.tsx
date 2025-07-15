@@ -1696,6 +1696,40 @@ export const PDFEditorContent: React.FC = () => {
     UNDO_REDO_DEBOUNCE_MS,
   ]);
 
+  // Helper function to calculate new textbox dimensions when font properties change
+  const calculateTextboxDimensionsForFontChange = useCallback(
+    (textBox: TextField, newFontSize?: number, newFontFamily?: string) => {
+      const padding = {
+        top: textBox.paddingTop || 0,
+        right: textBox.paddingRight || 0,
+        bottom: textBox.paddingBottom || 0,
+        left: textBox.paddingLeft || 0,
+      };
+
+      // Use new values or fall back to current values
+      const fontSize = newFontSize || textBox.fontSize || 12;
+      const fontFamily = newFontFamily || textBox.fontFamily || "Arial";
+
+      // Calculate new dimensions based on the new font properties
+      const { width: newTextWidth, height: newTextHeight } = measureText(
+        textBox.value,
+        fontSize,
+        fontFamily,
+        textBox.letterSpacing || 0,
+        textBox.width, // Use current width as maxWidth to maintain width if text fits
+        padding
+      );
+
+      // Add some padding for better visual appearance
+      const paddingBuffer = 4;
+      const newWidth = Math.max(newTextWidth + paddingBuffer, textBox.width);
+      const newHeight = Math.max(newTextHeight + paddingBuffer, textBox.height);
+
+      return { width: newWidth, height: newHeight };
+    },
+    []
+  );
+
   // Format change handler for ElementFormatDrawer
   const handleFormatChange = useCallback(
     (format: any) => {
@@ -1722,7 +1756,34 @@ export const PDFEditorContent: React.FC = () => {
           // Apply text format changes to all selected textboxes
           selectedElements.forEach((element) => {
             if (element.type === "textbox") {
-              updateTextBoxWithUndo(element.id, format);
+              // Get current textbox state
+              const currentTextBox = getCurrentTextBoxes(
+                viewState.currentView
+              ).find((tb) => tb.id === element.id);
+
+              if (
+                currentTextBox &&
+                ("fontSize" in format || "fontFamily" in format)
+              ) {
+                // If font properties are changing, calculate new dimensions
+                const { width: newWidth, height: newHeight } =
+                  calculateTextboxDimensionsForFontChange(
+                    currentTextBox,
+                    format.fontSize,
+                    format.fontFamily
+                  );
+
+                // Update both font properties and dimensions
+                const updates = {
+                  ...format,
+                  width: newWidth,
+                  height: newHeight,
+                };
+
+                updateTextBoxWithUndo(element.id, updates);
+              } else {
+                updateTextBoxWithUndo(element.id, format);
+              }
             }
           });
         } else if (selectedElementType === "shape") {
@@ -1747,7 +1808,33 @@ export const PDFEditorContent: React.FC = () => {
         }
       } else if (selectedElementType === "textbox" && selectedElementId) {
         // Handle single text field format changes
-        updateTextBoxWithUndo(selectedElementId, format);
+        const currentTextBox = getCurrentTextBoxes(viewState.currentView).find(
+          (tb) => tb.id === selectedElementId
+        );
+
+        if (
+          currentTextBox &&
+          ("fontSize" in format || "fontFamily" in format)
+        ) {
+          // If font properties are changing, calculate new dimensions
+          const { width: newWidth, height: newHeight } =
+            calculateTextboxDimensionsForFontChange(
+              currentTextBox,
+              format.fontSize,
+              format.fontFamily
+            );
+
+          // Update both font properties and dimensions
+          const updates = {
+            ...format,
+            width: newWidth,
+            height: newHeight,
+          };
+
+          updateTextBoxWithUndo(selectedElementId, updates);
+        } else {
+          updateTextBoxWithUndo(selectedElementId, format);
+        }
       } else if (selectedElementType === "shape" && selectedElementId) {
         // Handle single shape format changes
         const updates: Partial<ShapeType> = {};
@@ -1827,8 +1914,10 @@ export const PDFEditorContent: React.FC = () => {
       updateShape,
       updateImage,
       getCurrentImages,
+      getCurrentTextBoxes,
       viewState.currentView,
       setCurrentFormat,
+      calculateTextboxDimensionsForFontChange,
     ]
   );
 
@@ -4918,6 +5007,22 @@ export const PDFEditorContent: React.FC = () => {
     return null;
   };
 
+  // Memoized values
+  const memoizedTextBoxElements = useMemo(() => {
+    return currentPageSortedElements
+      .filter((el) => el.type === "textbox")
+      .map(renderElement);
+  }, [
+    currentPageSortedElements,
+    editorState.selectedFieldId,
+    editorState.isEditMode,
+    documentState.scale,
+    showPaddingPopup,
+    editorState.isTextSelectionMode,
+    selectionState.selectedTextBoxes.textBoxIds,
+    autoFocusTextBoxId,
+  ]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
@@ -6267,7 +6372,7 @@ export const PDFEditorContent: React.FC = () => {
                       ))}
 
                       {/* Render elements in layer order */}
-                      {currentPageSortedElements.map(renderElement)}
+                      {memoizedTextBoxElements}
 
                       {/* Single View Selection Components */}
                       {editorState.isSelectionMode && (
