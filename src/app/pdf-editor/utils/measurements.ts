@@ -14,7 +14,7 @@ export const measureText = (
   fontFamily: string,
   characterSpacing: number = 0,
   maxWidth?: number,
-  padding?: { top?: number; right?: number; bottom?: number; left?: number }
+  padding?: { top?: number; right?: number; bottom?: number; left?: number },
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");

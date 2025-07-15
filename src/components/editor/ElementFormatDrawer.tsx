@@ -24,6 +24,7 @@ import {
   BringToFront,
   ArrowUp,
   ArrowDown,
+  Eraser,
 } from "lucide-react";
 import { useTextFormat } from "./ElementFormatContext";
 import { TextField, Shape, Image } from "../types";
@@ -386,52 +387,8 @@ export const ElementFormatDrawer: React.FC = () => {
 
   // Helper function to check if current padding would cause text clipping
   const checkCurrentPaddingClipping = (textBox: TextField): boolean => {
-    if (!isTextField(textBox)) {
-      return false;
-    }
-
-    const {
-      measureWrappedTextHeight,
-      measureText,
-    } = require("@/app/pdf-editor/utils/measurements");
-
-    const currentPadding = {
-      top: textBox.paddingTop || 0,
-      right: textBox.paddingRight || 0,
-      bottom: textBox.paddingBottom || 0,
-      left: textBox.paddingLeft || 0,
-    };
-
-    // Calculate available space for text
-    const availableWidth =
-      textBox.width - currentPadding.left - currentPadding.right;
-    const availableHeight =
-      textBox.height - currentPadding.top - currentPadding.bottom;
-
-    // Check if there's any space left for text
-    if (availableWidth <= 0 || availableHeight <= 0) {
-      return true;
-    }
-
-    // Calculate the actual text dimensions
-    const textHeight = measureWrappedTextHeight(
-      textBox.value,
-      textBox.fontSize,
-      textBox.fontFamily,
-      availableWidth,
-      currentPadding
-    );
-
-    const { width: textWidth } = measureText(
-      textBox.value,
-      textBox.fontSize,
-      textBox.fontFamily,
-      textBox.letterSpacing || 0
-      // Don't pass maxWidth or padding to get the actual text width
-    );
-
-    // Check if text would be clipped
-    return textHeight > availableHeight || textWidth > availableWidth;
+    // Padding clipping check is now disabled
+    return false;
   };
 
   // Helper to check if any padding is nonzero
@@ -512,6 +469,16 @@ export const ElementFormatDrawer: React.FC = () => {
   if (!safeFormat) {
     return null;
   }
+
+  // Compute if all paddings are equal
+  const allPaddings = [
+    safeFormat.paddingTop || 0,
+    safeFormat.paddingRight || 0,
+    safeFormat.paddingBottom || 0,
+    safeFormat.paddingLeft || 0,
+  ];
+  const allEqual = allPaddings.every((v) => v === allPaddings[0]);
+  const unifiedPaddingValue = allEqual ? allPaddings[0] : "--";
 
   return (
     <div className="absolute w-full flex justify-center bg-transparent">
@@ -1404,7 +1371,24 @@ export const ElementFormatDrawer: React.FC = () => {
           }}
         >
           <div className="space-y-4">
-            <div className="text-sm font-medium text-gray-700">Padding</div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium text-gray-700">Padding</div>
+              <button
+                type="button"
+                className="p-1 rounded-full hover:bg-gray-100 text-gray-500 hover:text-red-500 transition-all duration-150"
+                title="Clear Paddings"
+                onClick={() =>
+                  onFormatChange({
+                    paddingTop: 0,
+                    paddingRight: 0,
+                    paddingBottom: 0,
+                    paddingLeft: 0,
+                  })
+                }
+              >
+                <Eraser size={16} />
+              </button>
+            </div>
             {/* Warning if current padding would cause clipping */}
             {isTextField(currentFormat) &&
               checkCurrentPaddingClipping(currentFormat) &&
@@ -1429,253 +1413,92 @@ export const ElementFormatDrawer: React.FC = () => {
                 </div>
               )}
             {/* Padding controls */}
-            <div className="flex flex-col gap-2">
-              {/* Top Padding */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Top</label>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const paddingTop = safeFormat.paddingTop || 0;
-                    const validation = checkPaddingValidation(
-                      currentFormat as TextField,
-                      { top: paddingTop }
-                    );
-                    const maxValue = validation.maxPadding.top;
-                    return (
-                      <>
-                        <input
-                          type="range"
-                          min="0"
-                          max={Math.max(50, maxValue)}
-                          value={paddingTop}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingTop || value <= maxValue) {
-                              onFormatChange({ paddingTop: value });
-                            }
-                          }}
-                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
-                            paddingTop > maxValue ? "bg-red-300" : "bg-gray-200"
-                          }`}
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max={Math.max(100, maxValue)}
-                          value={paddingTop}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingTop || value <= maxValue) {
-                              onFormatChange({ paddingTop: value });
-                            }
-                          }}
-                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
-                            paddingTop > maxValue
-                              ? "border-red-500 bg-red-50"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        {paddingTop > maxValue && (
-                          <span className="text-xs text-red-500">
-                            Max: {maxValue}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Right Padding */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Right</label>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const paddingRight = safeFormat.paddingRight || 0;
-                    const validation = checkPaddingValidation(
-                      currentFormat as TextField,
-                      { right: paddingRight }
-                    );
-                    const maxValue = validation.maxPadding.right;
-
-                    return (
-                      <>
-                        <input
-                          type="range"
-                          min="0"
-                          max={Math.max(50, maxValue)}
-                          value={paddingRight}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingRight || value <= maxValue) {
-                              onFormatChange({ paddingRight: value });
-                            }
-                          }}
-                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
-                            paddingRight > maxValue
-                              ? "bg-red-300"
-                              : "bg-gray-200"
-                          }`}
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max={Math.max(100, maxValue)}
-                          value={paddingRight}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingRight || value <= maxValue) {
-                              onFormatChange({ paddingRight: value });
-                            }
-                          }}
-                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
-                            paddingRight > maxValue
-                              ? "border-red-500 bg-red-50"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        {paddingRight > maxValue && (
-                          <span className="text-xs text-red-500">
-                            Max: {maxValue}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Bottom Padding */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Bottom</label>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const paddingBottom = safeFormat.paddingBottom || 0;
-                    const validation = checkPaddingValidation(
-                      currentFormat as TextField,
-                      { bottom: paddingBottom }
-                    );
-                    const maxValue = validation.maxPadding.bottom;
-                    return (
-                      <>
-                        <input
-                          type="range"
-                          min="0"
-                          max={Math.max(50, maxValue)}
-                          value={paddingBottom}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingBottom || value <= maxValue) {
-                              onFormatChange({ paddingBottom: value });
-                            }
-                          }}
-                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
-                            paddingBottom > maxValue
-                              ? "bg-red-300"
-                              : "bg-gray-200"
-                          }`}
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max={Math.max(100, maxValue)}
-                          value={paddingBottom}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingBottom || value <= maxValue) {
-                              onFormatChange({ paddingBottom: value });
-                            }
-                          }}
-                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
-                            paddingBottom > maxValue
-                              ? "border-red-500 bg-red-50"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        {paddingBottom > maxValue && (
-                          <span className="text-xs text-red-500">
-                            Max: {maxValue}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Left Padding */}
-              <div className="space-y-1">
-                <label className="text-xs text-gray-600">Left</label>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    const paddingLeft = safeFormat.paddingLeft || 0;
-                    const validation = checkPaddingValidation(
-                      currentFormat as TextField,
-                      { left: paddingLeft }
-                    );
-                    const maxValue = validation.maxPadding.left;
-
-                    return (
-                      <>
-                        <input
-                          type="range"
-                          min="0"
-                          max={Math.max(50, maxValue)}
-                          value={paddingLeft}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingLeft || value <= maxValue) {
-                              onFormatChange({ paddingLeft: value });
-                            }
-                          }}
-                          className={`h-1 rounded-lg appearance-none cursor-pointer slider ${
-                            paddingLeft > maxValue
-                              ? "bg-red-300"
-                              : "bg-gray-200"
-                          }`}
-                        />
-                        <input
-                          type="number"
-                          min="0"
-                          max={Math.max(100, maxValue)}
-                          value={paddingLeft}
-                          onChange={(e) => {
-                            const value = Number(e.target.value);
-                            // Allow reducing padding even if it causes clipping
-                            // Only prevent increasing padding beyond the maximum
-                            if (value <= paddingLeft || value <= maxValue) {
-                              onFormatChange({ paddingLeft: value });
-                            }
-                          }}
-                          className={`w-8 px-1 py-0.5 text-xs border rounded text-center ${
-                            paddingLeft > maxValue
-                              ? "border-red-500 bg-red-50"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        {paddingLeft > maxValue && (
-                          <span className="text-xs text-red-500">
-                            Max: {maxValue}
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
+            <div className="flex flex-col items-center gap-2">
+              <div className="grid grid-cols-3 gap-1">
+                {/* Top row: Top padding */}
+                <input
+                  type="number"
+                  min="0"
+                  max={1000}
+                  step={0.1}
+                  value={safeFormat.paddingTop || 0}
+                  onChange={(e) =>
+                    onFormatChange({ paddingTop: Number(e.target.value) })
+                  }
+                  className="w-16 px-2 py-1 text-sm border rounded-lg text-center border-gray-300 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150 shadow-sm hover:bg-blue-50"
+                  placeholder="Top"
+                  title="Top Padding"
+                  style={{ gridColumn: 2, gridRow: 1 }}
+                />
+                <div style={{ gridColumn: 1, gridRow: 1 }}></div>
+                <div style={{ gridColumn: 3, gridRow: 1 }}></div>
+                {/* Middle row: Left, Center unified padding input, Right */}
+                <input
+                  type="number"
+                  min="0"
+                  max={1000}
+                  step={0.1}
+                  value={safeFormat.paddingLeft || 0}
+                  onChange={(e) =>
+                    onFormatChange({ paddingLeft: Number(e.target.value) })
+                  }
+                  className="w-16 px-2 py-1 text-sm border rounded-lg text-center border-gray-300 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150 shadow-sm hover:bg-blue-50"
+                  placeholder="Left"
+                  title="Left Padding"
+                  style={{ gridColumn: 1, gridRow: 2 }}
+                />
+                {/* Unified padding input in the center */}
+                <input
+                  type="number"
+                  min="0"
+                  max={1000}
+                  step={0.1}
+                  value={unifiedPaddingValue}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    onFormatChange({
+                      paddingTop: value,
+                      paddingRight: value,
+                      paddingBottom: value,
+                      paddingLeft: value,
+                    });
+                  }}
+                  className="w-16 px-2 py-1 text-sm border rounded-lg text-center border-gray-300 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150 shadow-sm hover:bg-blue-50"
+                  placeholder="All"
+                  title="Set all paddings"
+                  style={{ gridColumn: 2, gridRow: 2 }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max={1000}
+                  step={0.1}
+                  value={safeFormat.paddingRight || 0}
+                  onChange={(e) =>
+                    onFormatChange({ paddingRight: Number(e.target.value) })
+                  }
+                  className="w-16 px-2 py-1 text-sm border rounded-lg text-center border-gray-300 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150 shadow-sm hover:bg-blue-50"
+                  placeholder="Right"
+                  title="Right Padding"
+                  style={{ gridColumn: 3, gridRow: 2 }}
+                />
+                {/* Bottom row: Bottom padding */}
+                <div style={{ gridColumn: 1, gridRow: 3 }}></div>
+                <input
+                  type="number"
+                  min="0"
+                  max={1000}
+                  step={0.1}
+                  value={safeFormat.paddingBottom || 0}
+                  onChange={(e) =>
+                    onFormatChange({ paddingBottom: Number(e.target.value) })
+                  }
+                  className="w-16 px-2 py-1 text-sm border rounded-lg text-center border-gray-300 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-150 shadow-sm hover:bg-blue-50"
+                  placeholder="Bottom"
+                  title="Bottom Padding"
+                  style={{ gridColumn: 2, gridRow: 3 }}
+                />
+                <div style={{ gridColumn: 3, gridRow: 3 }}></div>
               </div>
             </div>
           </div>

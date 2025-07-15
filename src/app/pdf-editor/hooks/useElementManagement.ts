@@ -288,6 +288,10 @@ export const useElementManagement = () => {
           initialProperties?.backgroundOpacity !== undefined
             ? initialProperties.backgroundOpacity
             : 1,
+        paddingTop: initialProperties?.paddingTop || 0,
+        paddingRight: initialProperties?.paddingRight || 0,
+        paddingBottom: initialProperties?.paddingBottom || 0,
+        paddingLeft: initialProperties?.paddingLeft || 0,
       };
 
       // Determine which document to add to

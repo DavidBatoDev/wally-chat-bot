@@ -71,42 +71,8 @@ export const MemoizedTextBox = memo(
       // Calculate available space for text after padding
       const availableWidth = newWidth - padding.left - padding.right;
       const availableHeight = newHeight - padding.top - padding.bottom;
-      // Check if there's any space left for text
-      if (availableWidth <= 0 || availableHeight <= 0) {
-        // Only block if padding is nonzero
-        if (
-          padding.top > 0 ||
-          padding.right > 0 ||
-          padding.bottom > 0 ||
-          padding.left > 0
-        ) {
-          return true;
-        }
-        return false;
-      }
-      // Calculate the actual text dimensions
-      const textHeight = measureWrappedTextHeight(
-        textBox.value,
-        textBox.fontSize,
-        textBox.fontFamily,
-        availableWidth,
-        padding
-      );
-      const { width: textWidth } = measureText(
-        textBox.value,
-        textBox.fontSize,
-        textBox.fontFamily,
-        textBox.letterSpacing || 0
-      );
-      // Only block if text would be clipped AND padding is nonzero
-      const isClipped =
-        textHeight > availableHeight || textWidth > availableWidth;
-      const hasPadding =
-        padding.top > 0 ||
-        padding.right > 0 ||
-        padding.bottom > 0 ||
-        padding.left > 0;
-      return isClipped && hasPadding;
+      // Only block if there is literally no space for text
+      return availableWidth <= 0 || availableHeight <= 0;
     };
 
     const handleTextChange = useCallback(
@@ -537,7 +503,7 @@ export const MemoizedTextBox = memo(
               onFocus={handleFocus}
               placeholder="Enter text..."
               data-textbox-id={textBox.id}
-              className="absolute top-0 left-0 w-full h-full bg-transparent border-none outline-none cursor-text resize-none"
+              className="absolute top-0 left-0 w-full h-full bg-transparent overflow-hidden border-none outline-none cursor-text resize-none"
               style={{
                 fontSize: `${textBox.fontSize * scale}px`,
                 fontFamily: textBox.fontFamily,
@@ -584,13 +550,7 @@ export const MemoizedTextBox = memo(
                           16
                         )},${textBox.backgroundOpacity})`
                       : textBox.backgroundColor
-                    : isSelected
-                    ? "rgba(107, 114, 128, 0.1)"
-                    : `rgba(255,255,255,${
-                        textBox.backgroundOpacity !== undefined
-                          ? textBox.backgroundOpacity
-                          : 1
-                      })`,
+                    : "transparent",
                 border: textBox.borderWidth
                   ? `${textBox.borderWidth * scale}px solid ${
                       textBox.borderColor || "#000000"

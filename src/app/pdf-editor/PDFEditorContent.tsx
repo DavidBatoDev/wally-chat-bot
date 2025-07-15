@@ -81,24 +81,31 @@ const measureText = (
   if (!context) return { width: 100, height: fontSize };
 
   context.font = `${fontSize}px ${fontFamily}`;
-  const metrics = context.measureText(text);
-  const textWidth =
-    metrics.width + characterSpacing * Math.max(0, text.length - 1);
-  const textHeight = fontSize * 1.1; // Reduced line height for more compact text
 
-  // If maxWidth is provided, account for padding
-  if (maxWidth && padding) {
-    const paddingLeft = padding.left || 0;
-    const paddingRight = padding.right || 0;
-    const availableWidth = maxWidth - paddingLeft - paddingRight;
+  // Split text into lines for multi-line support
+  const lines = text.split("\n");
+  let maxLineWidth = 0;
+  lines.forEach((line) => {
+    const metrics = context.measureText(line);
+    const lineWidth =
+      metrics.width + characterSpacing * Math.max(0, line.length - 1);
+    if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+  });
 
-    // If text fits within available width, return the maxWidth
-    if (textWidth <= availableWidth) {
-      return { width: maxWidth, height: textHeight };
-    }
-  }
+  // Height: number of lines * line height
+  const lineHeight = fontSize * 1.1; // Reduced line height for more compact text
+  const textHeight = lineHeight * lines.length;
 
-  return { width: textWidth, height: textHeight };
+  // Add padding to width and height if provided
+  const paddingLeft = padding?.left || 0;
+  const paddingRight = padding?.right || 0;
+  const paddingTop = padding?.top || 0;
+  const paddingBottom = padding?.bottom || 0;
+
+  const totalWidth = maxLineWidth + paddingLeft + paddingRight;
+  const totalHeight = textHeight + paddingTop + paddingBottom;
+
+  return { width: totalWidth, height: totalHeight };
 };
 import {
   screenToDocumentCoordinates,
@@ -1642,6 +1649,13 @@ export const PDFEditorContent: React.FC = () => {
         "isMultiSelection" in currentFormat &&
         currentFormat.isMultiSelection;
 
+      // Helper to check if any padding key is present in format
+      const isPaddingChange =
+        "paddingTop" in format ||
+        "paddingRight" in format ||
+        "paddingBottom" in format ||
+        "paddingLeft" in format;
+
       if (
         isMultiSelection &&
         editorState.multiSelection.selectedElements.length > 0
@@ -1660,23 +1674,55 @@ export const PDFEditorContent: React.FC = () => {
 
               if (
                 currentTextBox &&
-                ("fontSize" in format || "fontFamily" in format)
+                ("fontSize" in format ||
+                  "fontFamily" in format ||
+                  isPaddingChange)
               ) {
-                // If font properties are changing, calculate new dimensions
-                const { width: newWidth, height: newHeight } =
-                  calculateTextboxDimensionsForFontChange(
-                    currentTextBox,
-                    format.fontSize,
-                    format.fontFamily
+                // Use new or current padding values
+                const padding = {
+                  top:
+                    format.paddingTop !== undefined
+                      ? format.paddingTop
+                      : currentTextBox.paddingTop || 0,
+                  right:
+                    format.paddingRight !== undefined
+                      ? format.paddingRight
+                      : currentTextBox.paddingRight || 0,
+                  bottom:
+                    format.paddingBottom !== undefined
+                      ? format.paddingBottom
+                      : currentTextBox.paddingBottom || 0,
+                  left:
+                    format.paddingLeft !== undefined
+                      ? format.paddingLeft
+                      : currentTextBox.paddingLeft || 0,
+                };
+                // If font properties are changing, use new values, else use current
+                const fontSize =
+                  format.fontSize !== undefined
+                    ? format.fontSize
+                    : currentTextBox.fontSize;
+                const fontFamily =
+                  format.fontFamily !== undefined
+                    ? format.fontFamily
+                    : currentTextBox.fontFamily;
+                const { width: newTextWidth, height: newTextHeight } =
+                  measureText(
+                    currentTextBox.value,
+                    fontSize,
+                    fontFamily,
+                    currentTextBox.letterSpacing || 0,
+                    undefined,
+                    padding
                   );
-
-                // Update both font properties and dimensions
+                const paddingBuffer = 4;
+                const newWidth = newTextWidth + paddingBuffer;
+                const newHeight = newTextHeight + paddingBuffer;
                 const updates = {
                   ...format,
                   width: newWidth,
                   height: newHeight,
                 };
-
                 updateTextBoxWithUndo(element.id, updates);
               } else {
                 updateTextBoxWithUndo(element.id, format);
@@ -1711,23 +1757,52 @@ export const PDFEditorContent: React.FC = () => {
 
         if (
           currentTextBox &&
-          ("fontSize" in format || "fontFamily" in format)
+          ("fontSize" in format || "fontFamily" in format || isPaddingChange)
         ) {
-          // If font properties are changing, calculate new dimensions
-          const { width: newWidth, height: newHeight } =
-            calculateTextboxDimensionsForFontChange(
-              currentTextBox,
-              format.fontSize,
-              format.fontFamily
-            );
-
-          // Update both font properties and dimensions
+          // Use new or current padding values
+          const padding = {
+            top:
+              format.paddingTop !== undefined
+                ? format.paddingTop
+                : currentTextBox.paddingTop || 0,
+            right:
+              format.paddingRight !== undefined
+                ? format.paddingRight
+                : currentTextBox.paddingRight || 0,
+            bottom:
+              format.paddingBottom !== undefined
+                ? format.paddingBottom
+                : currentTextBox.paddingBottom || 0,
+            left:
+              format.paddingLeft !== undefined
+                ? format.paddingLeft
+                : currentTextBox.paddingLeft || 0,
+          };
+          // If font properties are changing, use new values, else use current
+          const fontSize =
+            format.fontSize !== undefined
+              ? format.fontSize
+              : currentTextBox.fontSize;
+          const fontFamily =
+            format.fontFamily !== undefined
+              ? format.fontFamily
+              : currentTextBox.fontFamily;
+          const { width: newTextWidth, height: newTextHeight } = measureText(
+            currentTextBox.value,
+            fontSize,
+            fontFamily,
+            currentTextBox.letterSpacing || 0,
+            undefined,
+            padding
+          );
+          const paddingBuffer = 4;
+          const newWidth = newTextWidth + paddingBuffer;
+          const newHeight = newTextHeight + paddingBuffer;
           const updates = {
             ...format,
             width: newWidth,
             height: newHeight,
           };
-
           updateTextBoxWithUndo(selectedElementId, updates);
         } else {
           updateTextBoxWithUndo(selectedElementId, format);
@@ -3924,6 +3999,9 @@ export const PDFEditorContent: React.FC = () => {
           isAddTextBoxMode: wasAddTextBoxMode,
         }));
 
+        // Switch back to the previous view (tab) after snapshot
+        setViewState((prev) => ({ ...prev, currentView: previousView }));
+
         // Convert canvas to blob
         const blob = await new Promise<Blob>((resolve) => {
           canvas.toBlob((blob) => {
@@ -4118,7 +4196,6 @@ export const PDFEditorContent: React.FC = () => {
               const color = colors.background_color;
               // Use the same rgbToHex function as for textColor
               backgroundColor = rgbToHex(color);
-              console.log("🫡 BackgroundColor 1:", backgroundColor);
               // Extract alpha if present
               if (Array.isArray(color)) {
                 backgroundOpacity = color[3] !== undefined ? color[3] : 1;
@@ -4126,7 +4203,6 @@ export const PDFEditorContent: React.FC = () => {
                 backgroundOpacity = color.a !== undefined ? color.a : 1;
               }
             }
-            console.log("🫡 BackgroundColor:", backgroundColor);
 
             // --- Border color and width logic fix ---
             let borderColor = "#000000";
@@ -4158,7 +4234,8 @@ export const PDFEditorContent: React.FC = () => {
 
             // Use styled entity information for text dimensions and font size
             const lineHeight = getStyleValue("line_spacing", 1.2);
-            const textPadding = getStyleValue("text_padding", 5);
+            const textPadding =
+              styling.text_padding || getStyleValue("text_padding", 0);
             const estimatedFontSize = getStyleValue("font_size", 12);
             const textLines = getStyleValue(
               "text_lines",
@@ -4181,7 +4258,12 @@ export const PDFEditorContent: React.FC = () => {
               styling.font_family || "Arial, sans-serif",
               0, // characterSpacing
               undefined, // maxWidth
-              { top: 0, right: 0, bottom: 0, left: 0 } // padding
+              {
+                top: textPadding,
+                right: textPadding,
+                bottom: textPadding,
+                left: textPadding,
+              } // padding
             );
 
             // Use styled entity dimensions if available, otherwise calculate from vertices
@@ -4205,15 +4287,18 @@ export const PDFEditorContent: React.FC = () => {
               y = pdfPageHeight - maxY;
               width = maxX - minX;
               height = maxY - minY;
-            } else {
-              // Use the dimensions we calculated above
             }
 
-            // Add border space if present
-            if (borderWidth > 0) {
-              width += borderWidth * 2;
-              height += borderWidth * 2;
-            }
+            console.log("🫡 textPadding:", textPadding);
+            console.log("🫡 width:", width);
+            console.log("🫡 height:", height);
+
+            // Add text_padding if present (after width/height are set)
+            width += textPadding * 2;
+            height += textPadding * 2;
+
+            console.log("🫡 after width:", width);
+            console.log("🫡 after height:", height);
 
             const newTextBox: TextField = {
               id: generateUUID(),
@@ -4255,10 +4340,10 @@ export const PDFEditorContent: React.FC = () => {
                 "border_bottom_right_radius",
                 borderRadius || 0
               ),
-              paddingTop: padding || 0,
-              paddingRight: padding || 0,
-              paddingBottom: padding || 0,
-              paddingLeft: padding || 0,
+              paddingTop: textPadding || 0,
+              paddingRight: textPadding || 0,
+              paddingBottom: textPadding || 0,
+              paddingLeft: textPadding || 0,
               isEditing: false,
             };
 
@@ -5123,7 +5208,7 @@ export const PDFEditorContent: React.FC = () => {
                                       d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
                                     />
                                   </svg>
-                                  <span>Transform JSON to Textbox</span>
+                                  <span>Run OCR</span>
                                 </>
                               )}
                             </button>
@@ -5662,7 +5747,7 @@ export const PDFEditorContent: React.FC = () => {
                                         d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
                                       />
                                     </svg>
-                                    <span>Transform JSON to Textbox</span>
+                                    <span>RUN OCR</span>
                                   </>
                                 )}
                               </button>
