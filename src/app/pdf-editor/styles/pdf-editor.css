@@ -98,6 +98,51 @@
   z-index: 10000 !important;
 }
 
+/* Template editor popup specific styles - ensure textboxes are always on top */
+[data-template-editor] {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+[data-template-editor] .rnd {
+  z-index: 30000 !important;
+  position: absolute !important;
+  pointer-events: auto !important;
+}
+
+[data-template-editor] .rnd.selected {
+  z-index: 35000 !important;
+  pointer-events: auto !important;
+}
+
+[data-template-editor] .text-field-overlay {
+  z-index: 30000 !important;
+  pointer-events: auto !important;
+}
+
+[data-template-editor] .react-pdf__Page__textContent {
+  z-index: 100 !important;
+  pointer-events: auto !important;
+}
+
+[data-template-editor] .react-pdf__Page__textContent span {
+  z-index: 100 !important;
+  pointer-events: auto !important;
+}
+
+/* Ensure the PDF canvas and text content don't interfere with textboxes */
+[data-template-editor] .react-pdf__Page__canvas {
+  z-index: 50 !important;
+}
+
+[data-template-editor] .react-pdf__Document {
+  z-index: 50 !important;
+}
+
+[data-template-editor] .react-pdf__Page {
+  z-index: 50 !important;
+}
+
 /* In add text box mode, lower the z-index of interactive elements */
 .add-text-box-mode .rnd {
   z-index: 100 !important;

@@ -55,6 +55,7 @@ import { MemoizedShape } from "./components/elements/Shape";
 import { MemoizedImage } from "./components/elements/ImageElement";
 import { SelectionPreview } from "./components/elements/SelectionPreview";
 import { SelectionRectangle } from "./components/elements/SelectionRectangle";
+import { TemplateEditorPopup } from "./components/TemplateEditorPopup";
 
 // Import utilities
 import { isPdfFile } from "./utils/measurements";
@@ -4730,6 +4731,11 @@ export const PDFEditorContent: React.FC = () => {
   const [showExportConfirm, setShowExportConfirm] = useState(false);
   const [pendingExport, setPendingExport] = useState<(() => void) | null>(null);
 
+  // State for template editor
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  const [templateCanvas, setTemplateCanvas] =
+    useState<HTMLCanvasElement | null>(null);
+
   // Actual export function
   const performExport = useCallback(async () => {
     if (!documentRef.current) {
@@ -4769,6 +4775,87 @@ export const PDFEditorContent: React.FC = () => {
 
       // Create PDF document
       const pdfDoc = await PDFDocument.create();
+
+      // Add template page as the first page if template canvas is available
+      console.log("Template canvas check:", {
+        hasTemplateCanvas: !!templateCanvas,
+        templateCanvasType: templateCanvas ? typeof templateCanvas : "null",
+        templateCanvasWidth: templateCanvas?.width,
+        templateCanvasHeight: templateCanvas?.height,
+      });
+
+      if (templateCanvas) {
+        try {
+          console.log("Adding template page to PDF");
+          const templateDataUrl = templateCanvas.toDataURL("image/png", 1.0);
+          console.log(
+            "Template data URL created, length:",
+            templateDataUrl.length
+          );
+
+          const templateImageBytes = await fetch(templateDataUrl).then((res) =>
+            res.arrayBuffer()
+          );
+          console.log(
+            "Template image bytes loaded, size:",
+            templateImageBytes.byteLength
+          );
+
+          const templateImage = await pdfDoc.embedPng(templateImageBytes);
+          console.log("Template image embedded in PDF");
+
+          // Create first page with template - this will be page 1
+          const templatePage = pdfDoc.addPage([612, 792]); // Letter size
+          const { width: pageWidth, height: pageHeight } = templatePage.getSize();
+
+          // Scale template to fit page while maintaining aspect ratio
+          const templateDims = templateImage.scale(1);
+          const scaleX = pageWidth / templateDims.width;
+          const scaleY = pageHeight / templateDims.height;
+          const templateScale = Math.min(scaleX, scaleY);
+
+          const scaledWidth = templateDims.width * templateScale;
+          const scaledHeight = templateDims.height * templateScale;
+
+          // Center the template on the page
+          const x = (pageWidth - scaledWidth) / 2;
+          const y = (pageHeight - scaledHeight) / 2;
+
+          templatePage.drawImage(templateImage, {
+            x: x,
+            y: y,
+            width: scaledWidth,
+            height: scaledHeight,
+          });
+
+          console.log("Template page added successfully as first page");
+
+          // Add a title to the template page
+          const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+          templatePage.drawText("EXPORT TEMPLATE", {
+            x: pageWidth / 2 - 60,
+            y: pageHeight - 30,
+            size: 16,
+            font: font,
+            color: rgb(0, 0, 0),
+          });
+
+          // Add page number to template page
+          templatePage.drawText("Page 1 (Template)", {
+            x: pageWidth / 2 - 50,
+            y: 30,
+            size: 12,
+            font: font,
+            color: rgb(0.5, 0.5, 0.5),
+          });
+
+        } catch (error) {
+          console.error("Error adding template page:", error);
+          // Continue without template if there's an error
+        }
+      } else {
+        console.log("No template canvas available, skipping template page");
+      }
 
       // Function to capture view as image for a specific page
       const captureViewAsImage = async (
@@ -5218,6 +5305,9 @@ export const PDFEditorContent: React.FC = () => {
       }
 
       // Save the PDF
+      console.log("Final PDF page count:", pdfDoc.getPageCount());
+      console.log("Template canvas was:", templateCanvas ? "present" : "null");
+      
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -5265,18 +5355,138 @@ export const PDFEditorContent: React.FC = () => {
     editorState,
     colorToRgba,
     rgbStringToHex,
+    templateCanvas,
   ]);
+
+  // Template editor handlers
+  const handleTemplateEditorClose = useCallback(() => {
+    setShowTemplateEditor(false);
+    setTemplateCanvas(null);
+  }, []);
+
+  const handleTemplateEditorContinue = useCallback(
+    (canvas: HTMLCanvasElement) => {
+      console.log("Template editor continue called with canvas:", {
+        canvasType: typeof canvas,
+        canvasWidth: canvas?.width,
+        canvasHeight: canvas?.height,
+        hasToDataURL: typeof canvas?.toDataURL,
+      });
+
+      setTemplateCanvas(canvas);
+      setShowTemplateEditor(false);
+
+      console.log("Template canvas set, checking if all pages are translated");
+      console.log("Template canvas state after setting:", {
+        hasCanvas: !!canvas,
+        canvasWidth: canvas?.width,
+        canvasHeight: canvas?.height,
+      });
+
+      // Now check if all pages are translated and proceed with export
+      if (!areAllPagesTranslated()) {
+        console.log("Not all pages translated, showing export confirmation");
+        setShowExportConfirm(true);
+        setPendingExport(() => performExport);
+      } else {
+        console.log("All pages translated, proceeding with export");
+        performExport();
+      }
+    },
+    [areAllPagesTranslated, performExport]
+  );
 
   // Export function with confirmation logic
   const exportToPDF = useCallback(() => {
-    // Check if all pages are translated
-    if (!areAllPagesTranslated()) {
-      setShowExportConfirm(true);
-      setPendingExport(() => performExport);
-    } else {
-      performExport();
+    // First show the template editor
+    setShowTemplateEditor(true);
+  }, []);
+
+  // Simple test export function to verify template page
+  const testTemplateExport = useCallback(async () => {
+    if (!templateCanvas) {
+      toast.error("No template canvas available");
+      return;
     }
-  }, [areAllPagesTranslated, performExport]);
+
+    try {
+      const loadingToast = toast.loading("Testing template export...");
+
+      // Create PDF document
+      const pdfDoc = await PDFDocument.create();
+
+      // Add template page as the first page
+      console.log("Adding template page to test PDF");
+      const templateDataUrl = templateCanvas.toDataURL("image/png", 1.0);
+      const templateImageBytes = await fetch(templateDataUrl).then((res) =>
+        res.arrayBuffer()
+      );
+      const templateImage = await pdfDoc.embedPng(templateImageBytes);
+
+      // Create first page with template
+      const templatePage = pdfDoc.addPage([612, 792]); // Letter size
+      const { width: pageWidth, height: pageHeight } = templatePage.getSize();
+
+      // Scale template to fit page while maintaining aspect ratio
+      const templateDims = templateImage.scale(1);
+      const scaleX = pageWidth / templateDims.width;
+      const scaleY = pageHeight / templateDims.height;
+      const templateScale = Math.min(scaleX, scaleY);
+
+      const scaledWidth = templateDims.width * templateScale;
+      const scaledHeight = templateDims.height * templateScale;
+
+      // Center the template on the page
+      const x = (pageWidth - scaledWidth) / 2;
+      const y = (pageHeight - scaledHeight) / 2;
+
+      templatePage.drawImage(templateImage, {
+        x: x,
+        y: y,
+        width: scaledWidth,
+        height: scaledHeight,
+      });
+
+      // Add a title to the template page
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      templatePage.drawText("TEMPLATE TEST PAGE", {
+        x: pageWidth / 2 - 80,
+        y: pageHeight - 30,
+        size: 16,
+        font: font,
+        color: rgb(0, 0, 0),
+      });
+
+      // Add page number
+      templatePage.drawText("Page 1 (Template Only)", {
+        x: pageWidth / 2 - 60,
+        y: 30,
+        size: 12,
+        font: font,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+
+      console.log("Template test PDF page count:", pdfDoc.getPageCount());
+
+      // Save the PDF
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `template-test.pdf`;
+      link.click();
+
+      URL.revokeObjectURL(url);
+
+      toast.dismiss(loadingToast);
+      toast.success("Template test PDF exported!");
+    } catch (error) {
+      console.error("Error in template test export:", error);
+      toast.error("Template test export failed");
+    }
+  }, [templateCanvas]);
 
   // Export confirmation handlers
   const handleConfirmExport = useCallback(() => {
@@ -7159,6 +7369,13 @@ export const PDFEditorContent: React.FC = () => {
         onCancel={handleCancelExport}
         confirmText="Continue Export"
         cancelText="Cancel"
+      />
+
+      {/* Template Editor Popup */}
+      <TemplateEditorPopup
+        isOpen={showTemplateEditor}
+        onClose={handleTemplateEditorClose}
+        onContinue={handleTemplateEditorContinue}
       />
     </div>
   );
