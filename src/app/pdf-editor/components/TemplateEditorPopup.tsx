@@ -8,6 +8,10 @@ import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { useTextSpanHandling } from "../hooks/useTextSpanHandling";
 import { toast } from "sonner";
 import { screenToDocumentCoordinates } from "../utils/coordinates";
+import {
+  TextFormatProvider,
+  useTextFormat,
+} from "@/components/editor/ElementFormatContext";
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -26,7 +30,8 @@ const generateUUID = (): string => {
   });
 };
 
-export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
+// Create the actual popup content component that will be wrapped by TextFormatProvider
+const TemplateEditorPopupContent: React.FC<TemplateEditorPopupProps> = ({
   isOpen,
   onClose,
   onContinue,
@@ -318,11 +323,19 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
   // Update text box
   const updateTextBox = useCallback(
     (id: string, updates: Partial<TextField>) => {
-      setTextBoxes((prev) =>
-        prev.map((textBox) =>
-          textBox.id === id ? { ...textBox, ...updates } : textBox
-        )
+      console.log(
+        "TemplateEditorPopup: updateTextBox called with id:",
+        id,
+        "updates:",
+        updates
       );
+      setTextBoxes((prev) => {
+        const newTextBoxes = prev.map((textBox) =>
+          textBox.id === id ? { ...textBox, ...updates } : textBox
+        );
+        console.log("TemplateEditorPopup: Updated textBoxes:", newTextBoxes);
+        return newTextBoxes;
+      });
     },
     []
   );
@@ -365,6 +378,24 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
   // Add text box at clicked position
   const handleDocumentClick = useCallback(
     (e: React.MouseEvent) => {
+      // Check if we clicked on a textbox or its children
+      const target = e.target as HTMLElement;
+      const isTextboxClick =
+        target.closest(".rnd") !== null ||
+        target.closest("[data-textbox-id]") !== null ||
+        target.tagName === "TEXTAREA" ||
+        target.classList.contains("drag-handle") ||
+        target.closest(".drag-handle") !== null;
+
+      if (!isAddTextBoxMode && !isTextboxClick) {
+        // Clear selection if we're not in add text box mode and didn't click on a textbox
+        console.log(
+          "TemplateEditorPopup: Clearing selection due to empty space click"
+        );
+        setSelectedTextBoxId(null);
+        return;
+      }
+
       if (!isAddTextBoxMode) return;
 
       const pdfPageEl = documentRef.current?.querySelector(
@@ -429,7 +460,7 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
       setIsAddTextBoxMode(false);
       setSelectedTextBoxId(newTextBox.id);
     },
-    [isAddTextBoxMode, scale, pageWidth]
+    [isAddTextBoxMode, scale, pageWidth, setSelectedTextBoxId]
   );
 
   // Helper function to capture template at high quality (170% zoom)
@@ -591,17 +622,99 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
     }
   }, [captureTemplateAtHighQuality, onContinue]);
 
+  // --- Sync selected textbox to ElementFormatDrawer context ---
+  const {
+    setIsDrawerOpen,
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setOnFormatChange,
+  } = useTextFormat();
+
+  // Set up the format change handler for the drawer
+  useEffect(() => {
+    console.log("TemplateEditorPopup: Setting up onFormatChange handler");
+    setOnFormatChange((updates: Partial<TextField>) => {
+      console.log("TemplateEditorPopup: onFormatChange called with:", updates);
+      console.log("TemplateEditorPopup: selectedTextBoxId:", selectedTextBoxId);
+      if (selectedTextBoxId) {
+        console.log(
+          "TemplateEditorPopup: Updating textbox with updates:",
+          updates
+        );
+        updateTextBox(selectedTextBoxId, updates);
+      } else {
+        console.log("TemplateEditorPopup: No selectedTextBoxId, cannot update");
+      }
+    });
+  }, [selectedTextBoxId, updateTextBox, setOnFormatChange]);
+
+  useEffect(() => {
+    console.log(
+      "TemplateEditorPopup: selectedTextBoxId changed:",
+      selectedTextBoxId
+    );
+    if (selectedTextBoxId) {
+      console.log("TemplateEditorPopup: Setting drawer open and format");
+      setIsDrawerOpen(true); // Ensure drawer is open
+      setSelectedElementId(selectedTextBoxId);
+      setSelectedElementType("textbox");
+      const tb = textBoxes.find((t) => t.id === selectedTextBoxId) || null;
+      console.log("TemplateEditorPopup: Found textbox:", tb);
+      setCurrentFormat(tb);
+    } else {
+      console.log("TemplateEditorPopup: No textbox selected, closing drawer");
+      setIsDrawerOpen(false); // Hide drawer if nothing selected
+      setSelectedElementId(null);
+      setSelectedElementType(null);
+      setCurrentFormat(null);
+    }
+  }, [
+    selectedTextBoxId,
+    textBoxes,
+    setIsDrawerOpen,
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+  ]);
+
+  // Also update currentFormat when textBoxes change (to reflect updates)
+  useEffect(() => {
+    if (selectedTextBoxId) {
+      const tb = textBoxes.find((t) => t.id === selectedTextBoxId) || null;
+      console.log(
+        "TemplateEditorPopup: Updating currentFormat due to textBoxes change:",
+        tb
+      );
+      setCurrentFormat(tb);
+    }
+  }, [textBoxes, selectedTextBoxId, setCurrentFormat]);
+
+  // Debug the context state
+  const {
+    isDrawerOpen,
+    currentFormat,
+    selectedElementId: contextSelectedId,
+  } = useTextFormat();
+  useEffect(() => {
+    console.log("TemplateEditorPopup: Context state:", {
+      isDrawerOpen,
+      currentFormat: !!currentFormat,
+      contextSelectedId,
+    });
+  }, [isDrawerOpen, currentFormat, contextSelectedId]);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
       <style>{`
-        [data-template-editor] .react-pdf__Page__canvas {
-          width: 100% !important;
-          height: 100% !important;
-          display: block;
-        }
-      `}</style>
+          [data-template-editor] .react-pdf__Page__canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+          }
+        `}</style>
       <div className="bg-white rounded-lg shadow-xl max-w-6xl max-h-[90vh] w-full mx-4 flex flex-col">
         {/* Header */}
         <div className="template-header flex items-center justify-between p-4 border-b">
@@ -614,6 +727,11 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
           >
             <X className="h-4 w-4" />
           </Button>
+        </div>
+
+        {/* ElementFormatDrawer at the top when a textbox is selected */}
+        <div className="w-full border-b bg-white z-[9999]">
+          <ElementFormatDrawer />
         </div>
 
         {/* Toolbar */}
@@ -869,12 +987,23 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
             </Button>
           </div>
         </div>
-
-        {/* ElementFormatDrawer */}
-        <div className="border z-[9999] border-green-500">
-          <ElementFormatDrawer />
-        </div>
       </div>
     </div>
+  );
+};
+
+export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
+  isOpen,
+  onClose,
+  onContinue,
+}) => {
+  return (
+    <TextFormatProvider>
+      <TemplateEditorPopupContent
+        isOpen={isOpen}
+        onClose={onClose}
+        onContinue={onContinue}
+      />
+    </TextFormatProvider>
   );
 };

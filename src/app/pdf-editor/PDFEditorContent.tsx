@@ -2235,10 +2235,14 @@ export const PDFEditorContent: React.FC = () => {
             setCurrentFormat(safeTextBox);
             setIsDrawerOpen(true);
           } else {
-            // Close drawer if selected text box is not found
-            setIsDrawerOpen(false);
-            setSelectedElementId(null);
-            setCurrentFormat(null);
+            // Don't clear selection if the textbox might be from TemplateEditorPopup
+            // Only clear if we're sure it should be in the main editor's collections
+            if (!showTemplateEditor) {
+              // Close drawer if selected text box is not found and we're not in template editor
+              setIsDrawerOpen(false);
+              setSelectedElementId(null);
+              setCurrentFormat(null);
+            }
           }
         } else if (selectedElementType === "shape") {
           // Find the selected shape from all shapes
@@ -2270,9 +2274,12 @@ export const PDFEditorContent: React.FC = () => {
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
           } else {
-            setIsDrawerOpen(false);
-            setSelectedElementId(null);
-            setCurrentFormat(null);
+            // Don't clear selection if the shape might be from TemplateEditorPopup
+            if (!showTemplateEditor) {
+              setIsDrawerOpen(false);
+              setSelectedElementId(null);
+              setCurrentFormat(null);
+            }
           }
         } else if (selectedElementType === "image") {
           // Find the selected image from all images
@@ -2288,9 +2295,12 @@ export const PDFEditorContent: React.FC = () => {
             setCurrentFormat(selectedImage);
             setIsDrawerOpen(true);
           } else {
-            setIsDrawerOpen(false);
-            setSelectedElementId(null);
-            setCurrentFormat(null);
+            // Don't clear selection if the image might be from TemplateEditorPopup
+            if (!showTemplateEditor) {
+              setIsDrawerOpen(false);
+              setSelectedElementId(null);
+              setCurrentFormat(null);
+            }
           }
         }
       } else {
@@ -4806,7 +4816,8 @@ export const PDFEditorContent: React.FC = () => {
 
           // Create first page with template - this will be page 1
           const templatePage = pdfDoc.addPage([612, 792]); // Letter size
-          const { width: pageWidth, height: pageHeight } = templatePage.getSize();
+          const { width: pageWidth, height: pageHeight } =
+            templatePage.getSize();
 
           // Scale template to fit page while maintaining aspect ratio
           const templateDims = templateImage.scale(1);
@@ -4848,7 +4859,6 @@ export const PDFEditorContent: React.FC = () => {
             font: font,
             color: rgb(0.5, 0.5, 0.5),
           });
-
         } catch (error) {
           console.error("Error adding template page:", error);
           // Continue without template if there's an error
@@ -5307,7 +5317,7 @@ export const PDFEditorContent: React.FC = () => {
       // Save the PDF
       console.log("Final PDF page count:", pdfDoc.getPageCount());
       console.log("Template canvas was:", templateCanvas ? "present" : "null");
-      
+
       const pdfBytes = await pdfDoc.save();
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
