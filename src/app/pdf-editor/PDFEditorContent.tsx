@@ -4579,6 +4579,15 @@ export const PDFEditorContent: React.FC = () => {
           setViewState((prev) => ({ ...prev, currentView: previousView }));
         } else {
           toast.error("No text entities found in the document");
+
+          // Reset transforming state when no entities are found
+          setPageState((prev) => ({
+            ...prev,
+            isTransforming: false,
+          }));
+
+          // Switch back to the previous view
+          setViewState((prev) => ({ ...prev, currentView: previousView }));
         }
       } catch (error) {
         console.error("Error transforming page to textboxes:", error);

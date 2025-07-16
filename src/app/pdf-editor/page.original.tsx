@@ -4457,14 +4457,15 @@ const PDFEditorContent: React.FC = () => {
 
       const data = await response.json();
 
-      // Extract entities from the response
-      if (data.layout && data.layout.pages && data.layout.pages.length > 0) {
-        const entities = data.layout.pages[0].entities || [];
+              // Extract entities from the response
+        if (data.layout && data.layout.pages && data.layout.pages.length > 0) {
+          const entities = data.layout.pages[0].entities || [];
 
-        // Convert entities to textboxes
-        const newTextBoxes: TextField[] = [];
+          if (entities.length > 0) {
+            // Convert entities to textboxes
+            const newTextBoxes: TextField[] = [];
 
-        entities.forEach((entity: any) => {
+            entities.forEach((entity: any) => {
           if (
             !entity.bounding_poly ||
             !entity.bounding_poly.vertices ||
@@ -4606,9 +4607,14 @@ const PDFEditorContent: React.FC = () => {
         toast.success(
           `Transformed ${newTextBoxes.length} entities into textboxes`
         );
-      }
+          } else {
+            toast.error("No text entities found in the document");
+          }
+        } else {
+          toast.error("No text entities found in the document");
+        }
 
-      setIsTransforming(false);
+        setIsTransforming(false);
     } catch (error) {
       console.error("Error transforming page to textboxes:", error);
       toast.error("Failed to transform page to textboxes");
