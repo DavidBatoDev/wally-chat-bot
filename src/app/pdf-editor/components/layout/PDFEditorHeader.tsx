@@ -27,6 +27,7 @@ interface PDFEditorHeaderProps {
   isBulkOcrRunning?: boolean;
   bulkOcrProgress?: { current: number; total: number } | null;
   onCancelBulkOcr?: () => void;
+  hasPages?: boolean;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -45,6 +46,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   isBulkOcrRunning,
   bulkOcrProgress,
   onCancelBulkOcr,
+  hasPages,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -113,7 +115,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             <Redo2 className="w-4 h-4 mr-2" />
             Redo
           </Button>
-          {onClearAllTranslations && (
+          {onClearAllTranslations && hasPages && (
             <Button
               onClick={onClearAllTranslations}
               variant="outline"
@@ -126,7 +128,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             </Button>
           )}
           {/* Run OCR to All Page Button and Progress */}
-          {onRunOcrAllPages && !isBulkOcrRunning && (
+          {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
             <Button
               onClick={onRunOcrAllPages}
               variant="outline"

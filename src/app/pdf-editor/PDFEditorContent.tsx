@@ -194,7 +194,9 @@ export const PDFEditorContent: React.FC = () => {
     useDocumentState();
   const {
     elementCollections,
+    setElementCollections,
     layerState,
+    setLayerState,
     getCurrentTextBoxes,
     getCurrentShapes,
     getCurrentImages,
@@ -3701,6 +3703,83 @@ export const PDFEditorContent: React.FC = () => {
     return imageExtensions.includes(extension || "") ? "image" : "pdf";
   }, []);
 
+  // Helper function to clear all elements and state
+  const clearAllElementsAndState = useCallback(() => {
+    // Clear all elements from both original and translated views
+    setElementCollections({
+      originalTextBoxes: [],
+      originalShapes: [],
+      originalDeletionRectangles: [],
+      originalImages: [],
+      translatedTextBoxes: [],
+      translatedShapes: [],
+      translatedDeletionRectangles: [],
+      translatedImages: [],
+    });
+
+    // Clear layer order
+    setLayerState({
+      originalLayerOrder: [],
+      translatedLayerOrder: [],
+    });
+
+    // Clear editor state
+    setEditorState((prev) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isAddTextBoxMode: false,
+      isTextSelectionMode: false,
+      showDeletionRectangles: false,
+      isImageUploadMode: false,
+      selectedTextBoxes: { textBoxIds: [] },
+      isDrawingSelection: false,
+      selectionStart: null,
+      selectionEnd: null,
+      selectionRect: null,
+      multiSelection: {
+        selectedElements: [],
+        selectionBounds: null,
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        isMovingSelection: false,
+        moveStart: null,
+        targetView: null,
+      },
+      isSelectionMode: false,
+    }));
+
+    // Clear tool state
+    setToolState((prev) => ({
+      ...prev,
+      shapeDrawingMode: null,
+      selectedShapeType: "rectangle",
+      isDrawingShape: false,
+      shapeDrawStart: null,
+      shapeDrawEnd: null,
+      isDrawingInProgress: false,
+      shapeDrawTargetView: null,
+    }));
+
+    // Clear erasure state
+    setErasureState((prev) => ({
+      ...prev,
+      isErasureMode: false,
+      isDrawingErasure: false,
+      erasureDrawStart: null,
+      erasureDrawEnd: null,
+      erasureDrawTargetView: null,
+    }));
+  }, [
+    setElementCollections,
+    setLayerState,
+    setEditorState,
+    setToolState,
+    setErasureState,
+  ]);
+
   // Function to create a blank PDF and add an image as an interactive element
   const createBlankPdfAndAddImage = useCallback(
     async (imageFile: File) => {
@@ -3868,6 +3947,9 @@ export const PDFEditorContent: React.FC = () => {
       if (file) {
         const fileType = getFileType(file.name);
 
+        // Clear all elements and state when uploading a new document
+        clearAllElementsAndState();
+
         if (fileType === "image") {
           // For images, create a blank PDF and add the image as an interactive element
           createBlankPdfAndAddImage(file);
@@ -3882,7 +3964,7 @@ export const PDFEditorContent: React.FC = () => {
         }
       }
     },
-    [getFileType, createBlankPdfAndAddImage, actions]
+    [getFileType, createBlankPdfAndAddImage, actions, clearAllElementsAndState]
   );
 
   const handleImageFileUpload = useCallback(
@@ -5494,6 +5576,7 @@ export const PDFEditorContent: React.FC = () => {
         isBulkOcrRunning={isBulkOcrRunning}
         bulkOcrProgress={bulkOcrProgress}
         onCancelBulkOcr={handleCancelBulkOcr}
+        hasPages={documentState.numPages > 0}
       />
 
       {/* Main Content */}
