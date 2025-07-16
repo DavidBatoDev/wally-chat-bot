@@ -93,28 +93,32 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               Load Sample
             </Button>
           )}
-          <Button
-            onClick={onUndo}
-            variant="outline"
-            size="sm"
-            className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
-            disabled={!canUndo}
-            title="Undo (Ctrl+Z)"
-          >
-            <Undo2 className="w-4 h-4 mr-2" />
-            Undo
-          </Button>
-          <Button
-            onClick={onRedo}
-            variant="outline"
-            size="sm"
-            className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
-            disabled={!canRedo}
-            title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
-          >
-            <Redo2 className="w-4 h-4 mr-2" />
-            Redo
-          </Button>
+          {hasPages && (
+            <>
+              <Button
+                onClick={onUndo}
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
+                disabled={!canUndo}
+                title="Undo (Ctrl+Z)"
+              >
+                <Undo2 className="w-4 h-4 mr-2" />
+                Undo
+              </Button>
+              <Button
+                onClick={onRedo}
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
+                disabled={!canRedo}
+                title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
+              >
+                <Redo2 className="w-4 h-4 mr-2" />
+                Redo
+              </Button>
+            </>
+          )}
           {onClearAllTranslations && hasPages && (
             <Button
               onClick={onClearAllTranslations}
@@ -155,23 +159,27 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               </Button>
             </div>
           )}
-          <Button
-            onClick={onSaveProject}
-            variant="outline"
-            size="sm"
-            className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Save
-          </Button>
-          <Button
-            onClick={onExportData}
-            className="bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700 shadow-md transition-all duration-200 hover:shadow-lg"
-            size="sm"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export PDF
-          </Button>
+          {hasPages && (
+            <Button
+              onClick={onSaveProject}
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save
+            </Button>
+          )}
+          {hasPages && (
+            <Button
+              onClick={onExportData}
+              className="bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700 shadow-md transition-all duration-200 hover:shadow-lg"
+              size="sm"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export PDF
+            </Button>
+          )}
         </div>
       </div>
     </div>

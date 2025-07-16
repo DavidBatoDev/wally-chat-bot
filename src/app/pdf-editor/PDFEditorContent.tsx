@@ -4705,7 +4705,33 @@ export const PDFEditorContent: React.FC = () => {
     toast.success("Project saved!");
   }, [elementCollections, layerState, documentState]);
 
-  const exportToPDF = useCallback(async () => {
+  // Helper function to check if all non-deleted pages are translated
+  const areAllPagesTranslated = useCallback(() => {
+    const totalPages = documentState.numPages;
+    const deletedPages = pageState.deletedPages;
+
+    // Check each page that hasn't been deleted
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+      if (!deletedPages.has(pageNumber)) {
+        // If any non-deleted page is not translated, return false
+        if (!pageState.isPageTranslated.get(pageNumber)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, [
+    documentState.numPages,
+    pageState.deletedPages,
+    pageState.isPageTranslated,
+  ]);
+
+  // State for export confirmation modal
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [pendingExport, setPendingExport] = useState<(() => void) | null>(null);
+
+  // Actual export function
+  const performExport = useCallback(async () => {
     if (!documentRef.current) {
       toast.error("Document not loaded");
       return;
@@ -4718,9 +4744,9 @@ export const PDFEditorContent: React.FC = () => {
     const originalSelectedShape = editorState.selectedShapeId;
     const originalEditMode = editorState.isEditMode;
 
-    try {
-      toast.loading("Generating PDF...");
+    const loadingToast = toast.loading("Generating PDF...");
 
+    try {
       // Set up for export - hide UI elements and set optimal scale
       setEditorState((prev) => ({
         ...prev,
@@ -4943,15 +4969,32 @@ export const PDFEditorContent: React.FC = () => {
         return canvas;
       };
 
-      // Capture all pages in the document
+      // Capture all non-deleted pages in the document
       const totalPages = documentState.numPages;
+      const deletedPages = pageState.deletedPages;
       const allCaptures = [];
 
-      // Process pages in pairs (2 pages per PDF page)
-      for (let pageIndex = 1; pageIndex <= totalPages; pageIndex += 2) {
-        const page1 = pageIndex;
-        const page2 = pageIndex + 1;
-        const hasPage2 = page2 <= totalPages;
+      // Get all non-deleted page numbers
+      const nonDeletedPages = [];
+      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+        if (!deletedPages.has(pageNumber)) {
+          nonDeletedPages.push(pageNumber);
+        }
+      }
+
+      // If no pages to export, show error and return
+      if (nonDeletedPages.length === 0) {
+        toast.error(
+          "No pages available for export. All pages have been deleted."
+        );
+        return;
+      }
+
+      // Process non-deleted pages in pairs (2 pages per PDF page)
+      for (let i = 0; i < nonDeletedPages.length; i += 2) {
+        const page1 = nonDeletedPages[i];
+        const page2 = nonDeletedPages[i + 1];
+        const hasPage2 = page2 !== undefined;
 
         const pageCaptures = [];
 
@@ -4990,7 +5033,7 @@ export const PDFEditorContent: React.FC = () => {
         }
 
         allCaptures.push({
-          pageNumber: Math.ceil(pageIndex / 2),
+          pageNumber: Math.floor(i / 2) + 1,
           captures: pageCaptures,
           page1,
           page2: hasPage2 ? page2 : null,
@@ -5196,9 +5239,14 @@ export const PDFEditorContent: React.FC = () => {
         isEditMode: originalEditMode,
       }));
 
+      // Dismiss loading toast and show success message
+      toast.dismiss(loadingToast);
       toast.success("PDF exported successfully!");
     } catch (error) {
       console.error("Error exporting PDF:", error);
+
+      // Dismiss loading toast and show error message
+      toast.dismiss(loadingToast);
       toast.error("Failed to export PDF");
 
       // Restore original state on error as well
@@ -5218,6 +5266,31 @@ export const PDFEditorContent: React.FC = () => {
     colorToRgba,
     rgbStringToHex,
   ]);
+
+  // Export function with confirmation logic
+  const exportToPDF = useCallback(() => {
+    // Check if all pages are translated
+    if (!areAllPagesTranslated()) {
+      setShowExportConfirm(true);
+      setPendingExport(() => performExport);
+    } else {
+      performExport();
+    }
+  }, [areAllPagesTranslated, performExport]);
+
+  // Export confirmation handlers
+  const handleConfirmExport = useCallback(() => {
+    setShowExportConfirm(false);
+    if (pendingExport) {
+      pendingExport();
+      setPendingExport(null);
+    }
+  }, [pendingExport]);
+
+  const handleCancelExport = useCallback(() => {
+    setShowExportConfirm(false);
+    setPendingExport(null);
+  }, []);
 
   const exportData = useCallback(() => {
     const data = {
@@ -7074,6 +7147,17 @@ export const PDFEditorContent: React.FC = () => {
         onConfirm={handleConfirmReplace}
         onCancel={handleCancelReplace}
         confirmText="Replace"
+        cancelText="Cancel"
+      />
+
+      {/* Export Confirmation Modal */}
+      <ConfirmationModal
+        open={showExportConfirm}
+        title="Not All Pages Translated"
+        description="Some non-deleted pages have not been translated yet. Do you wish to continue with the export?"
+        onConfirm={handleConfirmExport}
+        onCancel={handleCancelExport}
+        confirmText="Continue Export"
         cancelText="Cancel"
       />
     </div>
