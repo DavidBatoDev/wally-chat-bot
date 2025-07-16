@@ -945,13 +945,13 @@ const TemplateEditorPopupContent: React.FC<TemplateEditorPopupProps> = ({
                   });
 
                   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-                  templatePage.drawText("TEMPLATE TEST (170% Zoom)", {
-                    x: pageWidth / 2 - 80,
-                    y: pageHeight - 30,
-                    size: 16,
-                    font: font,
-                    color: rgb(0, 0, 0),
-                  });
+                  // templatePage.drawText("TEMPLATE TEST (170% Zoom)", {
+                  //   x: pageWidth / 2 - 80,
+                  //   y: pageHeight - 30,
+                  //   size: 16,
+                  //   font: font,
+                  //   color: rgb(0, 0, 0),
+                  // });
 
                   const pdfBytes = await pdfDoc.save();
                   const blob = new Blob([pdfBytes], {
