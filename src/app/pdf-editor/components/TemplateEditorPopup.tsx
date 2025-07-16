@@ -1,11 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { X, Plus } from "lucide-react";
+import { X, Plus, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MemoizedTextBox } from "./elements/TextBox";
 import { TextField } from "../types/pdf-editor.types";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { useTextSpanHandling } from "../hooks/useTextSpanHandling";
+import { toast } from "sonner";
+import { screenToDocumentCoordinates } from "../utils/coordinates";
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -40,8 +42,129 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
   const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
     null
   );
+  const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const documentRef = useRef<HTMLDivElement>(null);
+  const scrollableContainerRef = useRef<HTMLDivElement>(null);
   const templatePath = "/export_template/export_first_page.pdf";
+
+  // Update scale with bounds checking
+  const updateScale = useCallback((newScale: number) => {
+    const clampedScale = Math.max(1.0, Math.min(5.0, newScale)); // Prevent zoom below 100%
+    setScale(clampedScale);
+  }, []);
+
+  // Zoom functionality
+  useEffect(() => {
+    const container = documentRef.current;
+    const scrollableContainer = scrollableContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const zoomFactor = 0.1;
+        const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor;
+        const newScale = scale + delta;
+
+        updateScale(newScale);
+        return false;
+      }
+    };
+
+    // Add the event listener with aggressive options
+    container.addEventListener("wheel", handleWheel, {
+      passive: false,
+      capture: true,
+    });
+
+    // Also try adding to document as backup
+    const documentHandler = (e: WheelEvent) => {
+      if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        handleWheel(e);
+      }
+    };
+
+    document.addEventListener("wheel", documentHandler, {
+      passive: false,
+      capture: true,
+    });
+
+    // Also try adding to the scrollable container
+    if (scrollableContainer) {
+      scrollableContainer.addEventListener(
+        "wheel",
+        handleWheel as EventListener,
+        {
+          passive: false,
+          capture: true,
+        }
+      );
+    }
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel as EventListener, {
+        capture: true,
+      });
+      document.removeEventListener("wheel", documentHandler, { capture: true });
+      if (scrollableContainer) {
+        scrollableContainer.removeEventListener(
+          "wheel",
+          handleWheel as EventListener,
+          {
+            capture: true,
+          }
+        );
+      }
+    };
+  }, [scale, updateScale]);
+
+  // Track Ctrl key state and handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        setIsCtrlPressed(true);
+
+        // Ctrl+0 to reset zoom
+        if (e.key === "0") {
+          e.preventDefault();
+          updateScale(1.0);
+          toast.success("Zoom reset to 100%");
+        }
+
+        // Ctrl+= or Ctrl++ to zoom in
+        if (e.key === "=" || e.key === "+") {
+          e.preventDefault();
+          updateScale(Math.min(5.0, scale + 0.1));
+        }
+
+        // Ctrl+- to zoom out
+        if (e.key === "-") {
+          e.preventDefault();
+          updateScale(Math.max(1.0, scale - 0.1));
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) {
+        setIsCtrlPressed(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [scale, updateScale]);
 
   // Handle PDF load success
   const onDocumentLoadSuccess = useCallback((pdf: any) => {
@@ -51,8 +174,8 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
   // Handle page load success
   const onPageLoadSuccess = useCallback((page: any) => {
     const { width, height } = page;
-    setPageWidth(width);
-    setPageHeight(height);
+    setPageWidth((prev) => (prev === 0 ? width : prev));
+    setPageHeight((prev) => (prev === 0 ? height : prev));
     console.log("Template page loaded:", { width, height });
   }, []);
 
@@ -60,34 +183,84 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
   const createDeletionRectangleForSpan = useCallback(
     (span: HTMLElement) => {
       const rect = span.getBoundingClientRect();
-      const documentRect = documentRef.current?.getBoundingClientRect();
+      const pdfPageEl = documentRef.current?.querySelector(
+        ".react-pdf__Page"
+      ) as HTMLElement;
 
-      if (!documentRect) return "";
+      if (!pdfPageEl) return "";
 
-      const x = (rect.left - documentRect.left) / scale;
-      const y = (rect.top - documentRect.top) / scale;
-      const width = rect.width / scale;
-      const height = rect.height / scale;
+      const pageRect = pdfPageEl.getBoundingClientRect();
+
+      // Use proper coordinate transformation for zoom handling
+      const topLeftCoords = screenToDocumentCoordinates(
+        rect.left,
+        rect.top,
+        pageRect,
+        scale,
+        "original", // Template editor always uses original view
+        "original", // Template editor always uses original view
+        pageWidth
+      );
+
+      const bottomRightCoords = screenToDocumentCoordinates(
+        rect.right,
+        rect.bottom,
+        pageRect,
+        scale,
+        "original", // Template editor always uses original view
+        "original", // Template editor always uses original view
+        pageWidth
+      );
+
+      const x = topLeftCoords.x;
+      const y = topLeftCoords.y;
+      const width = bottomRightCoords.x - topLeftCoords.x;
+      const height = bottomRightCoords.y - topLeftCoords.y;
 
       // For template editor, we'll just hide the span instead of creating deletion rectangle
       span.style.display = "none";
       return "";
     },
-    [scale]
+    [scale, pageWidth]
   );
 
   // Create text field from text span
   const createTextFieldFromSpan = useCallback(
     (span: HTMLElement) => {
       const rect = span.getBoundingClientRect();
-      const documentRect = documentRef.current?.getBoundingClientRect();
+      const pdfPageEl = documentRef.current?.querySelector(
+        ".react-pdf__Page"
+      ) as HTMLElement;
 
-      if (!documentRect) return null;
+      if (!pdfPageEl) return null;
 
-      const x = (rect.left - documentRect.left) / scale;
-      const y = (rect.top - documentRect.top) / scale;
-      const width = rect.width / scale;
-      const height = rect.height / scale;
+      const pageRect = pdfPageEl.getBoundingClientRect();
+
+      // Use proper coordinate transformation for zoom handling
+      const topLeftCoords = screenToDocumentCoordinates(
+        rect.left,
+        rect.top,
+        pageRect,
+        scale,
+        "original", // Template editor always uses original view
+        "original", // Template editor always uses original view
+        pageWidth
+      );
+
+      const bottomRightCoords = screenToDocumentCoordinates(
+        rect.right,
+        rect.bottom,
+        pageRect,
+        scale,
+        "original", // Template editor always uses original view
+        "original", // Template editor always uses original view
+        pageWidth
+      );
+
+      const x = topLeftCoords.x;
+      const y = topLeftCoords.y;
+      const width = bottomRightCoords.x - topLeftCoords.x;
+      const height = bottomRightCoords.y - topLeftCoords.y;
 
       const newTextBox: TextField = {
         id: generateUUID(),
@@ -136,7 +309,7 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
         properties: newTextBox,
       };
     },
-    [scale]
+    [scale, pageWidth]
   );
 
   // Add deletion rectangle (not used in template editor but required by hook)
@@ -194,11 +367,27 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
     (e: React.MouseEvent) => {
       if (!isAddTextBoxMode) return;
 
-      const rect = documentRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      const pdfPageEl = documentRef.current?.querySelector(
+        ".react-pdf__Page"
+      ) as HTMLElement;
 
-      const x = (e.clientX - rect.left) / scale;
-      const y = (e.clientY - rect.top) / scale;
+      if (!pdfPageEl) return;
+
+      const pageRect = pdfPageEl.getBoundingClientRect();
+
+      // Use proper coordinate transformation for zoom handling
+      const coords = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        pageRect,
+        scale,
+        "original", // Template editor always uses original view
+        "original", // Template editor always uses original view
+        pageWidth
+      );
+
+      const x = coords.x;
+      const y = coords.y;
 
       const newTextBox: TextField = {
         id: generateUUID(),
@@ -240,25 +429,34 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
       setIsAddTextBoxMode(false);
       setSelectedTextBoxId(newTextBox.id);
     },
-    [isAddTextBoxMode, scale]
+    [isAddTextBoxMode, scale, pageWidth]
   );
 
-  // Handle continue button click
-  const handleContinue = useCallback(async () => {
+  // Helper function to capture template at high quality (170% zoom)
+  const captureTemplateAtHighQuality = useCallback(async () => {
     if (!documentRef.current) {
       console.error("Document ref not available");
-      return;
+      throw new Error("Document ref not available");
     }
 
+    // Store original scale
+    const originalScale = scale;
+
     try {
-      console.log("Capturing template from document ref");
+      // Temporarily set zoom to 170% for high quality capture
+      updateScale(1.7);
+
+      // Wait a bit for the PDF to re-render at new scale
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      console.log("Capturing template at 170% zoom for high quality");
 
       // Import html2canvas dynamically
       const html2canvas = (await import("html2canvas")).default;
 
       // Capture the template document
       const canvas = await html2canvas(documentRef.current, {
-        scale: 2, // Higher resolution for better quality
+        scale: 2, // Additional scale factor for even higher quality
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
@@ -280,7 +478,9 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
           console.log("Cloning template document for capture...");
 
           // Find the cloned document container
-          const clonedContainer = clonedDoc.querySelector('[data-template-editor]');
+          const clonedContainer = clonedDoc.querySelector(
+            "[data-template-editor]"
+          );
 
           if (clonedContainer) {
             // Remove control elements but keep content
@@ -330,7 +530,7 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
         },
       });
 
-      console.log("Template canvas captured successfully:", {
+      console.log("Template canvas captured successfully at 170% zoom:", {
         width: canvas.width,
         height: canvas.height,
         toDataURL: typeof canvas.toDataURL,
@@ -341,13 +541,24 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
         const dataUrl = canvas.toDataURL("image/png", 1.0);
         console.log(
           "Template canvas data URL created successfully, length:",
-          dataUrl
+          dataUrl.length
         );
       } catch (error) {
         console.error("Error creating template canvas data URL:", error);
         throw error;
       }
 
+      return canvas;
+    } finally {
+      // Restore original scale
+      updateScale(originalScale);
+    }
+  }, [scale, updateScale]);
+
+  // Handle continue button click
+  const handleContinue = useCallback(async () => {
+    try {
+      const canvas = await captureTemplateAtHighQuality();
       onContinue(canvas);
     } catch (error) {
       console.error("Error capturing template:", error);
@@ -363,13 +574,13 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
         ctx.scale(scale, scale);
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, 612, 792);
-        
+
         ctx.fillStyle = "#000000";
         ctx.font = "16px Arial";
         ctx.textAlign = "center";
         ctx.fillText("Template Page", 612 / 2, 792 / 2);
         ctx.fillText("(Template capture failed)", 612 / 2, 792 / 2 + 30);
-        
+
         ctx.strokeStyle = "#cccccc";
         ctx.lineWidth = 1;
         ctx.strokeRect(0, 0, 612, 792);
@@ -378,12 +589,19 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
       console.log("Using fallback template canvas");
       onContinue(fallbackCanvas);
     }
-  }, [onContinue]);
+  }, [captureTemplateAtHighQuality, onContinue]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
+      <style>{`
+        [data-template-editor] .react-pdf__Page__canvas {
+          width: 100% !important;
+          height: 100% !important;
+          display: block;
+        }
+      `}</style>
       <div className="bg-white rounded-lg shadow-xl max-w-6xl max-h-[90vh] w-full mx-4 flex flex-col">
         {/* Header */}
         <div className="template-header flex items-center justify-between p-4 border-b">
@@ -409,53 +627,124 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
             <Plus className="h-4 w-4" />
             Add Text Box
           </Button>
+
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-1 ml-4 border-l border-gray-300 pl-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateScale(Math.max(1.0, scale - 0.1))}
+              className="h-8 w-8 p-0"
+              title="Zoom Out (Ctrl+-)"
+              disabled={scale <= 1.0}
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <div className="text-sm text-gray-600 px-2 min-w-[60px] text-center">
+              {Math.round(scale * 100)}%
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateScale(Math.min(5.0, scale + 0.1))}
+              className="h-8 w-8 p-0"
+              title="Zoom In (Ctrl+=)"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateScale(1.0)}
+              className="h-8 w-8 p-0"
+              title="Reset Zoom (Ctrl+0)"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </div>
+
           <div className="text-sm text-gray-600 ml-4">
             {isAddTextBoxMode
               ? "Click on the template to add a text box or click on text to replace it"
+              : isCtrlPressed
+              ? "Use Ctrl+scroll to zoom, Ctrl+0 to reset"
               : "Use the toolbar to edit the template"}
           </div>
         </div>
 
         {/* Template Editor */}
-        <div className="flex-1 overflow-auto p-4">
-          <div className="flex justify-center">
+        <div
+          ref={scrollableContainerRef}
+          className="flex-1 overflow-auto"
+          style={{
+            scrollBehavior: "smooth",
+            overflow: "auto",
+            paddingTop: "20px",
+          }}
+        >
+          <div
+            className="document-wrapper"
+            style={{
+              minHeight: Math.max(100, pageHeight * scale + 80),
+              height: Math.max(100, pageHeight * scale + 80),
+              width: Math.max(100, pageWidth * scale + 80),
+              minWidth: Math.max(100, pageWidth * scale + 80),
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              paddingTop: "40px",
+              paddingBottom: "40px",
+              paddingLeft: "40px",
+              paddingRight: "40px",
+              margin: "0 auto",
+            }}
+          >
             <div
               ref={documentRef}
               data-template-editor
-              className="relative border border-gray-300 shadow-lg"
+              className="relative border border-gray-300 shadow-lg bg-white"
               onClick={handleDocumentClick}
-              style={{ cursor: isAddTextBoxMode ? "crosshair" : "default" }}
+              style={{
+                cursor: isAddTextBoxMode ? "crosshair" : "default",
+                width: pageWidth * scale,
+                height: pageHeight * scale,
+                minWidth: pageWidth * scale,
+                minHeight: pageHeight * scale,
+                display: "block",
+                position: "relative",
+              }}
             >
-              <div className="relative w-full h-full">
-                <Document
-                  file={templatePath}
-                  onLoadSuccess={onDocumentLoadSuccess}
-                  loading={
-                    <div className="flex items-center justify-center h-96">
-                      <div className="text-gray-500">Loading template...</div>
-                    </div>
-                  }
-                  error={
-                    <div className="flex items-center justify-center h-96">
-                      <div className="text-red-500">
-                        Failed to load template
-                      </div>
-                    </div>
-                  }
-                >
-                  <Page
-                    pageNumber={1}
-                    scale={scale}
-                    onLoadSuccess={onPageLoadSuccess}
-                    renderTextLayer={!isTextSpanZooming}
-                    renderAnnotationLayer={false}
-                  />
-                </Document>
-              </div>
-
-              {/* Template Elements - Wrapped for proper z-index */}
-              <div className="absolute inset-0" style={{ zIndex: 10000 }}>
-                {/* Render text boxes */}
+              {/* Zoom Indicator */}
+              {isCtrlPressed && (
+                <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-xs z-50 pointer-events-none">
+                  Ctrl+Scroll to Zoom
+                </div>
+              )}
+              <Document
+                file={templatePath}
+                onLoadSuccess={onDocumentLoadSuccess}
+                className={"border border-blue-500"}
+                loading={
+                  <div className="flex items-center justify-center h-96">
+                    <div className="text-gray-500">Loading template...</div>
+                  </div>
+                }
+                error={
+                  <div className="flex items-center justify-center h-96">
+                    <div className="text-red-500">Failed to load template</div>
+                  </div>
+                }
+              >
+                <Page
+                  pageNumber={1}
+                  width={pageWidth * scale}
+                  onLoadSuccess={onPageLoadSuccess}
+                  renderTextLayer={!isTextSpanZooming}
+                  renderAnnotationLayer={false}
+                />
+              </Document>
+              {/* Render text boxes as siblings to the PDF page, not in an overlay */}
+              <div className="z-[10000] absolute inset-0">
                 {textBoxes.map((textBox) => (
                   <MemoizedTextBox
                     key={textBox.id}
@@ -484,7 +773,8 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
         {/* Footer */}
         <div className="template-footer flex items-center justify-between p-4 border-t bg-gray-50">
           <div className="text-sm text-gray-600">
-            Add text boxes to customize your export template
+            Add text boxes to customize your export template • Zoom:{" "}
+            {Math.round(scale * 100)}%
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>
@@ -494,36 +784,29 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
               onClick={async () => {
                 // Test export just the template
                 try {
-                  if (!documentRef.current) {
-                    console.error("Document ref not available");
-                    return;
-                  }
+                  console.log("Testing template export at high quality...");
 
-                  console.log("Testing template export...");
-                  
-                  // Import html2canvas and pdf-lib
-                  const html2canvas = (await import("html2canvas")).default;
-                  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+                  // Capture template at high quality
+                  const canvas = await captureTemplateAtHighQuality();
 
-                  // Capture the template
-                  const canvas = await html2canvas(documentRef.current, {
-                    scale: 2,
-                    useCORS: true,
-                    allowTaint: true,
-                    backgroundColor: "#ffffff",
-                    logging: false,
-                  });
+                  // Import pdf-lib
+                  const { PDFDocument, StandardFonts, rgb } = await import(
+                    "pdf-lib"
+                  );
 
                   // Create PDF with just the template
                   const pdfDoc = await PDFDocument.create();
                   const templateDataUrl = canvas.toDataURL("image/png", 1.0);
-                  const templateImageBytes = await fetch(templateDataUrl).then((res) =>
-                    res.arrayBuffer()
+                  const templateImageBytes = await fetch(templateDataUrl).then(
+                    (res) => res.arrayBuffer()
                   );
-                  const templateImage = await pdfDoc.embedPng(templateImageBytes);
+                  const templateImage = await pdfDoc.embedPng(
+                    templateImageBytes
+                  );
 
                   const templatePage = pdfDoc.addPage([612, 792]);
-                  const { width: pageWidth, height: pageHeight } = templatePage.getSize();
+                  const { width: pageWidth, height: pageHeight } =
+                    templatePage.getSize();
 
                   const templateDims = templateImage.scale(1);
                   const scaleX = pageWidth / templateDims.width;
@@ -544,8 +827,8 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
                   });
 
                   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-                  templatePage.drawText("TEMPLATE TEST", {
-                    x: pageWidth / 2 - 50,
+                  templatePage.drawText("TEMPLATE TEST (170% Zoom)", {
+                    x: pageWidth / 2 - 80,
                     y: pageHeight - 30,
                     size: 16,
                     font: font,
@@ -553,18 +836,24 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
                   });
 
                   const pdfBytes = await pdfDoc.save();
-                  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+                  const blob = new Blob([pdfBytes], {
+                    type: "application/pdf",
+                  });
                   const url = URL.createObjectURL(blob);
 
                   const link = document.createElement("a");
                   link.href = url;
-                  link.download = `template-test.pdf`;
+                  link.download = `template-test-170zoom.pdf`;
                   link.click();
 
                   URL.revokeObjectURL(url);
-                  console.log("Template test export completed");
+                  console.log("Template test export completed at 170% zoom");
+                  toast.success(
+                    "Template test exported at 170% zoom for high quality"
+                  );
                 } catch (error) {
                   console.error("Template test export failed:", error);
+                  toast.error("Template test export failed");
                 }
               }}
               variant="outline"
@@ -582,7 +871,9 @@ export const TemplateEditorPopup: React.FC<TemplateEditorPopupProps> = ({
         </div>
 
         {/* ElementFormatDrawer */}
-        <ElementFormatDrawer />
+        <div className="border z-[9999] border-green-500">
+          <ElementFormatDrawer />
+        </div>
       </div>
     </div>
   );
