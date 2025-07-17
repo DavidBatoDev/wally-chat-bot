@@ -1057,37 +1057,40 @@ export const PDFEditorContent: React.FC = () => {
       return new Set<string>();
     }
 
-    // Get all elements from both views, but only on the current page
-    const originalTextBoxes = getCurrentTextBoxes("original").filter(
-      (tb) => tb.page === documentState.currentPage
-    );
-    const originalShapes = getCurrentShapes("original").filter(
-      (s) => s.page === documentState.currentPage
-    );
-    const originalImages = getCurrentImages("original").filter(
-      (img) => img.page === documentState.currentPage
-    );
-    const translatedTextBoxes = getCurrentTextBoxes("translated").filter(
-      (tb) => tb.page === documentState.currentPage
-    );
-    const translatedShapes = getCurrentShapes("translated").filter(
-      (s) => s.page === documentState.currentPage
-    );
-    const translatedImages = getCurrentImages("translated").filter(
-      (img) => img.page === documentState.currentPage
-    );
+    // Get elements from the target view only, but only on the current page
+    const targetView = editorState.multiSelection.targetView;
+    let textBoxes: TextField[] = [];
+    let shapes: ShapeType[] = [];
+    let images: ImageType[] = [];
 
-    // Combine elements from both views
-    const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
-    const allShapes = [...originalShapes, ...translatedShapes];
-    const allImages = [...originalImages, ...translatedImages];
+    if (targetView === "original") {
+      textBoxes = getCurrentTextBoxes("original").filter(
+        (tb) => tb.page === documentState.currentPage
+      );
+      shapes = getCurrentShapes("original").filter(
+        (s) => s.page === documentState.currentPage
+      );
+      images = getCurrentImages("original").filter(
+        (img) => img.page === documentState.currentPage
+      );
+    } else if (targetView === "translated") {
+      textBoxes = getCurrentTextBoxes("translated").filter(
+        (tb) => tb.page === documentState.currentPage
+      );
+      shapes = getCurrentShapes("translated").filter(
+        (s) => s.page === documentState.currentPage
+      );
+      images = getCurrentImages("translated").filter(
+        (img) => img.page === documentState.currentPage
+      );
+    }
 
     // Find elements in selection
     const selectedElements = findElementsInSelection(
       selectionRect,
-      allTextBoxes,
-      allShapes,
-      allImages
+      textBoxes,
+      shapes,
+      images
     );
 
     // Return a Set of element IDs for efficient lookup
@@ -3219,36 +3222,39 @@ export const PDFEditorContent: React.FC = () => {
 
       // Only process if selection is large enough
       if (selectionRect.width > 5 && selectionRect.height > 5) {
-        // Only check elements on the current page
-        const originalTextBoxes = getCurrentTextBoxes("original").filter(
-          (tb) => tb.page === documentState.currentPage
-        );
-        const originalShapes = getCurrentShapes("original").filter(
-          (s) => s.page === documentState.currentPage
-        );
-        const originalImages = getCurrentImages("original").filter(
-          (img) => img.page === documentState.currentPage
-        );
-        const translatedTextBoxes = getCurrentTextBoxes("translated").filter(
-          (tb) => tb.page === documentState.currentPage
-        );
-        const translatedShapes = getCurrentShapes("translated").filter(
-          (s) => s.page === documentState.currentPage
-        );
-        const translatedImages = getCurrentImages("translated").filter(
-          (img) => img.page === documentState.currentPage
-        );
+        // Only check elements from the target view on the current page
+        const targetView = editorState.multiSelection.targetView;
+        let textBoxes: TextField[] = [];
+        let shapes: ShapeType[] = [];
+        let images: ImageType[] = [];
 
-        // Combine elements from both views
-        const allTextBoxes = [...originalTextBoxes, ...translatedTextBoxes];
-        const allShapes = [...originalShapes, ...translatedShapes];
-        const allImages = [...originalImages, ...translatedImages];
+        if (targetView === "original") {
+          textBoxes = getCurrentTextBoxes("original").filter(
+            (tb) => tb.page === documentState.currentPage
+          );
+          shapes = getCurrentShapes("original").filter(
+            (s) => s.page === documentState.currentPage
+          );
+          images = getCurrentImages("original").filter(
+            (img) => img.page === documentState.currentPage
+          );
+        } else if (targetView === "translated") {
+          textBoxes = getCurrentTextBoxes("translated").filter(
+            (tb) => tb.page === documentState.currentPage
+          );
+          shapes = getCurrentShapes("translated").filter(
+            (s) => s.page === documentState.currentPage
+          );
+          images = getCurrentImages("translated").filter(
+            (img) => img.page === documentState.currentPage
+          );
+        }
 
         const selectedElements = findElementsInSelection(
           selectionRect,
-          allTextBoxes,
-          allShapes,
-          allImages
+          textBoxes,
+          shapes,
+          images
         );
 
         // Update selection (merge with existing if Ctrl/Cmd held)
@@ -4746,6 +4752,9 @@ export const PDFEditorContent: React.FC = () => {
   const [templateCanvas, setTemplateCanvas] =
     useState<HTMLCanvasElement | null>(null);
 
+  // Add this state near other export-related states
+  const [pendingTemplateExport, setPendingTemplateExport] = useState(false);
+
   // Actual export function
   const performExport = useCallback(async () => {
     if (!documentRef.current) {
@@ -5376,34 +5385,11 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleTemplateEditorContinue = useCallback(
     (canvas: HTMLCanvasElement) => {
-      console.log("Template editor continue called with canvas:", {
-        canvasType: typeof canvas,
-        canvasWidth: canvas?.width,
-        canvasHeight: canvas?.height,
-        hasToDataURL: typeof canvas?.toDataURL,
-      });
-
       setTemplateCanvas(canvas);
       setShowTemplateEditor(false);
-
-      console.log("Template canvas set, checking if all pages are translated");
-      console.log("Template canvas state after setting:", {
-        hasCanvas: !!canvas,
-        canvasWidth: canvas?.width,
-        canvasHeight: canvas?.height,
-      });
-
-      // Now check if all pages are translated and proceed with export
-      if (!areAllPagesTranslated()) {
-        console.log("Not all pages translated, showing export confirmation");
-        setShowExportConfirm(true);
-        setPendingExport(() => performExport);
-      } else {
-        console.log("All pages translated, proceeding with export");
-        performExport();
-      }
+      setPendingTemplateExport(true); // trigger export after canvas is set
     },
-    [areAllPagesTranslated, performExport]
+    []
   );
 
   // Export function with confirmation logic
@@ -5821,6 +5807,20 @@ export const PDFEditorContent: React.FC = () => {
     setShowReplaceConfirm(false);
     setPendingFileUpload(null);
   }, []);
+
+  useEffect(() => {
+    if (pendingExport && templateCanvas) {
+      performExport();
+      setPendingExport(null);
+    }
+  }, [pendingExport, templateCanvas, performExport]);
+
+  useEffect(() => {
+    if (pendingTemplateExport && templateCanvas) {
+      performExport();
+      setPendingTemplateExport(false);
+    }
+  }, [pendingTemplateExport, templateCanvas, performExport]);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
