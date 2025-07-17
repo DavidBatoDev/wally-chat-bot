@@ -92,7 +92,9 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
     <div className="bg-white border-t border-gray-200 px-4 py-2">
       <div className="flex items-center justify-between text-sm text-gray-600">
         <div className="flex items-center space-x-4">
-          {viewState.currentView === "split" ? (
+          {viewState.currentView === "split" &&
+          counts.original &&
+          counts.translated ? (
             <>
               <span className="flex items-center space-x-2">
                 <span className="text-blue-600 font-medium">Original:</span>
@@ -153,7 +155,7 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
             <div className="flex items-center space-x-2">
               <input
                 type="range"
-                min="10"
+                min="100"
                 max="500"
                 step="10"
                 value={Math.round(documentState.scale * 100)}

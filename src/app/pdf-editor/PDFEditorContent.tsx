@@ -1409,10 +1409,11 @@ export const PDFEditorContent: React.FC = () => {
 
         const zoomFactor = 0.1;
         const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor;
-
-        actions.updateScale(documentState.scale + delta);
+        const newScale = Math.max(1.0, documentState.scale + delta); // Prevent below 100%
+        if (newScale !== documentState.scale) {
+          actions.updateScale(newScale);
+        }
         setViewState((prev) => ({ ...prev, zoomMode: "page" }));
-
         actions.resetScaleChanging();
         return false;
       }
@@ -1484,7 +1485,7 @@ export const PDFEditorContent: React.FC = () => {
             transformOrigin: "center center",
             zoomMode: "page",
           }));
-          actions.updateScale(Math.max(0.1, documentState.scale - 0.1));
+          actions.updateScale(Math.max(1.0, documentState.scale - 0.1)); // Prevent below 100%
           actions.resetScaleChanging();
         }
 
@@ -7353,9 +7354,13 @@ export const PDFEditorContent: React.FC = () => {
         viewState={viewState}
         elementCollections={elementCollections}
         pageState={pageState}
-        onZoomChange={(scale) => actions.updateScale(scale)}
-        onZoomIn={() => actions.updateScale(documentState.scale + 0.1)}
-        onZoomOut={() => actions.updateScale(documentState.scale - 0.1)}
+        onZoomChange={(scale) => actions.updateScale(Math.max(1.0, scale))}
+        onZoomIn={() =>
+          actions.updateScale(Math.min(5.0, documentState.scale + 0.1))
+        }
+        onZoomOut={() =>
+          actions.updateScale(Math.max(1.0, documentState.scale - 0.1))
+        }
         onZoomReset={() => actions.updateScale(1.0)}
       />
 
