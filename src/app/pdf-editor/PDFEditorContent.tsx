@@ -4936,7 +4936,22 @@ export const PDFEditorContent: React.FC = () => {
               'div[style*="relative"]'
             );
 
+            console.log("Cloned container found:", clonedContainer);
+            console.log(
+              "All divs in cloned doc:",
+              clonedDoc.querySelectorAll("div")
+            );
+
             if (clonedContainer) {
+              console.log(
+                "Cloned container classes:",
+                clonedContainer.className
+              );
+              console.log(
+                "All elements with class in cloned container:",
+                clonedContainer.querySelectorAll("[class]")
+              );
+
               // Remove control elements but keep shapes
               clonedContainer
                 .querySelectorAll(
@@ -4944,104 +4959,140 @@ export const PDFEditorContent: React.FC = () => {
                 )
                 .forEach((el) => el.remove());
 
-              // Clean up Rnd containers (both text fields and shapes)
-              clonedContainer.querySelectorAll(".rnd").forEach((rnd) => {
-                if (rnd instanceof HTMLElement) {
-                  // Remove border and controls but keep the content
-                  rnd.style.border = "none";
-                  rnd.style.backgroundColor = "transparent";
-                  rnd.style.boxShadow = "none";
-                  rnd.style.outline = "none";
-                  rnd.style.cursor = "default";
+              // Clean up react-draggable containers (both text fields and shapes) within interactive-elements-wrapper
+              const interactiveWrapper = clonedDoc.querySelector(
+                ".interactive-elements-wrapper"
+              );
+              console.log(
+                "Found interactive-elements-wrapper:",
+                interactiveWrapper
+              );
 
-                  // Check if this is a text field container and raise it for better export appearance
-                  const textarea = rnd.querySelector("textarea");
-                  if (textarea && textarea instanceof HTMLElement) {
-                    // Raise ALL text field containers by adjusting position
-                    const currentTop = parseFloat(rnd.style.top || "0");
-                    rnd.style.top = `${currentTop - 5 * documentState.scale}px`; // Raise by 5px scaled
+              if (interactiveWrapper) {
+                const draggableElements =
+                  interactiveWrapper.querySelectorAll(".react-draggable");
+                console.log(
+                  "Found react-draggable elements:",
+                  draggableElements.length,
+                  draggableElements
+                );
 
-                    // Clean up textarea styling
-                    textarea.style.border = "none";
-                    textarea.style.outline = "none";
-                    textarea.style.resize = "none";
-                    textarea.style.padding = "2px"; // Match live editor padding
-                    textarea.style.margin = "0";
-                    textarea.style.backgroundColor = "transparent";
-                    textarea.style.cursor = "default";
-                    textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
-                    textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
-                    textarea.style.wordWrap = "break-word"; // Ensure long words break properly
-                    textarea.style.wordBreak = "break-word"; // Additional word breaking support
+                draggableElements.forEach((draggable, index) => {
+                  console.log(
+                    `Processing draggable element ${index}:`,
+                    draggable
+                  );
+                  if (draggable instanceof HTMLElement) {
+                    // Remove border and controls but keep the content
+                    draggable.style.border = "none";
+                    draggable.style.backgroundColor = "transparent";
+                    draggable.style.boxShadow = "none";
+                    draggable.style.outline = "none";
+                    draggable.style.cursor = "default";
+                    draggable.style.overflow = "visible"; // Ensure content isn't clipped
+                    draggable.style.backgroundColor = "red";
 
-                    // Ensure adequate height for wrapped text during export
-                    const textContent = textarea.value || "";
-                    if (textContent.length > 0) {
-                      // Force explicit text wrapping styles
-                      textarea.style.whiteSpace = "pre-wrap";
-                      textarea.style.wordWrap = "break-word";
-                      textarea.style.wordBreak = "break-word";
+                    // Check if this is a text field container and raise it for better export appearance
+                    const textarea = draggable.querySelector("textarea");
+                    if (textarea && textarea instanceof HTMLElement) {
+                      // Don't adjust position - keep exactly where it is to prevent clipping
+                      // const currentTop = parseFloat(draggable.style.top || "0");
+                      // draggable.style.top = `${
+                      //   currentTop - 5 * documentState.scale
+                      // }px`; // Raise by 5px scaled
+
+                      // Clean up textarea styling
+                      textarea.style.border = "none";
+                      textarea.style.outline = "none";
+                      textarea.style.resize = "none";
+                      textarea.style.padding = "2px"; // Match live editor padding
+                      textarea.style.margin = "0";
+                      textarea.style.backgroundColor = "transparent";
+                      textarea.style.cursor = "default";
+                      textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
+                      textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
+                      textarea.style.wordWrap = "break-word"; // Ensure long words break properly
+                      textarea.style.wordBreak = "break-word"; // Additional word breaking support
                       textarea.style.overflowWrap = "break-word";
+                      textarea.style.textOverflow = "clip";
+                      textarea.style.position = "relative"; // Ensure proper positioning
+                      textarea.style.top = "0"; // Reset any top positioning
+                      textarea.style.left = "0"; // Reset any left positioning
+                      textarea.style.backgroundColor = "red"; // for debugging
 
-                      // Calculate estimated height based on content
-                      const fontSize = parseFloat(
-                        textarea.style.fontSize || "12"
-                      );
-                      const lineHeight = fontSize * 1.1;
+                      // Ensure adequate height for wrapped text during export
+                      const textContent = textarea.value || "";
+                      if (textContent.length > 0) {
+                        // Force explicit text wrapping styles
+                        textarea.style.whiteSpace = "pre-wrap";
+                        textarea.style.wordWrap = "break-word";
+                        textarea.style.wordBreak = "break-word";
+                        textarea.style.overflowWrap = "break-word";
 
-                      // Count explicit line breaks and estimate wrapped lines
-                      const explicitLines =
-                        (textContent.match(/\n/g) || []).length + 1;
-                      const avgCharsPerLine = Math.max(
-                        20,
-                        Math.floor(
-                          parseFloat(rnd.style.width || "200") /
-                            (fontSize * 0.6)
-                        )
-                      );
-                      const estimatedWrappedLines = Math.ceil(
-                        textContent.replace(/\n/g, " ").length / avgCharsPerLine
-                      );
-                      const totalEstimatedLines = Math.max(
-                        explicitLines,
-                        estimatedWrappedLines
-                      );
+                        // Calculate estimated height based on content
+                        const fontSize = parseFloat(
+                          textarea.style.fontSize || "12"
+                        );
+                        const lineHeight = fontSize * 1.1;
 
-                      // Apply generous height to ensure all text is visible
-                      const generousHeight =
-                        totalEstimatedLines * lineHeight + 20; // Extra 20px buffer
-                      const currentHeight = parseFloat(rnd.style.height || "0");
+                        // Count explicit line breaks and estimate wrapped lines
+                        const explicitLines =
+                          (textContent.match(/\n/g) || []).length + 1;
+                        const avgCharsPerLine = Math.max(
+                          20,
+                          Math.floor(
+                            parseFloat(draggable.style.width || "200") /
+                              (fontSize * 0.6)
+                          )
+                        );
+                        const estimatedWrappedLines = Math.ceil(
+                          textContent.replace(/\n/g, " ").length /
+                            avgCharsPerLine
+                        );
+                        const totalEstimatedLines = Math.max(
+                          explicitLines,
+                          estimatedWrappedLines
+                        );
 
-                      // Always expand if we have multi-line content
-                      if (
-                        totalEstimatedLines > 1 ||
-                        generousHeight > currentHeight
-                      ) {
-                        rnd.style.height = `${generousHeight}px`;
-                        textarea.style.height = `${generousHeight - 8}px`; // Slightly smaller than container
+                        // Apply generous height to ensure all text is visible
+                        const generousHeight =
+                          totalEstimatedLines * lineHeight + 20; // Extra 20px buffer
+                        const currentHeight = parseFloat(
+                          draggable.style.height || "0"
+                        );
+
+                        // Always expand if we have multi-line content
+                        if (
+                          totalEstimatedLines > 1 ||
+                          generousHeight > currentHeight
+                        ) {
+                          draggable.style.height = `${generousHeight}px`;
+                          textarea.style.height = `${generousHeight - 8}px`; // Slightly smaller than container
+                        }
+
+                        // Ensure no text overflow
+                        textarea.style.overflow = "visible";
+                        textarea.style.textOverflow = "clip";
                       }
 
-                      // Ensure no text overflow
-                      textarea.style.overflow = "visible";
-                      textarea.style.textOverflow = "clip";
+                      // No position adjustments - keep exactly what user sees in live editor
                     }
 
-                    // No position adjustments - keep exactly what user sees in live editor
+                    // Ensure shapes are visible and properly styled for export
+                    const shapeElement =
+                      draggable.querySelector(".shape-drag-handle");
+                    if (shapeElement && shapeElement instanceof HTMLElement) {
+                      // Keep the shape but remove interactive styling for export
+                      shapeElement.style.cursor = "default";
+                      shapeElement.style.pointerEvents = "none";
+                      // Ensure the shape maintains its visual properties
+                      shapeElement.style.display = "block";
+                      shapeElement.style.visibility = "visible";
+                      shapeElement.style.opacity = "1";
+                    }
                   }
-
-                  // Ensure shapes are visible and properly styled for export
-                  const shapeElement = rnd.querySelector(".shape-drag-handle");
-                  if (shapeElement && shapeElement instanceof HTMLElement) {
-                    // Keep the shape but remove interactive styling for export
-                    shapeElement.style.cursor = "default";
-                    shapeElement.style.pointerEvents = "none";
-                    // Ensure the shape maintains its visual properties
-                    shapeElement.style.display = "block";
-                    shapeElement.style.visibility = "visible";
-                    shapeElement.style.opacity = "1";
-                  }
-                }
-              });
+                });
+              }
 
               // Also clean up any standalone shape elements that might not be in Rnd containers
               clonedContainer
