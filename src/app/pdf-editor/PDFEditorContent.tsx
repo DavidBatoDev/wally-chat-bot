@@ -44,6 +44,22 @@ import {
   AddImageCommand,
   DeleteImageCommand,
 } from "./hooks/commands";
+import {
+  useHandleAddTextBoxWithUndo,
+  useHandleUpdateTextBoxWithUndo,
+  useUpdateTextBoxWithUndo,
+  useUpdateOriginalTextBoxWithUndo,
+  useUpdateTranslatedTextBoxWithUndo,
+  useHandleAddShapeWithUndo,
+  useHandleUpdateShapeWithUndo,
+  useUpdateShapeWithUndo,
+  useHandleDeleteTextBoxWithUndo,
+  useHandleDeleteShapeWithUndo,
+  useHandleAddDeletionRectangleWithUndo,
+  useHandleDeleteDeletionRectangleWithUndo,
+  useHandleAddImageWithUndo,
+  useHandleDeleteImageWithUndo
+} from "./hooks/undoRedoHandlers";
 
 // Import components
 import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";
@@ -135,65 +151,6 @@ export const PDFEditorContent: React.FC = () => {
     isElementAtBack,
   } = useElementManagement();
 
-  // Undo/Redo history
-  const history = useHistory();
-
-  // Undo/Redo handlers for text boxes
-  const handleAddTextBoxWithUndo = useCallback(
-    (
-      x: number,
-      y: number,
-      page: number,
-      view: ViewMode,
-      targetView?: "original" | "translated",
-      initialProperties?: Partial<TextField>
-    ) => {
-      let newId: string | null = null;
-      const idRef = { current: null as string | null };
-      const add = () => {
-        newId = addTextBox(x, y, page, view, targetView, initialProperties);
-        idRef.current = newId;
-        return newId;
-      };
-      const remove = (id: string) => {
-        deleteTextBox(id, view);
-      };
-      const cmd = new AddTextBoxCommand(add, remove, idRef);
-      cmd.execute();
-      history.push(page, view, cmd);
-      return idRef.current;
-    },
-    [addTextBox, deleteTextBox, history]
-  );
-
-  const handleUpdateTextBoxWithUndo = useCallback(
-    (
-      id: string,
-      before: Partial<TextField>,
-      after: Partial<TextField>,
-      page: number,
-      view: ViewMode
-    ) => {
-      const cmd = new UpdateTextBoxCommand(updateTextBox, id, before, after);
-      cmd.execute();
-      history.push(page, view, cmd);
-    },
-    [updateTextBox, history]
-  );
-
-  // Helper to get current text box state
-  const getCurrentTextBoxState = useCallback(
-    (id: string): Partial<TextField> | null => {
-      const allTextBoxes = [
-        ...elementCollections.originalTextBoxes,
-        ...elementCollections.translatedTextBoxes,
-      ];
-      const textBox = allTextBoxes.find((tb) => tb.id === id);
-      return textBox ? { ...textBox } : null;
-    },
-    [elementCollections]
-  );
-
   // Editor state
   const [editorState, setEditorState] = useState<EditorState>({
     selectedFieldId: null,
@@ -222,6 +179,174 @@ export const PDFEditorContent: React.FC = () => {
     },
     isSelectionMode: false,
   });
+
+  // View state
+  const [viewState, setViewState] = useState<ViewState>({
+    currentView: "original",
+    zoomMode: "page",
+    containerWidth: 0,
+    isCtrlPressed: false,
+    transformOrigin: "center center",
+    isSidebarCollapsed: false,
+    activeSidebarTab: "pages",
+  });
+
+  // Performance optimization: Track ongoing operations to batch updates
+  const [ongoingOperations, setOngoingOperations] = useState<{
+    [elementId: string]: {
+      type: "resize" | "drag" | "text" | "multi-drag";
+      startState: any;
+      lastUpdate: number;
+    };
+  }>({});
+
+  // Helper to get current text box state
+  const getCurrentTextBoxState = useCallback(
+    (id: string): Partial<TextField> | null => {
+      const allTextBoxes = [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+      ];
+      const textBox = allTextBoxes.find((tb) => tb.id === id);
+      return textBox ? { ...textBox } : null;
+    },
+    [elementCollections]
+  );
+
+  // Helper to get current shape state
+  const getCurrentShapeState = useCallback(
+    (id: string): Partial<ShapeType> | null => {
+      const allShapes = [
+        ...elementCollections.originalShapes,
+        ...elementCollections.translatedShapes,
+      ];
+      const shape = allShapes.find((s) => s.id === id);
+      return shape ? { ...shape } : null;
+    },
+    [elementCollections]
+  );
+
+  // Helper function to clear selection state
+  const clearSelectionState = useCallback(() => {
+    setEditorState((prev) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      multiSelection: {
+        ...prev.multiSelection,
+        selectedElements: [],
+        selectionBounds: null,
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        isMovingSelection: false,
+        moveStart: null,
+      },
+    }));
+    setSelectedElementId(null);
+    setSelectedElementType(null);
+    setCurrentFormat(null);
+    setIsDrawerOpen(false);
+  }, [
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setIsDrawerOpen,
+  ]);
+
+  // Undo/Redo history
+  const history = useHistory();
+
+  // Undo/Redo handlers for text boxes
+  const handleAddTextBoxWithUndo = useHandleAddTextBoxWithUndo(
+    addTextBox,
+    deleteTextBox,
+    history
+  );
+  const handleUpdateTextBoxWithUndo = useHandleUpdateTextBoxWithUndo(
+    updateTextBox,
+    history
+  );
+  const updateTextBoxWithUndo = useUpdateTextBoxWithUndo(
+    updateTextBox,
+    handleUpdateTextBoxWithUndo,
+    getCurrentTextBoxState,
+    documentState,
+    viewState
+  );
+  const updateOriginalTextBoxWithUndo = useUpdateOriginalTextBoxWithUndo(
+    updateTextBox,
+    handleUpdateTextBoxWithUndo,
+    getCurrentTextBoxState,
+    documentState
+  );
+  const updateTranslatedTextBoxWithUndo = useUpdateTranslatedTextBoxWithUndo(
+    updateTextBox,
+    handleUpdateTextBoxWithUndo,
+    getCurrentTextBoxState,
+    documentState
+  );
+  const handleAddShapeWithUndo = useHandleAddShapeWithUndo(
+    addShape,
+    deleteShape,
+    history
+  );
+  const handleUpdateShapeWithUndo = useHandleUpdateShapeWithUndo(
+    updateShape,
+    history
+  );
+  const updateShapeWithUndo = useUpdateShapeWithUndo(
+    updateShape,
+    handleUpdateShapeWithUndo,
+    getCurrentShapeState,
+    elementCollections,
+    ongoingOperations
+  );
+  const handleDeleteTextBoxWithUndo = useHandleDeleteTextBoxWithUndo(
+    deleteTextBox,
+    addTextBox,
+    history,
+    handleAddTextBoxWithUndo,
+    elementCollections,
+    editorState,
+    selectedElementId,
+    clearSelectionState
+  );
+  const handleDeleteShapeWithUndo = useHandleDeleteShapeWithUndo(
+    deleteShape,
+    addShape,
+    history,
+    elementCollections,
+    editorState,
+    selectedElementId,
+    clearSelectionState
+  );
+  const handleAddDeletionRectangleWithUndo =
+    useHandleAddDeletionRectangleWithUndo(
+      addDeletionRectangle,
+      deleteDeletionRectangle,
+      history
+    );
+  const handleDeleteDeletionRectangleWithUndo =
+    useHandleDeleteDeletionRectangleWithUndo(
+      deleteDeletionRectangle,
+      addDeletionRectangle,
+      history,
+      elementCollections
+    );
+  const handleAddImageWithUndo = useHandleAddImageWithUndo(
+    addImage,
+    deleteImage,
+    history
+  );
+  const handleDeleteImageWithUndo = useHandleDeleteImageWithUndo(
+    deleteImage,
+    addImage,
+    history,
+    elementCollections,
+    selectedElementId,
+    clearSelectionState
+  );
 
   // Tool state
   const [toolState, setToolState] = useState<ToolState>({
@@ -257,17 +382,6 @@ export const PDFEditorContent: React.FC = () => {
     selectionEnd: null,
   });
 
-  // View state
-  const [viewState, setViewState] = useState<ViewState>({
-    currentView: "original",
-    zoomMode: "page",
-    containerWidth: 0,
-    isCtrlPressed: false,
-    transformOrigin: "center center",
-    isSidebarCollapsed: false,
-    activeSidebarTab: "pages",
-  });
-
   // Page state
   const [pageState, setPageState] = useState<PageState>({
     deletedPages: new Set(),
@@ -280,14 +394,6 @@ export const PDFEditorContent: React.FC = () => {
   const [sourceLanguage, setSourceLanguage] = useState<string>("");
   const [desiredLanguage, setDesiredLanguage] = useState<string>("");
 
-  // Performance optimization: Track ongoing operations to batch updates
-  const [ongoingOperations, setOngoingOperations] = useState<{
-    [elementId: string]: {
-      type: "resize" | "drag" | "text" | "multi-drag";
-      startState: any;
-      lastUpdate: number;
-    };
-  }>({});
 
   // Use a ref to track ongoing operations for immediate access in timers
   const ongoingOperationsRef = useRef<{
@@ -301,774 +407,8 @@ export const PDFEditorContent: React.FC = () => {
   // Debounce timer for batched updates
   const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({});
 
-  // Helper functions for managing ongoing operations
-  const startOngoingOperation = useCallback(
-    (
-      elementId: string,
-      type: "resize" | "drag" | "text" | "multi-drag",
-      startState: any
-    ) => {
-      setOngoingOperations((prev) => ({
-        ...prev,
-        [elementId]: {
-          type,
-          startState,
-          lastUpdate: Date.now(),
-        },
-      }));
-    },
-    []
-  );
 
-  const endOngoingOperation = useCallback((elementId: string) => {
-    // Clear the debounce timer
-    if (debounceTimersRef.current[elementId]) {
-      clearTimeout(debounceTimersRef.current[elementId]);
-      delete debounceTimersRef.current[elementId];
-    }
 
-    // Clear the ongoing operation
-    setOngoingOperations((prev) => {
-      const newState = { ...prev };
-      delete newState[elementId];
-      return newState;
-    });
-  }, []);
-
-  // Wrapper for updating text box with undo support
-  const updateTextBoxWithUndo = useCallback(
-    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
-      const currentState = getCurrentTextBoxState(id);
-      if (currentState) {
-        // Get the specific properties being updated
-        const before: Partial<TextField> = {};
-        const after: Partial<TextField> = {};
-
-        // Only include properties that are actually being changed
-        Object.keys(updates).forEach((key) => {
-          const k = key as keyof TextField;
-          if (currentState[k] !== updates[k]) {
-            before[k] = currentState[k] as any;
-            after[k] = updates[k] as any;
-          }
-        });
-
-        // Only create command if there are actual changes
-        if (Object.keys(after).length > 0) {
-          if (isOngoingOperation) {
-            // For ongoing operations, update the state but don't create undo commands yet
-            updateTextBox(id, after);
-
-            // Update ongoing operation state
-            const newOperationState = {
-              type: "text" as const,
-              startState:
-                ongoingOperationsRef.current[id]?.startState || before,
-              lastUpdate: Date.now(),
-            };
-
-            setOngoingOperations((prev) => ({
-              ...prev,
-              [id]: newOperationState,
-            }));
-
-            // Also update the ref for immediate access
-            ongoingOperationsRef.current[id] = newOperationState;
-
-            // Clear existing debounce timer
-            if (debounceTimersRef.current[id]) {
-              clearTimeout(debounceTimersRef.current[id]);
-            }
-
-            // Set debounce timer to create undo command after operation completes
-            debounceTimersRef.current[id] = setTimeout(() => {
-              const operation = ongoingOperationsRef.current[id];
-              if (operation) {
-                handleUpdateTextBoxWithUndo(
-                  id,
-                  operation.startState,
-                  after,
-                  documentState.currentPage,
-                  viewState.currentView
-                );
-
-                // Clear ongoing operation
-                setOngoingOperations((prev) => {
-                  const newState = { ...prev };
-                  delete newState[id];
-                  return newState;
-                });
-                delete ongoingOperationsRef.current[id];
-                delete debounceTimersRef.current[id];
-              }
-            }, 500); // 500ms debounce
-          } else {
-            // For immediate operations, create undo command right away
-            handleUpdateTextBoxWithUndo(
-              id,
-              before,
-              after,
-              documentState.currentPage,
-              viewState.currentView
-            );
-          }
-        }
-      }
-    },
-    [
-      getCurrentTextBoxState,
-      handleUpdateTextBoxWithUndo,
-      documentState.currentPage,
-      viewState.currentView,
-      ongoingOperations,
-      updateTextBox,
-    ]
-  );
-
-  // View-specific update functions
-  const updateOriginalTextBoxWithUndo = useCallback(
-    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
-      const currentState = getCurrentTextBoxState(id);
-      if (currentState) {
-        // Get the specific properties being updated
-        const before: Partial<TextField> = {};
-        const after: Partial<TextField> = {};
-
-        // Only include properties that are actually being changed
-        Object.keys(updates).forEach((key) => {
-          const k = key as keyof TextField;
-          if (currentState[k] !== updates[k]) {
-            before[k] = currentState[k] as any;
-            after[k] = updates[k] as any;
-          }
-        });
-
-        // Only create command if there are actual changes
-        if (Object.keys(after).length > 0) {
-          if (isOngoingOperation) {
-            // For ongoing operations, update the state but don't create undo commands yet
-            updateTextBox(id, after);
-
-            // Update ongoing operation state
-            const newOperationState = {
-              type: "text" as const,
-              startState:
-                ongoingOperationsRef.current[id]?.startState || before,
-              lastUpdate: Date.now(),
-            };
-
-            setOngoingOperations((prev) => ({
-              ...prev,
-              [id]: newOperationState,
-            }));
-
-            // Also update the ref for immediate access
-            ongoingOperationsRef.current[id] = newOperationState;
-
-            // Clear existing debounce timer
-            if (debounceTimersRef.current[id]) {
-              clearTimeout(debounceTimersRef.current[id]);
-            }
-
-            // Set debounce timer to create undo command after operation completes
-            debounceTimersRef.current[id] = setTimeout(() => {
-              const operation = ongoingOperationsRef.current[id];
-              if (operation) {
-                handleUpdateTextBoxWithUndo(
-                  id,
-                  operation.startState,
-                  after,
-                  documentState.currentPage,
-                  "original"
-                );
-
-                // Clear ongoing operation
-                setOngoingOperations((prev) => {
-                  const newState = { ...prev };
-                  delete newState[id];
-                  return newState;
-                });
-                delete ongoingOperationsRef.current[id];
-                delete debounceTimersRef.current[id];
-              }
-            }, 500); // 500ms debounce
-          } else {
-            // For immediate operations, create undo command right away
-            handleUpdateTextBoxWithUndo(
-              id,
-              before,
-              after,
-              documentState.currentPage,
-              "original"
-            );
-          }
-        }
-      }
-    },
-    [
-      getCurrentTextBoxState,
-      handleUpdateTextBoxWithUndo,
-      documentState.currentPage,
-      ongoingOperations,
-      updateTextBox,
-    ]
-  );
-
-  const updateTranslatedTextBoxWithUndo = useCallback(
-    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
-      const currentState = getCurrentTextBoxState(id);
-      if (currentState) {
-        // Get the specific properties being updated
-        const before: Partial<TextField> = {};
-        const after: Partial<TextField> = {};
-
-        // Only include properties that are actually being changed
-        Object.keys(updates).forEach((key) => {
-          const k = key as keyof TextField;
-          if (currentState[k] !== updates[k]) {
-            before[k] = currentState[k] as any;
-            after[k] = updates[k] as any;
-          }
-        });
-
-        // Only create command if there are actual changes
-        if (Object.keys(after).length > 0) {
-          if (isOngoingOperation) {
-            // For ongoing operations, update the state but don't create undo commands yet
-            updateTextBox(id, after);
-
-            // Update ongoing operation state
-            const newOperationState = {
-              type: "text" as const,
-              startState:
-                ongoingOperationsRef.current[id]?.startState || before,
-              lastUpdate: Date.now(),
-            };
-
-            setOngoingOperations((prev) => ({
-              ...prev,
-              [id]: newOperationState,
-            }));
-
-            // Also update the ref for immediate access
-            ongoingOperationsRef.current[id] = newOperationState;
-
-            // Clear existing debounce timer
-            if (debounceTimersRef.current[id]) {
-              clearTimeout(debounceTimersRef.current[id]);
-            }
-
-            // Set debounce timer to create undo command after operation completes
-            debounceTimersRef.current[id] = setTimeout(() => {
-              const operation = ongoingOperationsRef.current[id];
-              if (operation) {
-                handleUpdateTextBoxWithUndo(
-                  id,
-                  operation.startState,
-                  after,
-                  documentState.currentPage,
-                  "translated"
-                );
-
-                // Clear ongoing operation
-                setOngoingOperations((prev) => {
-                  const newState = { ...prev };
-                  delete newState[id];
-                  return newState;
-                });
-                delete ongoingOperationsRef.current[id];
-                delete debounceTimersRef.current[id];
-              }
-            }, 500); // 500ms debounce
-          } else {
-            // For immediate operations, create undo command right away
-            handleUpdateTextBoxWithUndo(
-              id,
-              before,
-              after,
-              documentState.currentPage,
-              "translated"
-            );
-          }
-        }
-      }
-    },
-    [
-      getCurrentTextBoxState,
-      handleUpdateTextBoxWithUndo,
-      documentState.currentPage,
-      ongoingOperations,
-      updateTextBox,
-    ]
-  );
-
-  // Undo/Redo handlers for shapes
-  const handleAddShapeWithUndo = useCallback(
-    (
-      type: "circle" | "rectangle",
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      page: number,
-      view: ViewMode,
-      targetView?: "original" | "translated"
-    ) => {
-      let newId: string | null = null;
-      const idRef = { current: null as string | null };
-      const add = () => {
-        newId = addShape(type, x, y, width, height, page, view, targetView);
-        idRef.current = newId;
-        return newId;
-      };
-      const remove = (id: string) => {
-        deleteShape(id, view);
-      };
-      const cmd = new AddShapeCommand(add, remove, idRef);
-      cmd.execute();
-      history.push(page, view, cmd);
-      return idRef.current;
-    },
-    [addShape, deleteShape, history]
-  );
-
-  const handleUpdateShapeWithUndo = useCallback(
-    (
-      id: string,
-      before: Partial<ShapeType>,
-      after: Partial<ShapeType>,
-      page: number,
-      view: ViewMode
-    ) => {
-      const cmd = new UpdateShapeCommand(updateShape, id, before, after);
-      cmd.execute();
-      history.push(page, view, cmd);
-    },
-    [updateShape, history]
-  );
-
-  // Helper to get current shape state
-  const getCurrentShapeState = useCallback(
-    (id: string): Partial<ShapeType> | null => {
-      const allShapes = [
-        ...elementCollections.originalShapes,
-        ...elementCollections.translatedShapes,
-      ];
-      const shape = allShapes.find((s) => s.id === id);
-      return shape ? { ...shape } : null;
-    },
-    [elementCollections]
-  );
-
-  // Wrapper for updating shape with undo support
-  const updateShapeWithUndo = useCallback(
-    (id: string, updates: Partial<ShapeType>, isOngoingOperation = false) => {
-      const currentState = getCurrentShapeState(id);
-      if (currentState) {
-        // Get the specific properties being updated
-        const before: Partial<ShapeType> = {};
-        const after: Partial<ShapeType> = {};
-
-        // Only include properties that are actually being changed
-        Object.keys(updates).forEach((key) => {
-          const k = key as keyof ShapeType;
-          if (currentState[k] !== updates[k]) {
-            before[k] = currentState[k] as any;
-            after[k] = updates[k] as any;
-          }
-        });
-
-        // Only create command if there are actual changes
-        if (Object.keys(after).length > 0) {
-          if (isOngoingOperation) {
-            // For ongoing operations, update the state but don't create undo commands yet
-            updateShape(id, after);
-
-            // Update ongoing operation state
-            const newOperationState = {
-              type: "drag" as const,
-              startState:
-                ongoingOperationsRef.current[id]?.startState || before,
-              lastUpdate: Date.now(),
-            };
-
-            setOngoingOperations((prev) => ({
-              ...prev,
-              [id]: newOperationState,
-            }));
-
-            // Also update the ref for immediate access
-            ongoingOperationsRef.current[id] = newOperationState;
-
-            // Clear existing debounce timer
-            if (debounceTimersRef.current[id]) {
-              clearTimeout(debounceTimersRef.current[id]);
-            }
-
-            // Set debounce timer to create undo command after operation completes
-            debounceTimersRef.current[id] = setTimeout(() => {
-              const operation = ongoingOperationsRef.current[id];
-              if (operation) {
-                const allShapes = [
-                  ...elementCollections.originalShapes,
-                  ...elementCollections.translatedShapes,
-                ];
-                const shape = allShapes.find((s) => s.id === id);
-                if (shape) {
-                  const view = elementCollections.originalShapes.some(
-                    (s) => s.id === id
-                  )
-                    ? "original"
-                    : "translated";
-                  handleUpdateShapeWithUndo(
-                    id,
-                    operation.startState,
-                    after,
-                    shape.page,
-                    view
-                  );
-                }
-
-                // Clear ongoing operation
-                setOngoingOperations((prev) => {
-                  const newState = { ...prev };
-                  delete newState[id];
-                  return newState;
-                });
-                delete ongoingOperationsRef.current[id];
-                delete debounceTimersRef.current[id];
-              }
-            }, 300); // 300ms debounce for drag operations
-          } else {
-            // For immediate operations, create undo command right away
-            const allShapes = [
-              ...elementCollections.originalShapes,
-              ...elementCollections.translatedShapes,
-            ];
-            const shape = allShapes.find((s) => s.id === id);
-            if (shape) {
-              const view = elementCollections.originalShapes.some(
-                (s) => s.id === id
-              )
-                ? "original"
-                : "translated";
-              handleUpdateShapeWithUndo(id, before, after, shape.page, view);
-            }
-          }
-        }
-      }
-    },
-    [
-      getCurrentShapeState,
-      handleUpdateShapeWithUndo,
-      elementCollections,
-      ongoingOperations,
-      updateShape,
-    ]
-  );
-
-  // Helper function to clear selection state
-  const clearSelectionState = useCallback(() => {
-    setEditorState((prev) => ({
-      ...prev,
-      selectedFieldId: null,
-      selectedShapeId: null,
-      multiSelection: {
-        ...prev.multiSelection,
-        selectedElements: [],
-        selectionBounds: null,
-        isDrawingSelection: false,
-        selectionStart: null,
-        selectionEnd: null,
-        isMovingSelection: false,
-        moveStart: null,
-      },
-    }));
-    setSelectedElementId(null);
-    setSelectedElementType(null);
-    setCurrentFormat(null);
-    setIsDrawerOpen(false);
-  }, [
-    setSelectedElementId,
-    setSelectedElementType,
-    setCurrentFormat,
-    setIsDrawerOpen,
-  ]);
-
-  // Wrapper for deleting textbox with undo support
-  const handleDeleteTextBoxWithUndo = useCallback(
-    (id: string, view: ViewMode) => {
-      // Find the textbox to delete
-      const allTextBoxes = [
-        ...elementCollections.originalTextBoxes,
-        ...elementCollections.translatedTextBoxes,
-      ];
-      const textBox = allTextBoxes.find((tb) => tb.id === id);
-      if (!textBox) return;
-
-      // Determine which view the textbox belongs to
-      const textBoxView = elementCollections.originalTextBoxes.some(
-        (tb) => tb.id === id
-      )
-        ? "original"
-        : "translated";
-
-      const remove = (id: string) => {
-        deleteTextBox(id, view);
-      };
-      const add = (textBox: TextField) => {
-        handleAddTextBoxWithUndo(
-          textBox.x,
-          textBox.y,
-          textBox.page,
-          textBoxView,
-          textBoxView,
-          {
-            value: textBox.value,
-            fontSize: textBox.fontSize,
-            fontFamily: textBox.fontFamily,
-            color: textBox.color,
-            bold: textBox.bold,
-            italic: textBox.italic,
-            underline: textBox.underline,
-            textAlign: textBox.textAlign,
-            letterSpacing: textBox.letterSpacing,
-            lineHeight: textBox.lineHeight,
-            width: textBox.width,
-            height: textBox.height,
-          }
-        );
-      };
-      const cmd = new DeleteTextBoxCommand(remove, add, textBox);
-      cmd.execute();
-      history.push(textBox.page, textBoxView, cmd);
-
-      // Clear selection state if the deleted textbox was selected
-      if (editorState.selectedFieldId === id || selectedElementId === id) {
-        clearSelectionState();
-      }
-    },
-    [
-      elementCollections,
-      deleteTextBox,
-      addTextBox,
-      history,
-      editorState.selectedFieldId,
-      selectedElementId,
-    ]
-  );
-
-  // Wrapper for deleting shape with undo support
-  const handleDeleteShapeWithUndo = useCallback(
-    (id: string, view: ViewMode) => {
-      // Find the shape to delete
-      const allShapes = [
-        ...elementCollections.originalShapes,
-        ...elementCollections.translatedShapes,
-      ];
-      const shape = allShapes.find((s) => s.id === id);
-      if (!shape) return;
-
-      // Determine which view the shape belongs to
-      const shapeView = elementCollections.originalShapes.some(
-        (s) => s.id === id
-      )
-        ? "original"
-        : "translated";
-
-      const remove = (id: string) => {
-        deleteShape(id, view);
-      };
-      const add = (shape: ShapeType) => {
-        addShape(
-          shape.type,
-          shape.x,
-          shape.y,
-          shape.width,
-          shape.height,
-          shape.page,
-          shapeView,
-          shapeView
-        );
-      };
-      const cmd = new DeleteShapeCommand(remove, add, shape);
-      cmd.execute();
-      history.push(shape.page, shapeView, cmd);
-
-      // Clear selection state if the deleted shape was selected
-      if (editorState.selectedShapeId === id || selectedElementId === id) {
-        clearSelectionState();
-      }
-    },
-    [
-      elementCollections,
-      deleteShape,
-      addShape,
-      history,
-      editorState.selectedShapeId,
-      selectedElementId,
-    ]
-  );
-
-  // Undo/Redo handlers for deletion rectangles
-  const handleAddDeletionRectangleWithUndo = useCallback(
-    (
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      page: number,
-      view: ViewMode,
-      background: string,
-      opacity: number,
-      targetView?: "original" | "translated"
-    ) => {
-      let newId: string | null = null;
-      const idRef = { current: null as string | null };
-      const add = () => {
-        // Use the direct function from element management to avoid recursion
-        newId = addDeletionRectangle(
-          x,
-          y,
-          width,
-          height,
-          page,
-          view,
-          background,
-          opacity
-        );
-        idRef.current = newId;
-        return newId;
-      };
-      const remove = (id: string) => {
-        deleteDeletionRectangle(id, view);
-      };
-      const cmd = new AddDeletionRectangleCommand(add, remove, idRef);
-      cmd.execute();
-      history.push(page, view, cmd);
-
-      return idRef.current;
-    },
-    [addDeletionRectangle, deleteDeletionRectangle, history]
-  );
-
-  const handleDeleteDeletionRectangleWithUndo = useCallback(
-    (id: string, view: ViewMode) => {
-      // Find the deletion rectangle to delete
-      const allDeletionRectangles = [
-        ...elementCollections.originalDeletionRectangles,
-        ...elementCollections.translatedDeletionRectangles,
-      ];
-      const rect = allDeletionRectangles.find((r) => r.id === id);
-      if (!rect) {
-        return;
-      }
-
-      // Determine which view the deletion rectangle belongs to
-      const rectView = elementCollections.originalDeletionRectangles.some(
-        (r) => r.id === id
-      )
-        ? "original"
-        : "translated";
-
-      const remove = (id: string) => {
-        deleteDeletionRectangle(id, view);
-      };
-      const add = (rect: DeletionRectangle) => {
-        addDeletionRectangle(
-          rect.x,
-          rect.y,
-          rect.width,
-          rect.height,
-          rect.page,
-          rectView,
-          rect.background || "",
-          rect.opacity
-        );
-      };
-      const cmd = new DeleteDeletionRectangleCommand(remove, add, rect);
-      cmd.execute();
-      history.push(rect.page, rectView, cmd);
-    },
-    [elementCollections, deleteDeletionRectangle, addDeletionRectangle, history]
-  );
-
-  // Undo/Redo handlers for images
-  const handleAddImageWithUndo = useCallback(
-    (
-      src: string,
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      page: number,
-      view: ViewMode,
-      targetView?: "original" | "translated"
-    ) => {
-      let newId: string | null = null;
-      const idRef = { current: null as string | null };
-      const add = () => {
-        // Always default to 'original' if view is split and targetView is not set
-        const finalView = view === "split" ? targetView || "original" : view;
-        newId = addImage(src, x, y, width, height, page, finalView);
-        idRef.current = newId;
-        return newId;
-      };
-      const remove = (id: string) => {
-        deleteImage(id, view);
-      };
-      const cmd = new AddImageCommand(add, remove, idRef);
-      cmd.execute();
-      history.push(page, view, cmd);
-      return idRef.current;
-    },
-    [addImage, deleteImage, history]
-  );
-
-  const handleDeleteImageWithUndo = useCallback(
-    (id: string, view: ViewMode) => {
-      // Find the image to delete
-      const allImages = [
-        ...elementCollections.originalImages,
-        ...elementCollections.translatedImages,
-      ];
-      const image = allImages.find((img) => img.id === id);
-      if (!image) {
-        return;
-      }
-
-      // Determine which view the image belongs to
-      const imageView = elementCollections.originalImages.some(
-        (img) => img.id === id
-      )
-        ? "original"
-        : "translated";
-
-      const remove = (id: string) => {
-        deleteImage(id, view);
-      };
-      const add = (image: ImageType) => {
-        addImage(
-          image.src,
-          image.x,
-          image.y,
-          image.width,
-          image.height,
-          image.page,
-          imageView
-        );
-      };
-      const cmd = new DeleteImageCommand(remove, add, image);
-      cmd.execute();
-      history.push(image.page, imageView, cmd);
-
-      // Clear selection state if the deleted image was selected
-      if (selectedElementId === id) {
-        clearSelectionState();
-      }
-    },
-    [elementCollections, deleteImage, addImage, history, selectedElementId]
-  );
 
   // Auto-focus state
   const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
@@ -4106,7 +3446,6 @@ export const PDFEditorContent: React.FC = () => {
             height,
             documentState.currentPage,
             "original",
-            "original"
           );
           if (imageId) {
             handleImageSelect(imageId);
