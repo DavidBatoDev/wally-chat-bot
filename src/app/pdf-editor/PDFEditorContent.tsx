@@ -33,18 +33,6 @@ import { useElementManagement } from "./hooks/useElementManagement";
 import { useTextSpanHandling } from "./hooks/useTextSpanHandling";
 import { useHistory } from "./hooks/useHistory";
 import {
-  AddTextBoxCommand,
-  UpdateTextBoxCommand,
-  DeleteTextBoxCommand,
-  AddShapeCommand,
-  UpdateShapeCommand,
-  DeleteShapeCommand,
-  AddDeletionRectangleCommand,
-  DeleteDeletionRectangleCommand,
-  AddImageCommand,
-  DeleteImageCommand,
-} from "./hooks/commands";
-import {
   useHandleAddTextBoxWithUndo,
   useHandleUpdateTextBoxWithUndo,
   useUpdateTextBoxWithUndo,
