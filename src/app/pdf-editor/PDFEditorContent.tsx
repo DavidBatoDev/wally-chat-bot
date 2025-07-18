@@ -393,10 +393,7 @@ export const PDFEditorContent: React.FC = () => {
   }>({});
 
   // Debounce timer for batched updates
-  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({});
-
-
-
+  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({})
 
   // Auto-focus state
   const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
