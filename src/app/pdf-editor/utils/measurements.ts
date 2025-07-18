@@ -156,3 +156,45 @@ export const isPdfFile = (url: string): boolean => {
 export const isImageFile = (url: string): boolean => {
   return getFileType(url) === "image";
 };
+
+
+// // Deprecated functions
+// const measureText = (
+//   text: string,
+//   fontSize: number,
+//   fontFamily: string,
+//   characterSpacing: number = 0,
+//   maxWidth?: number,
+//   padding?: { top?: number; right?: number; bottom?: number; left?: number }
+// ): { width: number; height: number } => {
+//   const canvas = document.createElement("canvas");
+//   const context = canvas.getContext("2d");
+//   if (!context) return { width: 100, height: fontSize };
+
+//   context.font = `${fontSize}px ${fontFamily}`;
+
+//   // Split text into lines for multi-line support
+//   const lines = text.split("\n");
+//   let maxLineWidth = 0;
+//   lines.forEach((line) => {
+//     const metrics = context.measureText(line);
+//     const lineWidth =
+//       metrics.width + characterSpacing * Math.max(0, line.length - 1);
+//     if (lineWidth > maxLineWidth) maxLineWidth = lineWidth;
+//   });
+
+//   // Height: number of lines * line height
+//   const lineHeight = fontSize * 1.1; // Reduced line height for more compact text
+//   const textHeight = lineHeight * lines.length;
+
+//   // Add padding to width and height if provided
+//   const paddingLeft = padding?.left || 0;
+//   const paddingRight = padding?.right || 0;
+//   const paddingTop = padding?.top || 0;
+//   const paddingBottom = padding?.bottom || 0;
+
+//   const totalWidth = maxLineWidth + paddingLeft + paddingRight;
+//   const totalHeight = textHeight + paddingTop + paddingBottom;
+
+//   return { width: totalWidth, height: totalHeight };
+// };
