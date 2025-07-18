@@ -1,14 +1,17 @@
 import { useCallback } from "react";
-import { AddTextBoxCommand, UpdateTextBoxCommand } from "./commands";
 import { TextField, ViewMode } from "../types/pdf-editor.types";
-import { AddShapeCommand, UpdateShapeCommand } from "./commands";
 import { Shape as ShapeType } from "../types/pdf-editor.types";
-import { DeleteTextBoxCommand, DeleteShapeCommand } from "./commands";
 import {
+AddTextBoxCommand,
+UpdateTextBoxCommand,
   AddDeletionRectangleCommand,
   DeleteDeletionRectangleCommand,
   AddImageCommand,
   DeleteImageCommand,
+  DeleteTextBoxCommand,
+  DeleteShapeCommand,
+  AddShapeCommand,
+  UpdateShapeCommand
 } from "./commands";
 import {
   DeletionRectangle,
