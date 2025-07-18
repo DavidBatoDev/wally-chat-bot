@@ -29,7 +29,7 @@ export default function TranslateHomepage() {
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-3">
               <FileText className="w-8 h-8 text-red-600" />
             </div>
-            <span className="text-sm text-gray-600">Any Document</span>
+            <span className="text-sm text-gray-600">Edit Your Document</span>
           </div>
           <div className="w-8 h-px bg-gray-300"></div>
           <div className="flex flex-col items-center">

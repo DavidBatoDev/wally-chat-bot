@@ -5595,303 +5595,303 @@ export const PDFEditorContent: React.FC = () => {
               // Removed element.tagName === "TEXTAREA" so we can replace them in onclone
             );
           },
-          onclone: (clonedDoc) => {
-            console.log("Cloning document for export...");
+          // onclone: (clonedDoc) => {
+          //   console.log("Cloning document for export...");
 
-            // Find the cloned document container
-            const clonedContainer = clonedDoc.querySelector(
-              'div[style*="relative"]'
-            );
+          //   // Find the cloned document container
+          //   const clonedContainer = clonedDoc.querySelector(
+          //     'div[style*="relative"]'
+          //   );
 
-            console.log("Cloned container found:", clonedContainer);
-            console.log(
-              "All divs in cloned doc:",
-              clonedDoc.querySelectorAll("div")
-            );
+          //   console.log("Cloned container found:", clonedContainer);
+          //   console.log(
+          //     "All divs in cloned doc:",
+          //     clonedDoc.querySelectorAll("div")
+          //   );
 
-            if (clonedContainer) {
-              console.log(
-                "Cloned container classes:",
-                clonedContainer.className
-              );
-              console.log(
-                "All elements with class in cloned container:",
-                clonedContainer.querySelectorAll("[class]")
-              );
+          //   if (clonedContainer) {
+          //     console.log(
+          //       "Cloned container classes:",
+          //       clonedContainer.className
+          //     );
+          //     console.log(
+          //       "All elements with class in cloned container:",
+          //       clonedContainer.querySelectorAll("[class]")
+          //     );
 
-              // Create a white rectangle that covers the whole page
+          //     // Create a white rectangle that covers the whole page
 
-              // Remove control elements but keep shapes
-              clonedContainer
-                .querySelectorAll(
-                  "button, .drag-handle, .react-draggable .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
-                )
-                .forEach((el) => el.remove());
+          //     // Remove control elements but keep shapes
+          //     clonedContainer
+          //       .querySelectorAll(
+          //         "button, .drag-handle, .react-draggable .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
+          //       )
+          //       .forEach((el) => el.remove());
 
-              // Clean up react-draggable containers (both text fields and shapes) within interactive-elements-wrapper
-              const interactiveWrapper = clonedDoc.querySelector(
-                ".interactive-elements-wrapper"
-              );
-              console.log(
-                "Found interactive-elements-wrapper:",
-                interactiveWrapper
-              );
+          //     // Clean up react-draggable containers (both text fields and shapes) within interactive-elements-wrapper
+          //     const interactiveWrapper = clonedDoc.querySelector(
+          //       ".interactive-elements-wrapper"
+          //     );
+          //     console.log(
+          //       "Found interactive-elements-wrapper:",
+          //       interactiveWrapper
+          //     );
 
-              if (interactiveWrapper) {
-                const draggableElements =
-                  interactiveWrapper.querySelectorAll(".react-draggable");
-                console.log(
-                  "Found react-draggable elements:",
-                  draggableElements.length,
-                  draggableElements
-                );
+          //     if (interactiveWrapper) {
+          //       const draggableElements =
+          //         interactiveWrapper.querySelectorAll(".react-draggable");
+          //       console.log(
+          //         "Found react-draggable elements:",
+          //         draggableElements.length,
+          //         draggableElements
+          //       );
 
-                draggableElements.forEach((draggable, index) => {
-                  console.log(
-                    `Processing draggable element ${index}:`,
-                    draggable
-                  );
-                  if (draggable instanceof HTMLElement) {
-                    // Remove border and controls but keep the content
-                    draggable.style.border = "none";
-                    draggable.style.backgroundColor = "transparent";
-                    draggable.style.boxShadow = "none";
-                    draggable.style.outline = "none";
-                    draggable.style.cursor = "default";
-                    draggable.style.overflow = "visible"; // Ensure content isn't clipped
-                    // draggable.style.backgroundColor = "red";
+          //       draggableElements.forEach((draggable, index) => {
+          //         console.log(
+          //           `Processing draggable element ${index}:`,
+          //           draggable
+          //         );
+          //         if (draggable instanceof HTMLElement) {
+          //           // Remove border and controls but keep the content
+          //           draggable.style.border = "none";
+          //           draggable.style.backgroundColor = "transparent";
+          //           draggable.style.boxShadow = "none";
+          //           draggable.style.outline = "none";
+          //           draggable.style.cursor = "default";
+          //           draggable.style.overflow = "visible"; // Ensure content isn't clipped
+          //           // draggable.style.backgroundColor = "red";
 
-                    // Also ensure parent containers don't clip
-                    const parentContainers = draggable.querySelectorAll(
-                      ".w-full, .h-full, .relative, .absolute"
-                    );
-                    parentContainers.forEach((container) => {
-                      if (container instanceof HTMLElement) {
-                        container.style.overflow = "visible";
-                      }
-                    });
+          //           // Also ensure parent containers don't clip
+          //           const parentContainers = draggable.querySelectorAll(
+          //             ".w-full, .h-full, .relative, .absolute"
+          //           );
+          //           parentContainers.forEach((container) => {
+          //             if (container instanceof HTMLElement) {
+          //               container.style.overflow = "visible";
+          //             }
+          //           });
 
-                    // Check if this is a text field container and raise it for better export appearance
-                    const textarea = draggable.querySelector("textarea");
-                    console.log("Textarea found:", textarea);
-                    if (textarea && textarea instanceof HTMLElement) {
-                      console.log("Textarea element:", textarea);
-                      console.log("Textarea value:", textarea.value);
-                      console.log(
-                        "Textarea computed styles:",
-                        window.getComputedStyle(textarea)
-                      );
-                      // Don't adjust position - keep exactly where it is to prevent clipping
-                      // const currentTop = parseFloat(draggable.style.top || "0");
-                      // draggable.style.top = `${
-                      //   currentTop - 5 * documentState.scale
-                      // }px`; // Raise by 5px scaled
+          //           // Check if this is a text field container and raise it for better export appearance
+          //           const textarea = draggable.querySelector("textarea");
+          //           console.log("Textarea found:", textarea);
+          //           if (textarea && textarea instanceof HTMLElement) {
+          //             console.log("Textarea element:", textarea);
+          //             console.log("Textarea value:", textarea.value);
+          //             console.log(
+          //               "Textarea computed styles:",
+          //               window.getComputedStyle(textarea)
+          //             );
+          //             // Don't adjust position - keep exactly where it is to prevent clipping
+          //             // const currentTop = parseFloat(draggable.style.top || "0");
+          //             // draggable.style.top = `${
+          //             //   currentTop - 5 * documentState.scale
+          //             // }px`; // Raise by 5px scaled
 
-                      // Clean up textarea styling
-                      textarea.style.border = "none";
-                      textarea.style.outline = "none";
-                      textarea.style.resize = "none";
-                      textarea.style.padding = "2px"; // Match live editor padding
-                      textarea.style.margin = "0";
-                      textarea.style.backgroundColor = "blue";
-                      textarea.style.cursor = "default";
-                      textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
-                      textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
-                      textarea.style.wordWrap = "break-word"; // Ensure long words break properly
-                      textarea.style.wordBreak = "break-word"; // Additional word breaking support
-                      textarea.style.overflowWrap = "break-word";
-                      textarea.style.height = "100%";
-                      textarea.style.position = "relative";
-                      textarea.style.textOverflow = "visible";
-                      textarea.style.position = "relative"; // Ensure proper positioning
-                      // textarea.style.paddingTop = "100px"; // Reset any top positioning
-                      textarea.style.bottom = "0"; // Reset any bottom positioning
-                      textarea.style.left = "0"; // Reset any left positioning
-                      textarea.style.display = "none";
+          //             // Clean up textarea styling
+          //             textarea.style.border = "none";
+          //             textarea.style.outline = "none";
+          //             textarea.style.resize = "none";
+          //             textarea.style.padding = "2px"; // Match live editor padding
+          //             textarea.style.margin = "0";
+          //             textarea.style.backgroundColor = "blue";
+          //             textarea.style.cursor = "default";
+          //             textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
+          //             textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
+          //             textarea.style.wordWrap = "break-word"; // Ensure long words break properly
+          //             textarea.style.wordBreak = "break-word"; // Additional word breaking support
+          //             textarea.style.overflowWrap = "break-word";
+          //             textarea.style.height = "100%";
+          //             textarea.style.position = "relative";
+          //             textarea.style.textOverflow = "visible";
+          //             textarea.style.position = "relative"; // Ensure proper positioning
+          //             // textarea.style.paddingTop = "100px"; // Reset any top positioning
+          //             textarea.style.bottom = "0"; // Reset any bottom positioning
+          //             textarea.style.left = "0"; // Reset any left positioning
+          //             textarea.style.display = "none";
 
-                      // Convert textarea to div for better export compatibility
-                      const textContent = textarea.value || "";
-                      if (textContent.length > 0) {
-                        // Get computed styles from textarea before replacing
-                        const computedStyle = window.getComputedStyle(textarea);
-                        const rect = textarea.getBoundingClientRect();
+          //             // Convert textarea to div for better export compatibility
+          //             const textContent = textarea.value || "";
+          //             if (textContent.length > 0) {
+          //               // Get computed styles from textarea before replacing
+          //               const computedStyle = window.getComputedStyle(textarea);
+          //               const rect = textarea.getBoundingClientRect();
 
-                        // Create a div to replace the textarea
-                        const textDiv = document.createElement("div");
-                        textDiv.className = "text-replacement-div";
-                        textDiv.textContent = textContent;
+          //               // Create a div to replace the textarea
+          //               const textDiv = document.createElement("div");
+          //               textDiv.className = "text-replacement-div";
+          //               textDiv.textContent = textContent;
 
-                        // Copy all the important styles from textarea
-                        textDiv.style.fontSize = textarea.style.fontSize;
-                        textDiv.style.fontFamily = textarea.style.fontFamily;
-                        textDiv.style.fontWeight = textarea.style.fontWeight;
-                        textDiv.style.fontStyle = textarea.style.fontStyle;
-                        textDiv.style.color = textarea.style.color;
-                        textDiv.style.letterSpacing =
-                          textarea.style.letterSpacing;
-                        textDiv.style.textAlign = textarea.style.textAlign;
-                        textDiv.style.textDecoration =
-                          textarea.style.textDecoration;
-                        textDiv.style.lineHeight = textarea.style.lineHeight;
-                        textDiv.style.border = textarea.style.border;
-                        textDiv.style.borderRadius =
-                          textarea.style.borderRadius;
-                        textDiv.style.padding = computedStyle.padding;
-                        textDiv.style.margin = computedStyle.margin;
-                        textDiv.style.paddingTop = computedStyle.paddingTop;
-                        textDiv.style.paddingBottom =
-                          computedStyle.paddingBottom;
-                        textDiv.style.paddingLeft = computedStyle.paddingLeft;
-                        textDiv.style.paddingRight = computedStyle.paddingRight;
-                        textDiv.style.whiteSpace = textarea.style.whiteSpace;
-                        textDiv.style.wordWrap = textarea.style.wordWrap;
-                        textDiv.style.wordBreak = textarea.style.wordBreak;
-                        textDiv.style.overflowWrap =
-                          textarea.style.overflowWrap;
-                        textDiv.style.textOverflow =
-                          textarea.style.textOverflow;
-                        textDiv.style.position = "absolute";
-                        textDiv.style.top = computedStyle.top;
-                        textDiv.style.left = computedStyle.left;
-                        textDiv.style.width = computedStyle.width;
-                        textDiv.style.height = computedStyle.height;
-                        textDiv.style.minWidth = computedStyle.minWidth;
-                        textDiv.style.minHeight = computedStyle.minHeight;
-                        textDiv.style.maxWidth = computedStyle.maxWidth;
-                        textDiv.style.maxHeight = computedStyle.maxHeight;
-                        textDiv.style.overflow = "visible";
-                        textDiv.style.display = "block";
-                        textDiv.style.visibility = "visible";
-                        textDiv.style.opacity = "1";
-                        textDiv.style.zIndex = "1000";
-                        textDiv.style.display = "hi";
-                        // Remove the problematic top positioning that was causing issues
-                        // textDiv.style.top = `-${parseFloat(computedStyle.height)}px`;
-                        textarea.style.display = "none";
-                        textarea.style.visibility = "hidden";
+          //               // Copy all the important styles from textarea
+          //               textDiv.style.fontSize = textarea.style.fontSize;
+          //               textDiv.style.fontFamily = textarea.style.fontFamily;
+          //               textDiv.style.fontWeight = textarea.style.fontWeight;
+          //               textDiv.style.fontStyle = textarea.style.fontStyle;
+          //               textDiv.style.color = textarea.style.color;
+          //               textDiv.style.letterSpacing =
+          //                 textarea.style.letterSpacing;
+          //               textDiv.style.textAlign = textarea.style.textAlign;
+          //               textDiv.style.textDecoration =
+          //                 textarea.style.textDecoration;
+          //               textDiv.style.lineHeight = textarea.style.lineHeight;
+          //               textDiv.style.border = textarea.style.border;
+          //               textDiv.style.borderRadius =
+          //                 textarea.style.borderRadius;
+          //               textDiv.style.padding = computedStyle.padding;
+          //               textDiv.style.margin = computedStyle.margin;
+          //               textDiv.style.paddingTop = computedStyle.paddingTop;
+          //               textDiv.style.paddingBottom =
+          //                 computedStyle.paddingBottom;
+          //               textDiv.style.paddingLeft = computedStyle.paddingLeft;
+          //               textDiv.style.paddingRight = computedStyle.paddingRight;
+          //               textDiv.style.whiteSpace = textarea.style.whiteSpace;
+          //               textDiv.style.wordWrap = textarea.style.wordWrap;
+          //               textDiv.style.wordBreak = textarea.style.wordBreak;
+          //               textDiv.style.overflowWrap =
+          //                 textarea.style.overflowWrap;
+          //               textDiv.style.textOverflow =
+          //                 textarea.style.textOverflow;
+          //               textDiv.style.position = "absolute";
+          //               textDiv.style.top = computedStyle.top;
+          //               textDiv.style.left = computedStyle.left;
+          //               textDiv.style.width = computedStyle.width;
+          //               textDiv.style.height = computedStyle.height;
+          //               textDiv.style.minWidth = computedStyle.minWidth;
+          //               textDiv.style.minHeight = computedStyle.minHeight;
+          //               textDiv.style.maxWidth = computedStyle.maxWidth;
+          //               textDiv.style.maxHeight = computedStyle.maxHeight;
+          //               textDiv.style.overflow = "visible";
+          //               textDiv.style.display = "block";
+          //               textDiv.style.visibility = "visible";
+          //               textDiv.style.opacity = "1";
+          //               textDiv.style.zIndex = "1000";
+          //               textDiv.style.display = "hi";
+          //               // Remove the problematic top positioning that was causing issues
+          //               // textDiv.style.top = `-${parseFloat(computedStyle.height)}px`;
+          //               textarea.style.display = "none";
+          //               textarea.style.visibility = "hidden";
 
-                        // Replace textarea with div
-                        if (textarea.parentNode) {
-                          textarea.parentNode.replaceChild(textDiv, textarea);
-                        }
-                      } else {
-                        // If no text content, just hide the textarea
-                        textarea.style.display = "none";
-                        textarea.style.visibility = "hidden";
-                      }
+          //               // Replace textarea with div
+          //               if (textarea.parentNode) {
+          //                 textarea.parentNode.replaceChild(textDiv, textarea);
+          //               }
+          //             } else {
+          //               // If no text content, just hide the textarea
+          //               textarea.style.display = "none";
+          //               textarea.style.visibility = "hidden";
+          //             }
 
-                      // No position adjustments - keep exactly what user sees in live editor
-                    }
+          //             // No position adjustments - keep exactly what user sees in live editor
+          //           }
 
-                    // Additional cleanup: Remove any remaining textarea elements to ensure they don't appear in export
-                    const remainingTextareas =
-                      draggable.querySelectorAll("textarea");
-                    remainingTextareas.forEach((remainingTextarea) => {
-                      if (remainingTextarea.parentNode) {
-                        remainingTextarea.parentNode.removeChild(
-                          remainingTextarea
-                        );
-                      }
-                    });
+          //           // Additional cleanup: Remove any remaining textarea elements to ensure they don't appear in export
+          //           const remainingTextareas =
+          //             draggable.querySelectorAll("textarea");
+          //           remainingTextareas.forEach((remainingTextarea) => {
+          //             if (remainingTextarea.parentNode) {
+          //               remainingTextarea.parentNode.removeChild(
+          //                 remainingTextarea
+          //               );
+          //             }
+          //           });
 
-                    // Ensure shapes are visible and properly styled for export
-                    const shapeElement =
-                      draggable.querySelector(".shape-drag-handle");
-                    if (shapeElement && shapeElement instanceof HTMLElement) {
-                      // Keep the shape but remove interactive styling for export
-                      shapeElement.style.cursor = "default";
-                      shapeElement.style.pointerEvents = "none";
-                      // Ensure the shape maintains its visual properties
-                      shapeElement.style.display = "block";
-                      shapeElement.style.visibility = "visible";
-                      shapeElement.style.opacity = "1";
-                    }
-                  }
-                });
-              }
+          //           // Ensure shapes are visible and properly styled for export
+          //           const shapeElement =
+          //             draggable.querySelector(".shape-drag-handle");
+          //           if (shapeElement && shapeElement instanceof HTMLElement) {
+          //             // Keep the shape but remove interactive styling for export
+          //             shapeElement.style.cursor = "default";
+          //             shapeElement.style.pointerEvents = "none";
+          //             // Ensure the shape maintains its visual properties
+          //             shapeElement.style.display = "block";
+          //             shapeElement.style.visibility = "visible";
+          //             shapeElement.style.opacity = "1";
+          //           }
+          //         }
+          //       });
+          //     }
 
-              // Also clean up any standalone shape elements that might not be in Rnd containers
-              clonedContainer
-                .querySelectorAll(".shape-drag-handle")
-                .forEach((shape) => {
-                  if (shape instanceof HTMLElement) {
-                    shape.style.cursor = "default";
-                    shape.style.pointerEvents = "none";
-                    shape.style.display = "block";
-                    shape.style.visibility = "visible";
-                    shape.style.opacity = "1";
-                  }
-                });
+          //     // Also clean up any standalone shape elements that might not be in Rnd containers
+          //     clonedContainer
+          //       .querySelectorAll(".shape-drag-handle")
+          //       .forEach((shape) => {
+          //         if (shape instanceof HTMLElement) {
+          //           shape.style.cursor = "default";
+          //           shape.style.pointerEvents = "none";
+          //           shape.style.display = "block";
+          //           shape.style.visibility = "visible";
+          //           shape.style.opacity = "1";
+          //         }
+          //       });
 
-              // Remove any remaining textareas that weren't replaced to ensure they don't appear in export
-              clonedContainer
-                .querySelectorAll("textarea")
-                .forEach((textarea) => {
-                  if (textarea.parentNode) {
-                    textarea.parentNode.removeChild(textarea);
-                  }
-                });
+          //     // Remove any remaining textareas that weren't replaced to ensure they don't appear in export
+          //     clonedContainer
+          //       .querySelectorAll("textarea")
+          //       .forEach((textarea) => {
+          //         if (textarea.parentNode) {
+          //           textarea.parentNode.removeChild(textarea);
+          //         }
+          //       });
 
-              // Completely remove the text layer to prevent duplicate text in export
-              const textLayer = clonedContainer.querySelector(
-                ".react-pdf__Page__textContent"
-              ) as HTMLElement;
-              if (textLayer && textLayer.parentNode) {
-                textLayer.parentNode.removeChild(textLayer);
-                console.log("Text layer completely removed for export");
-              }
+          //     // Completely remove the text layer to prevent duplicate text in export
+          //     const textLayer = clonedContainer.querySelector(
+          //       ".react-pdf__Page__textContent"
+          //     ) as HTMLElement;
+          //     if (textLayer && textLayer.parentNode) {
+          //       textLayer.parentNode.removeChild(textLayer);
+          //       console.log("Text layer completely removed for export");
+          //     }
 
-              // Also remove any remaining text spans as a backup
-              const textSpans = clonedContainer.querySelectorAll(
-                ".react-pdf__Page__textContent span"
-              );
-              textSpans.forEach((span) => {
-                if (span.parentNode) {
-                  span.parentNode.removeChild(span);
-                }
-              });
-              console.log(`Removed ${textSpans.length} text spans for export`);
+          //     // Also remove any remaining text spans as a backup
+          //     const textSpans = clonedContainer.querySelectorAll(
+          //       ".react-pdf__Page__textContent span"
+          //     );
+          //     textSpans.forEach((span) => {
+          //       if (span.parentNode) {
+          //         span.parentNode.removeChild(span);
+          //       }
+          //     });
+          //     console.log(`Removed ${textSpans.length} text spans for export`);
 
-              // Remove any other text content that might be rendered
-              const allTextElements =
-                clonedContainer.querySelectorAll("span, div, p, text");
-              allTextElements.forEach((element) => {
-                if (element instanceof HTMLElement) {
-                  const textContent = element.textContent || "";
-                  // If this element contains text and is not our replacement div, remove it
-                  if (
-                    textContent.trim() &&
-                    !element.classList.contains("text-replacement-div")
-                  ) {
-                    // Check if this element is positioned absolutely (likely PDF text)
-                    const style = window.getComputedStyle(element);
-                    if (
-                      style.position === "absolute" ||
-                      style.position === "fixed"
-                    ) {
-                      if (element.parentNode) {
-                        element.parentNode.removeChild(element);
-                      }
-                    }
-                  }
-                }
-              });
+          //     // Remove any other text content that might be rendered
+          //     const allTextElements =
+          //       clonedContainer.querySelectorAll("span, div, p, text");
+          //     allTextElements.forEach((element) => {
+          //       if (element instanceof HTMLElement) {
+          //         const textContent = element.textContent || "";
+          //         // If this element contains text and is not our replacement div, remove it
+          //         if (
+          //           textContent.trim() &&
+          //           !element.classList.contains("text-replacement-div")
+          //         ) {
+          //           // Check if this element is positioned absolutely (likely PDF text)
+          //           const style = window.getComputedStyle(element);
+          //           if (
+          //             style.position === "absolute" ||
+          //             style.position === "fixed"
+          //           ) {
+          //             if (element.parentNode) {
+          //               element.parentNode.removeChild(element);
+          //             }
+          //           }
+          //         }
+          //       }
+          //     });
 
-              // Ensure the PDF canvas is visible in the clone
-              const clonedCanvas = clonedContainer.querySelector(
-                ".react-pdf__Page__canvas"
-              ) as HTMLCanvasElement;
-              if (clonedCanvas) {
-                clonedCanvas.style.display = "block";
-                clonedCanvas.style.position = "relative";
-                clonedCanvas.style.zIndex = "1";
-                console.log("Cloned canvas configured:", {
-                  width: clonedCanvas.width,
-                  height: clonedCanvas.height,
-                });
-              }
-            }
-          },
+          //     // Ensure the PDF canvas is visible in the clone
+          //     const clonedCanvas = clonedContainer.querySelector(
+          //       ".react-pdf__Page__canvas"
+          //     ) as HTMLCanvasElement;
+          //     if (clonedCanvas) {
+          //       clonedCanvas.style.display = "block";
+          //       clonedCanvas.style.position = "relative";
+          //       clonedCanvas.style.zIndex = "1";
+          //       console.log("Cloned canvas configured:", {
+          //         width: clonedCanvas.width,
+          //         height: clonedCanvas.height,
+          //       });
+          //     }
+          //   }
+          // },
         });
 
         // Restore original text rendering state
