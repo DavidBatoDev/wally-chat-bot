@@ -4913,7 +4913,7 @@ export const PDFEditorContent: React.FC = () => {
           backgroundColor: "#ffffff",
           logging: false,
           foreignObjectRendering: false, // Disable for better PDF.js compatibility
-          ignoreElements: (element) => {
+          ignoreElements: (element): boolean => {
             // Only ignore control elements, NOT shapes themselves
             return (
               element.classList.contains("drag-handle") ||
@@ -4926,6 +4926,8 @@ export const PDFEditorContent: React.FC = () => {
               element.closest(".fixed") !== null ||
               // Ignore resize handles but not the shapes themselves
               element.classList.contains("react-resizable-handle")
+              // element.classList.contains("react-draggable")
+              // Removed element.tagName === "TEXTAREA" so we can replace them in onclone
             );
           },
           onclone: (clonedDoc) => {
@@ -4955,7 +4957,7 @@ export const PDFEditorContent: React.FC = () => {
               // Remove control elements but keep shapes
               clonedContainer
                 .querySelectorAll(
-                  "button, .drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
+                  "button, .drag-handle, .react-draggable .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
                 )
                 .forEach((el) => el.remove());
 
@@ -4990,11 +4992,28 @@ export const PDFEditorContent: React.FC = () => {
                     draggable.style.outline = "none";
                     draggable.style.cursor = "default";
                     draggable.style.overflow = "visible"; // Ensure content isn't clipped
-                    draggable.style.backgroundColor = "red";
+                    // draggable.style.backgroundColor = "red";
+
+                    // Also ensure parent containers don't clip
+                    const parentContainers = draggable.querySelectorAll(
+                      ".w-full, .h-full, .relative, .absolute"
+                    );
+                    parentContainers.forEach((container) => {
+                      if (container instanceof HTMLElement) {
+                        container.style.overflow = "visible";
+                      }
+                    });
 
                     // Check if this is a text field container and raise it for better export appearance
                     const textarea = draggable.querySelector("textarea");
+                    console.log("Textarea found:", textarea);
                     if (textarea && textarea instanceof HTMLElement) {
+                      console.log("Textarea element:", textarea);
+                      console.log("Textarea value:", textarea.value);
+                      console.log(
+                        "Textarea computed styles:",
+                        window.getComputedStyle(textarea)
+                      );
                       // Don't adjust position - keep exactly where it is to prevent clipping
                       // const currentTop = parseFloat(draggable.style.top || "0");
                       // draggable.style.top = `${
@@ -5014,65 +5033,81 @@ export const PDFEditorContent: React.FC = () => {
                       textarea.style.wordWrap = "break-word"; // Ensure long words break properly
                       textarea.style.wordBreak = "break-word"; // Additional word breaking support
                       textarea.style.overflowWrap = "break-word";
-                      textarea.style.textOverflow = "clip";
+                      textarea.style.height = "100%";
+                      textarea.style.position = "relative";
+                      textarea.style.textOverflow = "visible";
                       textarea.style.position = "relative"; // Ensure proper positioning
-                      textarea.style.top = "0"; // Reset any top positioning
+                      // textarea.style.paddingTop = "100px"; // Reset any top positioning
+                      textarea.style.bottom = "0"; // Reset any bottom positioning
                       textarea.style.left = "0"; // Reset any left positioning
-                      textarea.style.backgroundColor = "red"; // for debugging
+                      textarea.style.backgroundColor = "transparent"; // Clean background for export
 
-                      // Ensure adequate height for wrapped text during export
+                      // Convert textarea to div for better export compatibility
                       const textContent = textarea.value || "";
                       if (textContent.length > 0) {
-                        // Force explicit text wrapping styles
-                        textarea.style.whiteSpace = "pre-wrap";
-                        textarea.style.wordWrap = "break-word";
-                        textarea.style.wordBreak = "break-word";
-                        textarea.style.overflowWrap = "break-word";
+                        // Get computed styles from textarea before replacing
+                        const computedStyle = window.getComputedStyle(textarea);
+                        const rect = textarea.getBoundingClientRect();
 
-                        // Calculate estimated height based on content
-                        const fontSize = parseFloat(
-                          textarea.style.fontSize || "12"
-                        );
-                        const lineHeight = fontSize * 1.1;
+                        // Create a div to replace the textarea
+                        const textDiv = document.createElement("div");
+                        textDiv.textContent = textContent;
 
-                        // Count explicit line breaks and estimate wrapped lines
-                        const explicitLines =
-                          (textContent.match(/\n/g) || []).length + 1;
-                        const avgCharsPerLine = Math.max(
-                          20,
-                          Math.floor(
-                            parseFloat(draggable.style.width || "200") /
-                              (fontSize * 0.6)
-                          )
-                        );
-                        const estimatedWrappedLines = Math.ceil(
-                          textContent.replace(/\n/g, " ").length /
-                            avgCharsPerLine
-                        );
-                        const totalEstimatedLines = Math.max(
-                          explicitLines,
-                          estimatedWrappedLines
-                        );
+                        // Copy all the important styles from textarea
+                        textDiv.style.fontSize = textarea.style.fontSize;
+                        textDiv.style.fontFamily = textarea.style.fontFamily;
+                        textDiv.style.fontWeight = textarea.style.fontWeight;
+                        textDiv.style.fontStyle = textarea.style.fontStyle;
+                        textDiv.style.color = textarea.style.color;
+                        textDiv.style.letterSpacing =
+                          textarea.style.letterSpacing;
+                        textDiv.style.textAlign = textarea.style.textAlign;
+                        textDiv.style.textDecoration =
+                          textarea.style.textDecoration;
+                        textDiv.style.lineHeight = textarea.style.lineHeight;
+                        textDiv.style.border = textarea.style.border;
+                        textDiv.style.borderRadius =
+                          textarea.style.borderRadius;
+                        textDiv.style.padding = computedStyle.padding;
+                        textDiv.style.margin = computedStyle.margin;
+                        textDiv.style.paddingTop = computedStyle.paddingTop;
+                        textDiv.style.paddingBottom =
+                          computedStyle.paddingBottom;
+                        textDiv.style.paddingLeft = computedStyle.paddingLeft;
+                        textDiv.style.paddingRight = computedStyle.paddingRight;
+                        textDiv.style.whiteSpace = textarea.style.whiteSpace;
+                        textDiv.style.wordWrap = textarea.style.wordWrap;
+                        textDiv.style.wordBreak = textarea.style.wordBreak;
+                        textDiv.style.overflowWrap =
+                          textarea.style.overflowWrap;
+                        textDiv.style.textOverflow =
+                          textarea.style.textOverflow;
+                        textDiv.style.position = "absolute";
+                        textDiv.style.top = computedStyle.top;
+                        textDiv.style.left = computedStyle.left;
+                        textDiv.style.width = computedStyle.width;
+                        textDiv.style.height = computedStyle.height;
+                        textDiv.style.minWidth = computedStyle.minWidth;
+                        textDiv.style.minHeight = computedStyle.minHeight;
+                        textDiv.style.maxWidth = computedStyle.maxWidth;
+                        textDiv.style.maxHeight = computedStyle.maxHeight;
+                        textDiv.style.overflow = "visible";
+                        textDiv.style.display = "block";
+                        textDiv.style.visibility = "visible";
+                        textDiv.style.opacity = "1";
+                        textDiv.style.zIndex = "1000";
+                        // Remove the problematic top positioning that was causing issues
+                        // textDiv.style.top = `-${parseFloat(computedStyle.height)}px`;
+                        textDiv.style.backgroundColor = "transparent";
 
-                        // Apply generous height to ensure all text is visible
-                        const generousHeight =
-                          totalEstimatedLines * lineHeight + 20; // Extra 20px buffer
-                        const currentHeight = parseFloat(
-                          draggable.style.height || "0"
-                        );
-
-                        // Always expand if we have multi-line content
-                        if (
-                          totalEstimatedLines > 1 ||
-                          generousHeight > currentHeight
-                        ) {
-                          draggable.style.height = `${generousHeight}px`;
-                          textarea.style.height = `${generousHeight - 8}px`; // Slightly smaller than container
+                        // Replace textarea with div
+                        if (textarea.parentNode) {
+                          textarea.parentNode.replaceChild(textDiv, textarea);
                         }
-
-                        // Ensure no text overflow
-                        textarea.style.overflow = "visible";
-                        textarea.style.textOverflow = "clip";
+                      } else {
+                        // If no text content, just hide the textarea
+                        textarea.style.display = "none";
+                        textarea.style.visibility = "hidden";
                       }
 
                       // No position adjustments - keep exactly what user sees in live editor
@@ -5104,6 +5139,16 @@ export const PDFEditorContent: React.FC = () => {
                     shape.style.display = "block";
                     shape.style.visibility = "visible";
                     shape.style.opacity = "1";
+                  }
+                });
+
+              // Hide any remaining textareas that weren't replaced
+              clonedContainer
+                .querySelectorAll("textarea")
+                .forEach((textarea) => {
+                  if (textarea instanceof HTMLElement) {
+                    textarea.style.display = "none";
+                    textarea.style.visibility = "hidden";
                   }
                 });
 
