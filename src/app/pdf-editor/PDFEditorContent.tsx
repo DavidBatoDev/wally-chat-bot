@@ -139,6 +139,8 @@ export const PDFEditorContent: React.FC = () => {
     isElementAtBack,
   } = useElementManagement();
 
+
+  ///////////////////////// STATES /////////////////////////
   // Editor state
   const [editorState, setEditorState] = useState<EditorState>({
     selectedFieldId: null,
@@ -167,7 +169,6 @@ export const PDFEditorContent: React.FC = () => {
     },
     isSelectionMode: false,
   });
-
   // View state
   const [viewState, setViewState] = useState<ViewState>({
     currentView: "original",
@@ -178,7 +179,6 @@ export const PDFEditorContent: React.FC = () => {
     isSidebarCollapsed: false,
     activeSidebarTab: "pages",
   });
-
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
     [elementId: string]: {
@@ -187,7 +187,6 @@ export const PDFEditorContent: React.FC = () => {
       lastUpdate: number;
     };
   }>({});
-
   // Helper to get current text box state
   const getCurrentTextBoxState = useCallback(
     (id: string): Partial<TextField> | null => {
@@ -200,7 +199,6 @@ export const PDFEditorContent: React.FC = () => {
     },
     [elementCollections]
   );
-
   // Helper to get current shape state
   const getCurrentShapeState = useCallback(
     (id: string): Partial<ShapeType> | null => {
@@ -213,7 +211,6 @@ export const PDFEditorContent: React.FC = () => {
     },
     [elementCollections]
   );
-
   // Helper function to clear selection state
   const clearSelectionState = useCallback(() => {
     setEditorState((prev) => ({
@@ -241,11 +238,56 @@ export const PDFEditorContent: React.FC = () => {
     setCurrentFormat,
     setIsDrawerOpen,
   ]);
+  // Tool state
+  const [toolState, setToolState] = useState<ToolState>({
+    shapeDrawingMode: null,
+    selectedShapeType: "rectangle",
+    isDrawingShape: false,
+    shapeDrawStart: null,
+    shapeDrawEnd: null,
+    isDrawingInProgress: false,
+    shapeDrawTargetView: null,
+  });
+  // Erasure state
+  const [erasureState, setErasureState] = useState<ErasureState>({
+    isErasureMode: false,
+    isDrawingErasure: false,
+    erasureDrawStart: null,
+    erasureDrawEnd: null,
+    erasureDrawTargetView: null,
+    erasureSettings: {
+      width: 20,
+      height: 20,
+      background: "#ffffff",
+      opacity: 1.0,
+    },
+  });
+  // Selection state
+  const [selectionState, setSelectionState] = useState<SelectionState>({
+    selectedTextBoxes: { textBoxIds: [] },
+    isDrawingSelection: false,
+    selectionStart: null,
+    selectionEnd: null,
+  });
+  // Page state
+  const [pageState, setPageState] = useState<PageState>({
+    deletedPages: new Set(),
+    isPageTranslated: new Map(),
+    isTransforming: false,
+    showTransformButton: true,
+  });
+  // Language state
+  const [sourceLanguage, setSourceLanguage] = useState<string>("");
+  const [desiredLanguage, setDesiredLanguage] = useState<string>("");
 
+
+  ///////////////////////// HOOKS /////////////////////////
+  // Debounce timer for batched updates
+  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({})
   // Undo/Redo history
   const history = useHistory();
 
-  // Undo/Redo handlers for text boxes
+  ///////////////////////// UNDO/REDO HANDLERS /////////////////////////
   const handleAddTextBoxWithUndo = useHandleAddTextBoxWithUndo(
     addTextBox,
     deleteTextBox,
@@ -336,53 +378,6 @@ export const PDFEditorContent: React.FC = () => {
     clearSelectionState
   );
 
-  // Tool state
-  const [toolState, setToolState] = useState<ToolState>({
-    shapeDrawingMode: null,
-    selectedShapeType: "rectangle",
-    isDrawingShape: false,
-    shapeDrawStart: null,
-    shapeDrawEnd: null,
-    isDrawingInProgress: false,
-    shapeDrawTargetView: null,
-  });
-
-  // Erasure state
-  const [erasureState, setErasureState] = useState<ErasureState>({
-    isErasureMode: false,
-    isDrawingErasure: false,
-    erasureDrawStart: null,
-    erasureDrawEnd: null,
-    erasureDrawTargetView: null,
-    erasureSettings: {
-      width: 20,
-      height: 20,
-      background: "#ffffff",
-      opacity: 1.0,
-    },
-  });
-
-  // Selection state
-  const [selectionState, setSelectionState] = useState<SelectionState>({
-    selectedTextBoxes: { textBoxIds: [] },
-    isDrawingSelection: false,
-    selectionStart: null,
-    selectionEnd: null,
-  });
-
-  // Page state
-  const [pageState, setPageState] = useState<PageState>({
-    deletedPages: new Set(),
-    isPageTranslated: new Map(),
-    isTransforming: false,
-    showTransformButton: true,
-  });
-
-  // Language state
-  const [sourceLanguage, setSourceLanguage] = useState<string>("");
-  const [desiredLanguage, setDesiredLanguage] = useState<string>("");
-
-
   // Use a ref to track ongoing operations for immediate access in timers
   const ongoingOperationsRef = useRef<{
     [elementId: string]: {
@@ -392,8 +387,6 @@ export const PDFEditorContent: React.FC = () => {
     };
   }>({});
 
-  // Debounce timer for batched updates
-  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({})
 
   // Auto-focus state
   const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
