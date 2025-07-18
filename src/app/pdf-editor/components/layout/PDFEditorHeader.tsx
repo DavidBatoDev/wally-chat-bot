@@ -9,6 +9,7 @@ import {
   Redo2,
   RotateCcw,
   FileText,
+  Settings,
 } from "lucide-react";
 
 interface PDFEditorHeaderProps {
@@ -21,13 +22,15 @@ interface PDFEditorHeaderProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  onClearAllTranslations?: () => void;
   onLoadSampleData?: () => void;
   onRunOcrAllPages?: () => void;
   isBulkOcrRunning?: boolean;
   bulkOcrProgress?: { current: number; total: number } | null;
   onCancelBulkOcr?: () => void;
   hasPages?: boolean;
+  onOpenSettings?: () => void;
+  onClearPageTranslation?: () => void;
+  isCurrentPageTranslated?: boolean;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -40,13 +43,15 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onRedo,
   canUndo,
   canRedo,
-  onClearAllTranslations,
   onLoadSampleData,
   onRunOcrAllPages,
   isBulkOcrRunning,
   bulkOcrProgress,
   onCancelBulkOcr,
   hasPages,
+  onOpenSettings,
+  onClearPageTranslation,
+  isCurrentPageTranslated,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -81,6 +86,17 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-3">
+          {onOpenSettings && (
+            <Button
+              onClick={onOpenSettings}
+              variant="ghost"
+              size="sm"
+              className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+              title="Settings"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          )}
           {onLoadSampleData && (
             <Button
               onClick={onLoadSampleData}
@@ -119,18 +135,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               </Button>
             </>
           )}
-          {onClearAllTranslations && hasPages && (
-            <Button
-              onClick={onClearAllTranslations}
-              variant="outline"
-              size="sm"
-              className="border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 transition-colors"
-              title="Clear all translations"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Clear Translations
-            </Button>
-          )}
+
           {/* Run OCR to All Page Button and Progress */}
           {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
             <Button
@@ -141,6 +146,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               title="Run OCR to all pages"
             >
               <span className="font-semibold">Run OCR to All Page</span>
+            </Button>
+          )}
+          {onClearPageTranslation && hasPages && isCurrentPageTranslated && (
+            <Button
+              onClick={onClearPageTranslation}
+              variant="outline"
+              size="sm"
+              className="border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 transition-colors"
+              title="Clear translation for current page"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Clear Translation
             </Button>
           )}
           {isBulkOcrRunning && (

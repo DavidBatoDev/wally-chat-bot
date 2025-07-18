@@ -173,6 +173,301 @@ const ConfirmationModal: React.FC<{
   );
 };
 
+// Language selection modal component
+const LanguageSelectionModal: React.FC<{
+  open: boolean;
+  sourceLanguage: string;
+  desiredLanguage: string;
+  onSourceLanguageChange: (language: string) => void;
+  onDesiredLanguageChange: (language: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isSettings?: boolean;
+  onSave?: () => void;
+  onBack?: () => void;
+}> = ({
+  open,
+  sourceLanguage,
+  desiredLanguage,
+  onSourceLanguageChange,
+  onDesiredLanguageChange,
+  onConfirm,
+  onCancel,
+  isSettings = false,
+  onSave,
+  onBack,
+}) => {
+  if (!open) return null;
+
+  // Language options from the translation service
+  const languageOptions = [
+    { code: "auto", name: "Auto detect" },
+    { code: "en", name: "English" },
+    { code: "es", name: "Spanish" },
+    { code: "fr", name: "French" },
+    { code: "de", name: "German" },
+    { code: "it", name: "Italian" },
+    { code: "pt", name: "Portuguese" },
+    { code: "ru", name: "Russian" },
+    { code: "zh-CN", name: "Chinese (Simplified)" },
+    { code: "zh-TW", name: "Chinese (Traditional)" },
+    { code: "ja", name: "Japanese" },
+    { code: "ko", name: "Korean" },
+    { code: "ar", name: "Arabic" },
+    { code: "hi", name: "Hindi" },
+    { code: "nl", name: "Dutch" },
+    { code: "sv", name: "Swedish" },
+    { code: "no", name: "Norwegian" },
+    { code: "da", name: "Danish" },
+    { code: "fi", name: "Finnish" },
+    { code: "pl", name: "Polish" },
+    { code: "tr", name: "Turkish" },
+    { code: "el", name: "Greek" },
+    { code: "he", name: "Hebrew" },
+    { code: "hu", name: "Hungarian" },
+    { code: "cs", name: "Czech" },
+    { code: "sk", name: "Slovak" },
+    { code: "ro", name: "Romanian" },
+    { code: "bg", name: "Bulgarian" },
+    { code: "hr", name: "Croatian" },
+    { code: "sr", name: "Serbian" },
+    { code: "sl", name: "Slovenian" },
+    { code: "et", name: "Estonian" },
+    { code: "lv", name: "Latvian" },
+    { code: "lt", name: "Lithuanian" },
+    { code: "uk", name: "Ukrainian" },
+    { code: "be", name: "Belarusian" },
+    { code: "th", name: "Thai" },
+    { code: "vi", name: "Vietnamese" },
+    { code: "id", name: "Indonesian" },
+    { code: "ms", name: "Malay" },
+    { code: "tl", name: "Filipino" },
+    { code: "bn", name: "Bengali" },
+    { code: "ur", name: "Urdu" },
+    { code: "pa", name: "Punjabi" },
+    { code: "gu", name: "Gujarati" },
+    { code: "mr", name: "Marathi" },
+    { code: "kn", name: "Kannada" },
+    { code: "ta", name: "Tamil" },
+    { code: "te", name: "Telugu" },
+    { code: "ml", name: "Malayalam" },
+    { code: "si", name: "Sinhala" },
+    { code: "my", name: "Burmese" },
+    { code: "km", name: "Khmer" },
+    { code: "lo", name: "Lao" },
+    { code: "ne", name: "Nepali" },
+    { code: "bo", name: "Tibetan" },
+    { code: "mn", name: "Mongolian" },
+    { code: "kk", name: "Kazakh" },
+    { code: "uz", name: "Uzbek" },
+    { code: "ky", name: "Kyrgyz" },
+    { code: "tg", name: "Tajik" },
+    { code: "tk", name: "Turkmen" },
+    { code: "az", name: "Azerbaijani" },
+    { code: "ka", name: "Georgian" },
+    { code: "hy", name: "Armenian" },
+    { code: "fa", name: "Persian" },
+    { code: "ku", name: "Kurdish" },
+    { code: "ps", name: "Pashto" },
+    { code: "prs", name: "Dari" },
+    { code: "ug", name: "Uyghur" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+      <div className="bg-gradient-to-br from-red-50 via-white to-rose-50 rounded-2xl shadow-2xl p-8 min-w-[450px] max-w-[90vw] border border-red-100 transform transition-all duration-300 scale-100 hover:scale-105">
+        {/* Header with icon */}
+        <div className="flex items-center justify-center mb-6">
+          <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-rose-600 rounded-full flex items-center justify-center shadow-lg mr-4">
+            <svg
+              className="w-6 h-6 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+              />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {isSettings ? "Language Settings" : "Select Languages"}
+            </h2>
+            <p className="text-red-600 font-medium">
+              {isSettings
+                ? "Configure Translation Languages"
+                : "Document Translation Setup"}
+            </p>
+          </div>
+        </div>
+
+        <p className="text-gray-600 mb-8 text-center leading-relaxed">
+          {isSettings
+            ? "Configure your preferred source and target languages for document translation."
+            : "Choose the source and target languages for your document processing and translation workflow."}
+        </p>
+
+        <div className="space-y-8">
+          <div className="relative">
+            <label className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+              <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
+              Source Language
+            </label>
+            <div className="relative">
+              <select
+                value={sourceLanguage}
+                onChange={(e) => onSourceLanguageChange(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-red-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-400 bg-white shadow-sm transition-all duration-200 hover:border-red-300 appearance-none cursor-pointer"
+              >
+                <option value="">Select source language...</option>
+                {languageOptions.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <svg
+                  className="w-5 h-5 text-red-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative">
+            <label className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+              <div className="w-2 h-2 bg-rose-500 rounded-full mr-2"></div>
+              Target Language
+            </label>
+            <div className="relative">
+              <select
+                value={desiredLanguage}
+                onChange={(e) => onDesiredLanguageChange(e.target.value)}
+                className="w-full px-4 py-3 border-2 border-rose-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-400 bg-white shadow-sm transition-all duration-200 hover:border-rose-300 appearance-none cursor-pointer"
+              >
+                <option value="">Select target language...</option>
+                {languageOptions.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <svg
+                  className="w-5 h-5 text-rose-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-red-100">
+          {isSettings ? (
+            <>
+              <button
+                className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold transition-all duration-200 transform hover:scale-105 shadow-sm"
+                onClick={onBack}
+              >
+                Back
+              </button>
+              <button
+                className="px-8 py-3 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                onClick={onSave}
+                disabled={
+                  !sourceLanguage ||
+                  !desiredLanguage ||
+                  sourceLanguage === desiredLanguage
+                }
+              >
+                <div className="flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  Save Settings
+                </div>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold transition-all duration-200 transform hover:scale-105 shadow-sm"
+                onClick={onCancel}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-8 py-3 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-semibold transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                onClick={onConfirm}
+                disabled={
+                  !sourceLanguage ||
+                  !desiredLanguage ||
+                  sourceLanguage === desiredLanguage
+                }
+              >
+                <div className="flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  Translate Document
+                </div>
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Decorative elements */}
+        <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-400 rounded-full opacity-60 animate-pulse"></div>
+        <div className="absolute -bottom-3 -left-3 w-4 h-4 bg-rose-400 rounded-full opacity-40 animate-pulse delay-300"></div>
+      </div>
+    </div>
+  );
+};
+
 export const PDFEditorContent: React.FC = () => {
   const {
     isDrawerOpen,
@@ -365,6 +660,10 @@ export const PDFEditorContent: React.FC = () => {
     showTransformButton: true,
   });
 
+  // Language state
+  const [sourceLanguage, setSourceLanguage] = useState<string>("");
+  const [desiredLanguage, setDesiredLanguage] = useState<string>("");
+
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
     [elementId: string]: {
@@ -505,6 +804,183 @@ export const PDFEditorContent: React.FC = () => {
       handleUpdateTextBoxWithUndo,
       documentState.currentPage,
       viewState.currentView,
+      ongoingOperations,
+      updateTextBox,
+    ]
+  );
+
+  // View-specific update functions
+  const updateOriginalTextBoxWithUndo = useCallback(
+    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
+      const currentState = getCurrentTextBoxState(id);
+      if (currentState) {
+        // Get the specific properties being updated
+        const before: Partial<TextField> = {};
+        const after: Partial<TextField> = {};
+
+        // Only include properties that are actually being changed
+        Object.keys(updates).forEach((key) => {
+          const k = key as keyof TextField;
+          if (currentState[k] !== updates[k]) {
+            before[k] = currentState[k] as any;
+            after[k] = updates[k] as any;
+          }
+        });
+
+        // Only create command if there are actual changes
+        if (Object.keys(after).length > 0) {
+          if (isOngoingOperation) {
+            // For ongoing operations, update the state but don't create undo commands yet
+            updateTextBox(id, after);
+
+            // Update ongoing operation state
+            const newOperationState = {
+              type: "text" as const,
+              startState:
+                ongoingOperationsRef.current[id]?.startState || before,
+              lastUpdate: Date.now(),
+            };
+
+            setOngoingOperations((prev) => ({
+              ...prev,
+              [id]: newOperationState,
+            }));
+
+            // Also update the ref for immediate access
+            ongoingOperationsRef.current[id] = newOperationState;
+
+            // Clear existing debounce timer
+            if (debounceTimersRef.current[id]) {
+              clearTimeout(debounceTimersRef.current[id]);
+            }
+
+            // Set debounce timer to create undo command after operation completes
+            debounceTimersRef.current[id] = setTimeout(() => {
+              const operation = ongoingOperationsRef.current[id];
+              if (operation) {
+                handleUpdateTextBoxWithUndo(
+                  id,
+                  operation.startState,
+                  after,
+                  documentState.currentPage,
+                  "original"
+                );
+
+                // Clear ongoing operation
+                setOngoingOperations((prev) => {
+                  const newState = { ...prev };
+                  delete newState[id];
+                  return newState;
+                });
+                delete ongoingOperationsRef.current[id];
+                delete debounceTimersRef.current[id];
+              }
+            }, 500); // 500ms debounce
+          } else {
+            // For immediate operations, create undo command right away
+            handleUpdateTextBoxWithUndo(
+              id,
+              before,
+              after,
+              documentState.currentPage,
+              "original"
+            );
+          }
+        }
+      }
+    },
+    [
+      getCurrentTextBoxState,
+      handleUpdateTextBoxWithUndo,
+      documentState.currentPage,
+      ongoingOperations,
+      updateTextBox,
+    ]
+  );
+
+  const updateTranslatedTextBoxWithUndo = useCallback(
+    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
+      const currentState = getCurrentTextBoxState(id);
+      if (currentState) {
+        // Get the specific properties being updated
+        const before: Partial<TextField> = {};
+        const after: Partial<TextField> = {};
+
+        // Only include properties that are actually being changed
+        Object.keys(updates).forEach((key) => {
+          const k = key as keyof TextField;
+          if (currentState[k] !== updates[k]) {
+            before[k] = currentState[k] as any;
+            after[k] = updates[k] as any;
+          }
+        });
+
+        // Only create command if there are actual changes
+        if (Object.keys(after).length > 0) {
+          if (isOngoingOperation) {
+            // For ongoing operations, update the state but don't create undo commands yet
+            updateTextBox(id, after);
+
+            // Update ongoing operation state
+            const newOperationState = {
+              type: "text" as const,
+              startState:
+                ongoingOperationsRef.current[id]?.startState || before,
+              lastUpdate: Date.now(),
+            };
+
+            setOngoingOperations((prev) => ({
+              ...prev,
+              [id]: newOperationState,
+            }));
+
+            // Also update the ref for immediate access
+            ongoingOperationsRef.current[id] = newOperationState;
+
+            // Clear existing debounce timer
+            if (debounceTimersRef.current[id]) {
+              clearTimeout(debounceTimersRef.current[id]);
+            }
+
+            // Set debounce timer to create undo command after operation completes
+            debounceTimersRef.current[id] = setTimeout(() => {
+              const operation = ongoingOperationsRef.current[id];
+              if (operation) {
+                handleUpdateTextBoxWithUndo(
+                  id,
+                  operation.startState,
+                  after,
+                  documentState.currentPage,
+                  "translated"
+                );
+
+                // Clear ongoing operation
+                setOngoingOperations((prev) => {
+                  const newState = { ...prev };
+                  delete newState[id];
+                  return newState;
+                });
+                delete ongoingOperationsRef.current[id];
+                delete debounceTimersRef.current[id];
+              }
+            }, 500); // 500ms debounce
+          } else {
+            // For immediate operations, create undo command right away
+            handleUpdateTextBoxWithUndo(
+              id,
+              before,
+              after,
+              documentState.currentPage,
+              "translated"
+            );
+          }
+        }
+      }
+    },
+    [
+      getCurrentTextBoxState,
+      handleUpdateTextBoxWithUndo,
+      documentState.currentPage,
       ongoingOperations,
       updateTextBox,
     ]
@@ -4542,6 +5018,175 @@ export const PDFEditorContent: React.FC = () => {
             newTextBoxes.push(newTextBox);
           });
 
+          // Translate all textboxes if languages are set
+          if (
+            sourceLanguage &&
+            desiredLanguage &&
+            sourceLanguage !== desiredLanguage
+          ) {
+            try {
+              console.log("Starting translation of textboxes...");
+              setIsTranslating(true);
+
+              const { getTranslationService } = await import(
+                "@/lib/api/translationService"
+              );
+              const translationService = getTranslationService();
+
+              // Collect all texts to translate
+              const textsToTranslate = newTextBoxes
+                .map((textbox) => textbox.value)
+                .filter((text) => text && text.trim());
+
+              if (textsToTranslate.length > 0) {
+                console.log(
+                  `Translating ${textsToTranslate.length} text elements...`
+                );
+
+                // Prepare translation options
+                const translationOptions: any = {};
+
+                // If source language is "auto", don't specify sourceLanguage to enable auto-detection
+                if (sourceLanguage !== "auto") {
+                  translationOptions.sourceLanguage = sourceLanguage;
+                }
+
+                // Translate all texts in batch
+                const translationResults =
+                  await translationService.translateTexts(
+                    textsToTranslate,
+                    desiredLanguage,
+                    translationOptions
+                  );
+
+                // Update textbox values with translated text
+                let translationIndex = 0;
+                let detectedLanguages = new Set<string>();
+
+                newTextBoxes.forEach((textbox) => {
+                  if (textbox.value && textbox.value.trim()) {
+                    textbox.value =
+                      translationResults[translationIndex].translatedText;
+
+                    // Collect detected languages if auto-detection was used
+                    if (
+                      sourceLanguage === "auto" &&
+                      translationResults[translationIndex]
+                        .detectedSourceLanguage
+                    ) {
+                      const detectedLang =
+                        translationResults[translationIndex]
+                          .detectedSourceLanguage;
+                      if (detectedLang) {
+                        detectedLanguages.add(detectedLang);
+                      }
+                    }
+
+                    translationIndex++;
+                  }
+                });
+
+                console.log("Translation completed successfully");
+
+                // Show success message with detected language info if auto-detection was used
+                if (sourceLanguage === "auto" && detectedLanguages.size > 0) {
+                  const detectedLanguageNames = Array.from(detectedLanguages)
+                    .map((code) => {
+                      // Map common language codes to names
+                      const languageMap: { [key: string]: string } = {
+                        en: "English",
+                        es: "Spanish",
+                        fr: "French",
+                        de: "German",
+                        it: "Italian",
+                        pt: "Portuguese",
+                        ru: "Russian",
+                        "zh-CN": "Chinese (Simplified)",
+                        "zh-TW": "Chinese (Traditional)",
+                        ja: "Japanese",
+                        ko: "Korean",
+                        ar: "Arabic",
+                        hi: "Hindi",
+                        nl: "Dutch",
+                        sv: "Swedish",
+                        no: "Norwegian",
+                        da: "Danish",
+                        fi: "Finnish",
+                        pl: "Polish",
+                        tr: "Turkish",
+                        el: "Greek",
+                        he: "Hebrew",
+                        hu: "Hungarian",
+                        cs: "Czech",
+                        sk: "Slovak",
+                        ro: "Romanian",
+                        bg: "Bulgarian",
+                        hr: "Croatian",
+                        sr: "Serbian",
+                        sl: "Slovenian",
+                        et: "Estonian",
+                        lv: "Latvian",
+                        lt: "Lithuanian",
+                        uk: "Ukrainian",
+                        be: "Belarusian",
+                        th: "Thai",
+                        vi: "Vietnamese",
+                        id: "Indonesian",
+                        ms: "Malay",
+                        tl: "Filipino",
+                        bn: "Bengali",
+                        ur: "Urdu",
+                        pa: "Punjabi",
+                        gu: "Gujarati",
+                        mr: "Marathi",
+                        kn: "Kannada",
+                        ta: "Tamil",
+                        te: "Telugu",
+                        ml: "Malayalam",
+                        si: "Sinhala",
+                        my: "Burmese",
+                        km: "Khmer",
+                        lo: "Lao",
+                        ne: "Nepali",
+                        bo: "Tibetan",
+                        mn: "Mongolian",
+                        kk: "Kazakh",
+                        uz: "Uzbek",
+                        ky: "Kyrgyz",
+                        tg: "Tajik",
+                        tk: "Turkmen",
+                        az: "Azerbaijani",
+                        ka: "Georgian",
+                        hy: "Armenian",
+                        fa: "Persian",
+                        ku: "Kurdish",
+                        ps: "Pashto",
+                        prs: "Dari",
+                        ug: "Uyghur",
+                      };
+                      return languageMap[code] || code;
+                    })
+                    .join(", ");
+                  toast.success(
+                    `Translated ${translationResults.length} text elements to ${desiredLanguage} (detected: ${detectedLanguageNames})`
+                  );
+                } else {
+                  toast.success(
+                    `Translated ${translationResults.length} text elements to ${desiredLanguage}`
+                  );
+                }
+              }
+            } catch (translationError) {
+              console.error("Translation error:", translationError);
+              toast.error(
+                "Failed to translate text. Textboxes will be created with original text."
+              );
+              // Continue with original text if translation fails
+            } finally {
+              setIsTranslating(false);
+            }
+          }
+
           // Add all textboxes to the translated view using our undo system
           newTextBoxes.forEach((textbox) => {
             handleAddTextBoxWithUndo(
@@ -4589,9 +5234,14 @@ export const PDFEditorContent: React.FC = () => {
             isTransforming: false,
           }));
 
-          toast.success(
-            `Transformed ${newTextBoxes.length} entities into textboxes`
-          );
+          const translationMessage =
+            sourceLanguage &&
+            desiredLanguage &&
+            sourceLanguage !== desiredLanguage
+              ? `Transformed and translated ${newTextBoxes.length} entities into textboxes`
+              : `Transformed ${newTextBoxes.length} entities into textboxes`;
+
+          toast.success(translationMessage);
 
           // Switch back to the previous view
           setViewState((prev) => ({ ...prev, currentView: previousView }));
@@ -4629,6 +5279,8 @@ export const PDFEditorContent: React.FC = () => {
       viewState.currentView,
       editorState.isAddTextBoxMode,
       actions,
+      sourceLanguage,
+      desiredLanguage,
     ]
   );
 
@@ -4675,39 +5327,48 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
-  // Clear all translations
-  const handleClearAllTranslations = useCallback(() => {
-    // Remove all translated elements
-    const allTranslatedTextBoxes = getCurrentTextBoxes("translated");
-    const allTranslatedShapes = getCurrentShapes("translated");
-    const allTranslatedImages = getCurrentImages("translated");
+  // Clear translation for a single page
+  const handleClearPageTranslation = useCallback(
+    (pageNumber: number) => {
+      // Remove all translated elements for the specific page
+      const pageTranslatedTextBoxes = getCurrentTextBoxes("translated").filter(
+        (tb) => tb.page === pageNumber
+      );
+      const pageTranslatedShapes = getCurrentShapes("translated").filter(
+        (s) => s.page === pageNumber
+      );
+      const pageTranslatedImages = getCurrentImages("translated").filter(
+        (img) => img.page === pageNumber
+      );
 
-    // Delete all translated elements
-    allTranslatedTextBoxes.forEach((tb) => {
-      deleteTextBox(tb.id, "translated");
-    });
-    allTranslatedShapes.forEach((s) => {
-      deleteShape(s.id, "translated");
-    });
-    allTranslatedImages.forEach((img) => {
-      deleteImage(img.id, "translated");
-    });
+      // Delete all translated elements for this page
+      pageTranslatedTextBoxes.forEach((tb) => {
+        deleteTextBox(tb.id, "translated");
+      });
+      pageTranslatedShapes.forEach((s) => {
+        deleteShape(s.id, "translated");
+      });
+      pageTranslatedImages.forEach((img) => {
+        deleteImage(img.id, "translated");
+      });
 
-    // Reset all page translation states
-    setPageState((prev) => ({
-      ...prev,
-      isPageTranslated: new Map(),
-    }));
+      // Reset page translation state
+      setPageState((prev) => ({
+        ...prev,
+        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, false)),
+      }));
 
-    toast.success("All translations cleared");
-  }, [
-    getCurrentTextBoxes,
-    getCurrentShapes,
-    getCurrentImages,
-    deleteTextBox,
-    deleteShape,
-    deleteImage,
-  ]);
+      toast.success(`Translation cleared for page ${pageNumber}`);
+    },
+    [
+      getCurrentTextBoxes,
+      getCurrentShapes,
+      getCurrentImages,
+      deleteTextBox,
+      deleteShape,
+      deleteImage,
+    ]
+  );
 
   // Project management
   const saveProject = useCallback(() => {
@@ -4888,6 +5549,10 @@ export const PDFEditorContent: React.FC = () => {
         // Set page number
         setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
 
+        // Temporarily disable text rendering for export
+        const originalAddTextBoxMode = editorState.isAddTextBoxMode;
+        setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
+
         // Wait for view and page to update
         await new Promise((resolve) => setTimeout(resolve, 800));
 
@@ -4953,6 +5618,8 @@ export const PDFEditorContent: React.FC = () => {
                 "All elements with class in cloned container:",
                 clonedContainer.querySelectorAll("[class]")
               );
+
+              // Create a white rectangle that covers the whole page
 
               // Remove control elements but keep shapes
               clonedContainer
@@ -5026,7 +5693,7 @@ export const PDFEditorContent: React.FC = () => {
                       textarea.style.resize = "none";
                       textarea.style.padding = "2px"; // Match live editor padding
                       textarea.style.margin = "0";
-                      textarea.style.backgroundColor = "transparent";
+                      textarea.style.backgroundColor = "blue";
                       textarea.style.cursor = "default";
                       textarea.style.overflow = "visible"; // Allow overflow during export to prevent clipping
                       textarea.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
@@ -5040,7 +5707,7 @@ export const PDFEditorContent: React.FC = () => {
                       // textarea.style.paddingTop = "100px"; // Reset any top positioning
                       textarea.style.bottom = "0"; // Reset any bottom positioning
                       textarea.style.left = "0"; // Reset any left positioning
-                      textarea.style.backgroundColor = "transparent"; // Clean background for export
+                      textarea.style.display = "none";
 
                       // Convert textarea to div for better export compatibility
                       const textContent = textarea.value || "";
@@ -5051,6 +5718,7 @@ export const PDFEditorContent: React.FC = () => {
 
                         // Create a div to replace the textarea
                         const textDiv = document.createElement("div");
+                        textDiv.className = "text-replacement-div";
                         textDiv.textContent = textContent;
 
                         // Copy all the important styles from textarea
@@ -5096,9 +5764,11 @@ export const PDFEditorContent: React.FC = () => {
                         textDiv.style.visibility = "visible";
                         textDiv.style.opacity = "1";
                         textDiv.style.zIndex = "1000";
+                        textDiv.style.display = "hi";
                         // Remove the problematic top positioning that was causing issues
                         // textDiv.style.top = `-${parseFloat(computedStyle.height)}px`;
-                        textDiv.style.backgroundColor = "transparent";
+                        textarea.style.display = "none";
+                        textarea.style.visibility = "hidden";
 
                         // Replace textarea with div
                         if (textarea.parentNode) {
@@ -5112,6 +5782,17 @@ export const PDFEditorContent: React.FC = () => {
 
                       // No position adjustments - keep exactly what user sees in live editor
                     }
+
+                    // Additional cleanup: Remove any remaining textarea elements to ensure they don't appear in export
+                    const remainingTextareas =
+                      draggable.querySelectorAll("textarea");
+                    remainingTextareas.forEach((remainingTextarea) => {
+                      if (remainingTextarea.parentNode) {
+                        remainingTextarea.parentNode.removeChild(
+                          remainingTextarea
+                        );
+                      }
+                    });
 
                     // Ensure shapes are visible and properly styled for export
                     const shapeElement =
@@ -5142,15 +5823,59 @@ export const PDFEditorContent: React.FC = () => {
                   }
                 });
 
-              // Hide any remaining textareas that weren't replaced
+              // Remove any remaining textareas that weren't replaced to ensure they don't appear in export
               clonedContainer
                 .querySelectorAll("textarea")
                 .forEach((textarea) => {
-                  if (textarea instanceof HTMLElement) {
-                    textarea.style.display = "none";
-                    textarea.style.visibility = "hidden";
+                  if (textarea.parentNode) {
+                    textarea.parentNode.removeChild(textarea);
                   }
                 });
+
+              // Completely remove the text layer to prevent duplicate text in export
+              const textLayer = clonedContainer.querySelector(
+                ".react-pdf__Page__textContent"
+              ) as HTMLElement;
+              if (textLayer && textLayer.parentNode) {
+                textLayer.parentNode.removeChild(textLayer);
+                console.log("Text layer completely removed for export");
+              }
+
+              // Also remove any remaining text spans as a backup
+              const textSpans = clonedContainer.querySelectorAll(
+                ".react-pdf__Page__textContent span"
+              );
+              textSpans.forEach((span) => {
+                if (span.parentNode) {
+                  span.parentNode.removeChild(span);
+                }
+              });
+              console.log(`Removed ${textSpans.length} text spans for export`);
+
+              // Remove any other text content that might be rendered
+              const allTextElements =
+                clonedContainer.querySelectorAll("span, div, p, text");
+              allTextElements.forEach((element) => {
+                if (element instanceof HTMLElement) {
+                  const textContent = element.textContent || "";
+                  // If this element contains text and is not our replacement div, remove it
+                  if (
+                    textContent.trim() &&
+                    !element.classList.contains("text-replacement-div")
+                  ) {
+                    // Check if this element is positioned absolutely (likely PDF text)
+                    const style = window.getComputedStyle(element);
+                    if (
+                      style.position === "absolute" ||
+                      style.position === "fixed"
+                    ) {
+                      if (element.parentNode) {
+                        element.parentNode.removeChild(element);
+                      }
+                    }
+                  }
+                }
+              });
 
               // Ensure the PDF canvas is visible in the clone
               const clonedCanvas = clonedContainer.querySelector(
@@ -5168,6 +5893,12 @@ export const PDFEditorContent: React.FC = () => {
             }
           },
         });
+
+        // Restore original text rendering state
+        setEditorState((prev) => ({
+          ...prev,
+          isAddTextBoxMode: originalAddTextBoxMode,
+        }));
 
         return canvas;
       };
@@ -5680,8 +6411,12 @@ export const PDFEditorContent: React.FC = () => {
     };
   }, []);
 
-  // Render elements
-  const renderElement = (element: SortedElement) => {
+  // Render elements with view-specific update functions
+  const renderElement = (element: SortedElement, targetView: ViewMode) => {
+    // For split view, we need to determine which view this element belongs to
+    // This function is called from single view contexts, so we use the current view
+    const actualTargetView = targetView === "split" ? "original" : targetView;
+
     // Get elements that would be captured in the current selection preview
     const elementsInSelectionPreview = getElementsInSelectionPreview();
 
@@ -5694,6 +6429,12 @@ export const PDFEditorContent: React.FC = () => {
         editorState.multiSelection.selectedElements.map((el) => el.id);
       const isInSelectionPreview = elementsInSelectionPreview.has(textBox.id);
 
+      // Use view-specific update function
+      const updateFunction =
+        actualTargetView === "original"
+          ? updateOriginalTextBoxWithUndo
+          : updateTranslatedTextBoxWithUndo;
+
       return (
         <MemoizedTextBox
           key={textBox.id}
@@ -5703,10 +6444,8 @@ export const PDFEditorContent: React.FC = () => {
           scale={documentState.scale}
           showPaddingIndicator={showPaddingPopup}
           onSelect={handleTextBoxSelect}
-          onUpdate={updateTextBoxWithUndo}
-          onDelete={(id) =>
-            handleDeleteTextBoxWithUndo(id, viewState.currentView)
-          }
+          onUpdate={updateFunction}
+          onDelete={(id) => handleDeleteTextBoxWithUndo(id, actualTargetView)}
           isTextSelectionMode={editorState.isTextSelectionMode}
           isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
             textBox.id
@@ -5771,7 +6510,7 @@ export const PDFEditorContent: React.FC = () => {
   const memoizedTextBoxElements = useMemo(() => {
     return currentPageSortedElements
       .filter((el) => el.type === "textbox")
-      .map(renderElement);
+      .map((el) => renderElement(el, viewState.currentView));
   }, [
     currentPageSortedElements,
     editorState.selectedFieldId,
@@ -5866,6 +6605,35 @@ export const PDFEditorContent: React.FC = () => {
     actions,
   ]);
 
+  // Wrapper function to check language states before running OCR
+  const checkLanguageAndRunOcr = useCallback(
+    (type: "single" | "bulk", pageNumber?: number) => {
+      // Check if we have both source and desired languages set
+      if (
+        sourceLanguage &&
+        desiredLanguage &&
+        sourceLanguage !== desiredLanguage
+      ) {
+        // Languages are set, proceed with OCR
+        if (type === "single" && pageNumber) {
+          handleTransformPageToTextbox(pageNumber);
+        } else if (type === "bulk") {
+          handleRunOcrAllPages();
+        }
+      } else {
+        // Show language selection modal
+        setPendingOcrAction({ type, pageNumber });
+        setShowLanguageModal(true);
+      }
+    },
+    [
+      sourceLanguage,
+      desiredLanguage,
+      handleTransformPageToTextbox,
+      handleRunOcrAllPages,
+    ]
+  );
+
   // Handler to cancel bulk OCR
   const handleCancelBulkOcr = useCallback(() => {
     bulkOcrCancelRef.current.cancelled = true;
@@ -5877,6 +6645,21 @@ export const PDFEditorContent: React.FC = () => {
   const [pendingFileUpload, setPendingFileUpload] = useState<
     (() => void) | null
   >(null);
+
+  // Add state for language selection modal
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [pendingOcrAction, setPendingOcrAction] = useState<{
+    type: "single" | "bulk";
+    pageNumber?: number;
+  } | null>(null);
+
+  // Add state for settings modal
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [tempSourceLanguage, setTempSourceLanguage] = useState<string>("");
+  const [tempDesiredLanguage, setTempDesiredLanguage] = useState<string>("");
+
+  // Add state for translation loading
+  const [isTranslating, setIsTranslating] = useState(false);
 
   // Intercept file upload to show confirmation if a document is loaded
   const handleFileUploadIntercept = useCallback(() => {
@@ -5904,6 +6687,45 @@ export const PDFEditorContent: React.FC = () => {
     setShowReplaceConfirm(false);
     setPendingFileUpload(null);
   }, []);
+
+  // Language modal handlers
+  const handleLanguageConfirm = useCallback(() => {
+    setShowLanguageModal(false);
+    if (pendingOcrAction) {
+      if (pendingOcrAction.type === "single" && pendingOcrAction.pageNumber) {
+        handleTransformPageToTextbox(pendingOcrAction.pageNumber);
+      } else if (pendingOcrAction.type === "bulk") {
+        handleRunOcrAllPages();
+      }
+      setPendingOcrAction(null);
+    }
+  }, [pendingOcrAction, handleTransformPageToTextbox, handleRunOcrAllPages]);
+
+  const handleLanguageCancel = useCallback(() => {
+    setShowLanguageModal(false);
+    setPendingOcrAction(null);
+  }, []);
+
+  // Settings modal handlers
+  const handleOpenSettings = useCallback(() => {
+    setTempSourceLanguage(sourceLanguage);
+    setTempDesiredLanguage(desiredLanguage);
+    setShowSettingsModal(true);
+  }, [sourceLanguage, desiredLanguage]);
+
+  const handleSettingsSave = useCallback(() => {
+    setSourceLanguage(tempSourceLanguage);
+    setDesiredLanguage(tempDesiredLanguage);
+    setShowSettingsModal(false);
+    toast.success("Language settings saved successfully");
+  }, [tempSourceLanguage, tempDesiredLanguage]);
+
+  const handleSettingsBack = useCallback(() => {
+    setShowSettingsModal(false);
+    // Reset temp values to current values
+    setTempSourceLanguage(sourceLanguage);
+    setTempDesiredLanguage(desiredLanguage);
+  }, [sourceLanguage, desiredLanguage]);
 
   useEffect(() => {
     if (pendingExport && templateCanvas) {
@@ -5969,13 +6791,19 @@ export const PDFEditorContent: React.FC = () => {
           documentState.currentPage,
           viewState.currentView
         )}
-        onClearAllTranslations={handleClearAllTranslations}
         // Bulk OCR props
-        onRunOcrAllPages={handleRunOcrAllPages}
+        onRunOcrAllPages={() => checkLanguageAndRunOcr("bulk")}
         isBulkOcrRunning={isBulkOcrRunning}
         bulkOcrProgress={bulkOcrProgress}
         onCancelBulkOcr={handleCancelBulkOcr}
         hasPages={documentState.numPages > 0}
+        onOpenSettings={handleOpenSettings}
+        onClearPageTranslation={() =>
+          handleClearPageTranslation(documentState.currentPage)
+        }
+        isCurrentPageTranslated={
+          pageState.isPageTranslated.get(documentState.currentPage) || false
+        }
       />
 
       {/* Main Content */}
@@ -6380,18 +7208,25 @@ export const PDFEditorContent: React.FC = () => {
                           >
                             <button
                               onClick={() =>
-                                handleTransformPageToTextbox(
+                                checkLanguageAndRunOcr(
+                                  "single",
                                   documentState.currentPage
                                 )
                               }
-                              disabled={pageState.isTransforming}
+                              disabled={
+                                pageState.isTransforming || isTranslating
+                              }
                               className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
                               title="Transform current page to textboxes using OCR"
                             >
-                              {pageState.isTransforming ? (
+                              {pageState.isTransforming || isTranslating ? (
                                 <>
                                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                  <span>Transforming...</span>
+                                  <span>
+                                    {pageState.isTransforming
+                                      ? "Transforming..."
+                                      : "Translating..."}
+                                  </span>
                                 </>
                               ) : (
                                 <>
@@ -6491,12 +7326,9 @@ export const PDFEditorContent: React.FC = () => {
                                 scale={documentState.scale}
                                 showPaddingIndicator={showPaddingPopup}
                                 onSelect={handleTextBoxSelect}
-                                onUpdate={updateTextBoxWithUndo}
+                                onUpdate={updateTranslatedTextBoxWithUndo}
                                 onDelete={(id) =>
-                                  handleDeleteTextBoxWithUndo(
-                                    id,
-                                    viewState.currentView
-                                  )
+                                  handleDeleteTextBoxWithUndo(id, "translated")
                                 }
                                 isTextSelectionMode={
                                   editorState.isTextSelectionMode
@@ -6716,12 +7548,9 @@ export const PDFEditorContent: React.FC = () => {
                                   scale={documentState.scale}
                                   showPaddingIndicator={showPaddingPopup}
                                   onSelect={handleTextBoxSelect}
-                                  onUpdate={updateTextBoxWithUndo}
+                                  onUpdate={updateOriginalTextBoxWithUndo}
                                   onDelete={(id) =>
-                                    handleDeleteTextBoxWithUndo(
-                                      id,
-                                      viewState.currentView
-                                    )
+                                    handleDeleteTextBoxWithUndo(id, "original")
                                   }
                                   isTextSelectionMode={
                                     editorState.isTextSelectionMode
@@ -6919,18 +7748,25 @@ export const PDFEditorContent: React.FC = () => {
                             >
                               <button
                                 onClick={() => {
-                                  handleTransformPageToTextbox(
+                                  checkLanguageAndRunOcr(
+                                    "single",
                                     documentState.currentPage
                                   );
                                 }}
-                                disabled={pageState.isTransforming}
+                                disabled={
+                                  pageState.isTransforming || isTranslating
+                                }
                                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
                                 title="Transform current page to textboxes using OCR"
                               >
-                                {pageState.isTransforming ? (
+                                {pageState.isTransforming || isTranslating ? (
                                   <>
                                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    <span>Transforming...</span>
+                                    <span>
+                                      {pageState.isTransforming
+                                        ? "Transforming..."
+                                        : "Translating..."}
+                                    </span>
                                   </>
                                 ) : (
                                   <>
@@ -7030,11 +7866,11 @@ export const PDFEditorContent: React.FC = () => {
                                   scale={documentState.scale}
                                   showPaddingIndicator={showPaddingPopup}
                                   onSelect={handleTextBoxSelect}
-                                  onUpdate={updateTextBoxWithUndo}
+                                  onUpdate={updateTranslatedTextBoxWithUndo}
                                   onDelete={(id) =>
                                     handleDeleteTextBoxWithUndo(
                                       id,
-                                      viewState.currentView
+                                      "translated"
                                     )
                                   }
                                   isTextSelectionMode={
@@ -7258,7 +8094,9 @@ export const PDFEditorContent: React.FC = () => {
                       ))}
 
                       {/* Render all elements in layer order */}
-                      {currentPageSortedElements.map(renderElement)}
+                      {currentPageSortedElements.map((el) =>
+                        renderElement(el, viewState.currentView)
+                      )}
 
                       {/* Single View Selection Components */}
                       {editorState.isSelectionMode && (
@@ -7487,6 +8325,31 @@ export const PDFEditorContent: React.FC = () => {
         isOpen={showTemplateEditor}
         onClose={handleTemplateEditorClose}
         onContinue={handleTemplateEditorContinue}
+      />
+
+      {/* Language Selection Modal */}
+      <LanguageSelectionModal
+        open={showLanguageModal}
+        sourceLanguage={sourceLanguage}
+        desiredLanguage={desiredLanguage}
+        onSourceLanguageChange={setSourceLanguage}
+        onDesiredLanguageChange={setDesiredLanguage}
+        onConfirm={handleLanguageConfirm}
+        onCancel={handleLanguageCancel}
+      />
+
+      {/* Settings Modal */}
+      <LanguageSelectionModal
+        open={showSettingsModal}
+        sourceLanguage={tempSourceLanguage}
+        desiredLanguage={tempDesiredLanguage}
+        onSourceLanguageChange={setTempSourceLanguage}
+        onDesiredLanguageChange={setTempDesiredLanguage}
+        onConfirm={handleSettingsSave}
+        onCancel={handleSettingsBack}
+        isSettings={true}
+        onSave={handleSettingsSave}
+        onBack={handleSettingsBack}
       />
     </div>
   );
