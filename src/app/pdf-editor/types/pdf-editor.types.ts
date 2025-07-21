@@ -164,6 +164,8 @@ export interface MultiSelectionState {
 // View state types
 export type ViewMode = "original" | "translated" | "split";
 
+export type WorkflowStep = "translate" | "layout" | "final-layout";
+
 export interface ViewState {
   currentView: ViewMode;
   zoomMode: "page" | "width";
@@ -172,6 +174,7 @@ export interface ViewState {
   transformOrigin: string;
   isSidebarCollapsed: boolean;
   activeSidebarTab: "pages" | "tools";
+  currentWorkflowStep: WorkflowStep;
 }
 
 // Layer management types

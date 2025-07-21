@@ -12,20 +12,20 @@ import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 // Import services
-import { 
-  performPageOcr, 
-  performBulkOcr, 
-  convertEntitiesToTextBoxes, 
-  translateTextBoxes 
+import {
+  performPageOcr,
+  performBulkOcr,
+  convertEntitiesToTextBoxes,
+  translateTextBoxes,
 } from "./services/ocrService";
-import { 
-  exportPdfDocument, 
-  handleFileUpload as handleFileUploadService, 
-  handleAppendDocument, 
-  createBlankPdfAndAddImage as createBlankPdfAndAddImageService, 
-  appendImageAsNewPage as appendImageAsNewPageService, 
-  appendPdfDocument as appendPdfDocumentService, 
-  exportDataAsJson 
+import {
+  exportPdfDocument,
+  handleFileUpload as handleFileUploadService,
+  handleAppendDocument,
+  createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
+  appendImageAsNewPage as appendImageAsNewPageService,
+  appendPdfDocument as appendPdfDocumentService,
+  exportDataAsJson,
 } from "./services/pdfExportService";
 
 // Import types
@@ -37,6 +37,7 @@ import {
   ViewState,
   PageState,
   ViewMode,
+  WorkflowStep,
   TextField,
   Shape as ShapeType,
   Image as ImageType,
@@ -63,7 +64,7 @@ import {
   useHandleAddDeletionRectangleWithUndo,
   useHandleDeleteDeletionRectangleWithUndo,
   useHandleAddImageWithUndo,
-  useHandleDeleteImageWithUndo
+  useHandleDeleteImageWithUndo,
 } from "./hooks/handlers/undoRedoHandlers";
 
 // Import refactored event handler hooks
@@ -165,7 +166,6 @@ export const PDFEditorContent: React.FC = () => {
     isElementAtBack,
   } = useElementManagement();
 
-
   ///////////////////////// STATES /////////////////////////
   // Editor state
   const [editorState, setEditorState] = useState<EditorState>({
@@ -204,6 +204,7 @@ export const PDFEditorContent: React.FC = () => {
     transformOrigin: "center center",
     isSidebarCollapsed: false,
     activeSidebarTab: "pages",
+    currentWorkflowStep: "translate",
   });
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
@@ -305,14 +306,13 @@ export const PDFEditorContent: React.FC = () => {
   // Language state
   const [sourceLanguage, setSourceLanguage] = useState<string>("");
   const [desiredLanguage, setDesiredLanguage] = useState<string>("");
-  
+
   // Translation state
   const [isTranslating, setIsTranslating] = useState(false);
 
-
   ///////////////////////// HOOKS /////////////////////////
   // Debounce timer for batched updates
-  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({})
+  const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({});
   // Undo/Redo history
   const history = useHistory();
 
@@ -380,12 +380,14 @@ export const PDFEditorContent: React.FC = () => {
     selectedElementId,
     clearSelectionState
   );
-  const handleAddDeletionRectangleWithUndo = useHandleAddDeletionRectangleWithUndo(
+  const handleAddDeletionRectangleWithUndo =
+    useHandleAddDeletionRectangleWithUndo(
       addDeletionRectangle,
       deleteDeletionRectangle,
       history
     );
-  const handleDeleteDeletionRectangleWithUndo = useHandleDeleteDeletionRectangleWithUndo(
+  const handleDeleteDeletionRectangleWithUndo =
+    useHandleDeleteDeletionRectangleWithUndo(
       deleteDeletionRectangle,
       addDeletionRectangle,
       history,
@@ -414,7 +416,6 @@ export const PDFEditorContent: React.FC = () => {
     };
   }>({});
 
-
   // Auto-focus state
   const [autoFocusTextBoxId, setAutoFocusTextBoxId] = useState<string | null>(
     null
@@ -428,6 +429,14 @@ export const PDFEditorContent: React.FC = () => {
   // Callback to clear auto-focus ID after focusing
   const handleAutoFocusComplete = useCallback((id: string) => {
     setAutoFocusTextBoxId(null);
+  }, []);
+
+  // Workflow step change handler
+  const handleWorkflowStepChange = useCallback((step: WorkflowStep) => {
+    setViewState((prev) => ({
+      ...prev,
+      currentWorkflowStep: step,
+    }));
   }, []);
 
   // Helper function to get element by ID and type
@@ -746,24 +755,21 @@ export const PDFEditorContent: React.FC = () => {
     containerRef,
   });
 
-
   // Format handlers (extracted to custom hook)
-  const {
-    calculateTextboxDimensionsForFontChange,
-    handleFormatChange,
-  } = useFormatHandlers({
-    editorState,
-    selectedElementId,
-    selectedElementType,
-    currentFormat,
-    setCurrentFormat,
-    viewState,
-    getCurrentTextBoxes,
-    getCurrentImages,
-    updateTextBoxWithUndo,
-    updateShapeWithUndo,
-    updateImage,
-  });
+  const { calculateTextboxDimensionsForFontChange, handleFormatChange } =
+    useFormatHandlers({
+      editorState,
+      selectedElementId,
+      selectedElementType,
+      currentFormat,
+      setCurrentFormat,
+      viewState,
+      getCurrentTextBoxes,
+      getCurrentImages,
+      updateTextBoxWithUndo,
+      updateShapeWithUndo,
+      updateImage,
+    });
 
   // Effect to handle element selection and ElementFormatDrawer updates
   useEffect(() => {
@@ -1217,20 +1223,17 @@ export const PDFEditorContent: React.FC = () => {
   });
 
   // Shape drawing handlers (extracted to custom hook)
-  const {
-    handleShapeDrawStart,
-    handleShapeDrawMove,
-    handleShapeDrawEnd,
-  } = useShapeDrawingHandlers({
-    toolState,
-    setToolState,
-    setEditorState,
-    setErasureState,
-    documentState,
-    viewState,
-    documentRef,
-    handleAddShapeWithUndo,
-  });
+  const { handleShapeDrawStart, handleShapeDrawMove, handleShapeDrawEnd } =
+    useShapeDrawingHandlers({
+      toolState,
+      setToolState,
+      setEditorState,
+      setErasureState,
+      documentState,
+      viewState,
+      documentRef,
+      handleAddShapeWithUndo,
+    });
 
   // Document mouse handlers for text selection and erasure
   const {
@@ -1262,12 +1265,12 @@ export const PDFEditorContent: React.FC = () => {
     erasureState,
     currentPageTextBoxes,
     handleAddDeletionRectangleWithUndo,
-    handleDeleteTextBoxWithUndo: (id: string) => deleteTextBox(id, viewState.currentView),
+    handleDeleteTextBoxWithUndo: (id: string) =>
+      deleteTextBox(id, viewState.currentView),
     history,
     handleMultiSelectionMove,
     handleMultiSelectionMoveEnd,
   });
-
 
   // Erasure drawing handlers
   const handleErasureDrawMove = useCallback(
@@ -2342,7 +2345,7 @@ export const PDFEditorContent: React.FC = () => {
             width,
             height,
             documentState.currentPage,
-            "original",
+            "original"
           );
           if (imageId) {
             handleImageSelect(imageId);
@@ -3169,6 +3172,8 @@ export const PDFEditorContent: React.FC = () => {
         isCurrentPageTranslated={
           pageState.isPageTranslated.get(documentState.currentPage) || false
         }
+        currentWorkflowStep={viewState.currentWorkflowStep}
+        onWorkflowStepChange={handleWorkflowStepChange}
       />
 
       {/* Main Content */}

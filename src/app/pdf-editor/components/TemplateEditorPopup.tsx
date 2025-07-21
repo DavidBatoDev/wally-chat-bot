@@ -12,6 +12,7 @@ import {
   TextFormatProvider,
   useTextFormat,
 } from "@/components/editor/ElementFormatContext";
+import { generateUUID } from "../utils/measurements"; 
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -21,14 +22,6 @@ interface TemplateEditorPopupProps {
   onClose: () => void;
   onContinue: (templateCanvas: HTMLCanvasElement) => void;
 }
-
-const generateUUID = (): string => {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-};
 
 // Create the actual popup content component that will be wrapped by TextFormatProvider
 const TemplateEditorPopupContent: React.FC<TemplateEditorPopupProps> = ({

@@ -10,7 +10,9 @@ import {
   RotateCcw,
   FileText,
   Settings,
+  Check,
 } from "lucide-react";
+import { WorkflowStep } from "../../types/pdf-editor.types";
 
 interface PDFEditorHeaderProps {
   isSidebarCollapsed: boolean;
@@ -31,6 +33,8 @@ interface PDFEditorHeaderProps {
   onOpenSettings?: () => void;
   onClearPageTranslation?: () => void;
   isCurrentPageTranslated?: boolean;
+  currentWorkflowStep: WorkflowStep;
+  onWorkflowStepChange: (step: WorkflowStep) => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -52,6 +56,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onOpenSettings,
   onClearPageTranslation,
   isCurrentPageTranslated,
+  currentWorkflowStep,
+  onWorkflowStepChange,
 }) => {
   return (
     <div className="bg-white border-b border-red-100 shadow-sm">
@@ -82,6 +88,101 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               </p>
             </div>
           </div>
+
+          {/* Workflow Steps */}
+          {hasPages && (
+            <div className="flex items-center space-x-6 ml-8">
+              {/* Step 1: Translate */}
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
+                    currentWorkflowStep === "translate"
+                      ? "bg-red-600 text-white"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  }`}
+                  onClick={() => onWorkflowStepChange("translate")}
+                >
+                  {currentWorkflowStep !== "translate" ? (
+                    "1"
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                </div>
+                <span
+                  className={`text-sm font-medium cursor-pointer transition-colors ${
+                    currentWorkflowStep === "translate"
+                      ? "text-red-600"
+                      : "text-gray-600 hover:text-gray-800"
+                  }`}
+                  onClick={() => onWorkflowStepChange("translate")}
+                >
+                  Translate
+                </span>
+              </div>
+
+              {/* Connector Line */}
+              <div className="w-8 h-0.5 bg-gray-300"></div>
+
+              {/* Step 2: Layout */}
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
+                    currentWorkflowStep === "layout"
+                      ? "bg-red-600 text-white"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  }`}
+                  onClick={() => onWorkflowStepChange("layout")}
+                >
+                  {currentWorkflowStep !== "layout" ? (
+                    "2"
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                </div>
+                <span
+                  className={`text-sm font-medium cursor-pointer transition-colors ${
+                    currentWorkflowStep === "layout"
+                      ? "text-red-600"
+                      : "text-gray-600 hover:text-gray-800"
+                  }`}
+                  onClick={() => onWorkflowStepChange("layout")}
+                >
+                  Layout
+                </span>
+              </div>
+
+              {/* Connector Line */}
+              <div className="w-8 h-0.5 bg-gray-300"></div>
+
+              {/* Step 3: Final Layout */}
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
+                    currentWorkflowStep === "final-layout"
+                      ? "bg-red-600 text-white"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  }`}
+                  onClick={() => onWorkflowStepChange("final-layout")}
+                >
+                  {currentWorkflowStep !== "final-layout" ? (
+                    "3"
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                </div>
+                <span
+                  className={`text-sm font-medium cursor-pointer transition-colors ${
+                    currentWorkflowStep === "final-layout"
+                      ? "text-red-600"
+                      : "text-gray-600 hover:text-gray-800"
+                  }`}
+                  onClick={() => onWorkflowStepChange("final-layout")}
+                >
+                  Final Layout
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
