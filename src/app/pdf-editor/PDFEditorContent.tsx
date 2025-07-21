@@ -351,14 +351,12 @@ export const PDFEditorContent: React.FC = () => {
     selectedElementId,
     clearSelectionState
   );
-  const handleAddDeletionRectangleWithUndo =
-    useHandleAddDeletionRectangleWithUndo(
+  const handleAddDeletionRectangleWithUndo = useHandleAddDeletionRectangleWithUndo(
       addDeletionRectangle,
       deleteDeletionRectangle,
       history
     );
-  const handleDeleteDeletionRectangleWithUndo =
-    useHandleDeleteDeletionRectangleWithUndo(
+  const handleDeleteDeletionRectangleWithUndo = useHandleDeleteDeletionRectangleWithUndo(
       deleteDeletionRectangle,
       addDeletionRectangle,
       history,
