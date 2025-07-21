@@ -1,6 +1,6 @@
 import { useCallback } from "react";
-import { TextField, ViewMode } from "../types/pdf-editor.types";
-import { Shape as ShapeType } from "../types/pdf-editor.types";
+import { TextField, ViewMode } from "../../types/pdf-editor.types";
+import { Shape as ShapeType } from "../../types/pdf-editor.types";
 import {
 AddTextBoxCommand,
 UpdateTextBoxCommand,
@@ -16,7 +16,7 @@ UpdateTextBoxCommand,
 import {
   DeletionRectangle,
   Image as ImageType,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 // Refactored handler for adding a text box with undo support
 export function useHandleAddTextBoxWithUndo(

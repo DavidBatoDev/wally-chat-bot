@@ -5,7 +5,7 @@ import {
   ViewState,
   TextField,
   ViewMode,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 interface UseKeyboardHandlersProps {
   editorState: EditorState;

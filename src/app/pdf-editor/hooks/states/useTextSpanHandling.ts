@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TextField, DeletionRectangle } from "../types/pdf-editor.types";
+import { TextField, DeletionRectangle } from "../../types/pdf-editor.types";
 
 interface UseTextSpanHandlingProps {
   isAddTextBoxMode: boolean;

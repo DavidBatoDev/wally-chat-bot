@@ -4,7 +4,7 @@ import {
   EditorState,
   ErasureState,
   ViewMode,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 interface UseShapeDrawingHandlersProps {
   toolState: ToolState;

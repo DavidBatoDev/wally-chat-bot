@@ -3,7 +3,7 @@ import {
   EditorState,
   ToolState,
   ErasureState,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 interface UseToolHandlersProps {
   setEditorState: React.Dispatch<React.SetStateAction<EditorState>>;

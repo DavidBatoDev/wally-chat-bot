@@ -10,8 +10,8 @@ import {
   DeletionRectangle,
   SortedElement,
   ViewMode,
-} from "../types/pdf-editor.types";
-import { generateUUID, measureText } from "../utils/measurements";
+} from "../../types/pdf-editor.types";
+import { generateUUID, measureText } from "../../utils/measurements";
 
 export const useElementManagement = () => {
   // Element collections state

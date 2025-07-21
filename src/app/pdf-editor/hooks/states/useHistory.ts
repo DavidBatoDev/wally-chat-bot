@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ViewMode } from "../types/pdf-editor.types";
+import { ViewMode } from "../../types/pdf-editor.types";
 
 // Command interface
 export interface Command {

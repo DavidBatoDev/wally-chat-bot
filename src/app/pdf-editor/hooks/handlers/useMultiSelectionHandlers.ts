@@ -5,12 +5,12 @@ import {
   Shape as ShapeType,
   Image as ImageType,
   ViewMode,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 import {
   findElementsInSelection,
   calculateSelectionBounds,
   moveSelectedElements,
-} from "../utils/selectionUtils";
+} from "../../utils/selectionUtils";
 
 interface UseMultiSelectionHandlersProps {
   editorState: EditorState;

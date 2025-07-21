@@ -45,10 +45,10 @@ import {
 } from "./types/pdf-editor.types";
 
 // Import hooks
-import { useDocumentState } from "./hooks/useDocumentState";
-import { useElementManagement } from "./hooks/useElementManagement";
-import { useTextSpanHandling } from "./hooks/useTextSpanHandling";
-import { useHistory } from "./hooks/useHistory";
+import { useDocumentState } from "./hooks/states/useDocumentState";
+import { useElementManagement } from "./hooks/states/useElementManagement";
+import { useTextSpanHandling } from "./hooks/states/useTextSpanHandling";
+import { useHistory } from "./hooks/states/useHistory";
 import {
   useHandleAddTextBoxWithUndo,
   useHandleUpdateTextBoxWithUndo,
@@ -64,16 +64,16 @@ import {
   useHandleDeleteDeletionRectangleWithUndo,
   useHandleAddImageWithUndo,
   useHandleDeleteImageWithUndo
-} from "./hooks/undoRedoHandlers";
+} from "./hooks/handlers/undoRedoHandlers";
 
 // Import refactored event handler hooks
-import { useMultiSelectionHandlers } from "./hooks/useMultiSelectionHandlers";
-import { useToolHandlers } from "./hooks/useToolHandlers";
-import { useShapeDrawingHandlers } from "./hooks/useShapeDrawingHandlers";
-import { useDocumentMouseHandlers } from "./hooks/useDocumentMouseHandlers";
-import { useFormatHandlers } from "./hooks/useFormatHandlers";
-import { useKeyboardHandlers } from "./hooks/useKeyboardHandlers";
-import { useZoomHandlers } from "./hooks/useZoomHandlers";
+import { useMultiSelectionHandlers } from "./hooks/handlers/useMultiSelectionHandlers";
+import { useToolHandlers } from "./hooks/handlers/useToolHandlers";
+import { useShapeDrawingHandlers } from "./hooks/handlers/useShapeDrawingHandlers";
+import { useDocumentMouseHandlers } from "./hooks/handlers/useDocumentMouseHandlers";
+import { useFormatHandlers } from "./hooks/handlers/useFormatHandlers";
+import { useKeyboardHandlers } from "./hooks/handlers/useKeyboardHandlers";
+import { useZoomHandlers } from "./hooks/handlers/useZoomHandlers";
 
 // Import components
 import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";

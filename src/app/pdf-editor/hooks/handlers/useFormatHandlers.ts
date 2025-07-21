@@ -1,12 +1,12 @@
 import { useCallback } from "react";
-import { measureText } from "../utils/measurements";
+import { measureText } from "../../utils/measurements";
 import {
   EditorState,
   TextField,
   Shape as ShapeType,
   Image as ImageType,
   ViewMode,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 interface UseFormatHandlersProps {
   editorState: EditorState;

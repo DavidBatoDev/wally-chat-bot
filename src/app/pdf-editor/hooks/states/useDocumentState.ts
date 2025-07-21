@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { DocumentState } from "../types/pdf-editor.types";
-import { getFileType, isPdfFile } from "../utils/measurements";
+import { DocumentState } from "../../types/pdf-editor.types";
+import { getFileType, isPdfFile } from "../../utils/measurements";
 import { toast } from "sonner";
 
 export const useDocumentState = () => {

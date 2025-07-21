@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import {
   ViewState,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 interface UseZoomHandlersProps {
   viewState: ViewState;

@@ -1,11 +1,11 @@
-import { Command } from "./useHistory";
+import { Command } from "./../states/useHistory";
 import {
   TextField,
   Shape,
   Image,
   DeletionRectangle,
   ViewMode,
-} from "../types/pdf-editor.types";
+} from "../../types/pdf-editor.types";
 
 // Add TextBox
 export class AddTextBoxCommand implements Command {
