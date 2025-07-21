@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { MemoizedTextBox } from "./elements/TextBox";
 import { TextField } from "../types/pdf-editor.types";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
-import { useTextSpanHandling } from "../hooks/useTextSpanHandling";
+import { useTextSpanHandling } from "../hooks/states/useTextSpanHandling";
 import { toast } from "sonner";
 import { screenToDocumentCoordinates } from "../utils/coordinates";
 import {
