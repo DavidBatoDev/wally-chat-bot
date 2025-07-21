@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { generateUUID, measureText } from "../utils/measurements";
 import { TextField } from "../types/pdf-editor.types";
+import { loadHtml2Canvas } from "../utils/html2canvasLoader";
 
 // Types for OCR processing
 export interface OcrOptions {
@@ -125,9 +126,8 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     // Wait for the scale change to apply
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Import html2canvas dynamically
-    const html2canvasModule = await import("html2canvas");
-    const html2canvas = html2canvasModule.default;
+    // Load html2canvas with proper error handling
+    const html2canvas = await loadHtml2Canvas();
 
     // Capture the PDF page as an image
     const containerEl = documentRef.current;
@@ -139,7 +139,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
       useCORS: true,
       allowTaint: true,
       backgroundColor: "#ffffff",
-      ignoreElements: (element) => {
+      ignoreElements: (element: HTMLElement) => {
         // Optionally ignore toolbars, sidebars, etc.
         return (
           element.classList.contains("text-format-drawer") ||
@@ -160,7 +160,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
 
     // Convert canvas to blob
     const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((blob) => {
+      canvas.toBlob((blob: Blob | null) => {
         if (blob) resolve(blob);
       }, "image/png");
     });

@@ -27,6 +27,7 @@ import {
   appendPdfDocument as appendPdfDocumentService,
   exportDataAsJson,
 } from "./services/pdfExportService";
+import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
 // Import types
 import {
@@ -1157,6 +1158,11 @@ export const PDFEditorContent: React.FC = () => {
       );
     }
   }, [handleFormatChange, setOnFormatChange]);
+
+  // Preload html2canvas to avoid dynamic import issues
+  useEffect(() => {
+    preloadHtml2Canvas();
+  }, []);
 
   // Memoized values
   const currentPageTextBoxes = useMemo(

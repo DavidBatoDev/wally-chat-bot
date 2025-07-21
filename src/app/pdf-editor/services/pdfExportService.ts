@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { loadHtml2Canvas } from "../utils/html2canvasLoader";
 
 // Types for PDF operations
 export interface PdfExportOptions {
@@ -119,8 +120,8 @@ export async function exportPdfDocument(options: PdfExportOptions): Promise<void
     // Wait for zoom to update
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Import html2canvas dynamically
-    const html2canvas = (await import("html2canvas")).default;
+    // Load html2canvas with proper error handling
+    const html2canvas = await loadHtml2Canvas();
 
     // Create PDF document
     const pdfDoc = await PDFDocument.create();
