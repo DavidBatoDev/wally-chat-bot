@@ -1,0 +1,217 @@
+import React from 'react';
+import DocumentView from './DocumentView';
+import DocumentElementsLayer from './DocumentElementsLayer';
+import BlankTranslatedView from './BlankTranslatedView';
+import { TextField, Shape as ShapeType, Image as ImageType, DeletionRectangle } from '@/app/pdf-editor/types/pdf-editor.types';
+
+interface DocumentPanelProps {
+  viewType: 'original' | 'translated';
+  
+  // Document props
+  documentUrl: string;
+  currentPage: number;
+  pageWidth: number;
+  pageHeight: number;
+  scale: number;
+  numPages: number;
+  isScaleChanging: boolean;
+  isAddTextBoxMode: boolean;
+  isTextSpanZooming: boolean;
+  isPdfFile: (url: string) => boolean;
+  
+  // Handlers and actions
+  handlers: {
+    handleDocumentLoadSuccess: (pdf: any) => void;
+    handleDocumentLoadError: (error: any) => void;
+    handlePageLoadSuccess: (page: any) => void;
+    handlePageLoadError: (error: any) => void;
+    handleImageLoadSuccess: (event: React.SyntheticEvent<HTMLImageElement>) => void;
+    handleImageLoadError: () => void;
+  };
+  actions: {
+    capturePdfBackgroundColor: () => void;
+  };
+  setDocumentState: React.Dispatch<React.SetStateAction<any>>;
+  
+  // Translated view specific props
+  isPageTranslated?: boolean;
+  isTransforming?: boolean;
+  isTranslating?: boolean;
+  onRunOcr?: () => void;
+  
+  // Elements layer props
+  deletionRectangles: DeletionRectangle[];
+  showDeletionRectangles: boolean;
+  onDeleteDeletionRectangle: (id: string) => void;
+  colorToRgba: (color: string, opacity: number) => string;
+  sortedElements: Array<{ type: 'textbox' | 'shape' | 'image'; element: TextField | ShapeType | ImageType }>;
+  getElementsInSelectionPreview: () => Set<string>;
+  
+  // Element handlers
+  selectedFieldId: string | null;
+  selectedShapeId: string | null;
+  selectedElementId: string | null;
+  isEditMode: boolean;
+  showPaddingIndicator: boolean;
+  onTextBoxSelect: (id: string) => void;
+  onShapeSelect: (id: string) => void;
+  onImageSelect: (id: string) => void;
+  onUpdateTextBox: (id: string, updates: any) => void;
+  onUpdateShape: (id: string, updates: any) => void;
+  onUpdateImage: (id: string, updates: any) => void;
+  onDeleteTextBox: (id: string) => void;
+  onDeleteShape: (id: string) => void;
+  onDeleteImage: (id: string) => void;
+  
+  // Text selection mode
+  isTextSelectionMode: boolean;
+  selectedTextBoxes: { textBoxIds: string[] };
+  
+  // Auto focus
+  autoFocusTextBoxId: string | null;
+  onAutoFocusComplete: (id: string) => void;
+  
+  // Selection mode
+  isSelectionMode: boolean;
+  multiSelection: {
+    isDrawingSelection: boolean;
+    selectionStart: { x: number; y: number } | null;
+    selectionEnd: { x: number; y: number } | null;
+    targetView: 'original' | 'translated' | null;
+    selectionBounds: any;
+    selectedElements: any[];
+    isMovingSelection: boolean;
+  };
+  currentView: 'original' | 'translated' | 'split';
+  onMoveSelection: () => void;
+  onDeleteSelection: () => void;
+  onDragSelection: (deltaX: number, deltaY: number) => void;
+  onDragStopSelection: (deltaX: number, deltaY: number) => void;
+  
+  // Optional header
+  header?: React.ReactNode;
+}
+
+const DocumentPanel: React.FC<DocumentPanelProps> = ({
+  viewType,
+  documentUrl,
+  currentPage,
+  pageWidth,
+  pageHeight,
+  scale,
+  numPages,
+  isScaleChanging,
+  isAddTextBoxMode,
+  isTextSpanZooming,
+  isPdfFile,
+  handlers,
+  actions,
+  setDocumentState,
+  isPageTranslated = false,
+  isTransforming = false,
+  isTranslating = false,
+  onRunOcr,
+  deletionRectangles,
+  showDeletionRectangles,
+  onDeleteDeletionRectangle,
+  colorToRgba,
+  sortedElements,
+  getElementsInSelectionPreview,
+  selectedFieldId,
+  selectedShapeId,
+  selectedElementId,
+  isEditMode,
+  showPaddingIndicator,
+  onTextBoxSelect,
+  onShapeSelect,
+  onImageSelect,
+  onUpdateTextBox,
+  onUpdateShape,
+  onUpdateImage,
+  onDeleteTextBox,
+  onDeleteShape,
+  onDeleteImage,
+  isTextSelectionMode,
+  selectedTextBoxes,
+  autoFocusTextBoxId,
+  onAutoFocusComplete,
+  isSelectionMode,
+  multiSelection,
+  currentView,
+  onMoveSelection,
+  onDeleteSelection,
+  onDragSelection,
+  onDragStopSelection,
+  header,
+}) => {
+  return (
+    <DocumentView
+      viewType={viewType}
+      documentUrl={documentUrl}
+      currentPage={currentPage}
+      pageWidth={pageWidth}
+      pageHeight={pageHeight}
+      scale={scale}
+      isScaleChanging={isScaleChanging}
+      isAddTextBoxMode={isAddTextBoxMode}
+      isTextSpanZooming={isTextSpanZooming}
+      isPdfFile={isPdfFile}
+      handlers={handlers}
+      actions={actions}
+      setDocumentState={setDocumentState}
+      header={header}
+    >
+      {/* Translated view content */}
+      {viewType === 'translated' && onRunOcr && (
+        <BlankTranslatedView
+          currentPage={currentPage}
+          numPages={numPages}
+          isPageTranslated={isPageTranslated}
+          isTransforming={isTransforming}
+          isTranslating={isTranslating}
+          onRunOcr={onRunOcr}
+        />
+      )}
+      
+      {/* Elements Layer */}
+      <DocumentElementsLayer
+        viewType={viewType}
+        currentPage={currentPage}
+        scale={scale}
+        deletionRectangles={deletionRectangles}
+        showDeletionRectangles={showDeletionRectangles}
+        onDeleteDeletionRectangle={onDeleteDeletionRectangle}
+        colorToRgba={colorToRgba}
+        sortedElements={sortedElements}
+        getElementsInSelectionPreview={getElementsInSelectionPreview}
+        selectedFieldId={selectedFieldId}
+        selectedShapeId={selectedShapeId}
+        selectedElementId={selectedElementId}
+        isEditMode={isEditMode}
+        showPaddingIndicator={showPaddingIndicator}
+        onTextBoxSelect={onTextBoxSelect}
+        onShapeSelect={onShapeSelect}
+        onImageSelect={onImageSelect}
+        onUpdateTextBox={onUpdateTextBox}
+        onUpdateShape={onUpdateShape}
+        onUpdateImage={onUpdateImage}
+        onDeleteTextBox={onDeleteTextBox}
+        onDeleteShape={onDeleteShape}
+        onDeleteImage={onDeleteImage}
+        isTextSelectionMode={isTextSelectionMode}
+        selectedTextBoxes={selectedTextBoxes}
+        autoFocusTextBoxId={autoFocusTextBoxId}
+        onAutoFocusComplete={onAutoFocusComplete}
+        isSelectionMode={isSelectionMode}
+        multiSelection={multiSelection}
+        currentView={currentView}
+        onMoveSelection={onMoveSelection}
+        onDeleteSelection={onDeleteSelection}
+        onDragSelection={onDragSelection}
+        onDragStopSelection={onDragStopSelection}
+      />
+    </DocumentView>
+  );
+};
+
+export default DocumentPanel;

@@ -84,6 +84,7 @@ import { FloatingToolbar } from "./components/layout/FloatingToolbar";
 import { MemoizedTextBox } from "./components/elements/TextBox";
 import { MemoizedShape } from "./components/elements/Shape";
 import { MemoizedImage } from "./components/elements/ImageElement";
+import DocumentPanel from "@/components/pdf-editor/DocumentPanel";
 import { SelectionPreview } from "./components/elements/SelectionPreview";
 import { SelectionRectangle } from "./components/elements/SelectionRectangle";
 import { TemplateEditorPopup } from "./components/TemplateEditorPopup";
@@ -3464,313 +3465,227 @@ export const PDFEditorContent: React.FC = () => {
                 >
                   {/* Document Rendering - Show different content based on view */}
                   {viewState.currentView === "original" && (
-                    <>
-                      {isPdfFile(documentState.url) ? (
-                        <div className="relative">
-                          <Document
-                            file={documentState.url}
-                            onLoadSuccess={handlers.handleDocumentLoadSuccess}
-                            onLoadError={handlers.handleDocumentLoadError}
-                            loading={null}
-                          >
-                            <Page
-                              pageNumber={documentState.currentPage}
-                              onLoadSuccess={handlers.handlePageLoadSuccess}
-                              onLoadError={handlers.handlePageLoadError}
-                              onRenderSuccess={() => {
-                                setDocumentState((prev) => ({
-                                  ...prev,
-                                  isPageLoading: false,
-                                }));
-                                actions.capturePdfBackgroundColor();
-                              }}
-                              onRenderError={handlers.handlePageLoadError}
-                              renderTextLayer={
-                                editorState.isAddTextBoxMode &&
-                                !isTextSpanZooming
-                              }
-                              renderAnnotationLayer={false}
-                              loading={
-                                <div
-                                  className="flex items-center justify-center bg-gray-50"
-                                  style={{
-                                    width:
-                                      documentState.pageWidth *
-                                      documentState.scale,
-                                    height:
-                                      documentState.pageHeight *
-                                      documentState.scale,
-                                  }}
-                                >
-                                  <div className="text-center">
-                                    <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                                    <div className="text-gray-500 text-sm">
-                                      Rendering page...
-                                    </div>
-                                  </div>
-                                </div>
-                              }
-                              width={
-                                documentState.pageWidth * documentState.scale
-                              }
-                            />
-                          </Document>
-
-                          {/* Loading overlay during scale changes */}
-                          {documentState.isScaleChanging && (
-                            <div
-                              className="absolute inset-0 bg-gray-50 bg-opacity-50 flex items-center justify-center z-50"
-                              style={{
-                                width:
-                                  documentState.pageWidth * documentState.scale,
-                                height:
-                                  documentState.pageHeight *
-                                  documentState.scale,
-                              }}
-                            >
-                              <div className="bg-white rounded-lg shadow-md p-3 flex items-center space-x-2">
-                                <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-sm text-gray-600">
-                                  Adjusting zoom...
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <img
-                          src={documentState.url}
-                          alt="Document"
-                          onLoad={handlers.handleImageLoadSuccess}
-                          onError={handlers.handleImageLoadError}
-                          style={{
-                            width:
-                              documentState.pageWidth * documentState.scale,
-                            height:
-                              documentState.pageHeight * documentState.scale,
-                            maxWidth: "none",
-                            display: "block",
-                          }}
-                          className="select-none"
-                        />
+                    <DocumentPanel
+                      viewType="original"
+                      documentUrl={documentState.url}
+                      currentPage={documentState.currentPage}
+                      pageWidth={documentState.pageWidth}
+                      pageHeight={documentState.pageHeight}
+                      scale={documentState.scale}
+                      numPages={documentState.numPages}
+                      isScaleChanging={documentState.isScaleChanging}
+                      isAddTextBoxMode={editorState.isAddTextBoxMode}
+                      isTextSpanZooming={isTextSpanZooming}
+                      isPdfFile={isPdfFile}
+                      handlers={handlers}
+                      actions={actions}
+                      setDocumentState={setDocumentState}
+                      deletionRectangles={
+                        elementCollections.originalDeletionRectangles
+                      }
+                      showDeletionRectangles={
+                        editorState.showDeletionRectangles
+                      }
+                      onDeleteDeletionRectangle={(id) =>
+                        handleDeleteDeletionRectangleWithUndo(id, "original")
+                      }
+                      colorToRgba={colorToRgba}
+                      sortedElements={getOriginalSortedElements(
+                        documentState.currentPage
                       )}
-                    </>
+                      getElementsInSelectionPreview={
+                        getElementsInSelectionPreview
+                      }
+                      selectedFieldId={editorState.selectedFieldId}
+                      selectedShapeId={editorState.selectedShapeId}
+                      selectedElementId={selectedElementId}
+                      isEditMode={editorState.isEditMode}
+                      showPaddingIndicator={showPaddingPopup}
+                      onTextBoxSelect={handleTextBoxSelect}
+                      onShapeSelect={handleShapeSelect}
+                      onImageSelect={handleImageSelect}
+                      onUpdateTextBox={updateOriginalTextBoxWithUndo}
+                      onUpdateShape={updateShapeWithUndo}
+                      onUpdateImage={updateImage}
+                      onDeleteTextBox={(id) =>
+                        handleDeleteTextBoxWithUndo(id, "original")
+                      }
+                      onDeleteShape={(id) =>
+                        handleDeleteShapeWithUndo(id, viewState.currentView)
+                      }
+                      onDeleteImage={(id) =>
+                        handleDeleteImageWithUndo(id, viewState.currentView)
+                      }
+                      isTextSelectionMode={editorState.isTextSelectionMode}
+                      selectedTextBoxes={selectionState.selectedTextBoxes}
+                      autoFocusTextBoxId={autoFocusTextBoxId}
+                      onAutoFocusComplete={handleAutoFocusComplete}
+                      isSelectionMode={editorState.isSelectionMode}
+                      multiSelection={editorState.multiSelection}
+                      currentView={viewState.currentView}
+                      onMoveSelection={handleMoveSelection}
+                      onDeleteSelection={handleDeleteSelection}
+                      onDragSelection={(deltaX, deltaY) => {
+                        // Move all selected elements by delta (in real time)
+                        moveSelectedElements(
+                          editorState.multiSelection.selectedElements,
+                          deltaX,
+                          deltaY,
+                          updateTextBoxWithUndo,
+                          updateShape,
+                          updateImage,
+                          getElementById,
+                          documentState.pageWidth,
+                          documentState.pageHeight
+                        );
+                        // Update selection bounds in real time
+                        setEditorState((prev) => {
+                          const updatedElements =
+                            prev.multiSelection.selectedElements.map((el) => ({
+                              ...el,
+                              originalPosition: {
+                                x: el.originalPosition.x + deltaX,
+                                y: el.originalPosition.y + deltaY,
+                              },
+                            }));
+                          const newBounds = calculateSelectionBounds(
+                            updatedElements,
+                            getElementById
+                          );
+                          return {
+                            ...prev,
+                            multiSelection: {
+                              ...prev.multiSelection,
+                              selectedElements: updatedElements,
+                              selectionBounds: newBounds,
+                            },
+                          };
+                        });
+                      }}
+                      onDragStopSelection={handleDragStopSelection}
+                    />
                   )}
 
                   {/* Translated Document View */}
                   {viewState.currentView === "translated" && (
-                    <>
-                      {/* Blank translated document background */}
-                      <div className="w-full h-full bg-white">
-                        {/* Page number indicator */}
-                        <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
-                          Page {documentState.currentPage} of{" "}
-                          {documentState.numPages}
-                        </div>
-
-                        {/* Transform JSON Button - centered overlay if not translated */}
-                        {!pageState.isPageTranslated.get(
+                    <DocumentPanel
+                      viewType="translated"
+                      documentUrl={documentState.url}
+                      currentPage={documentState.currentPage}
+                      pageWidth={documentState.pageWidth}
+                      pageHeight={documentState.pageHeight}
+                      scale={documentState.scale}
+                      numPages={documentState.numPages}
+                      isScaleChanging={documentState.isScaleChanging}
+                      isAddTextBoxMode={editorState.isAddTextBoxMode}
+                      isTextSpanZooming={isTextSpanZooming}
+                      isPdfFile={isPdfFile}
+                      handlers={handlers}
+                      actions={actions}
+                      setDocumentState={setDocumentState}
+                      isPageTranslated={
+                        pageState.isPageTranslated.get(
                           documentState.currentPage
-                        ) && (
-                          <div
-                            className="absolute inset-0 flex items-center justify-center"
-                            style={{ zIndex: 20000 }}
-                          >
-                            <button
-                              onClick={() =>
-                                checkLanguageAndRunOcr(
-                                  "single",
-                                  documentState.currentPage
-                                )
-                              }
-                              disabled={
-                                pageState.isTransforming || isTranslating
-                              }
-                              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
-                              title="Transform current page to textboxes using OCR"
-                            >
-                              {pageState.isTransforming || isTranslating ? (
-                                <>
-                                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                  <span>
-                                    {pageState.isTransforming
-                                      ? "Transforming..."
-                                      : "Translating..."}
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <svg
-                                    className="w-5 h-5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                                    />
-                                  </svg>
-                                  <span>Run OCR</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Translated Document Elements - Wrapped for proper z-index */}
-                      <div
-                        className="absolute inset-0"
-                        style={{ zIndex: 10000 }}
-                      >
-                        {/* Deletion Rectangles */}
-                        {elementCollections.translatedDeletionRectangles
-                          .filter(
-                            (rect) => rect.page === documentState.currentPage
-                          )
-                          .map((rect) => (
-                            <div
-                              key={`trans-del-${rect.id}`}
-                              className={`absolute ${
-                                editorState.showDeletionRectangles
-                                  ? "border border-red-400"
-                                  : ""
-                              }`}
-                              style={{
-                                left: rect.x * documentState.scale,
-                                top: rect.y * documentState.scale,
-                                width: rect.width * documentState.scale,
-                                height: rect.height * documentState.scale,
-                                zIndex: editorState.showDeletionRectangles
-                                  ? -10
-                                  : -20,
-                                backgroundColor: rect.background
-                                  ? colorToRgba(
-                                      rect.background,
-                                      rect.opacity || 1.0
-                                    )
-                                  : "white",
-                              }}
-                            >
-                              {editorState.showDeletionRectangles && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteDeletionRectangleWithUndo(
-                                      rect.id,
-                                      "translated"
-                                    );
-                                  }}
-                                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
-                                  title="Delete area"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-                          ))}
-
-                        {/* Translated Elements in Layer Order */}
-                        {getTranslatedSortedElements(
+                        ) || false
+                      }
+                      isTransforming={pageState.isTransforming}
+                      isTranslating={isTranslating}
+                      onRunOcr={() =>
+                        checkLanguageAndRunOcr(
+                          "single",
                           documentState.currentPage
-                        ).map(({ type, element }) => {
-                          // Get elements that would be captured in the current selection preview
-                          const elementsInSelectionPreview =
-                            getElementsInSelectionPreview();
-
-                          if (type === "textbox") {
-                            const textBox = element as TextField;
-                            const isInSelectionPreview =
-                              elementsInSelectionPreview.has(textBox.id);
-                            return (
-                              <MemoizedTextBox
-                                key={`trans-text-${textBox.id}`}
-                                textBox={textBox}
-                                isSelected={
-                                  editorState.selectedFieldId === textBox.id
-                                }
-                                isEditMode={editorState.isEditMode}
-                                scale={documentState.scale}
-                                showPaddingIndicator={showPaddingPopup}
-                                onSelect={handleTextBoxSelect}
-                                onUpdate={updateTranslatedTextBoxWithUndo}
-                                onDelete={(id) =>
-                                  handleDeleteTextBoxWithUndo(id, "translated")
-                                }
-                                isTextSelectionMode={
-                                  editorState.isTextSelectionMode
-                                }
-                                isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
-                                  textBox.id
-                                )}
-                                autoFocusId={autoFocusTextBoxId}
-                                onAutoFocusComplete={handleAutoFocusComplete}
-                                // Selection preview prop
-                                isInSelectionPreview={isInSelectionPreview}
-                              />
-                            );
-                          } else if (type === "shape") {
-                            const shape = element as ShapeType;
-                            const isInSelectionPreview =
-                              elementsInSelectionPreview.has(shape.id);
-                            return (
-                              <MemoizedShape
-                                key={`trans-shape-${shape.id}`}
-                                shape={shape}
-                                isSelected={
-                                  editorState.selectedShapeId === shape.id
-                                }
-                                isEditMode={editorState.isEditMode}
-                                scale={documentState.scale}
-                                onSelect={handleShapeSelect}
-                                onUpdate={updateShapeWithUndo}
-                                onDelete={(id) =>
-                                  handleDeleteShapeWithUndo(
-                                    id,
-                                    viewState.currentView
-                                  )
-                                }
-                                // Selection preview prop
-                                isInSelectionPreview={isInSelectionPreview}
-                              />
-                            );
-                          } else if (type === "image") {
-                            const image = element as ImageType;
-                            const isInSelectionPreview =
-                              elementsInSelectionPreview.has(image.id);
-                            return (
-                              <MemoizedImage
-                                key={`trans-image-${image.id}`}
-                                image={image}
-                                isSelected={selectedElementId === image.id}
-                                isEditMode={editorState.isEditMode}
-                                scale={documentState.scale}
-                                onSelect={handleImageSelect}
-                                onUpdate={updateImage}
-                                onDelete={(id) =>
-                                  handleDeleteImageWithUndo(
-                                    id,
-                                    viewState.currentView
-                                  )
-                                }
-                                // Selection preview prop
-                                isInSelectionPreview={isInSelectionPreview}
-                              />
-                            );
-                          }
-                          return null;
-                        })}
-                      </div>
-                    </>
+                        )
+                      }
+                      deletionRectangles={
+                        elementCollections.translatedDeletionRectangles
+                      }
+                      showDeletionRectangles={
+                        editorState.showDeletionRectangles
+                      }
+                      onDeleteDeletionRectangle={(id) =>
+                        handleDeleteDeletionRectangleWithUndo(id, "translated")
+                      }
+                      colorToRgba={colorToRgba}
+                      sortedElements={getTranslatedSortedElements(
+                        documentState.currentPage
+                      )}
+                      getElementsInSelectionPreview={
+                        getElementsInSelectionPreview
+                      }
+                      selectedFieldId={editorState.selectedFieldId}
+                      selectedShapeId={editorState.selectedShapeId}
+                      selectedElementId={selectedElementId}
+                      isEditMode={editorState.isEditMode}
+                      showPaddingIndicator={showPaddingPopup}
+                      onTextBoxSelect={handleTextBoxSelect}
+                      onShapeSelect={handleShapeSelect}
+                      onImageSelect={handleImageSelect}
+                      onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                      onUpdateShape={updateShapeWithUndo}
+                      onUpdateImage={updateImage}
+                      onDeleteTextBox={(id) =>
+                        handleDeleteTextBoxWithUndo(id, "translated")
+                      }
+                      onDeleteShape={(id) =>
+                        handleDeleteShapeWithUndo(id, viewState.currentView)
+                      }
+                      onDeleteImage={(id) =>
+                        handleDeleteImageWithUndo(id, viewState.currentView)
+                      }
+                      isTextSelectionMode={editorState.isTextSelectionMode}
+                      selectedTextBoxes={selectionState.selectedTextBoxes}
+                      autoFocusTextBoxId={autoFocusTextBoxId}
+                      onAutoFocusComplete={handleAutoFocusComplete}
+                      isSelectionMode={editorState.isSelectionMode}
+                      multiSelection={editorState.multiSelection}
+                      currentView={viewState.currentView}
+                      onMoveSelection={handleMoveSelection}
+                      onDeleteSelection={handleDeleteSelection}
+                      onDragSelection={(deltaX, deltaY) => {
+                        // Move all selected elements by delta (in real time)
+                        moveSelectedElements(
+                          editorState.multiSelection.selectedElements,
+                          deltaX,
+                          deltaY,
+                          updateTextBoxWithUndo,
+                          updateShape,
+                          updateImage,
+                          getElementById,
+                          documentState.pageWidth,
+                          documentState.pageHeight
+                        );
+                        // Update selection bounds in real time
+                        setEditorState((prev) => {
+                          const updatedElements =
+                            prev.multiSelection.selectedElements.map((el) => ({
+                              ...el,
+                              originalPosition: {
+                                x: el.originalPosition.x + deltaX,
+                                y: el.originalPosition.y + deltaY,
+                              },
+                            }));
+                          const newBounds = calculateSelectionBounds(
+                            updatedElements,
+                            getElementById
+                          );
+                          return {
+                            ...prev,
+                            multiSelection: {
+                              ...prev.multiSelection,
+                              selectedElements: updatedElements,
+                              selectionBounds: newBounds,
+                            },
+                          };
+                        });
+                      }}
+                      onDragStopSelection={handleDragStopSelection}
+                    />
                   )}
 
                   {/* Split Screen View */}
                   {viewState.currentView === "split" && (
                     <div
-                      className="flex"
+                      className="flex relative"
                       style={{
                         width:
                           documentState.pageWidth * documentState.scale * 2 +
@@ -3779,83 +3694,136 @@ export const PDFEditorContent: React.FC = () => {
                       }}
                     >
                       {/* Original Document Side */}
-                      <div
-                        className="relative bg-white border border-gray-200 shadow-sm"
-                        style={{
-                          width: documentState.pageWidth * documentState.scale,
-                          height:
-                            documentState.pageHeight * documentState.scale,
-                        }}
-                      >
-                        {/* Original Document Header */}
-                        <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                          <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                            Original Document
-                          </div>
-                        </div>
-
-                        {/* Original Document Content */}
-                        {isPdfFile(documentState.url) ? (
-                          <div className="relative w-full h-full">
-                            <Document
-                              file={documentState.url}
-                              onLoadSuccess={handlers.handleDocumentLoadSuccess}
-                              onLoadError={handlers.handleDocumentLoadError}
-                              loading={null}
-                            >
-                              <Page
-                                pageNumber={documentState.currentPage}
-                                onLoadSuccess={handlers.handlePageLoadSuccess}
-                                onLoadError={handlers.handlePageLoadError}
-                                onRenderSuccess={() => {
-                                  setDocumentState((prev) => ({
-                                    ...prev,
-                                    isPageLoading: false,
-                                  }));
-                                  actions.capturePdfBackgroundColor();
-                                }}
-                                onRenderError={handlers.handlePageLoadError}
-                                renderTextLayer={
-                                  editorState.isAddTextBoxMode &&
-                                  !isTextSpanZooming
-                                }
-                                renderAnnotationLayer={false}
-                                loading={null}
-                                width={
-                                  documentState.pageWidth * documentState.scale
-                                }
-                              />
-                            </Document>
-                          </div>
-                        ) : (
-                          <img
-                            src={documentState.url}
-                            alt="Original Document"
-                            style={{
-                              width:
-                                documentState.pageWidth * documentState.scale,
-                              height:
-                                documentState.pageHeight * documentState.scale,
-                              maxWidth: "none",
-                              display: "block",
-                            }}
-                            className="select-none"
-                          />
-                        )}
-
-                        {/* Original Document Elements - Wrapped for proper z-index */}
+                      <div style={{ position: "relative" }}>
+                        <DocumentPanel
+                          viewType="original"
+                          documentUrl={documentState.url}
+                          currentPage={documentState.currentPage}
+                          pageWidth={documentState.pageWidth}
+                          pageHeight={documentState.pageHeight}
+                          scale={documentState.scale}
+                          numPages={documentState.numPages}
+                          isScaleChanging={documentState.isScaleChanging}
+                          isAddTextBoxMode={editorState.isAddTextBoxMode}
+                          isTextSpanZooming={isTextSpanZooming}
+                          isPdfFile={isPdfFile}
+                          handlers={handlers}
+                          actions={actions}
+                          setDocumentState={setDocumentState}
+                          deletionRectangles={
+                            elementCollections.originalDeletionRectangles
+                          }
+                          showDeletionRectangles={
+                            editorState.showDeletionRectangles
+                          }
+                          onDeleteDeletionRectangle={(id) =>
+                            handleDeleteDeletionRectangleWithUndo(
+                              id,
+                              "original"
+                            )
+                          }
+                          colorToRgba={colorToRgba}
+                          sortedElements={getOriginalSortedElements(
+                            documentState.currentPage
+                          )}
+                          getElementsInSelectionPreview={
+                            getElementsInSelectionPreview
+                          }
+                          selectedFieldId={editorState.selectedFieldId}
+                          selectedShapeId={editorState.selectedShapeId}
+                          selectedElementId={selectedElementId}
+                          isEditMode={editorState.isEditMode}
+                          showPaddingIndicator={showPaddingPopup}
+                          onTextBoxSelect={handleTextBoxSelect}
+                          onShapeSelect={handleShapeSelect}
+                          onImageSelect={handleImageSelect}
+                          onUpdateTextBox={updateOriginalTextBoxWithUndo}
+                          onUpdateShape={updateShapeWithUndo}
+                          onUpdateImage={updateImage}
+                          onDeleteTextBox={(id) =>
+                            handleDeleteTextBoxWithUndo(id, "original")
+                          }
+                          onDeleteShape={(id) =>
+                            handleDeleteShapeWithUndo(id, viewState.currentView)
+                          }
+                          onDeleteImage={(id) =>
+                            handleDeleteImageWithUndo(id, viewState.currentView)
+                          }
+                          isTextSelectionMode={editorState.isTextSelectionMode}
+                          selectedTextBoxes={selectionState.selectedTextBoxes}
+                          autoFocusTextBoxId={autoFocusTextBoxId}
+                          onAutoFocusComplete={handleAutoFocusComplete}
+                          isSelectionMode={editorState.isSelectionMode}
+                          multiSelection={editorState.multiSelection}
+                          currentView={viewState.currentView}
+                          onMoveSelection={handleMoveSelection}
+                          onDeleteSelection={handleDeleteSelection}
+                          onDragSelection={(deltaX, deltaY) => {
+                            moveSelectedElements(
+                              editorState.multiSelection.selectedElements,
+                              deltaX,
+                              deltaY,
+                              updateTextBoxWithUndo,
+                              updateShape,
+                              updateImage,
+                              getElementById,
+                              documentState.pageWidth,
+                              documentState.pageHeight
+                            );
+                            setEditorState((prev) => {
+                              const updatedElements =
+                                prev.multiSelection.selectedElements.map(
+                                  (el) => ({
+                                    ...el,
+                                    originalPosition: {
+                                      x: el.originalPosition.x + deltaX,
+                                      y: el.originalPosition.y + deltaY,
+                                    },
+                                  })
+                                );
+                              const newBounds = calculateSelectionBounds(
+                                updatedElements,
+                                getElementById
+                              );
+                              return {
+                                ...prev,
+                                multiSelection: {
+                                  ...prev.multiSelection,
+                                  selectedElements: updatedElements,
+                                  selectionBounds: newBounds,
+                                },
+                              };
+                            });
+                          }}
+                          onDragStopSelection={handleDragStopSelection}
+                          header={
+                            <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                              <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                                Original Document
+                              </div>
+                            </div>
+                          }
+                        />
+                        {/* Interactive elements overlay for Original in Split View */}
                         <div
-                          className="absolute inset-0"
-                          style={{ zIndex: 10000 }}
+                          className="absolute top-0 left-0 interactive-elements-wrapper"
+                          style={{
+                            width:
+                              documentState.pageWidth * documentState.scale,
+                            height:
+                              documentState.pageHeight * documentState.scale,
+                            pointerEvents: "auto",
+                            zIndex: 10000,
+                          }}
                         >
                           {/* Deletion Rectangles */}
-                          {elementCollections.originalDeletionRectangles
+                          {getCurrentDeletionRectangles("original")
                             .filter(
                               (rect) => rect.page === documentState.currentPage
                             )
                             .map((rect) => (
                               <div
-                                key={`orig-del-${rect.id}`}
+                                key={rect.id}
                                 className={`absolute ${
                                   editorState.showDeletionRectangles
                                     ? "border border-red-400"
@@ -3894,188 +3862,83 @@ export const PDFEditorContent: React.FC = () => {
                                 )}
                               </div>
                             ))}
-
-                          {/* Original Elements in Layer Order */}
+                          {/* Render all elements in layer order */}
                           {getOriginalSortedElements(
                             documentState.currentPage
-                          ).map(({ type, element }) => {
-                            // Get elements that would be captured in the current selection preview
-                            const elementsInSelectionPreview =
-                              getElementsInSelectionPreview();
-
-                            if (type === "textbox") {
-                              const textBox = element as TextField;
-                              const isInSelectionPreview =
-                                elementsInSelectionPreview.has(textBox.id);
-                              return (
-                                <MemoizedTextBox
-                                  key={`orig-text-${textBox.id}`}
-                                  textBox={textBox}
-                                  isSelected={
-                                    editorState.selectedFieldId === textBox.id
-                                  }
-                                  isEditMode={editorState.isEditMode}
-                                  scale={documentState.scale}
-                                  showPaddingIndicator={showPaddingPopup}
-                                  onSelect={handleTextBoxSelect}
-                                  onUpdate={updateOriginalTextBoxWithUndo}
-                                  onDelete={(id) =>
-                                    handleDeleteTextBoxWithUndo(id, "original")
-                                  }
-                                  isTextSelectionMode={
-                                    editorState.isTextSelectionMode
-                                  }
-                                  isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
-                                    textBox.id
-                                  )}
-                                  autoFocusId={autoFocusTextBoxId}
-                                  onAutoFocusComplete={handleAutoFocusComplete}
-                                  // Selection preview prop
-                                  isInSelectionPreview={isInSelectionPreview}
-                                />
-                              );
-                            } else if (type === "shape") {
-                              const shape = element as ShapeType;
-                              const isInSelectionPreview =
-                                elementsInSelectionPreview.has(shape.id);
-                              return (
-                                <MemoizedShape
-                                  key={`orig-shape-${shape.id}`}
-                                  shape={shape}
-                                  isSelected={
-                                    editorState.selectedShapeId === shape.id
-                                  }
-                                  isEditMode={editorState.isEditMode}
-                                  scale={documentState.scale}
-                                  onSelect={handleShapeSelect}
-                                  onUpdate={updateShapeWithUndo}
-                                  onDelete={(id) =>
-                                    handleDeleteShapeWithUndo(
-                                      id,
-                                      viewState.currentView
-                                    )
-                                  }
-                                  // Selection preview prop
-                                  isInSelectionPreview={isInSelectionPreview}
-                                />
-                              );
-                            } else if (type === "image") {
-                              const image = element as ImageType;
-                              const isInSelectionPreview =
-                                elementsInSelectionPreview.has(image.id);
-                              return (
-                                <MemoizedImage
-                                  key={`orig-image-${image.id}`}
-                                  image={image}
-                                  isSelected={selectedElementId === image.id}
-                                  isEditMode={editorState.isEditMode}
-                                  scale={documentState.scale}
-                                  onSelect={handleImageSelect}
-                                  onUpdate={updateImage}
-                                  onDelete={(id) =>
-                                    handleDeleteImageWithUndo(
-                                      id,
-                                      viewState.currentView
-                                    )
-                                  }
-                                  // Selection preview prop
-                                  isInSelectionPreview={isInSelectionPreview}
-                                />
-                              );
-                            }
-                            return null;
-                          })}
-
-                          {/* Original View Selection Components */}
-                          {editorState.isSelectionMode && (
-                            <>
-                              {/* Selection Preview for Original View */}
-                              {editorState.multiSelection.isDrawingSelection &&
-                                editorState.multiSelection.selectionStart &&
-                                editorState.multiSelection.selectionEnd &&
-                                editorState.multiSelection.targetView ===
-                                  "original" && (
-                                  <SelectionPreview
-                                    start={
-                                      editorState.multiSelection.selectionStart
-                                    }
-                                    end={
-                                      editorState.multiSelection.selectionEnd
-                                    }
-                                    scale={documentState.scale}
-                                  />
-                                )}
-
-                              {/* Selection Rectangle for Original View */}
-                              {editorState.multiSelection.selectionBounds &&
-                                editorState.multiSelection.selectedElements
-                                  .length > 0 &&
-                                viewState.currentView === "split" &&
-                                editorState.multiSelection.targetView ===
-                                  "original" && (
-                                  <SelectionRectangle
-                                    bounds={
-                                      editorState.multiSelection.selectionBounds
-                                    }
-                                    scale={documentState.scale}
-                                    onMove={handleMoveSelection}
-                                    onDelete={handleDeleteSelection}
-                                    isMoving={
-                                      editorState.multiSelection
-                                        .isMovingSelection
-                                    }
-                                    onDragSelection={(deltaX, deltaY) => {
-                                      // Move all selected elements by delta (in real time)
-                                      moveSelectedElements(
-                                        editorState.multiSelection
-                                          .selectedElements,
-                                        deltaX,
-                                        deltaY,
-                                        updateTextBoxWithUndo,
-                                        updateShape,
-                                        updateImage,
-                                        getElementById,
-                                        documentState.pageWidth,
-                                        documentState.pageHeight
-                                      );
-                                      // Update selection bounds in real time
-                                      setEditorState((prev) => {
-                                        const updatedElements =
-                                          prev.multiSelection.selectedElements.map(
-                                            (el) => ({
-                                              ...el,
-                                              originalPosition: {
-                                                x:
-                                                  el.originalPosition.x +
-                                                  deltaX,
-                                                y:
-                                                  el.originalPosition.y +
-                                                  deltaY,
-                                              },
-                                            })
-                                          );
-                                        const newBounds =
-                                          calculateSelectionBounds(
-                                            updatedElements,
-                                            getElementById
-                                          );
-                                        return {
-                                          ...prev,
-                                          multiSelection: {
-                                            ...prev.multiSelection,
-                                            selectedElements: updatedElements,
-                                            selectionBounds: newBounds,
+                          ).map((el) => renderElement(el, "original"))}
+                          {/* Selection overlays for original view */}
+                          {editorState.isSelectionMode &&
+                            editorState.multiSelection.isDrawingSelection &&
+                            editorState.multiSelection.selectionStart &&
+                            editorState.multiSelection.selectionEnd &&
+                            editorState.multiSelection.targetView ===
+                              "original" && (
+                              <SelectionPreview
+                                start={
+                                  editorState.multiSelection.selectionStart
+                                }
+                                end={editorState.multiSelection.selectionEnd}
+                                scale={documentState.scale}
+                              />
+                            )}
+                          {editorState.isSelectionMode &&
+                            editorState.multiSelection.selectionBounds &&
+                            editorState.multiSelection.selectedElements.length >
+                              0 &&
+                            editorState.multiSelection.targetView ===
+                              "original" && (
+                              <SelectionRectangle
+                                bounds={
+                                  editorState.multiSelection.selectionBounds
+                                }
+                                scale={documentState.scale}
+                                onMove={handleMoveSelection}
+                                onDelete={handleDeleteSelection}
+                                isMoving={
+                                  editorState.multiSelection.isMovingSelection
+                                }
+                                onDragSelection={(deltaX, deltaY) => {
+                                  moveSelectedElements(
+                                    editorState.multiSelection.selectedElements,
+                                    deltaX,
+                                    deltaY,
+                                    (id, updates) =>
+                                      updateTextBoxWithUndo(id, updates, true),
+                                    (id, updates) =>
+                                      updateShapeWithUndo(id, updates, true),
+                                    updateImage,
+                                    getElementById,
+                                    documentState.pageWidth,
+                                    documentState.pageHeight
+                                  );
+                                  setEditorState((prev) => {
+                                    const updatedElements =
+                                      prev.multiSelection.selectedElements.map(
+                                        (el) => ({
+                                          ...el,
+                                          originalPosition: {
+                                            x: el.originalPosition.x + deltaX,
+                                            y: el.originalPosition.y + deltaY,
                                           },
-                                        };
-                                      });
-                                    }}
-                                    onDragStopSelection={
-                                      handleDragStopSelection
-                                    }
-                                  />
-                                )}
-                            </>
-                          )}
+                                        })
+                                      );
+                                    const newBounds = calculateSelectionBounds(
+                                      updatedElements,
+                                      getElementById
+                                    );
+                                    return {
+                                      ...prev,
+                                      multiSelection: {
+                                        ...prev.multiSelection,
+                                        selectedElements: updatedElements,
+                                        selectionBounds: newBounds,
+                                      },
+                                    };
+                                  });
+                                }}
+                                onDragStopSelection={handleDragStopSelection}
+                              />
+                            )}
                         </div>
                       </div>
 
@@ -4085,95 +3948,149 @@ export const PDFEditorContent: React.FC = () => {
                       </div>
 
                       {/* Translated Document Side */}
-                      <div
-                        className="relative bg-white border border-gray-200 shadow-sm"
-                        style={{
-                          width: documentState.pageWidth * documentState.scale,
-                          height:
-                            documentState.pageHeight * documentState.scale,
-                        }}
-                      >
-                        {/* Translated Document Header */}
-                        <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                          <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                            Translated Document
-                          </div>
-                        </div>
-
-                        {/* Blank translated document background */}
-                        <div className="w-full h-full bg-white">
-                          {/* Page number indicator */}
-                          <div className="absolute bottom-4 right-4 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs">
-                            Page {documentState.currentPage} of{" "}
-                            {documentState.numPages}
-                          </div>
-
-                          {/* Transform JSON Button - positioned in the middle */}
-                          {!pageState.isPageTranslated.get(
+                      <div style={{ position: "relative" }}>
+                        <DocumentPanel
+                          viewType="translated"
+                          documentUrl={documentState.url}
+                          currentPage={documentState.currentPage}
+                          pageWidth={documentState.pageWidth}
+                          pageHeight={documentState.pageHeight}
+                          scale={documentState.scale}
+                          numPages={documentState.numPages}
+                          isScaleChanging={documentState.isScaleChanging}
+                          isAddTextBoxMode={editorState.isAddTextBoxMode}
+                          isTextSpanZooming={isTextSpanZooming}
+                          isPdfFile={isPdfFile}
+                          handlers={handlers}
+                          actions={actions}
+                          setDocumentState={setDocumentState}
+                          isPageTranslated={
+                            pageState.isPageTranslated.get(
+                              documentState.currentPage
+                            ) || false
+                          }
+                          isTransforming={pageState.isTransforming}
+                          isTranslating={isTranslating}
+                          onRunOcr={() =>
+                            checkLanguageAndRunOcr(
+                              "single",
+                              documentState.currentPage
+                            )
+                          }
+                          deletionRectangles={
+                            elementCollections.translatedDeletionRectangles
+                          }
+                          showDeletionRectangles={
+                            editorState.showDeletionRectangles
+                          }
+                          onDeleteDeletionRectangle={(id) =>
+                            handleDeleteDeletionRectangleWithUndo(
+                              id,
+                              "translated"
+                            )
+                          }
+                          colorToRgba={colorToRgba}
+                          sortedElements={getTranslatedSortedElements(
                             documentState.currentPage
-                          ) && (
-                            <div
-                              className="absolute inset-0 flex items-center justify-center"
-                              style={{ zIndex: 20000 }}
-                            >
-                              <button
-                                onClick={() => {
-                                  checkLanguageAndRunOcr(
-                                    "single",
-                                    documentState.currentPage
-                                  );
-                                }}
-                                disabled={
-                                  pageState.isTransforming || isTranslating
-                                }
-                                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl transform hover:scale-105 disabled:hover:scale-100 flex items-center space-x-2"
-                                title="Transform current page to textboxes using OCR"
-                              >
-                                {pageState.isTransforming || isTranslating ? (
-                                  <>
-                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    <span>
-                                      {pageState.isTransforming
-                                        ? "Transforming..."
-                                        : "Translating..."}
-                                    </span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg
-                                      className="w-5 h-5"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
-                                      />
-                                    </svg>
-                                    <span>RUN OCR</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
                           )}
-                        </div>
-
-                        {/* Translated Document Elements - Wrapped for proper z-index */}
+                          getElementsInSelectionPreview={
+                            getElementsInSelectionPreview
+                          }
+                          selectedFieldId={editorState.selectedFieldId}
+                          selectedShapeId={editorState.selectedShapeId}
+                          selectedElementId={selectedElementId}
+                          isEditMode={editorState.isEditMode}
+                          showPaddingIndicator={showPaddingPopup}
+                          onTextBoxSelect={handleTextBoxSelect}
+                          onShapeSelect={handleShapeSelect}
+                          onImageSelect={handleImageSelect}
+                          onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                          onUpdateShape={updateShapeWithUndo}
+                          onUpdateImage={updateImage}
+                          onDeleteTextBox={(id) =>
+                            handleDeleteTextBoxWithUndo(id, "translated")
+                          }
+                          onDeleteShape={(id) =>
+                            handleDeleteShapeWithUndo(id, viewState.currentView)
+                          }
+                          onDeleteImage={(id) =>
+                            handleDeleteImageWithUndo(id, viewState.currentView)
+                          }
+                          isTextSelectionMode={editorState.isTextSelectionMode}
+                          selectedTextBoxes={selectionState.selectedTextBoxes}
+                          autoFocusTextBoxId={autoFocusTextBoxId}
+                          onAutoFocusComplete={handleAutoFocusComplete}
+                          isSelectionMode={editorState.isSelectionMode}
+                          multiSelection={editorState.multiSelection}
+                          currentView={viewState.currentView}
+                          onMoveSelection={handleMoveSelection}
+                          onDeleteSelection={handleDeleteSelection}
+                          onDragSelection={(deltaX, deltaY) => {
+                            moveSelectedElements(
+                              editorState.multiSelection.selectedElements,
+                              deltaX,
+                              deltaY,
+                              updateTextBoxWithUndo,
+                              updateShape,
+                              updateImage,
+                              getElementById,
+                              documentState.pageWidth,
+                              documentState.pageHeight
+                            );
+                            setEditorState((prev) => {
+                              const updatedElements =
+                                prev.multiSelection.selectedElements.map(
+                                  (el) => ({
+                                    ...el,
+                                    originalPosition: {
+                                      x: el.originalPosition.x + deltaX,
+                                      y: el.originalPosition.y + deltaY,
+                                    },
+                                  })
+                                );
+                              const newBounds = calculateSelectionBounds(
+                                updatedElements,
+                                getElementById
+                              );
+                              return {
+                                ...prev,
+                                multiSelection: {
+                                  ...prev.multiSelection,
+                                  selectedElements: updatedElements,
+                                  selectionBounds: newBounds,
+                                },
+                              };
+                            });
+                          }}
+                          onDragStopSelection={handleDragStopSelection}
+                          header={
+                            <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                              <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                                Translated Document
+                              </div>
+                            </div>
+                          }
+                        />
+                        {/* Interactive elements overlay for Translated in Split View */}
                         <div
-                          className="absolute inset-0"
-                          style={{ zIndex: 10000 }}
+                          className="absolute top-0 left-0 interactive-elements-wrapper"
+                          style={{
+                            width:
+                              documentState.pageWidth * documentState.scale,
+                            height:
+                              documentState.pageHeight * documentState.scale,
+                            pointerEvents: "auto",
+                            zIndex: 10000,
+                          }}
                         >
                           {/* Deletion Rectangles */}
-                          {elementCollections.translatedDeletionRectangles
+                          {getCurrentDeletionRectangles("translated")
                             .filter(
                               (rect) => rect.page === documentState.currentPage
                             )
                             .map((rect) => (
                               <div
-                                key={`trans-del-${rect.id}`}
+                                key={rect.id}
                                 className={`absolute ${
                                   editorState.showDeletionRectangles
                                     ? "border border-red-400"
@@ -4212,191 +4129,83 @@ export const PDFEditorContent: React.FC = () => {
                                 )}
                               </div>
                             ))}
-
-                          {/* Translated Elements in Layer Order */}
+                          {/* Render all elements in layer order */}
                           {getTranslatedSortedElements(
                             documentState.currentPage
-                          ).map(({ type, element }) => {
-                            // Get elements that would be captured in the current selection preview
-                            const elementsInSelectionPreview =
-                              getElementsInSelectionPreview();
-
-                            if (type === "textbox") {
-                              const textBox = element as TextField;
-                              const isInSelectionPreview =
-                                elementsInSelectionPreview.has(textBox.id);
-                              return (
-                                <MemoizedTextBox
-                                  key={`trans-text-${textBox.id}`}
-                                  textBox={textBox}
-                                  isSelected={
-                                    editorState.selectedFieldId === textBox.id
-                                  }
-                                  isEditMode={editorState.isEditMode}
-                                  scale={documentState.scale}
-                                  showPaddingIndicator={showPaddingPopup}
-                                  onSelect={handleTextBoxSelect}
-                                  onUpdate={updateTranslatedTextBoxWithUndo}
-                                  onDelete={(id) =>
-                                    handleDeleteTextBoxWithUndo(
-                                      id,
-                                      "translated"
-                                    )
-                                  }
-                                  isTextSelectionMode={
-                                    editorState.isTextSelectionMode
-                                  }
-                                  isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
-                                    textBox.id
-                                  )}
-                                  autoFocusId={autoFocusTextBoxId}
-                                  onAutoFocusComplete={handleAutoFocusComplete}
-                                  // Selection preview prop
-                                  isInSelectionPreview={isInSelectionPreview}
-                                />
-                              );
-                            } else if (type === "shape") {
-                              const shape = element as ShapeType;
-                              const isInSelectionPreview =
-                                elementsInSelectionPreview.has(shape.id);
-                              return (
-                                <MemoizedShape
-                                  key={`trans-shape-${shape.id}`}
-                                  shape={shape}
-                                  isSelected={
-                                    editorState.selectedShapeId === shape.id
-                                  }
-                                  isEditMode={editorState.isEditMode}
-                                  scale={documentState.scale}
-                                  onSelect={handleShapeSelect}
-                                  onUpdate={updateShapeWithUndo}
-                                  onDelete={(id) =>
-                                    handleDeleteShapeWithUndo(
-                                      id,
-                                      viewState.currentView
-                                    )
-                                  }
-                                  // Selection preview prop
-                                  isInSelectionPreview={isInSelectionPreview}
-                                />
-                              );
-                            } else if (type === "image") {
-                              const image = element as ImageType;
-                              const isInSelectionPreview =
-                                elementsInSelectionPreview.has(image.id);
-                              return (
-                                <MemoizedImage
-                                  key={`trans-image-${image.id}`}
-                                  image={image}
-                                  isSelected={selectedElementId === image.id}
-                                  isEditMode={editorState.isEditMode}
-                                  scale={documentState.scale}
-                                  onSelect={handleImageSelect}
-                                  onUpdate={updateImage}
-                                  onDelete={(id) =>
-                                    handleDeleteImageWithUndo(
-                                      id,
-                                      viewState.currentView
-                                    )
-                                  }
-                                  // Selection preview prop
-                                  isInSelectionPreview={isInSelectionPreview}
-                                />
-                              );
-                            }
-                            return null;
-                          })}
-
-                          {/* Translated View Selection Components */}
-                          {editorState.isSelectionMode && (
-                            <>
-                              {/* Selection Preview for Translated View */}
-                              {editorState.multiSelection.isDrawingSelection &&
-                                editorState.multiSelection.selectionStart &&
-                                editorState.multiSelection.selectionEnd &&
-                                editorState.multiSelection.targetView ===
-                                  "translated" && (
-                                  <SelectionPreview
-                                    start={
-                                      editorState.multiSelection.selectionStart
-                                    }
-                                    end={
-                                      editorState.multiSelection.selectionEnd
-                                    }
-                                    scale={documentState.scale}
-                                  />
-                                )}
-
-                              {/* Selection Rectangle for Translated View */}
-                              {editorState.multiSelection.selectionBounds &&
-                                editorState.multiSelection.selectedElements
-                                  .length > 0 &&
-                                viewState.currentView === "split" &&
-                                editorState.multiSelection.targetView ===
-                                  "translated" && (
-                                  <SelectionRectangle
-                                    bounds={
-                                      editorState.multiSelection.selectionBounds
-                                    }
-                                    scale={documentState.scale}
-                                    onMove={handleMoveSelection}
-                                    onDelete={handleDeleteSelection}
-                                    isMoving={
-                                      editorState.multiSelection
-                                        .isMovingSelection
-                                    }
-                                    onDragSelection={(deltaX, deltaY) => {
-                                      // Move all selected elements by delta (in real time)
-                                      moveSelectedElements(
-                                        editorState.multiSelection
-                                          .selectedElements,
-                                        deltaX,
-                                        deltaY,
-                                        updateTextBoxWithUndo,
-                                        updateShape,
-                                        updateImage,
-                                        getElementById,
-                                        documentState.pageWidth,
-                                        documentState.pageHeight
-                                      );
-                                      // Update selection bounds in real time
-                                      setEditorState((prev) => {
-                                        const updatedElements =
-                                          prev.multiSelection.selectedElements.map(
-                                            (el) => ({
-                                              ...el,
-                                              originalPosition: {
-                                                x:
-                                                  el.originalPosition.x +
-                                                  deltaX,
-                                                y:
-                                                  el.originalPosition.y +
-                                                  deltaY,
-                                              },
-                                            })
-                                          );
-                                        const newBounds =
-                                          calculateSelectionBounds(
-                                            updatedElements,
-                                            getElementById
-                                          );
-                                        return {
-                                          ...prev,
-                                          multiSelection: {
-                                            ...prev.multiSelection,
-                                            selectedElements: updatedElements,
-                                            selectionBounds: newBounds,
+                          ).map((el) => renderElement(el, "translated"))}
+                          {/* Selection overlays for translated view */}
+                          {editorState.isSelectionMode &&
+                            editorState.multiSelection.isDrawingSelection &&
+                            editorState.multiSelection.selectionStart &&
+                            editorState.multiSelection.selectionEnd &&
+                            editorState.multiSelection.targetView ===
+                              "translated" && (
+                              <SelectionPreview
+                                start={
+                                  editorState.multiSelection.selectionStart
+                                }
+                                end={editorState.multiSelection.selectionEnd}
+                                scale={documentState.scale}
+                              />
+                            )}
+                          {editorState.isSelectionMode &&
+                            editorState.multiSelection.selectionBounds &&
+                            editorState.multiSelection.selectedElements.length >
+                              0 &&
+                            editorState.multiSelection.targetView ===
+                              "translated" && (
+                              <SelectionRectangle
+                                bounds={
+                                  editorState.multiSelection.selectionBounds
+                                }
+                                scale={documentState.scale}
+                                onMove={handleMoveSelection}
+                                onDelete={handleDeleteSelection}
+                                isMoving={
+                                  editorState.multiSelection.isMovingSelection
+                                }
+                                onDragSelection={(deltaX, deltaY) => {
+                                  moveSelectedElements(
+                                    editorState.multiSelection.selectedElements,
+                                    deltaX,
+                                    deltaY,
+                                    (id, updates) =>
+                                      updateTextBoxWithUndo(id, updates, true),
+                                    (id, updates) =>
+                                      updateShapeWithUndo(id, updates, true),
+                                    updateImage,
+                                    getElementById,
+                                    documentState.pageWidth,
+                                    documentState.pageHeight
+                                  );
+                                  setEditorState((prev) => {
+                                    const updatedElements =
+                                      prev.multiSelection.selectedElements.map(
+                                        (el) => ({
+                                          ...el,
+                                          originalPosition: {
+                                            x: el.originalPosition.x + deltaX,
+                                            y: el.originalPosition.y + deltaY,
                                           },
-                                        };
-                                      });
-                                    }}
-                                    onDragStopSelection={
-                                      handleDragStopSelection
-                                    }
-                                  />
-                                )}
-                            </>
-                          )}
+                                        })
+                                      );
+                                    const newBounds = calculateSelectionBounds(
+                                      updatedElements,
+                                      getElementById
+                                    );
+                                    return {
+                                      ...prev,
+                                      multiSelection: {
+                                        ...prev.multiSelection,
+                                        selectedElements: updatedElements,
+                                        selectionBounds: newBounds,
+                                      },
+                                    };
+                                  });
+                                }}
+                                onDragStopSelection={handleDragStopSelection}
+                              />
+                            )}
                         </div>
                       </div>
                     </div>
