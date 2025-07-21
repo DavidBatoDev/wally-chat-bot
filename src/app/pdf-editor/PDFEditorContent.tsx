@@ -49,6 +49,15 @@ import {
   useHandleDeleteImageWithUndo
 } from "./hooks/undoRedoHandlers";
 
+// Import refactored event handler hooks
+import { useMultiSelectionHandlers } from "./hooks/useMultiSelectionHandlers";
+import { useToolHandlers } from "./hooks/useToolHandlers";
+import { useShapeDrawingHandlers } from "./hooks/useShapeDrawingHandlers";
+import { useDocumentMouseHandlers } from "./hooks/useDocumentMouseHandlers";
+import { useFormatHandlers } from "./hooks/useFormatHandlers";
+import { useKeyboardHandlers } from "./hooks/useKeyboardHandlers";
+import { useZoomHandlers } from "./hooks/useZoomHandlers";
+
 // Import components
 import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";
 import { PDFEditorSidebar } from "./components/layout/PDFEditorSidebar";
@@ -580,122 +589,29 @@ export const PDFEditorContent: React.FC = () => {
     }));
   }, []);
 
-  // Multi-selection drag handlers for individual Rnd components
+  // Multi-selection drag handlers (extracted to custom hook)
   const initialPositionsRef = useRef<Record<string, { x: number; y: number }>>(
     {}
   );
 
-  const handleMultiSelectDragStart = useCallback(
-    (id: string) => {
-      const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1) {
-        // Store initial positions of all selected elements
-        const initial: Record<string, { x: number; y: number }> = {};
-        selectedElements.forEach((el) => {
-          const element = getElementById(el.id, el.type);
-          if (element) {
-            initial[el.id] = { x: element.x, y: element.y };
-          }
-        });
-        initialPositionsRef.current = initial;
-      }
-    },
-    [editorState.multiSelection.selectedElements, getElementById]
-  );
-
-  const handleMultiSelectDrag = useCallback(
-    (id: string, deltaX: number, deltaY: number) => {
-      const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1) {
-        // Move all selected elements by the same delta with boundary constraints
-        selectedElements.forEach((el) => {
-          if (el.id !== id) {
-            // Skip the actively dragged element (react-rnd handles it)
-            const initialPos = initialPositionsRef.current[el.id];
-            if (initialPos) {
-              const element = getElementById(el.id, el.type);
-              if (element) {
-                const newX = initialPos.x + deltaX;
-                const newY = initialPos.y + deltaY;
-
-                // Apply boundary constraints
-                const constrainedX = Math.max(
-                  0,
-                  Math.min(newX, documentState.pageWidth - element.width)
-                );
-                const constrainedY = Math.max(
-                  0,
-                  Math.min(newY, documentState.pageHeight - element.height)
-                );
-
-                switch (el.type) {
-                  case "textbox":
-                    updateTextBoxWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      true
-                    ); // Mark as ongoing operation
-                    break;
-                  case "shape":
-                    updateShapeWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      true
-                    ); // Mark as ongoing operation
-                    break;
-                  case "image":
-                    updateImage(el.id, { x: constrainedX, y: constrainedY });
-                    break;
-                }
-              }
-            }
-          }
-        });
-      }
-    },
-    [
-      editorState.multiSelection.selectedElements,
-      updateTextBoxWithUndo,
-      updateShapeWithUndo,
-      updateImage,
-      getElementById,
-      documentState.pageWidth,
-      documentState.pageHeight,
-    ]
-  );
-
-  const handleMultiSelectDragStop = useCallback(
-    (id: string, deltaX: number, deltaY: number) => {
-      const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1) {
-        // Update original positions for next drag
-        setEditorState((prev) => ({
-          ...prev,
-          multiSelection: {
-            ...prev.multiSelection,
-            selectedElements: prev.multiSelection.selectedElements.map(
-              (el) => ({
-                ...el,
-                originalPosition: {
-                  x: el.originalPosition.x + deltaX,
-                  y: el.originalPosition.y + deltaY,
-                },
-              })
-            ),
-          },
-        }));
-      }
-      // Clear initial positions
-      initialPositionsRef.current = {};
-    },
-    [editorState.multiSelection.selectedElements]
-  );
+  const {
+    handleMultiSelectDragStart,
+    handleMultiSelectDrag,
+    handleMultiSelectDragStop,
+  } = useMultiSelectionHandlers({
+    editorState,
+    setEditorState,
+    initialPositionsRef,
+    documentState,
+    viewState,
+    getCurrentTextBoxes,
+    getCurrentShapes,
+    getCurrentImages,
+    updateTextBoxWithUndo,
+    updateShapeWithUndo,
+    updateImage,
+    getElementById,
+  });
 
   // Refs
   const documentRef = useRef<HTMLDivElement>(null);
@@ -801,564 +717,33 @@ export const PDFEditorContent: React.FC = () => {
     setAutoFocusTextBoxId,
   });
 
-  // Zoom functionality
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-
-        // Always zoom to center
-        setViewState((prev) => ({ ...prev, transformOrigin: "center center" }));
-
-        const zoomFactor = 0.1;
-        const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor;
-        const newScale = Math.max(1.0, documentState.scale + delta); // Prevent below 100%
-        if (newScale !== documentState.scale) {
-          actions.updateScale(newScale);
-        }
-        setViewState((prev) => ({ ...prev, zoomMode: "page" }));
-        actions.resetScaleChanging();
-        return false;
-      }
-    };
-
-    // Add the event listener with aggressive options
-    container.addEventListener("wheel", handleWheel, {
-      passive: false,
-      capture: true,
-    });
-
-    // Also try adding to document as backup
-    const documentHandler = (e: WheelEvent) => {
-      if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        handleWheel(e);
-      }
-    };
-
-    document.addEventListener("wheel", documentHandler, {
-      passive: false,
-      capture: true,
-    });
-
-    return () => {
-      container.removeEventListener("wheel", handleWheel, { capture: true });
-      document.removeEventListener("wheel", documentHandler, { capture: true });
-    };
-  }, [documentState.scale, actions]);
-
-  // Track Ctrl key state for zoom indicator and handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        setViewState((prev) => ({ ...prev, isCtrlPressed: true }));
-
-        // Ctrl+0 to reset zoom
-        if (e.key === "0") {
-          e.preventDefault();
-          actions.updateScale(1.0);
-          setViewState((prev) => ({
-            ...prev,
-            zoomMode: "page",
-            transformOrigin: "center center",
-          }));
-          actions.resetScaleChanging();
-          toast.success("Zoom reset to 100%");
-        }
-
-        // Ctrl+= or Ctrl++ to zoom in
-        if (e.key === "=" || e.key === "+") {
-          e.preventDefault();
-          setViewState((prev) => ({
-            ...prev,
-            transformOrigin: "center center",
-            zoomMode: "page",
-          }));
-          actions.updateScale(Math.min(5.0, documentState.scale + 0.1));
-          actions.resetScaleChanging();
-        }
-
-        // Ctrl+- to zoom out
-        if (e.key === "-") {
-          e.preventDefault();
-          setViewState((prev) => ({
-            ...prev,
-            transformOrigin: "center center",
-            zoomMode: "page",
-          }));
-          actions.updateScale(Math.max(1.0, documentState.scale - 0.1)); // Prevent below 100%
-          actions.resetScaleChanging();
-        }
-
-        // Ctrl+D to create deletion rectangle from selected text boxes
-        if (e.key === "d" || e.key === "D") {
-          e.preventDefault();
-          const selectedIds = editorState.selectedTextBoxes.textBoxIds;
-          if (selectedIds.length > 0) {
-            // For each selected textbox, create a deletion rectangle and delete the textbox
-            selectedIds.forEach((textBoxId) => {
-              const textBox = currentPageTextBoxes.find(
-                (tb) => tb.id === textBoxId
-              );
-              if (textBox) {
-                // First, create the deletion rectangle with undo
-                handleAddDeletionRectangleWithUndo(
-                  textBox.x,
-                  textBox.y,
-                  textBox.width,
-                  textBox.height,
-                  documentState.currentPage,
-                  viewState.currentView,
-                  documentState.pdfBackgroundColor,
-                  erasureState.erasureSettings.opacity
-                );
-
-                // Then delete the textbox with undo
-                // We need to create a proper delete command for textboxes
-                const deleteTextBoxCmd = {
-                  execute: () =>
-                    deleteTextBox(textBox.id, viewState.currentView),
-                  undo: () =>
-                    handleAddTextBoxWithUndo(
-                      textBox.x,
-                      textBox.y,
-                      documentState.currentPage,
-                      viewState.currentView,
-                      undefined,
-                      {
-                        value: textBox.value,
-                        fontSize: textBox.fontSize,
-                        fontFamily: textBox.fontFamily,
-                        color: textBox.color,
-                        bold: textBox.bold,
-                        italic: textBox.italic,
-                        underline: textBox.underline,
-                        textAlign: textBox.textAlign,
-                        letterSpacing: textBox.letterSpacing,
-                        lineHeight: textBox.lineHeight,
-                        width: textBox.width,
-                        height: textBox.height,
-                      }
-                    ),
-                };
-                deleteTextBoxCmd.execute();
-                history.push(
-                  documentState.currentPage,
-                  viewState.currentView,
-                  deleteTextBoxCmd
-                );
-              }
-            });
-            toast.success(
-              `Replaced ${selectedIds.length} text boxes with deletion rectangles`
-            );
-          }
-        }
-
-        // Ctrl+Z to undo
-        if (e.key === "z" || e.key === "Z") {
-          e.preventDefault();
-          const now = Date.now();
-          if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
-            return;
-          }
-
-          if (
-            history.canUndo(documentState.currentPage, viewState.currentView)
-          ) {
-            history.undo(documentState.currentPage, viewState.currentView);
-            setLastUndoTime(now);
-            toast.success("Undo");
-          }
-        }
-
-        // Ctrl+Y or Ctrl+Shift+Z to redo
-        if (
-          e.key === "y" ||
-          e.key === "Y" ||
-          (e.shiftKey && (e.key === "z" || e.key === "Z"))
-        ) {
-          e.preventDefault();
-          const now = Date.now();
-          if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
-            return;
-          }
-
-          if (
-            history.canRedo(documentState.currentPage, viewState.currentView)
-          ) {
-            history.redo(documentState.currentPage, viewState.currentView);
-            setLastRedoTime(now);
-            toast.success("Redo");
-          }
-        }
-      }
-
-      // Escape key to clear multi-selection
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setEditorState((prev) => ({
-          ...prev,
-          multiSelection: {
-            ...prev.multiSelection,
-            selectedElements: [],
-            selectionBounds: null,
-            isMovingSelection: false,
-            moveStart: null,
-          },
-        }));
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (!e.ctrlKey && !e.metaKey) {
-        setViewState((prev) => ({ ...prev, isCtrlPressed: false }));
-      }
-    };
-
-    const handleBlur = () => {
-      setViewState((prev) => ({ ...prev, isCtrlPressed: false }));
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleBlur);
-
-    // Add multi-selection move event listeners
-    document.addEventListener(
-      "multiSelectionMove",
-      handleMultiSelectionMove as EventListener
-    );
-    document.addEventListener(
-      "multiSelectionMoveEnd",
-      handleMultiSelectionMoveEnd as EventListener
-    );
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleBlur);
-
-      // Remove multi-selection move event listeners
-      document.removeEventListener(
-        "multiSelectionMove",
-        handleMultiSelectionMove as EventListener
-      );
-      document.removeEventListener(
-        "multiSelectionMoveEnd",
-        handleMultiSelectionMoveEnd as EventListener
-      );
-    };
-  }, [
-    documentState.scale,
+  // Zoom functionality (extracted to custom hook)
+  useZoomHandlers({
+    viewState,
+    setViewState,
+    documentState,
     actions,
-    editorState.selectedTextBoxes.textBoxIds,
-    editorState.multiSelection,
-    addDeletionRectangle,
-    documentState.currentPage,
-    viewState.currentView,
-    documentState.pdfBackgroundColor,
-    erasureState.erasureSettings.opacity,
-    setEditorState,
-    handleMultiSelectionMove,
-    handleMultiSelectionMoveEnd,
-    history,
-    lastUndoTime,
-    lastRedoTime,
-    UNDO_REDO_DEBOUNCE_MS,
-  ]);
+    containerRef,
+  });
 
-  // Helper function to calculate new textbox dimensions when font properties change
-  const calculateTextboxDimensionsForFontChange = useCallback(
-    (textBox: TextField, newFontSize?: number, newFontFamily?: string) => {
-      const padding = {
-        top: textBox.paddingTop || 0,
-        right: textBox.paddingRight || 0,
-        bottom: textBox.paddingBottom || 0,
-        left: textBox.paddingLeft || 0,
-      };
 
-      // Use new values or fall back to current values
-      const fontSize = newFontSize || textBox.fontSize || 12;
-      const fontFamily = newFontFamily || textBox.fontFamily || "Arial";
-
-      // Calculate new dimensions based on the new font properties
-      const { width: newTextWidth, height: newTextHeight } = measureText(
-        textBox.value,
-        fontSize,
-        fontFamily,
-        textBox.letterSpacing || 0,
-        textBox.width, // Use current width as maxWidth to maintain width if text fits
-        padding
-      );
-
-      // Add some padding for better visual appearance
-      const paddingBuffer = 4;
-      const newWidth = Math.max(newTextWidth + paddingBuffer, textBox.width);
-      const newHeight = Math.max(newTextHeight + paddingBuffer, textBox.height);
-
-      return { width: newWidth, height: newHeight };
-    },
-    []
-  );
-
-  // Format change handler for ElementFormatDrawer
-  const handleFormatChange = useCallback(
-    (format: any) => {
-      // Check if we're in multi-selection mode
-      const isMultiSelection =
-        currentFormat &&
-        "isMultiSelection" in currentFormat &&
-        currentFormat.isMultiSelection;
-
-      // Helper to check if any padding key is present in format
-      const isPaddingChange =
-        "paddingTop" in format ||
-        "paddingRight" in format ||
-        "paddingBottom" in format ||
-        "paddingLeft" in format;
-
-      if (
-        isMultiSelection &&
-        editorState.multiSelection.selectedElements.length > 0
-      ) {
-        // Handle multi-selection format changes
-        const { selectedElements } = editorState.multiSelection;
-
-        if (selectedElementType === "textbox") {
-          // Apply text format changes to all selected textboxes
-          selectedElements.forEach((element) => {
-            if (element.type === "textbox") {
-              // Get current textbox state
-              const currentTextBox = getCurrentTextBoxes(
-                viewState.currentView
-              ).find((tb) => tb.id === element.id);
-
-              if (
-                currentTextBox &&
-                ("fontSize" in format ||
-                  "fontFamily" in format ||
-                  isPaddingChange)
-              ) {
-                // Use new or current padding values
-                const padding = {
-                  top:
-                    format.paddingTop !== undefined
-                      ? format.paddingTop
-                      : currentTextBox.paddingTop || 0,
-                  right:
-                    format.paddingRight !== undefined
-                      ? format.paddingRight
-                      : currentTextBox.paddingRight || 0,
-                  bottom:
-                    format.paddingBottom !== undefined
-                      ? format.paddingBottom
-                      : currentTextBox.paddingBottom || 0,
-                  left:
-                    format.paddingLeft !== undefined
-                      ? format.paddingLeft
-                      : currentTextBox.paddingLeft || 0,
-                };
-                // If font properties are changing, use new values, else use current
-                const fontSize =
-                  format.fontSize !== undefined
-                    ? format.fontSize
-                    : currentTextBox.fontSize;
-                const fontFamily =
-                  format.fontFamily !== undefined
-                    ? format.fontFamily
-                    : currentTextBox.fontFamily;
-                const { width: newTextWidth, height: newTextHeight } =
-                  measureText(
-                    currentTextBox.value,
-                    fontSize,
-                    fontFamily,
-                    currentTextBox.letterSpacing || 0,
-                    undefined,
-                    padding
-                  );
-                const paddingBuffer = 4;
-                const newWidth = newTextWidth + paddingBuffer;
-                const newHeight = newTextHeight + paddingBuffer;
-                const updates = {
-                  ...format,
-                  width: newWidth,
-                  height: newHeight,
-                };
-                updateTextBoxWithUndo(element.id, updates);
-              } else {
-                updateTextBoxWithUndo(element.id, format);
-              }
-            }
-          });
-        } else if (selectedElementType === "shape") {
-          // Apply shape format changes to all selected shapes
-          const updates: Partial<ShapeType> = {};
-
-          // Map shape-specific format changes
-          if ("type" in format) updates.type = format.type;
-          if ("fillColor" in format) updates.fillColor = format.fillColor;
-          if ("fillOpacity" in format) updates.fillOpacity = format.fillOpacity;
-          if ("borderColor" in format) updates.borderColor = format.borderColor;
-          if ("borderWidth" in format) updates.borderWidth = format.borderWidth;
-          if ("rotation" in format) updates.rotation = format.rotation;
-          if ("borderRadius" in format)
-            updates.borderRadius = format.borderRadius;
-
-          selectedElements.forEach((element) => {
-            if (element.type === "shape") {
-              updateShapeWithUndo(element.id, updates);
-            }
-          });
-        }
-      } else if (selectedElementType === "textbox" && selectedElementId) {
-        // Handle single text field format changes
-        const currentTextBox = getCurrentTextBoxes(viewState.currentView).find(
-          (tb) => tb.id === selectedElementId
-        );
-
-        if (
-          currentTextBox &&
-          ("fontSize" in format || "fontFamily" in format || isPaddingChange)
-        ) {
-          // Use new or current padding values
-          const padding = {
-            top:
-              format.paddingTop !== undefined
-                ? format.paddingTop
-                : currentTextBox.paddingTop || 0,
-            right:
-              format.paddingRight !== undefined
-                ? format.paddingRight
-                : currentTextBox.paddingRight || 0,
-            bottom:
-              format.paddingBottom !== undefined
-                ? format.paddingBottom
-                : currentTextBox.paddingBottom || 0,
-            left:
-              format.paddingLeft !== undefined
-                ? format.paddingLeft
-                : currentTextBox.paddingLeft || 0,
-          };
-          // If font properties are changing, use new values, else use current
-          const fontSize =
-            format.fontSize !== undefined
-              ? format.fontSize
-              : currentTextBox.fontSize;
-          const fontFamily =
-            format.fontFamily !== undefined
-              ? format.fontFamily
-              : currentTextBox.fontFamily;
-          const { width: newTextWidth, height: newTextHeight } = measureText(
-            currentTextBox.value,
-            fontSize,
-            fontFamily,
-            currentTextBox.letterSpacing || 0,
-            undefined,
-            padding
-          );
-          const paddingBuffer = 4;
-          const newWidth = newTextWidth + paddingBuffer;
-          const newHeight = newTextHeight + paddingBuffer;
-          const updates = {
-            ...format,
-            width: newWidth,
-            height: newHeight,
-          };
-          updateTextBoxWithUndo(selectedElementId, updates);
-        } else {
-          updateTextBoxWithUndo(selectedElementId, format);
-        }
-      } else if (selectedElementType === "shape" && selectedElementId) {
-        // Handle single shape format changes
-        const updates: Partial<ShapeType> = {};
-
-        // Map shape-specific format changes
-        if ("type" in format) updates.type = format.type;
-        if ("fillColor" in format) updates.fillColor = format.fillColor;
-        if ("fillOpacity" in format) updates.fillOpacity = format.fillOpacity;
-        if ("borderColor" in format) updates.borderColor = format.borderColor;
-        if ("borderWidth" in format) updates.borderWidth = format.borderWidth;
-        if ("rotation" in format) updates.rotation = format.rotation;
-        if ("borderRadius" in format)
-          updates.borderRadius = format.borderRadius;
-
-        updateShapeWithUndo(selectedElementId, updates);
-      } else if (selectedElementType === "image" && selectedElementId) {
-        // Handle image format changes
-        const updates: Partial<ImageType> = {};
-
-        // Check for special resetAspectRatio command
-        if ("resetAspectRatio" in format && format.resetAspectRatio) {
-          // Find the current image
-          const currentImage = getCurrentImages(viewState.currentView).find(
-            (img) => img.id === selectedElementId
-          );
-          if (currentImage) {
-            // Create a temporary image element to get natural dimensions
-            const img = new Image();
-            img.onload = () => {
-              const originalAspectRatio = img.naturalWidth / img.naturalHeight;
-              const newHeight = currentImage.width / originalAspectRatio;
-
-              const aspectRatioUpdates: Partial<ImageType> = {
-                height: newHeight,
-              };
-
-              // Update the image with new height to maintain aspect ratio
-              updateImage(selectedElementId, aspectRatioUpdates);
-
-              // Update the current format to keep drawer in sync
-              if (currentFormat && "src" in currentFormat) {
-                setCurrentFormat({
-                  ...currentFormat,
-                  ...aspectRatioUpdates,
-                } as ImageType);
-              }
-            };
-            img.src = currentImage.src;
-            return; // Exit early since we're handling this specially
-          }
-        }
-
-        // Map image-specific format changes
-        if ("opacity" in format) updates.opacity = format.opacity;
-        if ("borderColor" in format) updates.borderColor = format.borderColor;
-        if ("borderWidth" in format) updates.borderWidth = format.borderWidth;
-        if ("borderRadius" in format)
-          updates.borderRadius = format.borderRadius;
-        if ("rotation" in format) updates.rotation = format.rotation;
-
-        updateImage(selectedElementId, updates);
-
-        // Update the current format to keep drawer in sync
-        if (currentFormat && "src" in currentFormat) {
-          setCurrentFormat({ ...currentFormat, ...updates } as ImageType);
-        }
-      }
-    },
-    [
-      selectedElementId,
-      selectedElementType,
-      editorState.multiSelection.selectedElements,
-      currentFormat,
-      updateTextBoxWithUndo,
-      updateShape,
-      updateImage,
-      getCurrentImages,
-      getCurrentTextBoxes,
-      viewState.currentView,
-      setCurrentFormat,
-      calculateTextboxDimensionsForFontChange,
-    ]
-  );
+  // Format handlers (extracted to custom hook)
+  const {
+    calculateTextboxDimensionsForFontChange,
+    handleFormatChange,
+  } = useFormatHandlers({
+    editorState,
+    selectedElementId,
+    selectedElementType,
+    currentFormat,
+    setCurrentFormat,
+    viewState,
+    getCurrentTextBoxes,
+    getCurrentImages,
+    updateTextBoxWithUndo,
+    updateShapeWithUndo,
+    updateImage,
+  });
 
   // Effect to handle element selection and ElementFormatDrawer updates
   useEffect(() => {
@@ -1794,559 +1179,75 @@ export const PDFEditorContent: React.FC = () => {
     editorState.multiSelection,
   ]);
 
-  // Tool handlers
-  const handleToolChange = useCallback((tool: string, enabled: boolean) => {
-    // Reset all tool states
-    setEditorState((prev) => ({
-      ...prev,
-      isTextSelectionMode: false,
-      isAddTextBoxMode: false,
-      isSelectionMode: false,
-    }));
-    setToolState((prev) => ({
-      ...prev,
-      shapeDrawingMode: null,
-      isDrawingInProgress: false,
-      shapeDrawStart: null,
-      shapeDrawEnd: null,
-      shapeDrawTargetView: null,
-    }));
-    setErasureState((prev) => ({
-      ...prev,
-      isErasureMode: false,
-    }));
+  // Tool and element selection handlers (extracted to custom hook)
+  const {
+    handleToolChange,
+    handleTextBoxSelect,
+    handleShapeSelect,
+    handleImageSelect,
+  } = useToolHandlers({
+    setEditorState,
+    setToolState,
+    setErasureState,
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setIsDrawerOpen,
+    clearSelectionState,
+  });
 
-    // Enable the selected tool
-    switch (tool) {
-      case "selection":
-        if (enabled) {
-          setEditorState((prev) => ({ ...prev, isSelectionMode: true }));
-        }
-        break;
-      case "textSelection":
-        if (enabled) {
-          setEditorState((prev) => ({ ...prev, isTextSelectionMode: true }));
-        }
-        break;
-      case "addTextBox":
-        if (enabled) {
-          setEditorState((prev) => ({ ...prev, isAddTextBoxMode: true }));
-        }
-        break;
-      case "rectangle":
-        if (enabled) {
-          setToolState((prev) => ({ ...prev, shapeDrawingMode: "rectangle" }));
-        }
-        break;
-      case "circle":
-        if (enabled) {
-          setToolState((prev) => ({ ...prev, shapeDrawingMode: "circle" }));
-        }
-        break;
-      case "erasure":
-        if (enabled) {
-          setErasureState((prev) => ({ ...prev, isErasureMode: true }));
-        }
-        break;
-    }
-  }, []);
-
-  // Element selection handlers
-  const handleTextBoxSelect = useCallback(
-    (id: string) => {
-      // Turn off all modes when an element is selected
-      setEditorState((prev) => ({
-        ...prev,
-        selectedFieldId: id,
-        selectedShapeId: null,
-        isTextSelectionMode: false,
-        isAddTextBoxMode: false,
-        isSelectionMode: false, // Turn off multi-selection mode
-        // Clear multi-selection when individual element is selected
-        multiSelection: {
-          ...prev.multiSelection,
-          selectedElements: [],
-          selectionBounds: null,
-          isDrawingSelection: false,
-          selectionStart: null,
-          selectionEnd: null,
-          isMovingSelection: false,
-          moveStart: null,
-        },
-      }));
-      setToolState((prev) => ({
-        ...prev,
-        shapeDrawingMode: null,
-        isDrawingInProgress: false,
-        shapeDrawStart: null,
-        shapeDrawEnd: null,
-        shapeDrawTargetView: null,
-      }));
-      setErasureState((prev) => ({
-        ...prev,
-        isErasureMode: false,
-      }));
-
-      setSelectedElementId(id);
-      setSelectedElementType("textbox");
-
-      // The format will be set by the effect that monitors selectedElementId
-      setIsDrawerOpen(true);
-    },
-    [setSelectedElementId, setSelectedElementType, setIsDrawerOpen]
-  );
-
-  const handleShapeSelect = useCallback(
-    (id: string) => {
-      // Turn off all modes when an element is selected
-      setEditorState((prev) => ({
-        ...prev,
-        selectedFieldId: null,
-        selectedShapeId: id,
-        isTextSelectionMode: false,
-        isAddTextBoxMode: false,
-        isSelectionMode: false, // Turn off multi-selection mode
-        // Clear multi-selection when individual element is selected
-        multiSelection: {
-          ...prev.multiSelection,
-          selectedElements: [],
-          selectionBounds: null,
-          isDrawingSelection: false,
-          selectionStart: null,
-          selectionEnd: null,
-          isMovingSelection: false,
-          moveStart: null,
-        },
-      }));
-      setToolState((prev) => ({
-        ...prev,
-        shapeDrawingMode: null,
-        isDrawingInProgress: false,
-        shapeDrawStart: null,
-        shapeDrawEnd: null,
-        shapeDrawTargetView: null,
-      }));
-      setErasureState((prev) => ({
-        ...prev,
-        isErasureMode: false,
-      }));
-
-      setSelectedElementId(id);
-      setSelectedElementType("shape");
-
-      // The format will be set by the effect that monitors selectedElementId
-      setIsDrawerOpen(true);
-    },
-    [setSelectedElementId, setSelectedElementType, setIsDrawerOpen]
-  );
-
-  const handleImageSelect = useCallback(
-    (id: string) => {
-      // Turn off all modes when an element is selected
-      setEditorState((prev) => ({
-        ...prev,
-        selectedFieldId: null,
-        selectedShapeId: null,
-        isTextSelectionMode: false,
-        isAddTextBoxMode: false,
-        isSelectionMode: false, // Turn off multi-selection mode
-        // Clear multi-selection when individual element is selected
-        multiSelection: {
-          ...prev.multiSelection,
-          selectedElements: [],
-          selectionBounds: null,
-          isDrawingSelection: false,
-          selectionStart: null,
-          selectionEnd: null,
-          isMovingSelection: false,
-          moveStart: null,
-        },
-      }));
-      setToolState((prev) => ({
-        ...prev,
-        shapeDrawingMode: null,
-        isDrawingInProgress: false,
-        shapeDrawStart: null,
-        shapeDrawEnd: null,
-        shapeDrawTargetView: null,
-      }));
-      setErasureState((prev) => ({
-        ...prev,
-        isErasureMode: false,
-      }));
-
-      setSelectedElementId(id);
-      setSelectedElementType("image");
-
-      // The format will be set by the effect that monitors selectedElementId
-      setIsDrawerOpen(true);
-    },
-    [setSelectedElementId, setSelectedElementType, setIsDrawerOpen]
-  );
-
-  // Shape drawing handlers
-  const handleShapeDrawStart = useCallback(
-    (e: React.MouseEvent) => {
-      if (!toolState.shapeDrawingMode) return;
-
-      const rect = documentRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      let x = (e.clientX - rect.left) / documentState.scale;
-      let y = (e.clientY - rect.top) / documentState.scale;
-      let targetView: "original" | "translated" | null = null;
-
-      // Determine target view in split mode
-      if (viewState.currentView === "split") {
-        const clickX = e.clientX - rect.left;
-        const singleDocWidth = documentState.pageWidth * documentState.scale;
-        const gap = 20;
-
-        if (clickX > singleDocWidth + gap) {
-          x = (clickX - singleDocWidth - gap) / documentState.scale;
-          targetView = "translated";
-        } else if (clickX <= singleDocWidth) {
-          targetView = "original";
-        } else {
-          return; // Click in gap - ignore
-        }
-      }
-
-      setToolState((prev) => ({
-        ...prev,
-        shapeDrawStart: { x, y },
-        shapeDrawTargetView: targetView,
-        isDrawingInProgress: true,
-      }));
-    },
-    [
-      toolState.shapeDrawingMode,
-      documentState.scale,
-      documentState.pageWidth,
-      viewState.currentView,
-    ]
-  );
-
-  const handleShapeDrawMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (!toolState.isDrawingInProgress || !toolState.shapeDrawStart) return;
-
-      const rect = documentRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-
-      // Calculate base coordinates
-      let x = clickX / documentState.scale;
-      let y = clickY / documentState.scale;
-
-      // Adjust coordinates for split view
-      if (viewState.currentView === "split") {
-        const singleDocWidth = documentState.pageWidth;
-        const gap = 20 / documentState.scale;
-
-        // Check if we're drawing on the translated side
-        if (toolState.shapeDrawTargetView === "translated") {
-          x =
-            (clickX - documentState.pageWidth * documentState.scale - 20) /
-            documentState.scale;
-        }
-      }
-
-      setToolState((prev) => ({
-        ...prev,
-        shapeDrawEnd: { x, y },
-      }));
-    },
-    [
-      toolState.isDrawingInProgress,
-      toolState.shapeDrawStart,
-      toolState.shapeDrawTargetView,
-      documentState.scale,
-      documentState.pageWidth,
-      viewState.currentView,
-    ]
-  );
-
-  const handleShapeDrawEnd = useCallback(() => {
-    if (
-      !toolState.isDrawingInProgress ||
-      !toolState.shapeDrawStart ||
-      !toolState.shapeDrawEnd
-    )
-      return;
-
-    const width = Math.abs(
-      toolState.shapeDrawEnd.x - toolState.shapeDrawStart.x
-    );
-    const height = Math.abs(
-      toolState.shapeDrawEnd.y - toolState.shapeDrawStart.y
-    );
-
-    if (width > 10 && height > 10) {
-      const x = Math.min(toolState.shapeDrawStart.x, toolState.shapeDrawEnd.x);
-      const y = Math.min(toolState.shapeDrawStart.y, toolState.shapeDrawEnd.y);
-
-      if (toolState.shapeDrawingMode) {
-        handleAddShapeWithUndo(
-          toolState.shapeDrawingMode,
-          x,
-          y,
-          width,
-          height,
-          documentState.currentPage,
-          viewState.currentView,
-          toolState.shapeDrawTargetView || undefined
-        );
-      }
-    }
-
-    setToolState((prev) => ({
-      ...prev,
-      shapeDrawStart: null,
-      shapeDrawEnd: null,
-      shapeDrawTargetView: null,
-      isDrawingInProgress: false,
-      shapeDrawingMode: null,
-    }));
-    setEditorState((prev) => ({
-      ...prev,
-      isAddTextBoxMode: false,
-      isTextSelectionMode: false,
-    }));
-    setErasureState((prev) => ({
-      ...prev,
-      isErasureMode: false,
-    }));
-  }, [
+  // Shape drawing handlers (extracted to custom hook)
+  const {
+    handleShapeDrawStart,
+    handleShapeDrawMove,
+    handleShapeDrawEnd,
+  } = useShapeDrawingHandlers({
     toolState,
-    addShape,
-    documentState.currentPage,
-    viewState.currentView,
+    setToolState,
     setEditorState,
     setErasureState,
-  ]);
+    documentState,
+    viewState,
+    documentRef,
+    handleAddShapeWithUndo,
+  });
 
   // Document mouse handlers for text selection and erasure
-  const handleDocumentMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (editorState.isTextSelectionMode) {
-        // Handle drag-to-select for textboxes
-        if (e.button !== 0) return; // Only left click
+  const {
+    handleDocumentMouseDown,
+    handleDocumentMouseMove,
+    handleDocumentMouseUp,
+  } = useDocumentMouseHandlers({
+    editorState,
+    setEditorState,
+    erasureState,
+    setErasureState,
+    selectionState,
+    setSelectionState,
+    documentState,
+    viewState,
+    documentRef,
+    currentPageTextBoxes,
+    handleAddDeletionRectangleWithUndo,
+  });
 
-        const rect = documentRef.current?.getBoundingClientRect();
-        if (!rect) return;
+  // Keyboard handlers for shortcuts, undo/redo, and multi-selection
+  useKeyboardHandlers({
+    editorState,
+    setEditorState,
+    viewState,
+    setViewState,
+    documentState,
+    actions,
+    erasureState,
+    currentPageTextBoxes,
+    handleAddDeletionRectangleWithUndo,
+    handleDeleteTextBoxWithUndo: (id: string) => deleteTextBox(id, viewState.currentView),
+    history,
+    handleMultiSelectionMove,
+    handleMultiSelectionMoveEnd,
+  });
 
-        const x = e.clientX;
-        const y = e.clientY;
-
-        setEditorState((prev) => ({
-          ...prev,
-          isDrawingSelection: true,
-          selectionStart: { x, y },
-          selectionEnd: { x, y },
-        }));
-
-        // Clear previous selections unless holding Ctrl/Cmd
-        if (!e.ctrlKey && !e.metaKey) {
-          setEditorState((prev) => ({
-            ...prev,
-            selectedTextBoxes: { textBoxIds: [], bounds: undefined },
-          }));
-        }
-
-        e.preventDefault();
-      } else if (erasureState.isErasureMode) {
-        // Handle erasure drawing start
-        if (e.button !== 0) return; // Only left click
-
-        const rect = documentRef.current?.getBoundingClientRect();
-        if (!rect) return;
-
-        let x = (e.clientX - rect.left) / documentState.scale;
-        let y = (e.clientY - rect.top) / documentState.scale;
-        let targetView: "original" | "translated" | undefined = undefined;
-
-        // Set targetView based on currentView and click position
-        if (viewState.currentView === "split") {
-          const clickX = e.clientX - rect.left;
-          const singleDocWidth = documentState.pageWidth * documentState.scale;
-          const gap = 20; // Gap between documents
-
-          if (clickX > singleDocWidth + gap) {
-            x = (clickX - singleDocWidth - gap) / documentState.scale;
-            targetView = "translated";
-          } else if (clickX <= singleDocWidth) {
-            targetView = "original";
-          } else {
-            return; // Click in gap - ignore
-          }
-        } else {
-          targetView =
-            viewState.currentView === "translated" ? "translated" : "original";
-        }
-
-        setErasureState((prev) => ({
-          ...prev,
-          erasureDrawStart: { x, y },
-          erasureDrawTargetView: targetView,
-          isDrawingErasure: true,
-        }));
-
-        e.preventDefault();
-      }
-    },
-    [
-      editorState.isTextSelectionMode,
-      erasureState.isErasureMode,
-      documentState.scale,
-      documentState.pageWidth,
-      viewState.currentView,
-    ]
-  );
-
-  const handleDocumentMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (
-        editorState.isTextSelectionMode &&
-        editorState.isDrawingSelection &&
-        editorState.selectionStart
-      ) {
-        const x = e.clientX;
-        const y = e.clientY;
-
-        setEditorState((prev) => ({
-          ...prev,
-          selectionEnd: { x, y },
-        }));
-        e.preventDefault();
-      }
-    },
-    [
-      editorState.isTextSelectionMode,
-      editorState.isDrawingSelection,
-      editorState.selectionStart,
-    ]
-  );
-
-  const handleDocumentMouseUp = useCallback(
-    (e: React.MouseEvent) => {
-      if (editorState.isTextSelectionMode && editorState.isDrawingSelection) {
-        // Find textboxes within the selection rectangle
-        if (
-          editorState.selectionRect &&
-          editorState.selectionRect.width > 5 &&
-          editorState.selectionRect.height > 5
-        ) {
-          const rect = documentRef.current?.getBoundingClientRect();
-          if (rect) {
-            const currentTextBoxes = currentPageTextBoxes;
-            const selectedIds: string[] = [];
-
-            currentTextBoxes.forEach((textBox: TextField) => {
-              // Convert textbox coordinates to screen coordinates
-              const textBoxLeft = rect.left + textBox.x * documentState.scale;
-              const textBoxTop = rect.top + textBox.y * documentState.scale;
-              const textBoxRight =
-                textBoxLeft + textBox.width * documentState.scale;
-              const textBoxBottom =
-                textBoxTop + textBox.height * documentState.scale;
-
-              // Check if textbox intersects with selection rectangle
-              const intersects = !(
-                textBoxRight < editorState.selectionRect!.left ||
-                textBoxLeft >
-                  editorState.selectionRect!.left +
-                    editorState.selectionRect!.width ||
-                textBoxBottom < editorState.selectionRect!.top ||
-                textBoxTop >
-                  editorState.selectionRect!.top +
-                    editorState.selectionRect!.height
-              );
-
-              if (intersects) {
-                selectedIds.push(textBox.id);
-              }
-            });
-
-            // Update selection (merge with existing if Ctrl/Cmd held)
-            if (e.ctrlKey || e.metaKey) {
-              setEditorState((prev) => {
-                const newIds = [
-                  ...new Set([
-                    ...prev.selectedTextBoxes.textBoxIds,
-                    ...selectedIds,
-                  ]),
-                ];
-                return {
-                  ...prev,
-                  selectedTextBoxes: {
-                    textBoxIds: newIds,
-                    bounds: undefined, // Simplified for now
-                  },
-                };
-              });
-            } else {
-              setEditorState((prev) => ({
-                ...prev,
-                selectedTextBoxes: {
-                  textBoxIds: selectedIds,
-                  bounds: undefined, // Simplified for now
-                },
-              }));
-            }
-
-            // Create deletion rectangle from selection if right-click
-            if (e.button === 2) {
-              // Right click
-              const selectionRect = editorState.selectionRect;
-              if (selectionRect) {
-                // Convert screen coordinates back to document coordinates
-                const x =
-                  (selectionRect.left - rect.left) / documentState.scale;
-                const y = (selectionRect.top - rect.top) / documentState.scale;
-                const width = selectionRect.width / documentState.scale;
-                const height = selectionRect.height / documentState.scale;
-
-                // Create deletion rectangle with undo
-                handleAddDeletionRectangleWithUndo(
-                  x,
-                  y,
-                  width,
-                  height,
-                  documentState.currentPage,
-                  viewState.currentView,
-                  documentState.pdfBackgroundColor,
-                  erasureState.erasureSettings.opacity
-                );
-
-                toast.success("Deletion rectangle created from selection");
-              }
-            }
-          }
-        }
-
-        // Reset selection state
-        setEditorState((prev) => ({
-          ...prev,
-          isDrawingSelection: false,
-          selectionStart: null,
-          selectionEnd: null,
-        }));
-      }
-    },
-    [
-      editorState.isTextSelectionMode,
-      editorState.isDrawingSelection,
-      editorState.selectionRect,
-      documentState.scale,
-      currentPageTextBoxes,
-      addDeletionRectangle,
-      documentState.currentPage,
-      viewState.currentView,
-    ]
-  );
 
   // Erasure drawing handlers
   const handleErasureDrawMove = useCallback(
