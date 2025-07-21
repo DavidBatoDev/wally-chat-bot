@@ -2474,49 +2474,6 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
-  // Reset translation state for a specific page
-  const handleResetPageTranslation = useCallback(
-    (pageNumber: number) => {
-      // Remove all translated elements for this page
-      const translatedTextBoxes = getCurrentTextBoxes("translated").filter(
-        (tb) => tb.page === pageNumber
-      );
-      const translatedShapes = getCurrentShapes("translated").filter(
-        (s) => s.page === pageNumber
-      );
-      const translatedImages = getCurrentImages("translated").filter(
-        (img) => img.page === pageNumber
-      );
-
-      // Delete all translated elements for this page
-      translatedTextBoxes.forEach((tb) => {
-        deleteTextBox(tb.id, "translated");
-      });
-      translatedShapes.forEach((s) => {
-        deleteShape(s.id, "translated");
-      });
-      translatedImages.forEach((img) => {
-        deleteImage(img.id, "translated");
-      });
-
-      // Mark the page as not translated
-      setPageState((prev) => ({
-        ...prev,
-        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, false)),
-      }));
-
-      toast.success(`Page ${pageNumber} translation reset`);
-    },
-    [
-      getCurrentTextBoxes,
-      getCurrentShapes,
-      getCurrentImages,
-      deleteTextBox,
-      deleteShape,
-      deleteImage,
-    ]
-  );
-
   // Clear translation for a single page
   const handleClearPageTranslation = useCallback(
     (pageNumber: number) => {
@@ -2573,27 +2530,6 @@ export const PDFEditorContent: React.FC = () => {
     );
     toast.success("Project saved!");
   }, [elementCollections, layerState, documentState]);
-
-  // Helper function to check if all non-deleted pages are translated
-  const areAllPagesTranslated = useCallback(() => {
-    const totalPages = documentState.numPages;
-    const deletedPages = pageState.deletedPages;
-
-    // Check each page that hasn't been deleted
-    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
-      if (!deletedPages.has(pageNumber)) {
-        // If any non-deleted page is not translated, return false
-        if (!pageState.isPageTranslated.get(pageNumber)) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }, [
-    documentState.numPages,
-    pageState.deletedPages,
-    pageState.isPageTranslated,
-  ]);
 
   // State for export confirmation modal
   const [showExportConfirm, setShowExportConfirm] = useState(false);
