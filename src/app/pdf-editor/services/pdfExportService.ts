@@ -717,10 +717,9 @@ async function captureAllPages(
                   textDiv.style.textAlign = "left"; // Explicit text alignment
                   
                   // Calculate negative margin based on draggable height to pull text to absolute top
-                  const draggableHeight = parseFloat(draggable.style.height || "0");
-                  const draggableWidth = parseFloat(draggable.style.width || "0");
-                  const negativeHeightMargin = -(draggableHeight * 0.33 ); // Pull up based on container height and font size
-                  const negativeWidthMargin = -(draggableWidth * 0 ); // Pull up based on container width and font size
+                  const fontSize = parseFloat(textarea.style.fontSize || "12");
+                  const negativeHeightMargin = -(fontSize * 0.40 ); // Pull up based on container height and font size
+                  const negativeWidthMargin = -(fontSize * 0 ); // Pull up based on container width and font size
                   textDiv.style.marginTop = `${negativeHeightMargin}px`; // Negative margin to offset baseline
                   textDiv.style.marginLeft = `${negativeWidthMargin}px`; // Negative margin to offset baseline
 
