@@ -12,7 +12,8 @@ import {
   TextFormatProvider,
   useTextFormat,
 } from "@/components/editor/ElementFormatContext";
-import { generateUUID } from "../utils/measurements"; 
+import { generateUUID } from "../utils/measurements";
+import domtoimage from "dom-to-image"; 
 
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -475,83 +476,49 @@ const TemplateEditorPopupContent: React.FC<TemplateEditorPopupProps> = ({
 
       console.log("Capturing template at 170% zoom for high quality");
 
-      // Import html2canvas dynamically
-      const html2canvas = (await import("html2canvas")).default;
-
-      // Capture the template document
-      const canvas = await html2canvas(documentRef.current, {
-        scale: 2, // Additional scale factor for even higher quality
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        foreignObjectRendering: false,
-        ignoreElements: (element) => {
-          // Ignore control elements but keep the PDF and text boxes
-          return (
-            element.classList.contains("template-header") ||
-            element.classList.contains("template-toolbar") ||
-            element.classList.contains("template-footer") ||
-            element.tagName === "BUTTON" ||
-            element.classList.contains("drag-handle") ||
-            element.classList.contains("react-resizable-handle") ||
-            element.closest("button") !== null
-          );
-        },
-        onclone: (clonedDoc) => {
-          console.log("Cloning template document for capture...");
-
-          // Find the cloned document container
-          const clonedContainer = clonedDoc.querySelector(
-            "[data-template-editor]"
-          );
-
-          if (clonedContainer) {
-            // Remove control elements but keep content
-            clonedContainer
-              .querySelectorAll(
-                "button, .drag-handle, .react-resizable-handle, .template-header, .template-toolbar, .template-footer"
-              )
-              .forEach((el) => el.remove());
-
-            // Clean up Rnd containers for text boxes
-            clonedContainer.querySelectorAll(".rnd").forEach((rnd) => {
-              if (rnd instanceof HTMLElement) {
-                // Remove border and controls but keep the content
-                rnd.style.border = "none";
-                rnd.style.backgroundColor = "transparent";
-                rnd.style.boxShadow = "none";
-                rnd.style.outline = "none";
-                rnd.style.cursor = "default";
-
-                // Clean up textarea styling
-                const textarea = rnd.querySelector("textarea");
-                if (textarea && textarea instanceof HTMLElement) {
-                  textarea.style.border = "none";
-                  textarea.style.outline = "none";
-                  textarea.style.resize = "none";
-                  textarea.style.padding = "2px";
-                  textarea.style.margin = "0";
-                  textarea.style.backgroundColor = "transparent";
-                  textarea.style.cursor = "default";
-                  textarea.style.overflow = "visible";
-                  textarea.style.whiteSpace = "pre-wrap";
-                  textarea.style.wordWrap = "break-word";
-                }
-              }
-            });
-
-            // Ensure the PDF canvas is visible in the clone
-            const clonedCanvas = clonedContainer.querySelector(
-              ".react-pdf__Page__canvas"
-            ) as HTMLCanvasElement;
-            if (clonedCanvas) {
-              clonedCanvas.style.display = "block";
-              clonedCanvas.style.position = "relative";
-              clonedCanvas.style.zIndex = "1";
+      // Use DOM-to-image to capture the template document
+      const dataUrl = await domtoimage.toPng(documentRef.current, {
+        quality: 1.0,
+        bgcolor: "#ffffff",
+        width: documentRef.current.offsetWidth,
+        height: documentRef.current.offsetHeight,
+        filter: (node: Node): boolean => {
+          // Filter out unwanted elements
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as HTMLElement;
+            
+            // Skip control elements but keep the PDF and text boxes
+            if (
+              element.classList.contains("template-header") ||
+              element.classList.contains("template-toolbar") ||
+              element.classList.contains("template-footer") ||
+              element.tagName === "BUTTON" ||
+              element.classList.contains("drag-handle") ||
+              element.classList.contains("react-resizable-handle") ||
+              element.closest("button") !== null
+            ) {
+              return false;
             }
           }
-        },
+          return true;
+        }
+      });
+
+      // Convert data URL to canvas
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx?.drawImage(img, 0, 0);
+          resolve();
+        };
+        
+        img.onerror = reject;
+        img.src = dataUrl;
       });
 
       console.log("Template canvas captured successfully at 170% zoom:", {
