@@ -421,18 +421,7 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
 
       // Wait for the page to render
       await new Promise((resolve) => {
-        let waited = 0;
-        const check = () => {
-          // If cancelled, resolve immediately
-          if (cancelRef.current.cancelled) return resolve(null);
-          // If page is loaded, resolve
-          if (!options.documentState) return resolve(null);
-          // Otherwise, check again after a short delay
-          waited += 50;
-          if (waited > 5000) return resolve(null); // Timeout after 5s
-          setTimeout(check, 50);
-        };
-        check();
+        setTimeout(resolve, 1000); // Simple delay to ensure page is rendered
       });
 
       // Run OCR for this page

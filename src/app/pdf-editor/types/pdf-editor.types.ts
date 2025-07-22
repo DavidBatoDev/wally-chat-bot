@@ -1,7 +1,5 @@
-import { TextField } from "@/components/types";
-
 // Re-export TextField from components/types
-export type { TextField } from "@/components/types";
+
 
 // Document and page related types
 export interface DocumentState {
@@ -20,6 +18,45 @@ export interface DocumentState {
   isScaleChanging: boolean;
   pdfBackgroundColor: string;
   detectedPageBackgrounds: Map<number, string>;
+}
+
+export interface TextField {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  value: string;
+  fontSize: number;
+  fontFamily: string;
+  page: number;
+  type?: "chat_time" | "MessengerTextBox" | string;
+  color?: string;
+  textOpacity?: number; // Opacity for text color
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  textAlign?: "left" | "center" | "right" | "justify";
+  listType?: "none" | "ordered" | "unordered";
+  letterSpacing?: number;
+  lineHeight?: number;
+  rotation?: number;
+  backgroundColor: string;
+  backgroundOpacity?: number; // Opacity for background color
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  borderTopLeftRadius?: number;
+  borderTopRightRadius?: number;
+  borderBottomLeftRadius?: number;
+  borderBottomRightRadius?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  isEditing?: boolean;
+  hasBeenManuallyResized?: boolean; // Track if user has manually resized this textbox
+  zIndex?: number; // Add z-index support for layering
 }
 
 // Shape interface

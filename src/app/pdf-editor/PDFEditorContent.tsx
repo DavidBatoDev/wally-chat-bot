@@ -25,7 +25,6 @@ import {
   createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
   appendImageAsNewPage as appendImageAsNewPageService,
   appendPdfDocument as appendPdfDocumentService,
-  exportDataAsJson,
 } from "./services/pdfExportService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
@@ -2925,62 +2924,66 @@ export const PDFEditorContent: React.FC = () => {
   // Handler to run OCR for all pages
   const handleRunOcrAllPages = useCallback(async () => {
     if (isBulkOcrRunning) return;
-    const deletedPages = pageState.deletedPages;
-    const totalPages = documentState.numPages;
-    // Build a list of non-deleted pages
-    const pagesToProcess = Array.from(
-      { length: totalPages },
-      (_, i) => i + 1
-    ).filter((page) => !deletedPages.has(page));
+    
     setIsBulkOcrRunning(true);
-    setBulkOcrProgress({ current: 0, total: pagesToProcess.length });
+    setBulkOcrProgress({ current: 0, total: 0 });
     bulkOcrCancelRef.current.cancelled = false;
 
-    // Store the current page to restore later
-    const originalPage = documentState.currentPage;
-
-    for (let i = 0; i < pagesToProcess.length; i++) {
-      if (bulkOcrCancelRef.current.cancelled) break;
-      const page = pagesToProcess[i];
-      // Switch to the page
-      actions.changePage(page);
-      // Wait for the page to render (wait for isPageLoading to be false)
-      await new Promise((resolve) => {
-        let waited = 0;
-        const check = () => {
-          // If cancelled, resolve immediately
-          if (bulkOcrCancelRef.current.cancelled) return resolve(null);
-          // If page is loaded, resolve
-          if (!documentState.isPageLoading) return resolve(null);
-          // Otherwise, check again after a short delay
-          waited += 50;
-          if (waited > 5000) return resolve(null); // Timeout after 5s
-          setTimeout(check, 50);
-        };
-        check();
+    try {
+      const result = await performBulkOcr({
+        documentRef,
+        containerRef,
+        documentState,
+        editorState,
+        viewState,
+        actions,
+        setEditorState,
+        setViewState,
+        setPageState,
+        sourceLanguage,
+        desiredLanguage,
+        handleAddTextBoxWithUndo,
+        setIsTranslating,
+        totalPages: documentState.numPages,
+        deletedPages: pageState.deletedPages,
+        currentPage: documentState.currentPage,
+        onProgress: (current, total) => {
+          setBulkOcrProgress({ current, total });
+        },
+        onPageChange: (page) => {
+          actions.changePage(page);
+        },
+        cancelRef: bulkOcrCancelRef,
       });
-      // Run OCR for this page
-      try {
-        await handleTransformPageToTextbox(page);
-      } catch (e) {
-        // Optionally handle error per page
-      }
-      setBulkOcrProgress({ current: i + 1, total: pagesToProcess.length });
-      // DO NOT restore the original page here; only do it after the loop
-    }
 
-    // Restore the original page only after all processing is done or cancelled
-    actions.changePage(originalPage);
-    setIsBulkOcrRunning(false);
-    setBulkOcrProgress(null);
+      if (result.success) {
+        toast.success(result.message || `Successfully processed ${result.processedPages} pages`);
+      } else {
+        toast.error(result.message || "Bulk OCR process failed");
+      }
+    } catch (error) {
+      console.error("Error in bulk OCR:", error);
+      toast.error("Failed to complete bulk OCR process");
+    } finally {
+      setIsBulkOcrRunning(false);
+      setBulkOcrProgress(null);
+    }
   }, [
     isBulkOcrRunning,
-    documentState.numPages,
-    documentState.currentPage,
-    documentState.isPageLoading,
+    documentRef,
+    containerRef,
+    documentState,
+    editorState,
+    viewState,
     pageState.deletedPages,
-    handleTransformPageToTextbox,
     actions,
+    setEditorState,
+    setViewState,
+    setPageState,
+    sourceLanguage,
+    desiredLanguage,
+    handleAddTextBoxWithUndo,
+    setIsTranslating,
   ]);
 
   // Wrapper function to check language states before running OCR

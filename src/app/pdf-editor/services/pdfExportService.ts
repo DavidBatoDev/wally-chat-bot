@@ -434,38 +434,6 @@ export async function appendPdfDocument(
   }
 }
 
-/**
- * Exports element collections and document info as JSON
- */
-export function exportDataAsJson(
-  elementCollections: any,
-  documentState: any
-): void {
-  const data = {
-    ...elementCollections,
-    documentInfo: {
-      url: documentState.url,
-      currentPage: documentState.currentPage,
-      numPages: documentState.numPages,
-      scale: documentState.scale,
-      pageWidth: documentState.pageWidth,
-      pageHeight: documentState.pageHeight,
-    },
-  };
-
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "pdf-editor-data.json";
-  a.click();
-  URL.revokeObjectURL(url);
-
-  toast.success("Data exported successfully!");
-}
-
 // Helper functions
 
 /**
