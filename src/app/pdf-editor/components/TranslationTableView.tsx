@@ -6,6 +6,7 @@ interface TranslationTableViewProps {
   untranslatedTexts: UntranslatedText[];
   onUpdateTextBox: (id: string, updates: Partial<TextField>) => void;
   onDeleteTextBox?: (textboxId: string) => void;
+  onRowClick?: (textboxId: string) => void;
   pageWidth: number;
   pageHeight: number;
   scale: number;
@@ -17,6 +18,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   untranslatedTexts,
   onUpdateTextBox,
   onDeleteTextBox,
+  onRowClick,
   pageWidth,
   pageHeight,
   scale,
@@ -156,9 +158,11 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
               return (
                 <tr
                   key={textbox.id}
-                  className={`border-b border-gray-600 hover:bg-gray-700 ${
+                  className={`border-b border-gray-600 hover:bg-gray-700 cursor-pointer ${
                     editingId === textbox.id ? "bg-gray-700" : "bg-gray-800"
                   }`}
+                  onClick={() => onRowClick?.(textbox.id)}
+                  title="Click to highlight original text location"
                 >
                   <td className="px-4 py-3 align-top">
                     <div className="text-sm text-gray-200 max-w-xs">
