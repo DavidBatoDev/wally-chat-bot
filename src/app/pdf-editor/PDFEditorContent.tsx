@@ -315,7 +315,8 @@ export const PDFEditorContent: React.FC = () => {
   const [isTranslating, setIsTranslating] = useState(false);
 
   // Highlighted untranslated text state
-  const [highlightedUntranslatedTextId, setHighlightedUntranslatedTextId] = useState<string | null>(null);
+  const [highlightedUntranslatedTextId, setHighlightedUntranslatedTextId] =
+    useState<string | null>(null);
 
   ///////////////////////// HOOKS /////////////////////////
   // Debounce timer for batched updates
@@ -380,40 +381,65 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   // Handler for deleting both textbox and corresponding untranslated text
-  const handleDeleteTextBoxAndUntranslatedText = useCallback((textboxId: string) => {
-    // Find and delete the corresponding untranslated text
-    const untranslatedText = elementCollections.untranslatedTexts.find(
-      (text) => text.translatedTextboxId === textboxId
-    );
-    
-    if (untranslatedText) {
-      deleteUntranslatedText(untranslatedText.id);
-    }
-    
-    // Delete the textbox
-    handleDeleteTextBoxWithUndo(textboxId, "translated");
-  }, [elementCollections.untranslatedTexts, deleteUntranslatedText, handleDeleteTextBoxWithUndo]);
+  const handleDeleteTextBoxAndUntranslatedText = useCallback(
+    (textboxId: string) => {
+      // Find and delete the corresponding untranslated text
+      const untranslatedText = elementCollections.untranslatedTexts.find(
+        (text) => text.translatedTextboxId === textboxId
+      );
+
+      if (untranslatedText) {
+        deleteUntranslatedText(untranslatedText.id);
+      }
+
+      // Delete the textbox
+      handleDeleteTextBoxWithUndo(textboxId, "translated");
+    },
+    [
+      elementCollections.untranslatedTexts,
+      deleteUntranslatedText,
+      handleDeleteTextBoxWithUndo,
+    ]
+  );
 
   // Handler for highlighting untranslated text when clicking a row in translation table
-  const handleTranslationRowClick = useCallback((textboxId: string) => {
-    const untranslatedText = elementCollections.untranslatedTexts.find(
-      (text) => text.translatedTextboxId === textboxId
-    );
-    
-    if (untranslatedText) {
-      setHighlightedUntranslatedTextId(untranslatedText.id);
-      
-      // Auto-clear highlight after 3 seconds
-      setTimeout(() => {
-        setHighlightedUntranslatedTextId(null);
-      }, 3000);
-    }
-  }, [elementCollections.untranslatedTexts]);
+  const handleTranslationRowClick = useCallback(
+    (textboxId: string) => {
+      const untranslatedText = elementCollections.untranslatedTexts.find(
+        (text) => text.translatedTextboxId === textboxId
+      );
+
+      if (untranslatedText) {
+        setHighlightedUntranslatedTextId(untranslatedText.id);
+
+        // Auto-clear highlight after 3 seconds
+        setTimeout(() => {
+          setHighlightedUntranslatedTextId(null);
+        }, 3000);
+      }
+    },
+    [elementCollections.untranslatedTexts]
+  );
 
   // Wrapper functions for TranslationTableView compatibility
   const handleAddCustomTextBox = useCallback(
-    (x: number, y: number, page: number, targetView: "original" | "translated", customInitialState?: Partial<TextField>) => {
-      return handleAddTextBoxWithUndo(x, y, page, "translated", targetView, customInitialState) || "";
+    (
+      x: number,
+      y: number,
+      page: number,
+      targetView: "original" | "translated",
+      customInitialState?: Partial<TextField>
+    ) => {
+      return (
+        handleAddTextBoxWithUndo(
+          x,
+          y,
+          page,
+          "translated",
+          targetView,
+          customInitialState
+        ) || ""
+      );
     },
     [handleAddTextBoxWithUndo]
   );
@@ -2128,7 +2154,7 @@ export const PDFEditorContent: React.FC = () => {
       translatedShapes: [],
       translatedDeletionRectangles: [],
       translatedImages: [],
-      untranslatedTexts: []
+      untranslatedTexts: [],
     });
 
     // Clear layer order
@@ -3183,7 +3209,7 @@ export const PDFEditorContent: React.FC = () => {
   }, [pendingTemplateExport, templateCanvas, performExport]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-white">
       {/* Header */}
       <PDFEditorHeader
         isSidebarCollapsed={viewState.isSidebarCollapsed}
@@ -3250,7 +3276,7 @@ export const PDFEditorContent: React.FC = () => {
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden relative bg-white">
         {/* Hidden file inputs */}
         <input
           type="file"
@@ -3296,7 +3322,7 @@ export const PDFEditorContent: React.FC = () => {
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
           {/* ElementFormatDrawer */}
           <div className="relative z-40 transition-all duration-300">
             <ElementFormatDrawer />
@@ -3423,7 +3449,7 @@ export const PDFEditorContent: React.FC = () => {
                   </div>
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                   >
                     Upload Document
                   </button>
@@ -3647,13 +3673,19 @@ export const PDFEditorContent: React.FC = () => {
                           translatedTextBoxes={getCurrentTextBoxes(
                             "translated"
                           )}
-                          untranslatedTexts={elementCollections.untranslatedTexts}
+                          untranslatedTexts={
+                            elementCollections.untranslatedTexts
+                          }
                           onUpdateTextBox={updateTranslatedTextBoxWithUndo}
                           onUpdateUntranslatedText={updateUntranslatedText}
-                          onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
+                          onDeleteTextBox={
+                            handleDeleteTextBoxAndUntranslatedText
+                          }
                           onRowClick={handleTranslationRowClick}
                           onAddTextBox={handleAddCustomTextBox}
-                          onAddUntranslatedText={handleAddCustomUntranslatedText}
+                          onAddUntranslatedText={
+                            handleAddCustomUntranslatedText
+                          }
                           pageWidth={documentState.pageWidth}
                           pageHeight={documentState.pageHeight}
                           scale={documentState.scale}
@@ -3965,7 +3997,9 @@ export const PDFEditorContent: React.FC = () => {
 
                           {/* Untranslated text highlight overlay */}
                           <UntranslatedTextHighlight
-                            untranslatedTexts={elementCollections.untranslatedTexts}
+                            untranslatedTexts={
+                              elementCollections.untranslatedTexts
+                            }
                             highlightedId={highlightedUntranslatedTextId}
                             currentPage={documentState.currentPage}
                             scale={documentState.scale}
@@ -4064,13 +4098,19 @@ export const PDFEditorContent: React.FC = () => {
                             translatedTextBoxes={getCurrentTextBoxes(
                               "translated"
                             )}
-                            untranslatedTexts={elementCollections.untranslatedTexts}
+                            untranslatedTexts={
+                              elementCollections.untranslatedTexts
+                            }
                             onUpdateTextBox={updateTranslatedTextBoxWithUndo}
                             onUpdateUntranslatedText={updateUntranslatedText}
-                            onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
+                            onDeleteTextBox={
+                              handleDeleteTextBoxAndUntranslatedText
+                            }
                             onRowClick={handleTranslationRowClick}
                             onAddTextBox={handleAddCustomTextBox}
-                            onAddUntranslatedText={handleAddCustomUntranslatedText}
+                            onAddUntranslatedText={
+                              handleAddCustomUntranslatedText
+                            }
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
                             scale={documentState.scale}

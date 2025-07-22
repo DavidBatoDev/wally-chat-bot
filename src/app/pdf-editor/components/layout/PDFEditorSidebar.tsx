@@ -34,10 +34,6 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   onSidebarToggle,
   onTabChange,
 }) => {
-  if (viewState.isSidebarCollapsed) {
-    return null;
-  }
-
   const renderPagePreview = () => {
     if (!documentState.url) {
       return (
@@ -91,8 +87,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               key={pageNum}
               className={`border rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md group relative ${
                 documentState.currentPage === pageNum
-                  ? "border-red-500 bg-red-50 shadow-sm ring-1 ring-red-200"
-                  : "border-gray-200 hover:border-red-300 hover:bg-red-25"
+                  ? "border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-200"
+                  : "border-gray-200 hover:border-blue-300 hover:bg-blue-25"
               }`}
               onClick={() => onPageChange(pageNum)}
             >
@@ -103,7 +99,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                     e.stopPropagation();
                     onPageDelete(pageNum);
                   }}
-                  className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-600 z-10 shadow-md"
+                  className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-blue-600 z-10 shadow-md"
                   title={`Delete page ${pageNum}`}
                 >
                   <X className="w-3 h-3" />
@@ -151,7 +147,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
                   {/* Current page indicator */}
                   {documentState.currentPage === pageNum && (
-                    <div className="absolute inset-0 bg-red-500 bg-opacity-10 rounded" />
+                    <div className="absolute inset-0 bg-blue-500 bg-opacity-10 rounded" />
                   )}
                 </div>
               </div>
@@ -212,10 +208,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           <span>Tools</span>
         </h3>
         <div className="space-y-3">
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-all duration-200 group">
+          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
-                <FileSearch className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <FileSearch className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -228,10 +224,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
             </div>
           </button>
 
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-all duration-200 group">
+          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
-                <MousePointer className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <MousePointer className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -244,10 +240,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
             </div>
           </button>
 
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-all duration-200 group">
+          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
-                <Scan className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <Scan className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -260,10 +256,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
             </div>
           </button>
 
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-all duration-200 group">
+          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
-                <MessageSquare className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <MessageSquare className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -285,10 +281,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           <span>Translation</span>
         </h3>
         <div className="space-y-3">
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-all duration-200 group">
+          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
-                <FileText className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <FileText className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -301,10 +297,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
             </div>
           </button>
 
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 transition-all duration-200 group">
+          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-red-100 rounded-lg group-hover:bg-red-200 transition-colors">
-                <Globe className="w-5 h-5 text-red-600" />
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <Globe className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -322,18 +318,33 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <div className="bg-white border-r border-red-100 p-4 overflow-y-auto transition-all duration-300 shadow-sm w-80">
-      <div className="flex flex-col h-full">
+    <div
+      className={`bg-white border-r border-blue-100 overflow-y-auto shadow-sm transition-all duration-500 ease-in-out flex-shrink-0`}
+      style={{
+        width: viewState.isSidebarCollapsed ? "0px" : "20rem",
+        minWidth: viewState.isSidebarCollapsed ? "0px" : "20rem",
+        opacity: viewState.isSidebarCollapsed ? 0 : 1,
+        padding: viewState.isSidebarCollapsed ? "0px" : "1rem",
+        pointerEvents: viewState.isSidebarCollapsed ? "none" : "auto",
+        zIndex: 20,
+      }}
+    >
+      <div
+        className={`flex flex-col h-full transition-opacity duration-300 ${
+          viewState.isSidebarCollapsed ? "opacity-0" : "opacity-100"
+        }`}
+        style={{ display: viewState.isSidebarCollapsed ? "none" : "flex" }}
+      >
         {/* Tab Navigation */}
-        <div className="flex border-b border-red-100 mb-4">
+        <div className="flex border-b border-blue-100 mb-4">
           <button
             onClick={() => onTabChange("tools")}
             className={`${
               documentState.url ? "flex-1" : "w-full"
             } px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
               viewState.activeSidebarTab === "tools"
-                ? "text-red-600 border-b-2 border-red-600 bg-red-50"
-                : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                : "text-gray-900 hover:text-blue-600 hover:bg-blue-50"
             }`}
           >
             <div className="flex items-center justify-center space-x-2">
@@ -346,8 +357,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               onClick={() => onTabChange("pages")}
               className={`flex-1 px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
                 viewState.activeSidebarTab === "pages"
-                  ? "text-red-600 border-b-2 border-red-600 bg-red-50"
-                  : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                  ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                  : "text-gray-900 hover:text-blue-600 hover:bg-blue-50"
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -363,15 +374,17 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           {viewState.activeSidebarTab === "pages" ? (
             <div className="flex flex-col h-full">
               <div className="flex-1">
-                <h3 className="text-lg font-semibold mb-3">Pages</h3>
+                <h3 className="text-lg font-semibold mb-3 text-gray-900">
+                  Pages
+                </h3>
                 {renderPagePreview()}
               </div>
 
               {/* Upload Buttons at Bottom */}
-              <div className="border-t border-red-100 pt-4 mt-4 space-y-2">
+              <div className="border-t border-blue-100 pt-4 mt-4 space-y-2">
                 <Button
                   onClick={onFileUpload}
-                  className="w-full bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700 shadow-md transition-all duration-200 hover:shadow-lg"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   {documentState.url
@@ -383,7 +396,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   <Button
                     onClick={onAppendDocument}
                     variant="outline"
-                    className="w-full border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400 transition-all duration-200"
+                    className="w-full border-blue-200 text-gray-900 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Upload More Document/Image
