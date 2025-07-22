@@ -112,6 +112,10 @@ export interface UntranslatedText {
   translatedTextboxId: string;
   originalText: string;
   page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 // Editor state types

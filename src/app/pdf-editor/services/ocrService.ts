@@ -331,6 +331,10 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
             translatedTextboxId: textboxId,
             originalText: originalText,
             page: pageNumber,
+            x: textbox.x,
+            y: textbox.y,
+            width: textbox.width,
+            height: textbox.height,
           };
           options.addUntranslatedText(untranslatedText);
         }

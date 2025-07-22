@@ -372,6 +372,21 @@ export const PDFEditorContent: React.FC = () => {
     selectedElementId,
     clearSelectionState
   );
+
+  // Handler for deleting both textbox and corresponding untranslated text
+  const handleDeleteTextBoxAndUntranslatedText = useCallback((textboxId: string) => {
+    // Find and delete the corresponding untranslated text
+    const untranslatedText = elementCollections.untranslatedTexts.find(
+      (text) => text.translatedTextboxId === textboxId
+    );
+    
+    if (untranslatedText) {
+      deleteUntranslatedText(untranslatedText.id);
+    }
+    
+    // Delete the textbox
+    handleDeleteTextBoxWithUndo(textboxId, "translated");
+  }, [elementCollections.untranslatedTexts, deleteUntranslatedText, handleDeleteTextBoxWithUndo]);
   const handleDeleteShapeWithUndo = useHandleDeleteShapeWithUndo(
     deleteShape,
     addShape,
@@ -3592,6 +3607,7 @@ export const PDFEditorContent: React.FC = () => {
                           )}
                           untranslatedTexts={elementCollections.untranslatedTexts}
                           onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                          onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
                           pageWidth={documentState.pageWidth}
                           pageHeight={documentState.pageHeight}
                           scale={documentState.scale}
@@ -3995,6 +4011,7 @@ export const PDFEditorContent: React.FC = () => {
                             )}
                             untranslatedTexts={elementCollections.untranslatedTexts}
                             onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                            onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
                             scale={documentState.scale}
