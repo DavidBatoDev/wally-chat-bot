@@ -31,18 +31,18 @@ export const UntranslatedTextHighlight: React.FC<UntranslatedTextHighlightProps>
 
   return (
     <div
-      className="absolute pointer-events-none z-50 border-4 border-yellow-400 bg-yellow-400 bg-opacity-20 animate-pulse"
+      className="absolute pointer-events-none z-50 border-4 border-blue-400 bg-blue-400 bg-opacity-20 animate-pulse"
       style={{
         left: bufferedLeft,
         top: bufferedTop,
         width: bufferedWidth,
         height: bufferedHeight,
-        boxShadow: "0 0 20px rgba(255, 255, 0, 0.8)",
+        // boxShadow: "0 0 20px rgba(255, 255, 0, 0.8)",
       }}
     >
       {/* Optional: Add a label showing the original text */}
       <div
-        className="absolute -top-8 left-0 bg-yellow-500 text-black text-xs px-2 py-1 rounded whitespace-nowrap max-w-xs overflow-hidden text-ellipsis"
+        className="absolute -top-8 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap max-w-xs overflow-hidden text-ellipsis"
         style={{
           fontSize: Math.max(10, 12 / scale), // Scale font size inversely to maintain readability
           left: buffer, // Adjust label position to account for buffer

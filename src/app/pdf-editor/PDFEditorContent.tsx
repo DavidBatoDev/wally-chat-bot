@@ -87,9 +87,11 @@ import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
+import { generateUUID } from "./utils/measurements";
+import { UntranslatedText } from "./types/pdf-editor.types";
 
 // Import utilities
-import { isPdfFile, measureText, generateUUID } from "./utils/measurements";
+import { isPdfFile, measureText } from "./utils/measurements";
 import { colorToRgba, rgbStringToHex } from "./utils/colors";
 
 import {
@@ -407,6 +409,26 @@ export const PDFEditorContent: React.FC = () => {
       }, 3000);
     }
   }, [elementCollections.untranslatedTexts]);
+
+  // Wrapper functions for TranslationTableView compatibility
+  const handleAddCustomTextBox = useCallback(
+    (x: number, y: number, page: number, targetView: "original" | "translated", customInitialState?: Partial<TextField>) => {
+      return handleAddTextBoxWithUndo(x, y, page, "translated", targetView, customInitialState) || "";
+    },
+    [handleAddTextBoxWithUndo]
+  );
+
+  const handleAddCustomUntranslatedText = useCallback(
+    (untranslatedText: Omit<UntranslatedText, "id">) => {
+      const fullUntranslatedText: UntranslatedText = {
+        id: generateUUID(),
+        ...untranslatedText,
+      };
+      addUntranslatedText(fullUntranslatedText);
+    },
+    [addUntranslatedText]
+  );
+
   const handleDeleteShapeWithUndo = useHandleDeleteShapeWithUndo(
     deleteShape,
     addShape,
@@ -3627,8 +3649,11 @@ export const PDFEditorContent: React.FC = () => {
                           )}
                           untranslatedTexts={elementCollections.untranslatedTexts}
                           onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                          onUpdateUntranslatedText={updateUntranslatedText}
                           onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
                           onRowClick={handleTranslationRowClick}
+                          onAddTextBox={handleAddCustomTextBox}
+                          onAddUntranslatedText={handleAddCustomUntranslatedText}
                           pageWidth={documentState.pageWidth}
                           pageHeight={documentState.pageHeight}
                           scale={documentState.scale}
@@ -4041,8 +4066,11 @@ export const PDFEditorContent: React.FC = () => {
                             )}
                             untranslatedTexts={elementCollections.untranslatedTexts}
                             onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                            onUpdateUntranslatedText={updateUntranslatedText}
                             onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
                             onRowClick={handleTranslationRowClick}
+                            onAddTextBox={handleAddCustomTextBox}
+                            onAddUntranslatedText={handleAddCustomUntranslatedText}
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
                             scale={documentState.scale}

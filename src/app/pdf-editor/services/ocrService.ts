@@ -335,6 +335,8 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
             y: textbox.y,
             width: textbox.width,
             height: textbox.height,
+            isCustomTextbox: false,
+            status: originalText.trim() === "" ? "isEmpty" : "needsChecking",
           };
           options.addUntranslatedText(untranslatedText);
         }

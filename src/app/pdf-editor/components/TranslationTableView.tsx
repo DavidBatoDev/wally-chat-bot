@@ -5,8 +5,11 @@ interface TranslationTableViewProps {
   translatedTextBoxes: TextField[];
   untranslatedTexts: UntranslatedText[];
   onUpdateTextBox: (id: string, updates: Partial<TextField>) => void;
+  onUpdateUntranslatedText?: (id: string, updates: Partial<UntranslatedText>) => void;
   onDeleteTextBox?: (textboxId: string) => void;
   onRowClick?: (textboxId: string) => void;
+  onAddTextBox?: (x: number, y: number, page: number, targetView: "original" | "translated", customInitialState?: Partial<TextField>) => string;
+  onAddUntranslatedText?: (untranslatedText: Omit<UntranslatedText, "id">) => void;
   pageWidth: number;
   pageHeight: number;
   scale: number;
@@ -17,15 +20,20 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   translatedTextBoxes,
   untranslatedTexts,
   onUpdateTextBox,
+  onUpdateUntranslatedText,
   onDeleteTextBox,
   onRowClick,
+  onAddTextBox,
+  onAddUntranslatedText,
   pageWidth,
   pageHeight,
   scale,
   currentPage,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingOriginalId, setEditingOriginalId] = useState<string | null>(null);
   const textareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>({});
+  const originalTextareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>({});
 
   // Filter textboxes to show only those on the current page
   const textboxesForTable = translatedTextBoxes.filter(
@@ -50,6 +58,15 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     [onUpdateTextBox]
   );
 
+  const handleOriginalTextChange = useCallback(
+    (untranslatedTextId: string, newValue: string) => {
+      if (onUpdateUntranslatedText) {
+        onUpdateUntranslatedText(untranslatedTextId, { originalText: newValue });
+      }
+    },
+    [onUpdateUntranslatedText]
+  );
+
   const handleTextareaFocus = useCallback((id: string) => {
     setEditingId(id);
   }, []);
@@ -58,11 +75,74 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     setEditingId(null);
   }, []);
 
-  const handleApprove = useCallback((textboxId: string) => {
-    // Add visual feedback or mark as approved
-    console.log('Approved textbox:', textboxId);
-    // You could add an "approved" state or styling here
+  const handleOriginalTextareaFocus = useCallback((id: string) => {
+    setEditingOriginalId(id);
   }, []);
+
+  const handleOriginalTextareaBlur = useCallback(() => {
+    setEditingOriginalId(null);
+  }, []);
+
+  const handleApprove = useCallback((textboxId: string) => {
+    // Find the corresponding untranslated text and toggle its status
+    const untranslatedText = untranslatedTexts.find(
+      (text) => text.translatedTextboxId === textboxId
+    );
+    
+    if (untranslatedText && onUpdateUntranslatedText) {
+      // Toggle between checked and needsChecking
+      const newStatus = untranslatedText.status === "checked" ? "needsChecking" : "checked";
+      onUpdateUntranslatedText(untranslatedText.id, { status: newStatus });
+    }
+  }, [untranslatedTexts, onUpdateUntranslatedText]);
+
+  // Helper function to get the effective status based on textbox content
+  const getEffectiveStatus = useCallback((textbox: TextField, untranslatedText?: UntranslatedText) => {
+    // If translated textbox is empty, status is always isEmpty regardless of stored status
+    if (!textbox.value || textbox.value.trim() === "") {
+      return "isEmpty";
+    }
+    // If untranslated text is also empty, status is isEmpty
+    if (!untranslatedText?.originalText || untranslatedText.originalText.trim() === "") {
+      return "isEmpty";
+    }
+    // Otherwise, use the stored status
+    return untranslatedText?.status || "needsChecking";
+  }, []);
+
+  const handleAddCustomTextbox = useCallback(() => {
+    if (!onAddTextBox || !onAddUntranslatedText) return;
+
+    // Create a new textbox with custom properties
+    const textboxId = onAddTextBox(
+      20, // x position
+      20, // y position
+      currentPage,
+      "translated",
+      {
+        fontSize: 10,
+        width: 200,
+        height: 30,
+        fontFamily: "Arial",
+        backgroundColor: "#ffffff",
+        color: "#000000",
+        value: "", // Initially empty
+      }
+    );
+
+    // Create corresponding untranslated text
+    onAddUntranslatedText({
+      translatedTextboxId: textboxId,
+      originalText: "",
+      page: currentPage,
+      x: 20,
+      y: 20,
+      width: 200,
+      height: 30,
+      isCustomTextbox: true,
+      status: "isEmpty"
+    });
+  }, [onAddTextBox, onAddUntranslatedText, currentPage]);
 
   const handleDelete = useCallback((textboxId: string) => {
     // Call the delete handler if provided, otherwise just clear the text
@@ -155,18 +235,63 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
           <tbody>
             {textboxesForTable.map((textbox, index) => {
               const originalText = findOriginalText(textbox);
+              const untranslatedText = untranslatedTexts.find(
+                (text) => text.translatedTextboxId === textbox.id
+              );
               return (
                 <tr
                   key={textbox.id}
                   className={`border-b border-gray-600 hover:bg-gray-700 cursor-pointer ${
-                    editingId === textbox.id ? "bg-gray-700" : "bg-gray-800"
+                    editingId === textbox.id || editingOriginalId === untranslatedText?.id ? "bg-gray-700" : "bg-gray-800"
                   }`}
                   onClick={() => onRowClick?.(textbox.id)}
                   title="Click to highlight original text location"
                 >
                   <td className="px-4 py-3 align-top">
                     <div className="text-sm text-gray-200 max-w-xs">
-                      {originalText ? (
+                      {untranslatedText?.isCustomTextbox ? (
+                        <div className="bg-gray-600 p-2 rounded text-sm text-gray-400 border border-gray-500">
+                          <span className="italic">Custom Textbox</span>
+                        </div>
+                      ) : untranslatedText && onUpdateUntranslatedText ? (
+                        <textarea
+                          ref={(el) => {
+                            if (el) {
+                              originalTextareaRefs.current[untranslatedText.id] = el;
+                              autoResizeTextarea(el);
+                            }
+                          }}
+                          value={originalText || ""}
+                          onChange={(e) =>
+                            handleOriginalTextChange(untranslatedText.id, e.target.value)
+                          }
+                          onFocus={() => handleOriginalTextareaFocus(untranslatedText.id)}
+                          onBlur={handleOriginalTextareaBlur}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && e.ctrlKey) {
+                              e.preventDefault();
+                              (e.target as HTMLTextAreaElement).blur();
+                            }
+                            e.stopPropagation(); // Prevent row click when editing
+                          }}
+                          onInput={(e) =>
+                            autoResizeTextarea(e.target as HTMLTextAreaElement)
+                          }
+                          onClick={(e) => e.stopPropagation()} // Prevent row click when clicking textarea
+                          className={`w-full p-2 text-sm border rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-white ${
+                            editingOriginalId === untranslatedText.id
+                              ? "border-blue-400 bg-gray-600"
+                              : "border-gray-600 bg-gray-700 hover:border-gray-500"
+                          }`}
+                          style={{
+                            minHeight: "60px",
+                            fontFamily: "Arial",
+                            fontSize: "12px",
+                          }}
+                          placeholder="Enter original text..."
+                          spellCheck={false}
+                        />
+                      ) : originalText ? (
                         <div className="bg-gray-700 p-2 rounded text-sm text-gray-200">
                           {originalText}
                         </div>
@@ -191,10 +316,14 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                       }
                       onFocus={() => handleTextareaFocus(textbox.id)}
                       onBlur={handleTextareaBlur}
-                      onKeyDown={(e) => handleKeyDown(e, textbox.id)}
+                      onKeyDown={(e) => {
+                        handleKeyDown(e, textbox.id);
+                        e.stopPropagation(); // Prevent row click when editing
+                      }}
                       onInput={(e) =>
                         autoResizeTextarea(e.target as HTMLTextAreaElement)
                       }
+                      onClick={(e) => e.stopPropagation()} // Prevent row click when clicking textarea
                       className={`w-full p-2 text-sm border rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-white ${
                         editingId === textbox.id
                           ? "border-blue-400 bg-gray-700"
@@ -218,14 +347,70 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                         {textbox.fontSize || 12}px
                       </span>
                     </div>
+                    {/* Status indicator below textbox */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        {(() => {
+                          const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
+                          if (effectiveStatus === "checked") {
+                            return (
+                              <>
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span className="text-xs text-green-400">Checked</span>
+                              </>
+                            );
+                          } else if (effectiveStatus === "needsChecking") {
+                            return (
+                              <>
+                                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                                <span className="text-xs text-yellow-400">Needs Check</span>
+                              </>
+                            );
+                          } else {
+                            return (
+                              <>
+                                <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
+                                <span className="text-xs text-gray-400">Empty</span>
+                              </>
+                            );
+                          }
+                        })()}
+                      </div>
+                      {untranslatedText?.isCustomTextbox && (
+                        <span className="text-xs px-1 py-0.5 bg-blue-600 text-blue-100 rounded">Custom</span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 align-top">
                     <div className="flex flex-col gap-2">
                       {/* Approve Button */}
                       <button
                         onClick={() => handleApprove(textbox.id)}
-                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-600 hover:bg-green-500 text-white transition-colors duration-200 group"
-                        title="Approve translation"
+                        className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 group ${
+                          (() => {
+                            const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
+                            const isDisabled = effectiveStatus === "isEmpty";
+                            
+                            if (isDisabled) {
+                              return "bg-gray-600 text-gray-400 cursor-not-allowed";
+                            } else if (effectiveStatus === "checked") {
+                              return "bg-green-700 text-green-200 hover:bg-green-600";
+                            } else {
+                              return "bg-green-600 hover:bg-green-500 text-white";
+                            }
+                          })()
+                        }`}
+                        disabled={getEffectiveStatus(textbox, untranslatedText) === "isEmpty"}
+                        title={(() => {
+                          const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
+                          if (effectiveStatus === "isEmpty") {
+                            return "Cannot check empty textbox";
+                          } else if (effectiveStatus === "checked") {
+                            return "Mark as needs checking";
+                          } else {
+                            return "Mark as checked";
+                          }
+                        })()}
                       >
                         <svg
                           className="w-4 h-4"
@@ -279,6 +464,37 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Add Custom Textbox Button */}
+      {onAddTextBox && onAddUntranslatedText && (
+        <div className="mt-6 flex justify-center">
+          <button
+            onClick={handleAddCustomTextbox}
+            className="group relative flex items-center justify-center w-12 h-12 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-all duration-200 hover:scale-105 shadow-lg hover:shadow-xl"
+            title="Add custom textbox"
+          >
+            <svg
+              className="w-6 h-6 transition-transform group-hover:rotate-90"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            
+            {/* Tooltip */}
+            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap border border-gray-600">
+              Add Custom Textbox
+              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-800"></div>
+            </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

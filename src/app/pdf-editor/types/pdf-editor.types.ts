@@ -116,6 +116,8 @@ export interface UntranslatedText {
   y: number;
   width: number;
   height: number;
+  isCustomTextbox?: boolean;
+  status: "isEmpty" | "needsChecking" | "checked";
 }
 
 // Editor state types
