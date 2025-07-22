@@ -145,7 +145,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
         renderDocumentContent()
       ) : (
         <div className="w-full h-full bg-white">
-          {children}
+          {/* {children} */}
         </div>
       )}
     </div>

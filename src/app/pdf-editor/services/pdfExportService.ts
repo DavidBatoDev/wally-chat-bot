@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { loadHtml2Canvas } from "../utils/html2canvasLoader";
+import domtoimage from "dom-to-image";
 
 // Types for PDF operations
 export interface PdfExportOptions {
@@ -73,7 +73,7 @@ export interface CreateBlankPdfOptions {
 }
 
 /**
- * Exports the PDF document with all pages in a 2x2 grid layout
+ * Exports the PDF document with all pages in a 2x2 grid layout using DOM-to-image
  */
 export async function exportPdfDocument(
   options: PdfExportOptions
@@ -116,14 +116,11 @@ export async function exportPdfDocument(
       isSelectionMode: false,
     }));
 
-    // Set zoom to 500% for maximum quality
-    setDocumentState((prev) => ({ ...prev, scale: 5.0 }));
+    // Set zoom to 300% for high quality (DOM-to-image handles scaling differently)
+    setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
 
     // Wait for zoom to update
     await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Load html2canvas with proper error handling
-    const html2canvas = await loadHtml2Canvas();
 
     // Create PDF document
     const pdfDoc = await PDFDocument.create();
@@ -134,11 +131,10 @@ export async function exportPdfDocument(
     }
 
     // Capture all non-deleted pages
-    const { captures, nonDeletedPages } = await captureAllPages(
+    const { captures, nonDeletedPages } = await captureAllPagesWithDomToImage(
       documentRef,
       documentState,
       pageState,
-      html2canvas,
       setViewState,
       setDocumentState,
       setEditorState,
@@ -549,13 +545,12 @@ async function addTemplatePage(
 }
 
 /**
- * Captures all non-deleted pages in both original and translated views
+ * Captures all non-deleted pages using DOM-to-image
  */
-async function captureAllPages(
+async function captureAllPagesWithDomToImage(
   documentRef: React.RefObject<HTMLDivElement | null>,
   documentState: any,
   pageState: any,
-  html2canvas: any,
   setViewState: (updater: (prev: any) => any) => void,
   setDocumentState: (updater: (prev: any) => any) => void,
   setEditorState: (updater: (prev: any) => any) => void,
@@ -573,7 +568,7 @@ async function captureAllPages(
     }
   }
 
-  // Function to capture view as image for a specific page
+  // Function to capture view as image for a specific page using DOM-to-image
   const captureViewAsImage = async (
     viewType: "original" | "translated",
     pageNumber: number
@@ -589,7 +584,7 @@ async function captureAllPages(
     setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
 
     // Wait for view and page to update
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Use the entire document ref
     const documentContainer = documentRef.current;
@@ -600,241 +595,82 @@ async function captureAllPages(
       );
     }
 
-    // Capture the view
-    const canvas = await html2canvas(documentContainer, {
-      scale: 1,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      foreignObjectRendering: false,
-      ignoreElements: (element: Element): boolean => {
-        return (
-          element.classList.contains("drag-handle") ||
-          element.tagName === "BUTTON" ||
-          element.classList.contains("settings-popup") ||
-          element.classList.contains("text-selection-popup") ||
-          element.classList.contains("shape-dropdown") ||
-          element.classList.contains("field-status-dropdown") ||
-          element.classList.contains("fixed") ||
-          element.closest(".fixed") !== null ||
-          element.classList.contains("react-resizable-handle")
-        );
-      },
-      onclone: (clonedDoc: Document) => {
-        console.log("Cloning document for export...");
-
-        // Find the cloned document container
-        const clonedContainer = clonedDoc.querySelector(
-          'div[style*="relative"]'
-        );
-
-        console.log("Cloned container found:", clonedContainer);
-        console.log(
-          "All divs in cloned doc:",
-          clonedDoc.querySelectorAll("div")
-        );
-
-        if (clonedContainer) {
-          // Remove control elements but keep shapes
-          clonedContainer
-            .querySelectorAll(
-              "button, .drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
-            )
-            .forEach((el: Element) => el.remove());
-
-          // Clean up react-draggable containers (both text fields and shapes) within interactive-elements-wrapper
-          const interactiveWrapper = clonedDoc.querySelector(
-            ".interactive-elements-wrapper"
-          );
-
-          if (interactiveWrapper) {
-            const draggableElements =
-              interactiveWrapper.querySelectorAll(".react-draggable");
-
-            draggableElements.forEach((draggable: Element, index: number) => {
-              if (draggable instanceof HTMLElement) {
-                // Remove border and controls but keep the content
-                draggable.style.border = "none";
-                draggable.style.backgroundColor = "transparent";
-                draggable.style.boxShadow = "none";
-                draggable.style.outline = "none";
-                draggable.style.cursor = "default";
-                draggable.style.overflow = "visible";
-                draggable.style.padding = "0";
-                draggable.style.margin = "0";
-                draggable.style.position = "relative";
-
-                // Check if this is a text field container and raise it for better export appearance
-                const textarea = draggable.querySelector("textarea");
-                if (textarea && textarea instanceof HTMLElement) {
-                  // Traverse up the DOM hierarchy and make all parents/grandparents absolute positioned at top
-                  let currentElement = textarea.parentElement;
-                  let level = 0;
-                  
-                  while (currentElement && currentElement !== draggable) {
-                    if (currentElement instanceof HTMLElement) {
-                      currentElement.style.position = "absolute";
-                      currentElement.style.top = "0";
-                      currentElement.style.left = "0";
-                      currentElement.style.width = "100%";
-                      currentElement.style.height = "100%";
-                    }
-                    currentElement = currentElement.parentElement;
-                    level++;
-                  }
-
-                  // Create a div to replace the textarea
-                  const textDiv = document.createElement("div");
-                  textDiv.textContent = textarea.value || "";
-
-                  // Apply the same styling as textarea with minimal spacing
-                  textDiv.style.border = "none";
-                  textDiv.style.outline = "none";
-                  textDiv.style.padding = "0"; // Remove all padding to eliminate top space
-                  textDiv.style.margin = "0";
-                  textDiv.style.cursor = "default";
-                  textDiv.style.overflow = "hidden"; // Allow overflow during export to prevent clipping
-                  textDiv.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
-                  textDiv.style.wordWrap = "break-word"; // Ensure long words break properly
-                  textDiv.style.wordBreak = "break-word"; // Additional word breaking support
-                  textDiv.style.overflowWrap = "break-word";
-                  textDiv.style.textOverflow = "clip";
-                  textDiv.style.position = "absolute"; // Make div absolute
-                  textDiv.style.top = "0"; // Position at the top of the draggable container
-                  textDiv.style.left = "0"; // Align to the left edge
-                  textDiv.style.zIndex = "999"; // Ensure it's at the topmost layer
-                  textDiv.style.width = textarea.style.width || "100%";
-                  textDiv.style.height = textarea.style.height || "auto";
-                  textDiv.style.fontSize = textarea.style.fontSize || "12px";
-                  textDiv.style.fontFamily =
-                    textarea.style.fontFamily || "inherit";
-                  textDiv.style.color = textarea.style.color || "inherit";
-                  textDiv.style.lineHeight = `${textarea.style.lineHeight || "1"}`; // Force tight line height
-                  textDiv.style.boxSizing = "border-box"; // Ensure box-sizing is consistent
-                  textDiv.style.display = "block"; // Use block instead of flex
-                  textDiv.style.verticalAlign = "baseline"; // Reset vertical align
-                  textDiv.style.textAlign = "left"; // Explicit text alignment
-                  
-                  // Calculate negative margin based on draggable height to pull text to absolute top
-                  const fontSize = parseFloat(textarea.style.fontSize || "12");
-                  const negativeHeightMargin = -(fontSize * 0.40 ); // Pull up based on container height and font size
-                  const negativeWidthMargin = -(fontSize * 0 ); // Pull up based on container width and font size
-                  textDiv.style.marginTop = `${negativeHeightMargin}px`; // Negative margin to offset baseline
-                  textDiv.style.marginLeft = `${negativeWidthMargin}px`; // Negative margin to offset baseline
-
-                  // Ensure adequate height for wrapped text during export
-                  const textContent = textarea.value || "";
-                  if (textContent.length > 0) {
-                    // Force explicit text wrapping styles
-                    textDiv.style.whiteSpace = "pre-wrap";
-                    textDiv.style.wordWrap = "break-word";
-                    textDiv.style.wordBreak = "break-word";
-                    textDiv.style.overflowWrap = "break-word";
-
-                    // Calculate estimated height based on content
-                    const fontSize = parseFloat(
-                      textarea.style.fontSize || "12"
-                    );
-                    const lineHeight = fontSize * 1; // Use tighter line height
-
-                    // Count explicit line breaks and estimate wrapped lines
-                    const explicitLines =
-                      (textContent.match(/\n/g) || []).length + 1;
-                    const avgCharsPerLine = Math.max(
-                      20,
-                      Math.floor(
-                        parseFloat(draggable.style.width || "200") /
-                          (fontSize * 0.6)
-                      )
-                    );
-                    const estimatedWrappedLines = Math.ceil(
-                      textContent.replace(/\n/g, " ").length / avgCharsPerLine
-                    );
-                    const totalEstimatedLines = Math.max(
-                      explicitLines,
-                      estimatedWrappedLines
-                    );
-
-                    // Apply tight height calculation with minimal buffer
-                    const tightHeight = totalEstimatedLines * lineHeight + 4; // Minimal 4px buffer
-                    const currentHeight = parseFloat(
-                      draggable.style.height || "0"
-                    );
-
-                    // Always expand if we have multi-line content
-                    if (
-                      totalEstimatedLines > 1 ||
-                      tightHeight > currentHeight
-                    ) {
-                      draggable.style.height = `${tightHeight}px`;
-                      textDiv.style.height = `${tightHeight}px`; // Same height as container
-                    }
-
-                    // Ensure no text overflow
-                    textDiv.style.overflow = "visible";
-                    textDiv.style.textOverflow = "clip";
-                  }
-
-                  // Replace the textarea with the div
-                  textarea.parentNode?.replaceChild(textDiv, textarea);
-
-                  // No position adjustments - keep exactly what user sees in live editor
-                }
-
-                // Ensure shapes are visible and properly styled for export
-                const shapeElement =
-                  draggable.querySelector(".shape-drag-handle");
-                if (shapeElement && shapeElement instanceof HTMLElement) {
-                  // Keep the shape but remove interactive styling for export
-                  shapeElement.style.cursor = "default";
-                  shapeElement.style.pointerEvents = "none";
-                  // Ensure the shape maintains its visual properties
-                  shapeElement.style.display = "block";
-                  shapeElement.style.visibility = "visible";
-                  shapeElement.style.opacity = "1";
-                }
-              }
-            });
+    try {
+      // Use DOM-to-image to capture the element
+      const dataUrl = await domtoimage.toPng(documentContainer, {
+        quality: 1.0,
+        bgcolor: "#ffffff",
+        width: documentContainer.offsetWidth,
+        height: documentContainer.offsetHeight,
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left',
+        },
+        filter: (node: Node): boolean => {
+          // Filter out unwanted elements
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as HTMLElement;
+            
+            // Skip interactive UI elements
+            if (
+              element.classList.contains("drag-handle") ||
+              element.tagName === "BUTTON" ||
+              element.classList.contains("settings-popup") ||
+              element.classList.contains("text-selection-popup") ||
+              element.classList.contains("shape-dropdown") ||
+              element.classList.contains("field-status-dropdown") ||
+              element.classList.contains("fixed") ||
+              element.closest(".fixed") !== null ||
+              element.classList.contains("react-resizable-handle") ||
+              element.classList.contains("resizable-handle")
+            ) {
+              return false;
+            }
           }
-
-          // Also clean up any standalone shape elements that might not be in Rnd containers
-          clonedContainer
-            .querySelectorAll(".shape-drag-handle")
-            .forEach((shape: Element) => {
-              if (shape instanceof HTMLElement) {
-                shape.style.cursor = "default";
-                shape.style.pointerEvents = "none";
-                shape.style.display = "block";
-                shape.style.visibility = "visible";
-                shape.style.opacity = "1";
-              }
-            });
-
-          // Ensure the PDF canvas is visible in the clone
-          const clonedCanvas = clonedContainer.querySelector(
-            ".react-pdf__Page__canvas"
-          ) as HTMLCanvasElement;
-          if (clonedCanvas) {
-            clonedCanvas.style.display = "block";
-            clonedCanvas.style.position = "relative";
-            clonedCanvas.style.zIndex = "1";
-            console.log("Cloned canvas configured:", {
-              width: clonedCanvas.width,
-              height: clonedCanvas.height,
-            });
-          }
+          return true;
         }
-      },
-    });
+      });
 
-    // Restore original text rendering state
-    setEditorState((prev) => ({
-      ...prev,
-      isAddTextBoxMode: originalAddTextBoxMode,
-    }));
+      // Convert data URL to canvas for consistency with the rest of the code
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      return new Promise<HTMLCanvasElement>((resolve, reject) => {
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx?.drawImage(img, 0, 0);
+          resolve(canvas);
+        };
+        
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
 
-    return canvas;
+    } catch (error) {
+      console.error(`Error capturing ${viewType} view for page ${pageNumber}:`, error);
+      // Fallback: create an error canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 600;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#666';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Error capturing page', canvas.width / 2, canvas.height / 2);
+      }
+      return canvas;
+    } finally {
+      // Restore original text rendering state
+      setEditorState((prev) => ({
+        ...prev,
+        isAddTextBoxMode: originalAddTextBoxMode,
+      }));
+    }
   };
 
   // Process non-deleted pages in pairs (2 pages per PDF page)
@@ -845,38 +681,43 @@ async function captureAllPages(
 
     const pageCaptures = [];
 
-    // Page 1 - Original view
-    pageCaptures.push({
-      canvas: await captureViewAsImage("original", page1),
-      type: "original",
-      page: page1,
-      position: "top-left",
-    });
-
-    // Page 1 - Translated view
-    pageCaptures.push({
-      canvas: await captureViewAsImage("translated", page1),
-      type: "translated",
-      page: page1,
-      position: "top-right",
-    });
-
-    if (hasPage2) {
-      // Page 2 - Original view
+    try {
+      // Page 1 - Original view
       pageCaptures.push({
-        canvas: await captureViewAsImage("original", page2),
+        canvas: await captureViewAsImage("original", page1),
         type: "original",
-        page: page2,
-        position: "bottom-left",
+        page: page1,
+        position: "top-left",
       });
 
-      // Page 2 - Translated view
+      // Page 1 - Translated view
       pageCaptures.push({
-        canvas: await captureViewAsImage("translated", page2),
+        canvas: await captureViewAsImage("translated", page1),
         type: "translated",
-        page: page2,
-        position: "bottom-right",
+        page: page1,
+        position: "top-right",
       });
+
+      if (hasPage2) {
+        // Page 2 - Original view
+        pageCaptures.push({
+          canvas: await captureViewAsImage("original", page2),
+          type: "original",
+          page: page2,
+          position: "bottom-left",
+        });
+
+        // Page 2 - Translated view
+        pageCaptures.push({
+          canvas: await captureViewAsImage("translated", page2),
+          type: "translated",
+          page: page2,
+          position: "bottom-right",
+        });
+      }
+    } catch (error) {
+      console.error(`Error capturing pages ${page1}${hasPage2 ? ` and ${page2}` : ''}:`, error);
+      // Continue with what we have
     }
 
     allCaptures.push({
