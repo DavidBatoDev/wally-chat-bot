@@ -15,8 +15,6 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import {
   performPageOcr,
   performBulkOcr,
-  convertEntitiesToTextBoxes,
-  translateTextBoxes,
 } from "./services/ocrService";
 import {
   exportPdfDocument,
