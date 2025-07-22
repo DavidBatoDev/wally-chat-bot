@@ -75,7 +75,9 @@ export interface CreateBlankPdfOptions {
 /**
  * Exports the PDF document with all pages in a 2x2 grid layout
  */
-export async function exportPdfDocument(options: PdfExportOptions): Promise<void> {
+export async function exportPdfDocument(
+  options: PdfExportOptions
+): Promise<void> {
   const {
     documentRef,
     documentState,
@@ -85,7 +87,7 @@ export async function exportPdfDocument(options: PdfExportOptions): Promise<void
     templateCanvas,
     setDocumentState,
     setViewState,
-    setEditorState
+    setEditorState,
   } = options;
 
   if (!documentRef.current) {
@@ -144,7 +146,9 @@ export async function exportPdfDocument(options: PdfExportOptions): Promise<void
     );
 
     if (nonDeletedPages.length === 0) {
-      toast.error("No pages available for export. All pages have been deleted.");
+      toast.error(
+        "No pages available for export. All pages have been deleted."
+      );
       return;
     }
 
@@ -168,7 +172,6 @@ export async function exportPdfDocument(options: PdfExportOptions): Promise<void
 
     toast.dismiss(loadingToast);
     toast.success("PDF exported successfully!");
-
   } catch (error) {
     console.error("Error exporting PDF:", error);
     toast.dismiss(loadingToast);
@@ -203,7 +206,7 @@ export function handleFileUpload(
     clearAllElementsAndState,
     createBlankPdfAndAddImage,
     setViewState,
-    setPageState
+    setPageState,
   } = options;
 
   const fileType = getFileType(file.name);
@@ -238,7 +241,7 @@ export async function handleAppendDocument(
     actions,
     appendImageAsNewPage,
     appendPdfDocument,
-    setViewState
+    setViewState,
   } = options;
 
   const fileType = getFileType(file.name);
@@ -270,12 +273,8 @@ export async function createBlankPdfAndAddImage(
   imageFile: File,
   options: CreateBlankPdfOptions
 ): Promise<void> {
-  const {
-    actions,
-    handleAddImageWithUndo,
-    handleImageSelect,
-    setViewState
-  } = options;
+  const { actions, handleAddImageWithUndo, handleImageSelect, setViewState } =
+    options;
 
   try {
     // Create a new PDF document
@@ -492,11 +491,11 @@ async function addTemplatePage(
   try {
     console.log("Adding template page to PDF");
     const templateDataUrl = templateCanvas.toDataURL("image/png", 1.0);
-    
+
     const templateImageBytes = await fetch(templateDataUrl).then((res) =>
       res.arrayBuffer()
     );
-    
+
     const templateImage = await pdfDoc.embedPng(templateImageBytes);
 
     // Create first page with template
@@ -622,6 +621,212 @@ async function captureAllPages(
           element.classList.contains("react-resizable-handle")
         );
       },
+      onclone: (clonedDoc: Document) => {
+        console.log("Cloning document for export...");
+
+        // Find the cloned document container
+        const clonedContainer = clonedDoc.querySelector(
+          'div[style*="relative"]'
+        );
+
+        console.log("Cloned container found:", clonedContainer);
+        console.log(
+          "All divs in cloned doc:",
+          clonedDoc.querySelectorAll("div")
+        );
+
+        if (clonedContainer) {
+          // Remove control elements but keep shapes
+          clonedContainer
+            .querySelectorAll(
+              "button, .drag-handle, .settings-popup, .text-selection-popup, .shape-dropdown, .field-status-dropdown, .fixed, .react-resizable-handle"
+            )
+            .forEach((el: Element) => el.remove());
+
+          // Clean up react-draggable containers (both text fields and shapes) within interactive-elements-wrapper
+          const interactiveWrapper = clonedDoc.querySelector(
+            ".interactive-elements-wrapper"
+          );
+
+          if (interactiveWrapper) {
+            const draggableElements =
+              interactiveWrapper.querySelectorAll(".react-draggable");
+
+            draggableElements.forEach((draggable: Element, index: number) => {
+              if (draggable instanceof HTMLElement) {
+                // Remove border and controls but keep the content
+                draggable.style.border = "none";
+                draggable.style.backgroundColor = "transparent";
+                draggable.style.boxShadow = "none";
+                draggable.style.outline = "none";
+                draggable.style.cursor = "default";
+                draggable.style.overflow = "visible";
+                draggable.style.padding = "0";
+                draggable.style.margin = "0";
+                draggable.style.position = "relative";
+
+                // Check if this is a text field container and raise it for better export appearance
+                const textarea = draggable.querySelector("textarea");
+                if (textarea && textarea instanceof HTMLElement) {
+                  // Traverse up the DOM hierarchy and make all parents/grandparents absolute positioned at top
+                  let currentElement = textarea.parentElement;
+                  let level = 0;
+                  
+                  while (currentElement && currentElement !== draggable) {
+                    if (currentElement instanceof HTMLElement) {
+                      currentElement.style.position = "absolute";
+                      currentElement.style.top = "0";
+                      currentElement.style.left = "0";
+                      currentElement.style.width = "100%";
+                      currentElement.style.height = "100%";
+                    }
+                    currentElement = currentElement.parentElement;
+                    level++;
+                  }
+
+                  // Create a div to replace the textarea
+                  const textDiv = document.createElement("div");
+                  textDiv.textContent = textarea.value || "";
+
+                  // Apply the same styling as textarea with minimal spacing
+                  textDiv.style.border = "none";
+                  textDiv.style.outline = "none";
+                  textDiv.style.padding = "0"; // Remove all padding to eliminate top space
+                  textDiv.style.margin = "0";
+                  textDiv.style.cursor = "default";
+                  textDiv.style.overflow = "hidden"; // Allow overflow during export to prevent clipping
+                  textDiv.style.whiteSpace = "pre-wrap"; // Ensure text wrapping is preserved
+                  textDiv.style.wordWrap = "break-word"; // Ensure long words break properly
+                  textDiv.style.wordBreak = "break-word"; // Additional word breaking support
+                  textDiv.style.overflowWrap = "break-word";
+                  textDiv.style.textOverflow = "clip";
+                  textDiv.style.position = "absolute"; // Make div absolute
+                  textDiv.style.top = "0"; // Position at the top of the draggable container
+                  textDiv.style.left = "0"; // Align to the left edge
+                  textDiv.style.zIndex = "999"; // Ensure it's at the topmost layer
+                  textDiv.style.width = textarea.style.width || "100%";
+                  textDiv.style.height = textarea.style.height || "auto";
+                  textDiv.style.fontSize = textarea.style.fontSize || "12px";
+                  textDiv.style.fontFamily =
+                    textarea.style.fontFamily || "inherit";
+                  textDiv.style.color = textarea.style.color || "inherit";
+                  textDiv.style.lineHeight = `${textarea.style.lineHeight || "1"}`; // Force tight line height
+                  textDiv.style.boxSizing = "border-box"; // Ensure box-sizing is consistent
+                  textDiv.style.display = "block"; // Use block instead of flex
+                  textDiv.style.verticalAlign = "baseline"; // Reset vertical align
+                  textDiv.style.textAlign = "left"; // Explicit text alignment
+                  
+                  // Calculate negative margin based on draggable height to pull text to absolute top
+                  const draggableHeight = parseFloat(draggable.style.height || "0");
+                  const draggableWidth = parseFloat(draggable.style.width || "0");
+                  const negativeHeightMargin = -(draggableHeight * 0.33 ); // Pull up based on container height and font size
+                  const negativeWidthMargin = -(draggableWidth * 0 ); // Pull up based on container width and font size
+                  textDiv.style.marginTop = `${negativeHeightMargin}px`; // Negative margin to offset baseline
+                  textDiv.style.marginLeft = `${negativeWidthMargin}px`; // Negative margin to offset baseline
+
+                  // Ensure adequate height for wrapped text during export
+                  const textContent = textarea.value || "";
+                  if (textContent.length > 0) {
+                    // Force explicit text wrapping styles
+                    textDiv.style.whiteSpace = "pre-wrap";
+                    textDiv.style.wordWrap = "break-word";
+                    textDiv.style.wordBreak = "break-word";
+                    textDiv.style.overflowWrap = "break-word";
+
+                    // Calculate estimated height based on content
+                    const fontSize = parseFloat(
+                      textarea.style.fontSize || "12"
+                    );
+                    const lineHeight = fontSize * 1; // Use tighter line height
+
+                    // Count explicit line breaks and estimate wrapped lines
+                    const explicitLines =
+                      (textContent.match(/\n/g) || []).length + 1;
+                    const avgCharsPerLine = Math.max(
+                      20,
+                      Math.floor(
+                        parseFloat(draggable.style.width || "200") /
+                          (fontSize * 0.6)
+                      )
+                    );
+                    const estimatedWrappedLines = Math.ceil(
+                      textContent.replace(/\n/g, " ").length / avgCharsPerLine
+                    );
+                    const totalEstimatedLines = Math.max(
+                      explicitLines,
+                      estimatedWrappedLines
+                    );
+
+                    // Apply tight height calculation with minimal buffer
+                    const tightHeight = totalEstimatedLines * lineHeight + 4; // Minimal 4px buffer
+                    const currentHeight = parseFloat(
+                      draggable.style.height || "0"
+                    );
+
+                    // Always expand if we have multi-line content
+                    if (
+                      totalEstimatedLines > 1 ||
+                      tightHeight > currentHeight
+                    ) {
+                      draggable.style.height = `${tightHeight}px`;
+                      textDiv.style.height = `${tightHeight}px`; // Same height as container
+                    }
+
+                    // Ensure no text overflow
+                    textDiv.style.overflow = "visible";
+                    textDiv.style.textOverflow = "clip";
+                  }
+
+                  // Replace the textarea with the div
+                  textarea.parentNode?.replaceChild(textDiv, textarea);
+
+                  // No position adjustments - keep exactly what user sees in live editor
+                }
+
+                // Ensure shapes are visible and properly styled for export
+                const shapeElement =
+                  draggable.querySelector(".shape-drag-handle");
+                if (shapeElement && shapeElement instanceof HTMLElement) {
+                  // Keep the shape but remove interactive styling for export
+                  shapeElement.style.cursor = "default";
+                  shapeElement.style.pointerEvents = "none";
+                  // Ensure the shape maintains its visual properties
+                  shapeElement.style.display = "block";
+                  shapeElement.style.visibility = "visible";
+                  shapeElement.style.opacity = "1";
+                }
+              }
+            });
+          }
+
+          // Also clean up any standalone shape elements that might not be in Rnd containers
+          clonedContainer
+            .querySelectorAll(".shape-drag-handle")
+            .forEach((shape: Element) => {
+              if (shape instanceof HTMLElement) {
+                shape.style.cursor = "default";
+                shape.style.pointerEvents = "none";
+                shape.style.display = "block";
+                shape.style.visibility = "visible";
+                shape.style.opacity = "1";
+              }
+            });
+
+          // Ensure the PDF canvas is visible in the clone
+          const clonedCanvas = clonedContainer.querySelector(
+            ".react-pdf__Page__canvas"
+          ) as HTMLCanvasElement;
+          if (clonedCanvas) {
+            clonedCanvas.style.display = "block";
+            clonedCanvas.style.position = "relative";
+            clonedCanvas.style.zIndex = "1";
+            console.log("Cloned canvas configured:", {
+              width: clonedCanvas.width,
+              height: clonedCanvas.height,
+            });
+          }
+        }
+      },
     });
 
     // Restore original text rendering state
@@ -701,9 +906,7 @@ async function createPdfPagesFromCaptures(
 
     for (const capture of pageCaptures) {
       const dataUrl = capture.canvas.toDataURL("image/png", 1.0);
-      const imageBytes = await fetch(dataUrl).then((res) =>
-        res.arrayBuffer()
-      );
+      const imageBytes = await fetch(dataUrl).then((res) => res.arrayBuffer());
       const embeddedImage = await pdfDoc.embedPng(imageBytes);
       embeddedImages.push({
         ...capture,
@@ -815,8 +1018,7 @@ async function createPdfPagesFromCaptures(
 
     // Add grid separator lines
     const centerX = gridMargin + quadrantWidth + gridSpacing / 2;
-    const centerY =
-      pageHeight - labelSpace - quadrantHeight - gridSpacing / 2;
+    const centerY = pageHeight - labelSpace - quadrantHeight - gridSpacing / 2;
 
     // Vertical line
     page.drawLine({
@@ -839,7 +1041,10 @@ async function createPdfPagesFromCaptures(
 /**
  * Downloads the PDF document
  */
-async function downloadPdf(pdfDoc: PDFDocument, filename: string): Promise<void> {
+async function downloadPdf(
+  pdfDoc: PDFDocument,
+  filename: string
+): Promise<void> {
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
