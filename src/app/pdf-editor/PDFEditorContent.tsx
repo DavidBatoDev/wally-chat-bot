@@ -3429,7 +3429,7 @@ export const PDFEditorContent: React.FC = () => {
             style={{
               scrollBehavior: "smooth",
               overflow: "auto",
-              paddingTop: "20px",
+              paddingTop: "64px",
             }}
           >
             {documentState.error && (
@@ -3484,7 +3484,7 @@ export const PDFEditorContent: React.FC = () => {
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
-                  paddingTop: "40px",
+                  paddingTop: "64px",
                   paddingBottom: "40px",
                   paddingLeft: "40px",
                   paddingRight: "40px",
