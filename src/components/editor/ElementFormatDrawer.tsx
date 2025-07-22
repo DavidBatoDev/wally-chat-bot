@@ -27,7 +27,11 @@ import {
   Eraser,
 } from "lucide-react";
 import { useTextFormat } from "./ElementFormatContext";
-import { TextField, Shape, Image } from "../types";
+import {
+  TextField,
+  Shape,
+  Image,
+} from "../../app/pdf-editor/types/pdf-editor.types";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 import "../../app/pdf-editor/styles/pdf-editor.css";
 
@@ -441,7 +445,7 @@ export const ElementFormatDrawer: React.FC = () => {
             currentFormat.backgroundOpacity !== undefined
               ? currentFormat.backgroundOpacity
               : 1,
-          backgroundColor: currentFormat.backgroundColor || "#ffffff",
+          backgroundColor: currentFormat.backgroundColor || "transparent",
         }
       : selectedElementType === "shape" && isShape(currentFormat)
       ? {

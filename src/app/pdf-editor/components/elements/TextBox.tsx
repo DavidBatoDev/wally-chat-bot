@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect } from "react";
 import { Rnd } from "react-rnd";
 import { Trash2, Move } from "lucide-react";
-import { TextField } from "@/components/types";
+import { TextField } from "../../types/pdf-editor.types";
 import { measureText } from "../../utils/measurements";
 import { measureWrappedTextHeight } from "../../utils/measurements";
 

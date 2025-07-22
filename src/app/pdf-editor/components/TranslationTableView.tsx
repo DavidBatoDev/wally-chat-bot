@@ -5,11 +5,22 @@ interface TranslationTableViewProps {
   translatedTextBoxes: TextField[];
   untranslatedTexts: UntranslatedText[];
   onUpdateTextBox: (id: string, updates: Partial<TextField>) => void;
-  onUpdateUntranslatedText?: (id: string, updates: Partial<UntranslatedText>) => void;
+  onUpdateUntranslatedText?: (
+    id: string,
+    updates: Partial<UntranslatedText>
+  ) => void;
   onDeleteTextBox?: (textboxId: string) => void;
   onRowClick?: (textboxId: string) => void;
-  onAddTextBox?: (x: number, y: number, page: number, targetView: "original" | "translated", customInitialState?: Partial<TextField>) => string;
-  onAddUntranslatedText?: (untranslatedText: Omit<UntranslatedText, "id">) => void;
+  onAddTextBox?: (
+    x: number,
+    y: number,
+    page: number,
+    targetView: "original" | "translated",
+    customInitialState?: Partial<TextField>
+  ) => string;
+  onAddUntranslatedText?: (
+    untranslatedText: Omit<UntranslatedText, "id">
+  ) => void;
   pageWidth: number;
   pageHeight: number;
   scale: number;
@@ -31,9 +42,13 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   currentPage,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingOriginalId, setEditingOriginalId] = useState<string | null>(null);
+  const [editingOriginalId, setEditingOriginalId] = useState<string | null>(
+    null
+  );
   const textareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>({});
-  const originalTextareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>({});
+  const originalTextareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>(
+    {}
+  );
 
   // Filter textboxes to show only those on the current page
   const textboxesForTable = translatedTextBoxes.filter(
@@ -61,7 +76,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   const handleOriginalTextChange = useCallback(
     (untranslatedTextId: string, newValue: string) => {
       if (onUpdateUntranslatedText) {
-        onUpdateUntranslatedText(untranslatedTextId, { originalText: newValue });
+        onUpdateUntranslatedText(untranslatedTextId, {
+          originalText: newValue,
+        });
       }
     },
     [onUpdateUntranslatedText]
@@ -83,32 +100,42 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     setEditingOriginalId(null);
   }, []);
 
-  const handleApprove = useCallback((textboxId: string) => {
-    // Find the corresponding untranslated text and toggle its status
-    const untranslatedText = untranslatedTexts.find(
-      (text) => text.translatedTextboxId === textboxId
-    );
-    
-    if (untranslatedText && onUpdateUntranslatedText) {
-      // Toggle between checked and needsChecking
-      const newStatus = untranslatedText.status === "checked" ? "needsChecking" : "checked";
-      onUpdateUntranslatedText(untranslatedText.id, { status: newStatus });
-    }
-  }, [untranslatedTexts, onUpdateUntranslatedText]);
+  const handleApprove = useCallback(
+    (textboxId: string) => {
+      // Find the corresponding untranslated text and toggle its status
+      const untranslatedText = untranslatedTexts.find(
+        (text) => text.translatedTextboxId === textboxId
+      );
+
+      if (untranslatedText && onUpdateUntranslatedText) {
+        // Toggle between checked and needsChecking
+        const newStatus =
+          untranslatedText.status === "checked" ? "needsChecking" : "checked";
+        onUpdateUntranslatedText(untranslatedText.id, { status: newStatus });
+      }
+    },
+    [untranslatedTexts, onUpdateUntranslatedText]
+  );
 
   // Helper function to get the effective status based on textbox content
-  const getEffectiveStatus = useCallback((textbox: TextField, untranslatedText?: UntranslatedText) => {
-    // If translated textbox is empty, status is always isEmpty regardless of stored status
-    if (!textbox.value || textbox.value.trim() === "") {
-      return "isEmpty";
-    }
-    // If untranslated text is also empty, status is isEmpty
-    if (!untranslatedText?.originalText || untranslatedText.originalText.trim() === "") {
-      return "isEmpty";
-    }
-    // Otherwise, use the stored status
-    return untranslatedText?.status || "needsChecking";
-  }, []);
+  const getEffectiveStatus = useCallback(
+    (textbox: TextField, untranslatedText?: UntranslatedText) => {
+      // If translated textbox is empty, status is always isEmpty regardless of stored status
+      if (!textbox.value || textbox.value.trim() === "") {
+        return "isEmpty";
+      }
+      // If untranslated text is also empty, status is isEmpty
+      if (
+        !untranslatedText?.originalText ||
+        untranslatedText.originalText.trim() === ""
+      ) {
+        return "isEmpty";
+      }
+      // Otherwise, use the stored status
+      return untranslatedText?.status || "needsChecking";
+    },
+    []
+  );
 
   const handleAddCustomTextbox = useCallback(() => {
     if (!onAddTextBox || !onAddUntranslatedText) return;
@@ -124,7 +151,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         width: 200,
         height: 30,
         fontFamily: "Arial",
-        backgroundColor: "#ffffff",
+        backgroundColor: "transparent", // Use transparent background by default
+        backgroundOpacity: 0, // Ensure full transparency
         color: "#000000",
         value: "", // Initially empty
       }
@@ -140,20 +168,23 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       width: 200,
       height: 30,
       isCustomTextbox: true,
-      status: "isEmpty"
+      status: "isEmpty",
     });
   }, [onAddTextBox, onAddUntranslatedText, currentPage]);
 
-  const handleDelete = useCallback((textboxId: string) => {
-    // Call the delete handler if provided, otherwise just clear the text
-    if (onDeleteTextBox) {
-      onDeleteTextBox(textboxId);
-    } else {
-      // Fallback: just clear the text
-      onUpdateTextBox(textboxId, { value: "" });
-    }
-    console.log('Delete textbox:', textboxId);
-  }, [onDeleteTextBox, onUpdateTextBox]);
+  const handleDelete = useCallback(
+    (textboxId: string) => {
+      // Call the delete handler if provided, otherwise just clear the text
+      if (onDeleteTextBox) {
+        onDeleteTextBox(textboxId);
+      } else {
+        // Fallback: just clear the text
+        onUpdateTextBox(textboxId, { value: "" });
+      }
+      console.log("Delete textbox:", textboxId);
+    },
+    [onDeleteTextBox, onUpdateTextBox]
+  );
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent, id: string) => {
     if (e.key === "Enter" && e.ctrlKey) {
@@ -190,8 +221,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
             No translated text found on page {currentPage}
           </div>
           <div className="text-sm text-blue-500">
-            Switch to Layout mode to view and edit text boxes on this page, then return to
-            Translate mode to see them here.
+            Switch to Layout mode to view and edit text boxes on this page, then
+            return to Translate mode to see them here.
           </div>
         </div>
       </div>
@@ -242,7 +273,10 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 <tr
                   key={textbox.id}
                   className={`border-b border-blue-100 hover:bg-blue-50 cursor-pointer transition-colors ${
-                    editingId === textbox.id || editingOriginalId === untranslatedText?.id ? "bg-blue-100" : "bg-white"
+                    editingId === textbox.id ||
+                    editingOriginalId === untranslatedText?.id
+                      ? "bg-blue-100"
+                      : "bg-white"
                   }`}
                   onClick={() => onRowClick?.(textbox.id)}
                   title="Click to highlight original text location"
@@ -257,15 +291,22 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                         <textarea
                           ref={(el) => {
                             if (el) {
-                              originalTextareaRefs.current[untranslatedText.id] = el;
+                              originalTextareaRefs.current[
+                                untranslatedText.id
+                              ] = el;
                               autoResizeTextarea(el);
                             }
                           }}
                           value={originalText || ""}
                           onChange={(e) =>
-                            handleOriginalTextChange(untranslatedText.id, e.target.value)
+                            handleOriginalTextChange(
+                              untranslatedText.id,
+                              e.target.value
+                            )
                           }
-                          onFocus={() => handleOriginalTextareaFocus(untranslatedText.id)}
+                          onFocus={() =>
+                            handleOriginalTextareaFocus(untranslatedText.id)
+                          }
                           onBlur={handleOriginalTextareaBlur}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && e.ctrlKey) {
@@ -351,33 +392,44 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     <div className="mt-2 flex items-center gap-2">
                       <div className="flex items-center gap-1">
                         {(() => {
-                          const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
+                          const effectiveStatus = getEffectiveStatus(
+                            textbox,
+                            untranslatedText
+                          );
                           if (effectiveStatus === "checked") {
                             return (
                               <>
                                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                <span className="text-xs text-green-400">Checked</span>
+                                <span className="text-xs text-green-400">
+                                  Checked
+                                </span>
                               </>
                             );
                           } else if (effectiveStatus === "needsChecking") {
                             return (
                               <>
                                 <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                                <span className="text-xs text-yellow-400">Needs Check</span>
+                                <span className="text-xs text-yellow-400">
+                                  Needs Check
+                                </span>
                               </>
                             );
                           } else {
                             return (
                               <>
                                 <div className="w-2 h-2 bg-gray-500 rounded-full"></div>
-                                <span className="text-xs text-gray-400">Empty</span>
+                                <span className="text-xs text-gray-400">
+                                  Empty
+                                </span>
                               </>
                             );
                           }
                         })()}
                       </div>
                       {untranslatedText?.isCustomTextbox && (
-                        <span className="text-xs px-1 py-0.5 bg-blue-600 text-white rounded">Custom</span>
+                        <span className="text-xs px-1 py-0.5 bg-blue-600 text-white rounded">
+                          Custom
+                        </span>
                       )}
                     </div>
                   </td>
@@ -386,23 +438,30 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                       {/* Approve Button */}
                       <button
                         onClick={() => handleApprove(textbox.id)}
-                        className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 group ${
-                          (() => {
-                            const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
-                            const isDisabled = effectiveStatus === "isEmpty";
-                            
-                            if (isDisabled) {
-                              return "bg-gray-300 text-gray-500 cursor-not-allowed";
-                            } else if (effectiveStatus === "checked") {
-                              return "bg-green-600 text-white hover:bg-green-700";
-                            } else {
-                              return "bg-green-500 hover:bg-green-600 text-white";
-                            }
-                          })()
-                        }`}
-                        disabled={getEffectiveStatus(textbox, untranslatedText) === "isEmpty"}
+                        className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors duration-200 group ${(() => {
+                          const effectiveStatus = getEffectiveStatus(
+                            textbox,
+                            untranslatedText
+                          );
+                          const isDisabled = effectiveStatus === "isEmpty";
+
+                          if (isDisabled) {
+                            return "bg-gray-300 text-gray-500 cursor-not-allowed";
+                          } else if (effectiveStatus === "checked") {
+                            return "bg-green-600 text-white hover:bg-green-700";
+                          } else {
+                            return "bg-green-500 hover:bg-green-600 text-white";
+                          }
+                        })()}`}
+                        disabled={
+                          getEffectiveStatus(textbox, untranslatedText) ===
+                          "isEmpty"
+                        }
                         title={(() => {
-                          const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
+                          const effectiveStatus = getEffectiveStatus(
+                            textbox,
+                            untranslatedText
+                          );
                           if (effectiveStatus === "isEmpty") {
                             return "Cannot check empty textbox";
                           } else if (effectiveStatus === "checked") {
@@ -426,7 +485,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                           />
                         </svg>
                       </button>
-                      
+
                       {/* Delete Button */}
                       <button
                         onClick={() => handleDelete(textbox.id)}
@@ -458,7 +517,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
 
       <div className="mt-4 text-sm text-blue-600">
         <div className="flex items-center justify-between">
-          <span>{textboxesForTable.length} text boxes found on page {currentPage}</span>
+          <span>
+            {textboxesForTable.length} text boxes found on page {currentPage}
+          </span>
           <span className="text-xs text-blue-500">
             Switch to Layout mode to modify text box positions and styling
           </span>
@@ -486,7 +547,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            
+
             {/* Tooltip */}
             <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-blue-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap border border-blue-600 shadow-lg">
               Add Custom Textbox
