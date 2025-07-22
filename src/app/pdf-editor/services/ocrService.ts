@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { generateUUID, measureText } from "../utils/measurements";
 import { TextField } from "../types/pdf-editor.types";
-import { loadHtml2Canvas } from "../utils/html2canvasLoader";
+import domtoimage from "dom-to-image";
 
 // Types for OCR processing
 export interface OcrOptions {
@@ -126,26 +126,56 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     // Wait for the scale change to apply
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Load html2canvas with proper error handling
-    const html2canvas = await loadHtml2Canvas();
-
-    // Capture the PDF page as an image
+    // Capture the PDF page as an image using dom-to-image
     const containerEl = documentRef.current;
     if (!containerEl) throw new Error("Document container not found");
     
-    const canvas = await html2canvas(containerEl, {
-      scale: 1,
-      logging: false,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      ignoreElements: (element: HTMLElement) => {
-        // Optionally ignore toolbars, sidebars, etc.
-        return (
-          element.classList.contains("text-format-drawer") ||
-          element.classList.contains("element-format-drawer")
-        );
-      },
+    // Use DOM-to-image to capture the element
+    const dataUrl = await domtoimage.toPng(containerEl, {
+      quality: 1.0,
+      bgcolor: "#ffffff",
+      width: containerEl.offsetWidth,
+      height: containerEl.offsetHeight,
+      filter: (node: Node): boolean => {
+        // Filter out unwanted elements
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          
+          // Skip interactive UI elements
+          return !(
+            element.classList.contains("text-format-drawer") ||
+            element.classList.contains("element-format-drawer") ||
+            element.classList.contains("drag-handle") ||
+            element.tagName === "BUTTON" ||
+            element.classList.contains("settings-popup") ||
+            element.classList.contains("text-selection-popup") ||
+            element.classList.contains("shape-dropdown") ||
+            element.classList.contains("field-status-dropdown") ||
+            element.classList.contains("fixed") ||
+            element.closest(".fixed") !== null ||
+            element.classList.contains("react-resizable-handle") ||
+            element.classList.contains("resizable-handle")
+          );
+        }
+        return true;
+      }
+    });
+
+    // Convert data URL to canvas for blob conversion
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx?.drawImage(img, 0, 0);
+        resolve();
+      };
+      
+      img.onerror = reject;
+      img.src = dataUrl;
     });
 
     // Reset scale
