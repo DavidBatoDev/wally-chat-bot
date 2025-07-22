@@ -8,6 +8,7 @@ import {
   Shape,
   Image,
   DeletionRectangle,
+  UntranslatedText,
   SortedElement,
   ViewMode,
 } from "../../types/pdf-editor.types";
@@ -25,6 +26,7 @@ export const useElementManagement = () => {
       translatedShapes: [],
       translatedDeletionRectangles: [],
       translatedImages: [],
+      untranslatedTexts: [],
     });
 
   // Layer order state
@@ -781,6 +783,45 @@ export const useElementManagement = () => {
     [getCurrentLayerOrder]
   );
 
+  // Untranslated texts management
+  const addUntranslatedText = useCallback(
+    (untranslatedText: UntranslatedText) => {
+      setElementCollections((prev) => ({
+        ...prev,
+        untranslatedTexts: [...prev.untranslatedTexts, untranslatedText],
+      }));
+    },
+    []
+  );
+
+  const updateUntranslatedText = useCallback(
+    (id: string, updates: Partial<UntranslatedText>) => {
+      setElementCollections((prev) => ({
+        ...prev,
+        untranslatedTexts: prev.untranslatedTexts.map((text) =>
+          text.id === id ? { ...text, ...updates } : text
+        ),
+      }));
+    },
+    []
+  );
+
+  const deleteUntranslatedText = useCallback((id: string) => {
+    setElementCollections((prev) => ({
+      ...prev,
+      untranslatedTexts: prev.untranslatedTexts.filter((text) => text.id !== id),
+    }));
+  }, []);
+
+  const getUntranslatedTextByTranslatedId = useCallback(
+    (translatedTextboxId: string) => {
+      return elementCollections.untranslatedTexts.find(
+        (text) => text.translatedTextboxId === translatedTextboxId
+      );
+    },
+    [elementCollections.untranslatedTexts]
+  );
+
   return {
     elementCollections,
     setElementCollections,
@@ -818,5 +859,10 @@ export const useElementManagement = () => {
     deleteShape,
     deleteImage,
     deleteDeletionRectangle,
+    // Untranslated texts management
+    addUntranslatedText,
+    updateUntranslatedText,
+    deleteUntranslatedText,
+    getUntranslatedTextByTranslatedId,
   };
 };

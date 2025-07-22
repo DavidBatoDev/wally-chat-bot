@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { generateUUID, measureText } from "../utils/measurements";
-import { TextField } from "../types/pdf-editor.types";
+import { TextField, UntranslatedText } from "../types/pdf-editor.types";
 import domtoimage from "dom-to-image";
 
 // Types for OCR processing
@@ -36,6 +36,7 @@ export interface OcrOptions {
     initialProperties?: any
   ) => string | null;
   setIsTranslating: (isTranslating: boolean) => void;
+  addUntranslatedText?: (untranslatedText: any) => void;
 }
 
 export interface OcrResult {
@@ -284,8 +285,11 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
       }
 
       // Add all textboxes to the translated view using the undo system
-      newTextBoxes.forEach((textbox) => {
-        options.handleAddTextBoxWithUndo(
+      newTextBoxes.forEach((textbox, index) => {
+        // Store original text before adding the textbox
+        const originalText = entities[index]?.text || "";
+        
+        const textboxId = options.handleAddTextBoxWithUndo(
           textbox.x,
           textbox.y,
           textbox.page,
@@ -319,6 +323,17 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
             paddingLeft: textbox.paddingLeft,
           }
         );
+
+        // Create untranslated text entry if textbox was created successfully and function is available
+        if (textboxId && originalText && options.addUntranslatedText) {
+          const untranslatedText: UntranslatedText = {
+            id: generateUUID(),
+            translatedTextboxId: textboxId,
+            originalText: originalText,
+            page: pageNumber,
+          };
+          options.addUntranslatedText(untranslatedText);
+        }
       });
 
       // Mark the page as transformed

@@ -106,6 +106,14 @@ export interface DeletionRectangle {
   borderWidth?: number;
 }
 
+// Untranslated text interface for storing original OCR text
+export interface UntranslatedText {
+  id: string;
+  translatedTextboxId: string;
+  originalText: string;
+  page: number;
+}
+
 // Editor state types
 export interface EditorState {
   selectedFieldId: string | null;
@@ -255,6 +263,7 @@ export interface ElementCollections {
   translatedShapes: Shape[];
   translatedDeletionRectangles: DeletionRectangle[];
   translatedImages: Image[];
+  untranslatedTexts: UntranslatedText[];
 }
 
 // Page management
