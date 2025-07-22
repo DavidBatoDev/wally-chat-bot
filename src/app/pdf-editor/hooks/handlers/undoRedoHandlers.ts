@@ -53,6 +53,34 @@ export function useHandleAddTextBoxWithUndo(
   );
 }
 
+// Refactored handler for duplicating a text box with undo support
+export function useHandleDuplicateTextBoxWithUndo(
+  duplicateTextBox: any,
+  deleteTextBox: any,
+  history: any
+) {
+  return useCallback(
+    (originalId: string, currentView: ViewMode, page: number) => {
+      let newId: string | null = null;
+      const idRef = { current: null as string | null };
+      const duplicate = () => {
+        newId = duplicateTextBox(originalId, currentView);
+        idRef.current = newId;
+        if (!newId) throw new Error("Failed to duplicate text box: newId is null");
+        return newId;
+      };
+      const remove = (id: string) => {
+        deleteTextBox(id, currentView);
+      };
+      const cmd = new AddTextBoxCommand(duplicate, remove, idRef);
+      cmd.execute();
+      history.push(page, currentView, cmd);
+      return idRef.current;
+    },
+    [duplicateTextBox, deleteTextBox, history]
+  );
+}
+
 // Refactored handler for updating a text box with undo support
 export function useHandleUpdateTextBoxWithUndo(
   updateTextBox: any,

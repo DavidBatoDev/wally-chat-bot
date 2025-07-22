@@ -47,6 +47,7 @@ import { useTextSpanHandling } from "./hooks/states/useTextSpanHandling";
 import { useHistory } from "./hooks/states/useHistory";
 import {
   useHandleAddTextBoxWithUndo,
+  useHandleDuplicateTextBoxWithUndo,
   useHandleUpdateTextBoxWithUndo,
   useUpdateTextBoxWithUndo,
   useUpdateOriginalTextBoxWithUndo,
@@ -148,6 +149,7 @@ export const PDFEditorContent: React.FC = () => {
     getOriginalSortedElements,
     getTranslatedSortedElements,
     addTextBox,
+    duplicateTextBox,
     addShape,
     addImage,
     addDeletionRectangle,
@@ -327,6 +329,11 @@ export const PDFEditorContent: React.FC = () => {
   ///////////////////////// UNDO/REDO HANDLERS /////////////////////////
   const handleAddTextBoxWithUndo = useHandleAddTextBoxWithUndo(
     addTextBox,
+    deleteTextBox,
+    history
+  );
+  const handleDuplicateTextBoxWithUndo = useHandleDuplicateTextBoxWithUndo(
+    duplicateTextBox,
     deleteTextBox,
     history
   );
@@ -514,6 +521,46 @@ export const PDFEditorContent: React.FC = () => {
   const handleAutoFocusComplete = useCallback((id: string) => {
     setAutoFocusTextBoxId(null);
   }, []);
+
+  // Handler for duplicating a textbox
+  const handleDuplicateTextBox = useCallback(
+    (textboxId: string) => {
+      const duplicatedId = handleDuplicateTextBoxWithUndo(
+        textboxId,
+        viewState.currentView,
+        documentState.currentPage
+      );
+      
+      if (duplicatedId) {
+        // Select the newly duplicated textbox
+        setSelectedElementId(duplicatedId);
+        setSelectedElementType("textbox");
+        setIsDrawerOpen(true);
+        setAutoFocusTextBoxId(duplicatedId);
+        
+        // Update editor state to select the duplicated textbox
+        setEditorState((prev) => ({
+          ...prev,
+          selectedFieldId: duplicatedId,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: [],
+            selectionBounds: null,
+          },
+        }));
+      }
+    },
+    [
+      handleDuplicateTextBoxWithUndo,
+      viewState.currentView,
+      documentState.currentPage,
+      setSelectedElementId,
+      setSelectedElementType,
+      setIsDrawerOpen,
+      setAutoFocusTextBoxId,
+      setEditorState,
+    ]
+  );
 
   // Workflow step change handler
   const handleWorkflowStepChange = useCallback((step: WorkflowStep) => {
@@ -2908,6 +2955,7 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleTextBoxSelect}
           onUpdate={updateFunction}
           onDelete={(id) => handleDeleteTextBoxWithUndo(id, actualTargetView)}
+          onDuplicate={handleDuplicateTextBox}
           isTextSelectionMode={editorState.isTextSelectionMode}
           isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
             textBox.id

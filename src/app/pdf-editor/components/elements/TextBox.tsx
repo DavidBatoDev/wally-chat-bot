@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect } from "react";
 import { Rnd } from "react-rnd";
-import { Trash2, Move } from "lucide-react";
+import { Trash2, Move, Copy } from "lucide-react";
 import { TextField } from "../../types/pdf-editor.types";
 import { measureText } from "../../utils/measurements";
 import { measureWrappedTextHeight } from "../../utils/measurements";
@@ -18,6 +18,7 @@ interface TextBoxProps {
     isOngoingOperation?: boolean
   ) => void;
   onDelete: (id: string) => void;
+  onDuplicate?: (id: string) => void;
   isTextSelectionMode?: boolean;
   isSelectedInTextMode?: boolean;
   onTextSelectionClick?: (id: string, event: React.MouseEvent) => void;
@@ -43,6 +44,7 @@ export const MemoizedTextBox = memo(
     onSelect,
     onUpdate,
     onDelete,
+    onDuplicate,
     isTextSelectionMode,
     isSelectedInTextMode,
     onTextSelectionClick,
@@ -385,12 +387,24 @@ export const MemoizedTextBox = memo(
             </button>
           )}
 
-          {/* Move handle - only show when selected and in edit mode and NOT in text selection mode */}
+          {/* Move handle and Duplicate button - only show when selected and in edit mode and NOT in text selection mode */}
           {isEditMode && isSelected && !isTextSelectionMode && (
             <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
               <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
               </div>
+              {onDuplicate && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDuplicate(textBox.id);
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200"
+                  title="Duplicate text field"
+                >
+                  <Copy size={10} />
+                </button>
+              )}
             </div>
           )}
 

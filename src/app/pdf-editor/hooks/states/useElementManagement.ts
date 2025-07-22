@@ -326,6 +326,60 @@ export const useElementManagement = () => {
     [addToLayerOrder]
   );
 
+  const duplicateTextBox = useCallback(
+    (originalId: string, currentView: ViewMode) => {
+      // Find the original textbox from both collections
+      const allTextBoxes = [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+      ];
+      
+      const originalTextBox = allTextBoxes.find((tb) => tb.id === originalId);
+      if (!originalTextBox) {
+        console.warn("Original textbox not found for duplication:", originalId);
+        return null;
+      }
+
+      // Generate new ID for the duplicate
+      const duplicateId = generateUUID();
+      
+      // Create duplicate with offset position
+      const offset = 20; // 20px offset
+      const duplicateTextBox: TextField = {
+        ...originalTextBox,
+        id: duplicateId,
+        x: originalTextBox.x + offset,
+        y: originalTextBox.y + offset,
+      };
+
+      // Determine which view the original textbox belongs to and add duplicate to the same view
+      const isOriginalInOriginalView = elementCollections.originalTextBoxes.some(
+        (tb) => tb.id === originalId
+      );
+      
+      const targetView = isOriginalInOriginalView ? "original" : "translated";
+
+      setElementCollections((prev) => {
+        if (targetView === "original") {
+          return {
+            ...prev,
+            originalTextBoxes: [...prev.originalTextBoxes, duplicateTextBox],
+          };
+        } else {
+          return {
+            ...prev,
+            translatedTextBoxes: [...prev.translatedTextBoxes, duplicateTextBox],
+          };
+        }
+      });
+
+      addToLayerOrder(duplicateId, targetView);
+
+      return duplicateId;
+    },
+    [elementCollections, addToLayerOrder]
+  );
+
   const addShape = useCallback(
     (
       type: "circle" | "rectangle",
@@ -847,6 +901,7 @@ export const useElementManagement = () => {
     isElementAtBack,
     // Element creation
     addTextBox,
+    duplicateTextBox,
     addShape,
     addImage,
     addDeletionRectangle,
