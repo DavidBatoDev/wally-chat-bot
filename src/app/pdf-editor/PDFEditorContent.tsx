@@ -89,6 +89,7 @@ import { TranslationTableView } from "./components/TranslationTableView";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
+import { useTranslationStore } from "@/lib/store/TranslationStore";
 
 // Import utilities
 import { isPdfFile, measureText } from "./utils/measurements";
@@ -115,7 +116,8 @@ import "./styles/pdf-editor.css";
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-export const PDFEditorContent: React.FC = () => {
+export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData }) => {
+  const { savePDFEditorState } = useTranslationStore();
   const {
     isDrawerOpen,
     setIsDrawerOpen,
@@ -210,6 +212,44 @@ export const PDFEditorContent: React.FC = () => {
     activeSidebarTab: "pages",
     currentWorkflowStep: "translate",
   });
+  // Tool state
+  const [toolState, setToolState] = useState<ToolState>({
+    shapeDrawingMode: null,
+    selectedShapeType: "rectangle",
+    isDrawingShape: false,
+    shapeDrawStart: null,
+    shapeDrawEnd: null,
+    isDrawingInProgress: false,
+    shapeDrawTargetView: null,
+  });
+  // Erasure state
+  const [erasureState, setErasureState] = useState<ErasureState>({
+    isErasureMode: false,
+    isDrawingErasure: false,
+    erasureDrawStart: null,
+    erasureDrawEnd: null,
+    erasureDrawTargetView: null,
+    erasureSettings: {
+      width: 20,
+      height: 20,
+      background: "#ffffff",
+      opacity: 1.0,
+    },
+  });
+  // Selection state
+  const [selectionState, setSelectionState] = useState<SelectionState>({
+    selectedTextBoxes: { textBoxIds: [] },
+    isDrawingSelection: false,
+    selectionStart: null,
+    selectionEnd: null,
+  });
+  // Page state
+  const [pageState, setPageState] = useState<PageState>({
+    deletedPages: new Set(),
+    isPageTranslated: new Map(),
+    isTransforming: false,
+    showTransformButton: true,
+  });
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
     [elementId: string]: {
@@ -218,6 +258,48 @@ export const PDFEditorContent: React.FC = () => {
       lastUpdate: number;
     };
   }>({});
+  
+  // Template editor state
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+  // Load project data when provided
+  useEffect(() => {
+    if (projectData) {
+      // Set workflow step based on project status
+      if (projectData.status === 'in-progress') {
+        setViewState(prev => ({ ...prev, currentWorkflowStep: 'translate' }));
+      } else if (projectData.status === 'pm-review') {
+        setViewState(prev => ({ ...prev, currentWorkflowStep: 'final-layout' }));
+      }
+      
+      // Load project document if available
+      if (projectData.document && projectData.document.length > 0) {
+        // Create a mock PDF from project data
+        // This would need to be implemented based on your PDF generation logic
+        console.log('Loading project data:', projectData);
+      }
+    }
+  }, [projectData]);
+
+  // Save PDF editor state when project data changes - with debouncing to prevent infinite loops
+  useEffect(() => {
+    if (projectData?.id) {
+      const timeoutId = setTimeout(() => {
+        const pdfState = {
+          documentState,
+          elementCollections,
+          viewState,
+          editorState,
+          toolState,
+          erasureState,
+          pageState,
+        };
+        savePDFEditorState(projectData.id, pdfState);
+      }, 100); // Debounce for 100ms
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [projectData?.id, documentState, elementCollections, viewState, editorState, toolState, erasureState, pageState]);
+
   // Helper to get current text box state
   const getCurrentTextBoxState = useCallback(
     (id: string): Partial<TextField> | null => {
@@ -269,44 +351,6 @@ export const PDFEditorContent: React.FC = () => {
     setCurrentFormat,
     setIsDrawerOpen,
   ]);
-  // Tool state
-  const [toolState, setToolState] = useState<ToolState>({
-    shapeDrawingMode: null,
-    selectedShapeType: "rectangle",
-    isDrawingShape: false,
-    shapeDrawStart: null,
-    shapeDrawEnd: null,
-    isDrawingInProgress: false,
-    shapeDrawTargetView: null,
-  });
-  // Erasure state
-  const [erasureState, setErasureState] = useState<ErasureState>({
-    isErasureMode: false,
-    isDrawingErasure: false,
-    erasureDrawStart: null,
-    erasureDrawEnd: null,
-    erasureDrawTargetView: null,
-    erasureSettings: {
-      width: 20,
-      height: 20,
-      background: "#ffffff",
-      opacity: 1.0,
-    },
-  });
-  // Selection state
-  const [selectionState, setSelectionState] = useState<SelectionState>({
-    selectedTextBoxes: { textBoxIds: [] },
-    isDrawingSelection: false,
-    selectionStart: null,
-    selectionEnd: null,
-  });
-  // Page state
-  const [pageState, setPageState] = useState<PageState>({
-    deletedPages: new Set(),
-    isPageTranslated: new Map(),
-    isTransforming: false,
-    showTransformButton: true,
-  });
   // Language state
   const [sourceLanguage, setSourceLanguage] = useState<string>("");
   const [desiredLanguage, setDesiredLanguage] = useState<string>("");
@@ -2630,7 +2674,6 @@ export const PDFEditorContent: React.FC = () => {
   const [pendingExport, setPendingExport] = useState<(() => void) | null>(null);
 
   // State for template editor
-  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateCanvas, setTemplateCanvas] =
     useState<HTMLCanvasElement | null>(null);
 
