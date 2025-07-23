@@ -298,6 +298,37 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             </>
           )}
 
+                   {/* Final Layout Specific Controls */}
+          {currentWorkflowStep === "final-layout" && (
+            <>
+              <button
+                onClick={() => onViewChange("original")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                  currentView === "original"
+                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                    : "text-gray-700 hover:text-blue-600"
+                }`}
+                title="Original Document"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={() => onViewChange("split")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                  currentView === "split"
+                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                    : "text-gray-700 hover:text-blue-600"
+                }`}
+                title="Split Screen"
+              >
+                <SplitSquareHorizontal className="w-5 h-5" />
+              </button>
+            </>
+          )}
+
+          
+
           {/* Edit Mode Toggle - Always show */}
           <button
             onClick={onEditModeToggle}
@@ -328,20 +359,6 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <Trash2 className="w-5 h-5" />
           </button>
 
-          {/* Final Layout Specific Controls */}
-          {currentWorkflowStep === "final-layout" && (
-            <button
-              onClick={() => onViewChange("original")}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
-                currentView === "original"
-                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                  : "text-gray-700 hover:text-blue-600"
-              }`}
-              title="Final Layout View"
-            >
-              <Eye className="w-5 h-5" />
-            </button>
-          )}
         </div>
       </div>
     </>

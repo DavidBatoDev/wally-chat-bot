@@ -483,8 +483,8 @@ export const ElementFormatDrawer: React.FC = () => {
   const unifiedPaddingValue = allEqual ? allPaddings[0] : "--";
 
   return (
-    <div className="absolute w-full flex justify-center bg-transparent">
-      <div className="element-format-drawer mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 z-50 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
+    <div className="z-[99999909999] absolute w-full flex justify-center bg-transparent">
+      <div className="element-format-drawer z-[99999909999] mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
         {/* Multi-selection indicator */}
         {!selectedElementId &&
           currentFormat &&

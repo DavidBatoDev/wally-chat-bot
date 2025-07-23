@@ -87,6 +87,7 @@ import { TemplateEditorPopup } from "./components/TemplateEditorPopup";
 import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
+import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { generateUUID } from "./utils/measurements";
@@ -209,7 +210,7 @@ export const PDFEditorContent: React.FC = () => {
   });
   // View state
   const [viewState, setViewState] = useState<ViewState>({
-    currentView: "original",
+    currentView: "split",
     zoomMode: "page",
     containerWidth: 0,
     isCtrlPressed: false,
@@ -4041,7 +4042,7 @@ export const PDFEditorContent: React.FC = () => {
         <div className="flex-1 flex overflow-hidden relative bg-white">
           {/* Left side - Document Content */}
           <div className={`flex flex-col overflow-hidden relative bg-white ${
-            viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" 
+            viewState.currentView === "split" && (viewState.currentWorkflowStep === "translate" || viewState.currentWorkflowStep === "final-layout")
               ? "flex-1" 
               : "flex-1"
           }`}>
@@ -4200,13 +4201,13 @@ export const PDFEditorContent: React.FC = () => {
                   )}px`,
                   width: `${Math.max(
                     100,
-                    viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
+                    viewState.currentView === "split" && viewState.currentWorkflowStep == "layout"
                       ? documentState.pageWidth * documentState.scale * 2 + 100 // Double width for split view plus gap and padding
                       : documentState.pageWidth * documentState.scale + 80
                   )}px`,
                   minWidth: `${Math.max(
                     100,
-                    viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
+                    viewState.currentView === "split" && viewState.currentWorkflowStep == "layout"
                       ? documentState.pageWidth * documentState.scale * 2 + 100
                       : documentState.pageWidth * documentState.scale + 80
                   )}px`,
@@ -4278,12 +4279,12 @@ export const PDFEditorContent: React.FC = () => {
                   }}
                   style={{
                     width:
-                      viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
+                      viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate" && viewState.currentWorkflowStep !== "final-layout"
                         ? documentState.pageWidth * documentState.scale * 2 + 20 // Double width plus gap for split view
                         : documentState.pageWidth * documentState.scale,
                     height: documentState.pageHeight * documentState.scale,
                     minWidth:
-                      viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
+                      viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate" && viewState.currentWorkflowStep !== "final-layout"
                         ? documentState.pageWidth * documentState.scale * 2 + 20
                         : documentState.pageWidth * documentState.scale,
                     minHeight: documentState.pageHeight * documentState.scale,
@@ -4396,8 +4397,8 @@ export const PDFEditorContent: React.FC = () => {
                   {/* Translated Document View */}
                   {viewState.currentView === "translated" && (
                     <>
-                      {/* Show translation table view when in translate workflow step */}
-                      {viewState.currentWorkflowStep === "layout" && (
+                      {/* Show normal document layout when in layout or final-layout workflow step */}
+                      {(viewState.currentWorkflowStep === "layout" || viewState.currentWorkflowStep === "final-layout") && (
                         /* Show normal document layout when in layout workflow step */
                         <DocumentPanel
                           viewType="translated"
@@ -4798,8 +4799,8 @@ export const PDFEditorContent: React.FC = () => {
 
                       {/* Translated Document Side */}
                       <div style={{ position: "relative" }}>
-                        {/* Show translation table view when in translate workflow step */}
-                        {viewState.currentWorkflowStep === "layout" && (
+                        {/* Show normal document layout when in layout or final-layout workflow step */}
+                        {(viewState.currentWorkflowStep === "layout") && (
                           /* Show normal document layout when in layout workflow step */
                           <DocumentPanel
                             viewType="translated"
@@ -4933,7 +4934,7 @@ export const PDFEditorContent: React.FC = () => {
                           />
                         )}
                         {/* Interactive elements overlay for Translated in Split View - only show in layout mode */}
-                        {viewState.currentWorkflowStep !== "translate" && (
+                        {viewState.currentWorkflowStep === "layout" && (
                           <div
                             className="absolute top-0 left-0 interactive-elements-wrapper"
                             style={{
@@ -5472,8 +5473,8 @@ export const PDFEditorContent: React.FC = () => {
           </div>
           
           {/* Right Sidebar - TranslationTableView when in translate workflow and split view */}
-          {viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" && (
-            <div className="w-[50%] bg-blue-50 border-l border-blue-200 overflow-hidden flex-shrink-0">
+          {documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" && (
+            <div className="w-[40%] bg-blue-50 border-l border-blue-200 overflow-hidden flex-shrink-0">
               <TranslationTableView
                 translatedTextBoxes={getCurrentTextBoxes("translated")}
                 untranslatedTexts={elementCollections.untranslatedTexts}
@@ -5487,6 +5488,20 @@ export const PDFEditorContent: React.FC = () => {
                 pageHeight={documentState.pageHeight}
                 scale={1}
                 currentPage={documentState.currentPage}
+              />
+            </div>
+          )}
+
+          {/* Right Sidebar - FinalLayoutSettings when in final-layout workflow and split view */}
+          {viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" && (
+            <div className="w-[35%] bg-gray-50 border-l border-gray-200 overflow-hidden flex-shrink-0">
+              <FinalLayoutSettings
+                currentPage={documentState.currentPage}
+                totalPages={documentState.numPages}
+                capturedSnapshots={capturedSnapshots}
+                isCapturingSnapshots={isCapturingSnapshots}
+                onExportPDF={exportToPDF}
+                onSaveProject={saveProject}
               />
             </div>
           )}
