@@ -88,6 +88,7 @@ import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
 
@@ -4861,6 +4862,16 @@ export const PDFEditorContent: React.FC = () => {
         isSettings={true}
         onSave={handleSettingsSave}
         onBack={handleSettingsBack}
+      />
+
+      {/* Bulk OCR Loading Modal */}
+      <LoadingModal
+        isOpen={isBulkOcrRunning}
+        title="Transforming Pages"
+        message="Please wait while we transform all pages. This may take a few moments..."
+        progress={bulkOcrProgress}
+        onCancel={handleCancelBulkOcr}
+        cancelText="Cancel Transformation"
       />
     </div>
   );
