@@ -1108,25 +1108,23 @@ export const PDFEditorContent: React.FC = () => {
         // Calculate layout dimensions (matching the PDF creation logic)
         const pageWidth = 612; // Letter size in points
         const pageHeight = 792;
-        const margin = 20;
-        const gridSpacing = 10;
-        const availableWidth = pageWidth - margin * 2;
-        const availableHeight = pageHeight - margin * 2;
-        const quadrantWidth = (availableWidth - gridSpacing) / 2;
-        const quadrantHeight = (availableHeight - gridSpacing) / 2;
-
-        // Convert points to pixels (assuming 96 DPI)
-        const pointsToPixels = (points: number) => (points * 96) / 72;
+        const gridMargin = 10;
+        const gridSpacing = 8;
+        const labelSpace = 15;
+        const availableWidth = pageWidth - gridMargin * 2;
+        const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
+        const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
+        const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
 
         // Add first snapshot's images (top row)
         if (snapshot1) {
           // Original image (top-left)
           const originalImageId = handleAddImageWithUndo(
             snapshot1.originalImage,
-            pointsToPixels(margin),
-            pointsToPixels(margin),
-            pointsToPixels(quadrantWidth),
-            pointsToPixels(quadrantHeight),
+            gridMargin,
+            pageHeight - labelSpace - quadrantHeight,
+            quadrantWidth,
+            quadrantHeight,
             pageNumber,
             "original"
           );
@@ -1134,10 +1132,10 @@ export const PDFEditorContent: React.FC = () => {
           // Translated image (top-right)
           const translatedImageId = handleAddImageWithUndo(
             snapshot1.translatedImage,
-            pointsToPixels(margin + quadrantWidth + gridSpacing),
-            pointsToPixels(margin),
-            pointsToPixels(quadrantWidth),
-            pointsToPixels(quadrantHeight),
+            gridMargin + quadrantWidth + gridSpacing,
+            pageHeight - labelSpace - quadrantHeight,
+            quadrantWidth,
+            quadrantHeight,
             pageNumber,
             "original"
           );
@@ -1145,17 +1143,17 @@ export const PDFEditorContent: React.FC = () => {
           // Add dividing line between original and translated (vertical)
           const verticalLineId = handleAddShapeWithUndo(
             "line",
-            pointsToPixels(margin + quadrantWidth + gridSpacing / 2),
-            pointsToPixels(margin),
+            gridMargin + quadrantWidth + gridSpacing / 2,
+            gridMargin,
             2, // width
-            pointsToPixels(quadrantHeight), // height
+            pageHeight - labelSpace, // height
             pageNumber,
             "original",
             "original",
-            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x1
-            pointsToPixels(margin), // y1
-            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x2
-            pointsToPixels(margin + quadrantHeight) // y2
+            gridMargin + quadrantWidth + gridSpacing / 2, // x1
+            gridMargin, // y1
+            gridMargin + quadrantWidth + gridSpacing / 2, // x2
+            pageHeight - labelSpace // y2
           );
         }
 
@@ -1164,10 +1162,10 @@ export const PDFEditorContent: React.FC = () => {
           // Original image (bottom-left)
           const originalImageId2 = handleAddImageWithUndo(
             snapshot2.originalImage,
-            pointsToPixels(margin),
-            pointsToPixels(margin + quadrantHeight + gridSpacing),
-            pointsToPixels(quadrantWidth),
-            pointsToPixels(quadrantHeight),
+            gridMargin,
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
+            quadrantWidth,
+            quadrantHeight,
             pageNumber,
             "original"
           );
@@ -1175,10 +1173,10 @@ export const PDFEditorContent: React.FC = () => {
           // Translated image (bottom-right)
           const translatedImageId2 = handleAddImageWithUndo(
             snapshot2.translatedImage,
-            pointsToPixels(margin + quadrantWidth + gridSpacing),
-            pointsToPixels(margin + quadrantHeight + gridSpacing),
-            pointsToPixels(quadrantWidth),
-            pointsToPixels(quadrantHeight),
+            gridMargin + quadrantWidth + gridSpacing,
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
+            quadrantWidth,
+            quadrantHeight,
             pageNumber,
             "original"
           );
@@ -1186,17 +1184,17 @@ export const PDFEditorContent: React.FC = () => {
           // Add dividing line between original and translated (vertical, bottom row)
           const verticalLineId2 = handleAddShapeWithUndo(
             "line",
-            pointsToPixels(margin + quadrantWidth + gridSpacing / 2),
-            pointsToPixels(margin + quadrantHeight + gridSpacing),
+            gridMargin + quadrantWidth + gridSpacing / 2,
+            pageHeight - labelSpace - quadrantHeight,
             2, // width
-            pointsToPixels(quadrantHeight), // height
+            quadrantHeight, // height
             pageNumber,
             "original",
             "original",
-            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x1
-            pointsToPixels(margin + quadrantHeight + gridSpacing), // y1
-            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x2
-            pointsToPixels(margin + quadrantHeight * 2 + gridSpacing) // y2
+            gridMargin + quadrantWidth + gridSpacing / 2, // x1
+            pageHeight - labelSpace - quadrantHeight, // y1
+            gridMargin + quadrantWidth + gridSpacing / 2, // x2
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing // y2
           );
         }
 
@@ -1204,17 +1202,17 @@ export const PDFEditorContent: React.FC = () => {
         if (snapshot2) {
           const horizontalLineId = handleAddShapeWithUndo(
             "line",
-            pointsToPixels(margin),
-            pointsToPixels(margin + quadrantHeight + gridSpacing / 2),
-            pointsToPixels(availableWidth), // width
+            gridMargin,
+            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2,
+            availableWidth, // width
             2, // height
             pageNumber,
             "original",
             "original",
-            pointsToPixels(margin), // x1
-            pointsToPixels(margin + quadrantHeight + gridSpacing / 2), // y1
-            pointsToPixels(margin + availableWidth), // x2
-            pointsToPixels(margin + quadrantHeight + gridSpacing / 2) // y2
+            gridMargin, // x1
+            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2, // y1
+            gridMargin + availableWidth, // x2
+            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2 // y2
           );
         }
       }

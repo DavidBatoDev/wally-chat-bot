@@ -258,22 +258,23 @@ export async function createFinalLayoutPdf(
       const snapshot1 = snapshots[pdfPageIndex * 2];
       const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
 
-      // Calculate grid layout
-      const margin = 20;
-      const gridSpacing = 10;
-      const availableWidth = pageWidth - margin * 2;
-      const availableHeight = pageHeight - margin * 2;
+      // Calculate grid layout to match export PDF function
+      const gridMargin = 10;
+      const gridSpacing = 8;
+      const labelSpace = 15;
+      const availableWidth = pageWidth - gridMargin * 2;
+      const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
 
-      const quadrantWidth = (availableWidth - gridSpacing) / 2;
-      const quadrantHeight = (availableHeight - gridSpacing) / 2;
+      const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
+      const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
 
       // Add first snapshot (top row)
       if (snapshot1) {
         await addSnapshotToPage(page, pdfDoc, snapshot1, {
-          originalX: margin,
-          originalY: pageHeight - margin - quadrantHeight,
-          translatedX: margin + quadrantWidth + gridSpacing,
-          translatedY: pageHeight - margin - quadrantHeight,
+          originalX: gridMargin,
+          originalY: pageHeight - labelSpace - quadrantHeight,
+          translatedX: gridMargin + quadrantWidth + gridSpacing,
+          translatedY: pageHeight - labelSpace - quadrantHeight,
           quadrantWidth,
           quadrantHeight,
         });
@@ -282,10 +283,11 @@ export async function createFinalLayoutPdf(
       // Add second snapshot (bottom row) if it exists
       if (snapshot2) {
         await addSnapshotToPage(page, pdfDoc, snapshot2, {
-          originalX: margin,
-          originalY: pageHeight - margin - quadrantHeight * 2 - gridSpacing,
-          translatedX: margin + quadrantWidth + gridSpacing,
-          translatedY: pageHeight - margin - quadrantHeight * 2 - gridSpacing,
+          originalX: gridMargin,
+          originalY: pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
+          translatedX: gridMargin + quadrantWidth + gridSpacing,
+          translatedY:
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
           quadrantWidth,
           quadrantHeight,
         });
