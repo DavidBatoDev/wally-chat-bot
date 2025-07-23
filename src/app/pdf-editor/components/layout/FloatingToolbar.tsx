@@ -130,7 +130,8 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               disabled={!shouldEnableControls}
               className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 flex items-center gap-1 ${
                 toolState.shapeDrawingMode === "rectangle" ||
-                toolState.shapeDrawingMode === "circle"
+                toolState.shapeDrawingMode === "circle" ||
+                toolState.shapeDrawingMode === "line"
                   ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
                   : "text-gray-700 hover:text-blue-600"
               } ${
@@ -140,6 +141,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             >
               {toolState.shapeDrawingMode === "circle" ? (
                 <Circle className="w-5 h-5" />
+              ) : toolState.shapeDrawingMode === "line" ? (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="4" y1="20" x2="20" y2="4" />
+                </svg>
               ) : (
                 <Square className="w-5 h-5" />
               )}
@@ -182,6 +187,25 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                 >
                   <Circle className="w-4 h-4" />
                   Circle
+                </button>
+                <button
+                  onClick={() => {
+                    onToolChange(
+                      "line",
+                      toolState.shapeDrawingMode !== "line"
+                    );
+                    setIsShapeMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-blue-50 transition-colors ${
+                    toolState.shapeDrawingMode === "line"
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-gray-700"
+                  }`}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="4" y1="20" x2="20" y2="4" />
+                  </svg>
+                  Line
                 </button>
               </div>
             )}

@@ -110,6 +110,21 @@ export const useToolHandlers = ({
           }));
         }
         break;
+      case "line":
+        if (enabled) {
+          setToolState((prev) => ({
+            ...prev,
+            shapeDrawingMode: "line",
+            selectedShapeType: "line",
+          }));
+          setEditorState((prev) => ({
+            ...prev,
+            isAddTextBoxMode: false,
+            isTextSelectionMode: false,
+            isSelectionMode: false,
+          }));
+        }
+        break;
       case "erasure":
         if (enabled) {
           setErasureState((prev) => ({

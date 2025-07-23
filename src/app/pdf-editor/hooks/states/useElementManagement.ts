@@ -382,29 +382,41 @@ export const useElementManagement = () => {
 
   const addShape = useCallback(
     (
-      type: "circle" | "rectangle",
+      type: "circle" | "rectangle" | "line",
       x: number,
       y: number,
       width: number,
       height: number,
       currentPage: number,
       currentView: ViewMode,
-      targetView?: "original" | "translated"
+      targetView?: "original" | "translated",
+      // Line-specific parameters
+      x1?: number,
+      y1?: number,
+      x2?: number,
+      y2?: number
     ) => {
       const newShape: Shape = {
         id: generateUUID(),
         type,
-        x,
-        y,
-        width,
-        height,
+        x: type === "line" ? 0 : x, // For lines, bounding box position is calculated from coordinates
+        y: type === "line" ? 0 : y,
+        width: type === "line" ? 0 : width, // For lines, dimensions are calculated from coordinates
+        height: type === "line" ? 0 : height,
         page: currentPage,
         borderColor: "#000000",
-        borderWidth: 2,
+        borderWidth: type === "line" ? 3 : 2, // Default thicker line for better visibility
         fillColor: "#ffffff",
-        fillOpacity: 0.5,
+        fillOpacity: type === "line" ? 0 : 0.5, // Lines don't need fill
         rotation: 0,
         borderRadius: type === "rectangle" ? 0 : undefined,
+        // Line-specific coordinates
+        ...(type === "line" && x1 !== undefined && y1 !== undefined && x2 !== undefined && y2 !== undefined ? {
+          x1,
+          y1,
+          x2,
+          y2,
+        } : {}),
       };
 
       const shouldAddToTranslated =

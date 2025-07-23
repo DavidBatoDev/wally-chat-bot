@@ -21,14 +21,19 @@ interface UseShapeDrawingHandlersProps {
   };
   documentRef: React.RefObject<HTMLDivElement | null>;
   handleAddShapeWithUndo: (
-    type: "circle" | "rectangle",
+    type: "circle" | "rectangle" | "line",
     x: number,
     y: number,
     width: number,
     height: number,
     page: number,
     view: ViewMode,
-    targetView?: "original" | "translated"
+    targetView?: "original" | "translated",
+    // Line-specific parameters
+    x1?: number,
+    y1?: number,
+    x2?: number,
+    y2?: number
   ) => string | null;
 }
 
@@ -140,21 +145,40 @@ export const useShapeDrawingHandlers = ({
     )
       return;
 
-    const width = Math.abs(
-      toolState.shapeDrawEnd.x - toolState.shapeDrawStart.x
-    );
-    const height = Math.abs(
-      toolState.shapeDrawEnd.y - toolState.shapeDrawStart.y
-    );
+    if (toolState.shapeDrawingMode === "line") {
+      // For lines, use direct coordinates without minimum size constraint
+      const targetView = toolState.shapeDrawTargetView || viewState.currentView;
+      handleAddShapeWithUndo(
+        "line",
+        0, // Not used for lines
+        0, // Not used for lines
+        0, // Not used for lines
+        0, // Not used for lines
+        documentState.currentPage,
+        viewState.currentView,
+        toolState.shapeDrawTargetView || undefined,
+        // Line coordinates
+        toolState.shapeDrawStart.x,
+        toolState.shapeDrawStart.y,
+        toolState.shapeDrawEnd.x,
+        toolState.shapeDrawEnd.y
+      );
+    } else {
+      // For rectangles and circles, use bounding box
+      const width = Math.abs(
+        toolState.shapeDrawEnd.x - toolState.shapeDrawStart.x
+      );
+      const height = Math.abs(
+        toolState.shapeDrawEnd.y - toolState.shapeDrawStart.y
+      );
 
-    if (width > 10 && height > 10) {
-      const x = Math.min(toolState.shapeDrawStart.x, toolState.shapeDrawEnd.x);
-      const y = Math.min(toolState.shapeDrawStart.y, toolState.shapeDrawEnd.y);
+      if (width > 10 && height > 10) {
+        const x = Math.min(toolState.shapeDrawStart.x, toolState.shapeDrawEnd.x);
+        const y = Math.min(toolState.shapeDrawStart.y, toolState.shapeDrawEnd.y);
 
-      if (toolState.shapeDrawingMode) {
         const targetView = toolState.shapeDrawTargetView || viewState.currentView;
         handleAddShapeWithUndo(
-          toolState.shapeDrawingMode,
+          toolState.shapeDrawingMode as "circle" | "rectangle",
           x,
           y,
           width,

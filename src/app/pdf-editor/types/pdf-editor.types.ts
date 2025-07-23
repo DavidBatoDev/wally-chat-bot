@@ -62,7 +62,7 @@ export interface TextField {
 // Shape interface
 export interface Shape {
   id: string;
-  type: "circle" | "rectangle";
+  type: "circle" | "rectangle" | "line";
   x: number;
   y: number;
   width: number;
@@ -74,6 +74,11 @@ export interface Shape {
   fillOpacity: number;
   rotation?: number;
   borderRadius?: number;
+  // Line-specific properties
+  x1?: number; // Start point x coordinate (for lines)
+  y1?: number; // Start point y coordinate (for lines)
+  x2?: number; // End point x coordinate (for lines)
+  y2?: number; // End point y coordinate (for lines)
 }
 
 // Image interface
@@ -147,8 +152,8 @@ export interface EditorState {
 
 // Tool state types
 export interface ToolState {
-  shapeDrawingMode: "circle" | "rectangle" | null;
-  selectedShapeType: "circle" | "rectangle";
+  shapeDrawingMode: "circle" | "rectangle" | "line" | null;
+  selectedShapeType: "circle" | "rectangle" | "line";
   isDrawingShape: boolean;
   shapeDrawStart: { x: number; y: number } | null;
   shapeDrawEnd: { x: number; y: number } | null;
