@@ -1095,6 +1095,31 @@ export const PDFEditorContent: React.FC = () => {
     setViewState,
   ]);
 
+  // Helper function to calculate image dimensions that fit within quadrant while maintaining aspect ratio
+  const calculateFittedImageDimensions = useCallback(
+    (originalWidth: number, originalHeight: number, maxWidth: number, maxHeight: number) => {
+      // Calculate aspect ratios
+      const imageAspectRatio = originalWidth / originalHeight;
+      const quadrantAspectRatio = maxWidth / maxHeight;
+
+      let fitWidth: number;
+      let fitHeight: number;
+
+      if (imageAspectRatio > quadrantAspectRatio) {
+        // Image is wider relative to quadrant - fit by width
+        fitWidth = maxWidth;
+        fitHeight = maxWidth / imageAspectRatio;
+      } else {
+        // Image is taller relative to quadrant - fit by height
+        fitHeight = maxHeight;
+        fitWidth = maxHeight * imageAspectRatio;
+      }
+
+      return { width: fitWidth, height: fitHeight };
+    },
+    []
+  );
+
   // Function to add interactive elements (images and lines) to the final layout
   const addInteractiveElementsToLayout = useCallback(
     async (snapshots: SnapshotData[]) => {
@@ -1118,24 +1143,48 @@ export const PDFEditorContent: React.FC = () => {
 
         // Add first snapshot's images (top row)
         if (snapshot1) {
-          // Original image (top-left)
+          // Calculate fitted dimensions for original image
+          const originalDimensions = calculateFittedImageDimensions(
+            snapshot1.originalWidth,
+            snapshot1.originalHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate fitted dimensions for translated image
+          const translatedDimensions = calculateFittedImageDimensions(
+            snapshot1.translatedWidth,
+            snapshot1.translatedHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate centering offsets for original image
+          const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
+          const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
+
+          // Calculate centering offsets for translated image
+          const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
+          const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
+
+          // Original image (top-left, centered in quadrant)
           const originalImageId = handleAddImageWithUndo(
             snapshot1.originalImage,
-            gridMargin,
-            pageHeight - labelSpace - quadrantHeight,
-            quadrantWidth,
-            quadrantHeight,
+            gridMargin + originalOffsetX,
+            pageHeight - labelSpace - quadrantHeight + originalOffsetY,
+            originalDimensions.width,
+            originalDimensions.height,
             pageNumber,
             "original"
           );
 
-          // Translated image (top-right)
+          // Translated image (top-right, centered in quadrant)
           const translatedImageId = handleAddImageWithUndo(
             snapshot1.translatedImage,
-            gridMargin + quadrantWidth + gridSpacing,
-            pageHeight - labelSpace - quadrantHeight,
-            quadrantWidth,
-            quadrantHeight,
+            gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
+            pageHeight - labelSpace - quadrantHeight + translatedOffsetY,
+            translatedDimensions.width,
+            translatedDimensions.height,
             pageNumber,
             "original"
           );
@@ -1159,24 +1208,48 @@ export const PDFEditorContent: React.FC = () => {
 
         // Add second snapshot's images (bottom row) if it exists
         if (snapshot2) {
-          // Original image (bottom-left)
+          // Calculate fitted dimensions for original image
+          const originalDimensions2 = calculateFittedImageDimensions(
+            snapshot2.originalWidth,
+            snapshot2.originalHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate fitted dimensions for translated image
+          const translatedDimensions2 = calculateFittedImageDimensions(
+            snapshot2.translatedWidth,
+            snapshot2.translatedHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate centering offsets for original image
+          const originalOffsetX2 = (quadrantWidth - originalDimensions2.width) / 2;
+          const originalOffsetY2 = (quadrantHeight - originalDimensions2.height) / 2;
+
+          // Calculate centering offsets for translated image
+          const translatedOffsetX2 = (quadrantWidth - translatedDimensions2.width) / 2;
+          const translatedOffsetY2 = (quadrantHeight - translatedDimensions2.height) / 2;
+
+          // Original image (bottom-left, centered in quadrant)
           const originalImageId2 = handleAddImageWithUndo(
             snapshot2.originalImage,
-            gridMargin,
-            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
-            quadrantWidth,
-            quadrantHeight,
+            gridMargin + originalOffsetX2,
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY2,
+            originalDimensions2.width,
+            originalDimensions2.height,
             pageNumber,
             "original"
           );
 
-          // Translated image (bottom-right)
+          // Translated image (bottom-right, centered in quadrant)
           const translatedImageId2 = handleAddImageWithUndo(
             snapshot2.translatedImage,
-            gridMargin + quadrantWidth + gridSpacing,
-            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
-            quadrantWidth,
-            quadrantHeight,
+            gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY2,
+            translatedDimensions2.width,
+            translatedDimensions2.height,
             pageNumber,
             "original"
           );
@@ -1217,7 +1290,7 @@ export const PDFEditorContent: React.FC = () => {
         }
       }
     },
-    [handleAddImageWithUndo, handleAddShapeWithUndo]
+    [handleAddImageWithUndo, handleAddShapeWithUndo, calculateFittedImageDimensions]
   );
 
   // Workflow step change handler
