@@ -91,6 +91,11 @@ import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighligh
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
+import {
+  captureAllPageSnapshots,
+  createFinalLayoutPdf,
+  SnapshotData,
+} from "./services/snapshotService";
 
 // Import utilities
 import { isPdfFile, measureText } from "./utils/measurements";
@@ -321,6 +326,31 @@ export const PDFEditorContent: React.FC = () => {
   const [highlightedUntranslatedTextId, setHighlightedUntranslatedTextId] =
     useState<string | null>(null);
 
+  // Backup state for final-layout workflow step
+  const [preLayoutBackup, setPreLayoutBackup] = useState<{
+    documentState: any;
+    elementCollections: any;
+    layerState: any;
+    editorState: any;
+    toolState: any;
+    erasureState: any;
+    pageState: any;
+  } | null>(null);
+
+  // Snapshot capturing state for final layout
+  const [isCapturingSnapshots, setIsCapturingSnapshots] = useState(false);
+  const [isCancellingSnapshots, setIsCancellingSnapshots] = useState(false);
+  const [snapshotProgress, setSnapshotProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+  const [capturedSnapshots, setCapturedSnapshots] = useState<SnapshotData[]>(
+    []
+  );
+  const snapshotCancelRef = useRef<{ cancelled: boolean }>({
+    cancelled: false,
+  });
+
   ///////////////////////// HOOKS /////////////////////////
   // Debounce timer for batched updates
   const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({});
@@ -531,14 +561,14 @@ export const PDFEditorContent: React.FC = () => {
         viewState.currentView,
         documentState.currentPage
       );
-      
+
       if (duplicatedId) {
         // Select the newly duplicated textbox
         setSelectedElementId(duplicatedId);
         setSelectedElementType("textbox");
         setIsDrawerOpen(true);
         setAutoFocusTextBoxId(duplicatedId);
-        
+
         // Update editor state to select the duplicated textbox
         setEditorState((prev) => ({
           ...prev,
@@ -563,13 +593,89 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
-  // Workflow step change handler
-  const handleWorkflowStepChange = useCallback((step: WorkflowStep) => {
-    setViewState((prev) => ({
-      ...prev,
-      currentWorkflowStep: step,
-    }));
-  }, []);
+  // Function to create a backup of current state before final layout
+  const createPreLayoutBackup = useCallback(() => {
+    const backup = {
+      documentState: { ...documentState },
+      elementCollections: {
+        originalTextBoxes: [...elementCollections.originalTextBoxes],
+        originalShapes: [...elementCollections.originalShapes],
+        originalDeletionRectangles: [
+          ...elementCollections.originalDeletionRectangles,
+        ],
+        originalImages: [...elementCollections.originalImages],
+        translatedTextBoxes: [...elementCollections.translatedTextBoxes],
+        translatedShapes: [...elementCollections.translatedShapes],
+        translatedDeletionRectangles: [
+          ...elementCollections.translatedDeletionRectangles,
+        ],
+        translatedImages: [...elementCollections.translatedImages],
+        untranslatedTexts: [...elementCollections.untranslatedTexts],
+      },
+      layerState: {
+        originalLayerOrder: [...layerState.originalLayerOrder],
+        translatedLayerOrder: [...layerState.translatedLayerOrder],
+      },
+      editorState: { ...editorState },
+      toolState: { ...toolState },
+      erasureState: { ...erasureState },
+      pageState: { ...pageState },
+    };
+    setPreLayoutBackup(backup);
+  }, [
+    documentState,
+    elementCollections,
+    layerState,
+    editorState,
+    toolState,
+    erasureState,
+    pageState,
+  ]);
+
+  // Function to restore state from backup
+  const restoreFromPreLayoutBackup = useCallback(() => {
+    if (!preLayoutBackup) return;
+
+    try {
+      // Restore document state
+      setDocumentState(preLayoutBackup.documentState);
+
+      // Restore element collections
+      setElementCollections(preLayoutBackup.elementCollections);
+
+      // Restore layer state
+      setLayerState(preLayoutBackup.layerState);
+
+      // Restore editor state
+      setEditorState(preLayoutBackup.editorState);
+
+      // Restore tool state
+      setToolState(preLayoutBackup.toolState);
+
+      // Restore erasure state
+      setErasureState(preLayoutBackup.erasureState);
+
+      // Restore page state
+      setPageState(preLayoutBackup.pageState);
+
+      // Clear the backup after restoring to free memory
+      setPreLayoutBackup(null);
+
+      toast.success("Restored previous document state");
+    } catch (error) {
+      console.error("Error restoring backup:", error);
+      toast.error("Failed to restore previous state");
+    }
+  }, [
+    preLayoutBackup,
+    setDocumentState,
+    setElementCollections,
+    setLayerState,
+    setEditorState,
+    setToolState,
+    setErasureState,
+    setPageState,
+  ]);
 
   // Helper function to get element by ID and type
   const getElementById = useCallback(
@@ -780,6 +886,384 @@ export const PDFEditorContent: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const appendFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Function to capture snapshots and create final layout pages with interactive elements
+  const createFinalLayoutWithSnapshots = useCallback(async () => {
+    // Prevent multiple simultaneous operations
+    if (isCapturingSnapshots) {
+      console.warn("Snapshot capture already in progress, skipping...");
+      return;
+    }
+
+    try {
+      setIsCapturingSnapshots(true);
+      setIsCancellingSnapshots(false);
+      setSnapshotProgress({ current: 0, total: 0 });
+      snapshotCancelRef.current.cancelled = false;
+
+      // Capture all page snapshots with cancellation support
+      const snapshots = await captureAllPageSnapshots({
+        documentRef,
+        documentState,
+        pageState,
+        setViewState,
+        setDocumentState,
+        setEditorState,
+        editorState,
+        progressCallback: (current, total) => {
+          if (snapshotCancelRef.current.cancelled) {
+            throw new Error("Snapshot capture cancelled");
+          }
+          setSnapshotProgress({ current, total });
+        },
+      });
+
+      // Check if cancelled during capture
+      if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        return;
+      }
+
+      setCapturedSnapshots(snapshots);
+
+      // Create final layout PDF with snapshots
+      const finalLayoutFile = await createFinalLayoutPdf(snapshots);
+
+      // Check if cancelled after PDF creation
+      if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        return;
+      }
+
+      // Clear all existing elements and state first
+      setElementCollections({
+        originalTextBoxes: [],
+        originalShapes: [],
+        originalDeletionRectangles: [],
+        originalImages: [],
+        translatedTextBoxes: [],
+        translatedShapes: [],
+        translatedDeletionRectangles: [],
+        translatedImages: [],
+        untranslatedTexts: [],
+      });
+
+      // Clear layer order
+      setLayerState({
+        originalLayerOrder: [],
+        translatedLayerOrder: [],
+      });
+
+      // Clear editor state
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: null,
+        selectedShapeId: null,
+        isEditMode: false,
+        isAddTextBoxMode: false,
+        isTextSelectionMode: false,
+        showDeletionRectangles: false,
+        isImageUploadMode: false,
+        selectedTextBoxes: { textBoxIds: [] },
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        selectionRect: null,
+        multiSelection: {
+          selectedElements: [],
+          selectionBounds: null,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+          isMovingSelection: false,
+          moveStart: null,
+          targetView: null,
+        },
+        isSelectionMode: false,
+      }));
+
+      // Clear tool state
+      setToolState((prev) => ({
+        ...prev,
+        shapeDrawingMode: null,
+        selectedShapeType: "rectangle",
+        isDrawingShape: false,
+        shapeDrawStart: null,
+        shapeDrawEnd: null,
+        isDrawingInProgress: false,
+        shapeDrawTargetView: null,
+      }));
+
+      // Clear erasure state
+      setErasureState((prev) => ({
+        ...prev,
+        isErasureMode: false,
+        isDrawingErasure: false,
+        erasureDrawStart: null,
+        erasureDrawEnd: null,
+        erasureDrawTargetView: null,
+      }));
+
+      // Load the final layout PDF as the document with error handling
+      try {
+        // Add a small delay to ensure previous operations are complete
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Check for cancellation before loading
+        if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+          return;
+        }
+
+        await actions.loadDocument(finalLayoutFile);
+        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+
+        // Add another small delay before adding interactive elements
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Check for cancellation again
+        if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+          return;
+        }
+
+        // Add interactive elements to the layout pages
+        await addInteractiveElementsToLayout(snapshots);
+
+        toast.success("Created final layout with interactive snapshots");
+      } catch (loadError) {
+        console.error("Error loading final layout document:", loadError);
+
+        // Handle specific PDF.js worker errors
+        if (loadError instanceof Error) {
+          if (
+            loadError.message.includes("sendWithPromise") ||
+            loadError.message.includes("worker")
+          ) {
+            toast.error(
+              "PDF worker error occurred. Please refresh the page and try again."
+            );
+          } else {
+            toast.error(
+              `Created layout but failed to load document: ${loadError.message}`
+            );
+          }
+        } else {
+          toast.error(
+            "Created layout but failed to load document. Please try refreshing."
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error creating final layout:", error);
+
+      // Handle different types of errors
+      if (!snapshotCancelRef.current.cancelled && !isCancellingSnapshots) {
+        if (error instanceof Error) {
+          if (error.message.includes("cancelled")) {
+            toast.info("Snapshot capture cancelled");
+          } else if (
+            error.message.includes("sendWithPromise") ||
+            error.message.includes("worker")
+          ) {
+            toast.error(
+              "PDF worker error occurred. Please refresh the page and try again."
+            );
+          } else {
+            toast.error(`Failed to create final layout: ${error.message}`);
+          }
+        } else {
+          toast.error("Failed to create final layout due to an unknown error");
+        }
+      } else {
+        toast.info("Snapshot capture cancelled");
+      }
+    } finally {
+      setIsCapturingSnapshots(false);
+      setIsCancellingSnapshots(false);
+      setSnapshotProgress({ current: 0, total: 0 });
+      snapshotCancelRef.current.cancelled = false;
+    }
+  }, [
+    isCapturingSnapshots,
+    isCancellingSnapshots,
+    documentState,
+    pageState,
+    editorState,
+    actions,
+    setElementCollections,
+    setLayerState,
+    setEditorState,
+    setToolState,
+    setErasureState,
+    setViewState,
+  ]);
+
+  // Function to add interactive elements (images and lines) to the final layout
+  const addInteractiveElementsToLayout = useCallback(
+    async (snapshots: SnapshotData[]) => {
+      const pagesNeeded = Math.ceil(snapshots.length / 2);
+
+      for (let pdfPageIndex = 0; pdfPageIndex < pagesNeeded; pdfPageIndex++) {
+        const pageNumber = pdfPageIndex + 1;
+        const snapshot1 = snapshots[pdfPageIndex * 2];
+        const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
+
+        // Calculate layout dimensions (matching the PDF creation logic)
+        const pageWidth = 612; // Letter size in points
+        const pageHeight = 792;
+        const margin = 20;
+        const gridSpacing = 10;
+        const availableWidth = pageWidth - margin * 2;
+        const availableHeight = pageHeight - margin * 2;
+        const quadrantWidth = (availableWidth - gridSpacing) / 2;
+        const quadrantHeight = (availableHeight - gridSpacing) / 2;
+
+        // Convert points to pixels (assuming 96 DPI)
+        const pointsToPixels = (points: number) => (points * 96) / 72;
+
+        // Add first snapshot's images (top row)
+        if (snapshot1) {
+          // Original image (top-left)
+          const originalImageId = handleAddImageWithUndo(
+            snapshot1.originalImage,
+            pointsToPixels(margin),
+            pointsToPixels(margin),
+            pointsToPixels(quadrantWidth),
+            pointsToPixels(quadrantHeight),
+            pageNumber,
+            "original"
+          );
+
+          // Translated image (top-right)
+          const translatedImageId = handleAddImageWithUndo(
+            snapshot1.translatedImage,
+            pointsToPixels(margin + quadrantWidth + gridSpacing),
+            pointsToPixels(margin),
+            pointsToPixels(quadrantWidth),
+            pointsToPixels(quadrantHeight),
+            pageNumber,
+            "original"
+          );
+
+          // Add dividing line between original and translated (vertical)
+          const verticalLineId = handleAddShapeWithUndo(
+            "line",
+            pointsToPixels(margin + quadrantWidth + gridSpacing / 2),
+            pointsToPixels(margin),
+            2, // width
+            pointsToPixels(quadrantHeight), // height
+            pageNumber,
+            "original",
+            "original",
+            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x1
+            pointsToPixels(margin), // y1
+            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x2
+            pointsToPixels(margin + quadrantHeight) // y2
+          );
+        }
+
+        // Add second snapshot's images (bottom row) if it exists
+        if (snapshot2) {
+          // Original image (bottom-left)
+          const originalImageId2 = handleAddImageWithUndo(
+            snapshot2.originalImage,
+            pointsToPixels(margin),
+            pointsToPixels(margin + quadrantHeight + gridSpacing),
+            pointsToPixels(quadrantWidth),
+            pointsToPixels(quadrantHeight),
+            pageNumber,
+            "original"
+          );
+
+          // Translated image (bottom-right)
+          const translatedImageId2 = handleAddImageWithUndo(
+            snapshot2.translatedImage,
+            pointsToPixels(margin + quadrantWidth + gridSpacing),
+            pointsToPixels(margin + quadrantHeight + gridSpacing),
+            pointsToPixels(quadrantWidth),
+            pointsToPixels(quadrantHeight),
+            pageNumber,
+            "original"
+          );
+
+          // Add dividing line between original and translated (vertical, bottom row)
+          const verticalLineId2 = handleAddShapeWithUndo(
+            "line",
+            pointsToPixels(margin + quadrantWidth + gridSpacing / 2),
+            pointsToPixels(margin + quadrantHeight + gridSpacing),
+            2, // width
+            pointsToPixels(quadrantHeight), // height
+            pageNumber,
+            "original",
+            "original",
+            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x1
+            pointsToPixels(margin + quadrantHeight + gridSpacing), // y1
+            pointsToPixels(margin + quadrantWidth + gridSpacing / 2), // x2
+            pointsToPixels(margin + quadrantHeight * 2 + gridSpacing) // y2
+          );
+        }
+
+        // Add horizontal dividing line between top and bottom rows (if there's a second snapshot)
+        if (snapshot2) {
+          const horizontalLineId = handleAddShapeWithUndo(
+            "line",
+            pointsToPixels(margin),
+            pointsToPixels(margin + quadrantHeight + gridSpacing / 2),
+            pointsToPixels(availableWidth), // width
+            2, // height
+            pageNumber,
+            "original",
+            "original",
+            pointsToPixels(margin), // x1
+            pointsToPixels(margin + quadrantHeight + gridSpacing / 2), // y1
+            pointsToPixels(margin + availableWidth), // x2
+            pointsToPixels(margin + quadrantHeight + gridSpacing / 2) // y2
+          );
+        }
+      }
+    },
+    [handleAddImageWithUndo, handleAddShapeWithUndo]
+  );
+
+  // Workflow step change handler
+  const handleWorkflowStepChange = useCallback(
+    (step: WorkflowStep, previousStep?: WorkflowStep) => {
+      // Get the previous step from current state if not provided
+      const prevStep = previousStep || viewState.currentWorkflowStep;
+
+      // Handle leaving final-layout step - restore backup if available
+      if (
+        prevStep === "final-layout" &&
+        step !== "final-layout" &&
+        preLayoutBackup
+      ) {
+        restoreFromPreLayoutBackup();
+      }
+
+      // Handle entering final-layout step - create backup and capture snapshots
+      if (step === "final-layout" && prevStep !== "final-layout") {
+        createPreLayoutBackup();
+        // Only start snapshot capture if not already in progress
+        if (!isCapturingSnapshots) {
+          createFinalLayoutWithSnapshots();
+        } else {
+          console.warn(
+            "Snapshot capture already in progress, not starting new capture"
+          );
+        }
+      }
+
+      setViewState((prev) => ({
+        ...prev,
+        currentWorkflowStep: step,
+      }));
+    },
+    [
+      viewState.currentWorkflowStep,
+      isCapturingSnapshots,
+      preLayoutBackup,
+      restoreFromPreLayoutBackup,
+      createPreLayoutBackup,
+      createFinalLayoutWithSnapshots,
+    ]
+  );
 
   // Text span handling hook
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
@@ -1293,6 +1777,23 @@ export const PDFEditorContent: React.FC = () => {
   useEffect(() => {
     preloadHtml2Canvas();
   }, []);
+
+  // Cleanup backup on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      setPreLayoutBackup(null);
+    };
+  }, []);
+
+  // Cleanup snapshot capture on unmount to prevent worker issues
+  useEffect(() => {
+    return () => {
+      if (isCapturingSnapshots) {
+        snapshotCancelRef.current.cancelled = true;
+        setIsCancellingSnapshots(true);
+      }
+    };
+  }, [isCapturingSnapshots]);
 
   // Memoized values
   const currentPageTextBoxes = useMemo(
@@ -2476,7 +2977,10 @@ export const PDFEditorContent: React.FC = () => {
           const x = (pageWidth - width) / 2;
           const y = (pageHeight - height) / 2;
           // Add to current view - only allow in 'original' or 'translated', not 'split'
-          const targetView = viewState.currentView === "split" ? "original" : viewState.currentView;
+          const targetView =
+            viewState.currentView === "split"
+              ? "original"
+              : viewState.currentView;
           const imageId = handleAddImageWithUndo(
             url,
             x,
@@ -3389,6 +3893,7 @@ export const PDFEditorContent: React.FC = () => {
               currentView={viewState.currentView}
               showDeletionRectangles={editorState.showDeletionRectangles}
               isSidebarCollapsed={viewState.isSidebarCollapsed}
+              currentWorkflowStep={viewState.currentWorkflowStep}
               onToolChange={handleToolChange}
               onViewChange={(view) =>
                 setViewState((prev) => ({ ...prev, currentView: view }))
@@ -3406,7 +3911,7 @@ export const PDFEditorContent: React.FC = () => {
                 }))
               }
               onImageUpload={
-                viewState.currentView !== "split" 
+                viewState.currentView !== "split"
                   ? () => imageInputRef.current?.click()
                   : undefined
               }
@@ -4628,44 +5133,74 @@ export const PDFEditorContent: React.FC = () => {
                                   toolState.shapeDrawEnd.x
                                 ) - 10,
                                 viewState.currentView === "split"
-                                  ? toolState.shapeDrawTargetView === "translated"
+                                  ? toolState.shapeDrawTargetView ===
+                                      "translated"
                                   : viewState.currentView === "translated",
                                 viewState.currentView,
                                 documentState.pageWidth,
                                 documentState.scale
                               ),
-                              top: (Math.min(
-                                toolState.shapeDrawStart.y,
-                                toolState.shapeDrawEnd.y
-                              ) - 10) * documentState.scale,
-                              width: (Math.abs(
-                                toolState.shapeDrawEnd.x -
-                                  toolState.shapeDrawStart.x
-                              ) + 20) * documentState.scale,
-                              height: (Math.abs(
-                                toolState.shapeDrawEnd.y -
-                                  toolState.shapeDrawStart.y
-                              ) + 20) * documentState.scale,
+                              top:
+                                (Math.min(
+                                  toolState.shapeDrawStart.y,
+                                  toolState.shapeDrawEnd.y
+                                ) -
+                                  10) *
+                                documentState.scale,
+                              width:
+                                (Math.abs(
+                                  toolState.shapeDrawEnd.x -
+                                    toolState.shapeDrawStart.x
+                                ) +
+                                  20) *
+                                documentState.scale,
+                              height:
+                                (Math.abs(
+                                  toolState.shapeDrawEnd.y -
+                                    toolState.shapeDrawStart.y
+                                ) +
+                                  20) *
+                                documentState.scale,
                               zIndex: 50,
                             }}
                           >
                             <line
-                              x1={(toolState.shapeDrawStart.x - Math.min(
-                                toolState.shapeDrawStart.x,
-                                toolState.shapeDrawEnd.x
-                              ) + 10) * documentState.scale}
-                              y1={(toolState.shapeDrawStart.y - Math.min(
-                                toolState.shapeDrawStart.y,
-                                toolState.shapeDrawEnd.y
-                              ) + 10) * documentState.scale}
-                              x2={(toolState.shapeDrawEnd.x - Math.min(
-                                toolState.shapeDrawStart.x,
-                                toolState.shapeDrawEnd.x
-                              ) + 10) * documentState.scale}
-                              y2={(toolState.shapeDrawEnd.y - Math.min(
-                                toolState.shapeDrawStart.y,
-                                toolState.shapeDrawEnd.y
-                              ) + 10) * documentState.scale}
+                              x1={
+                                (toolState.shapeDrawStart.x -
+                                  Math.min(
+                                    toolState.shapeDrawStart.x,
+                                    toolState.shapeDrawEnd.x
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
+                              y1={
+                                (toolState.shapeDrawStart.y -
+                                  Math.min(
+                                    toolState.shapeDrawStart.y,
+                                    toolState.shapeDrawEnd.y
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
+                              x2={
+                                (toolState.shapeDrawEnd.x -
+                                  Math.min(
+                                    toolState.shapeDrawStart.x,
+                                    toolState.shapeDrawEnd.x
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
+                              y2={
+                                (toolState.shapeDrawEnd.y -
+                                  Math.min(
+                                    toolState.shapeDrawStart.y,
+                                    toolState.shapeDrawEnd.y
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
                               stroke="#ef4444"
                               strokeWidth="2"
                               strokeDasharray="5,5"
@@ -4673,28 +5208,48 @@ export const PDFEditorContent: React.FC = () => {
                             />
                             {/* Preview anchor points */}
                             <circle
-                              cx={(toolState.shapeDrawStart.x - Math.min(
-                                toolState.shapeDrawStart.x,
-                                toolState.shapeDrawEnd.x
-                              ) + 10) * documentState.scale}
-                              cy={(toolState.shapeDrawStart.y - Math.min(
-                                toolState.shapeDrawStart.y,
-                                toolState.shapeDrawEnd.y
-                              ) + 10) * documentState.scale}
+                              cx={
+                                (toolState.shapeDrawStart.x -
+                                  Math.min(
+                                    toolState.shapeDrawStart.x,
+                                    toolState.shapeDrawEnd.x
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
+                              cy={
+                                (toolState.shapeDrawStart.y -
+                                  Math.min(
+                                    toolState.shapeDrawStart.y,
+                                    toolState.shapeDrawEnd.y
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
                               r="4"
                               fill="#3b82f6"
                               stroke="white"
                               strokeWidth="1"
                             />
                             <circle
-                              cx={(toolState.shapeDrawEnd.x - Math.min(
-                                toolState.shapeDrawStart.x,
-                                toolState.shapeDrawEnd.x
-                              ) + 10) * documentState.scale}
-                              cy={(toolState.shapeDrawEnd.y - Math.min(
-                                toolState.shapeDrawStart.y,
-                                toolState.shapeDrawEnd.y
-                              ) + 10) * documentState.scale}
+                              cx={
+                                (toolState.shapeDrawEnd.x -
+                                  Math.min(
+                                    toolState.shapeDrawStart.x,
+                                    toolState.shapeDrawEnd.x
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
+                              cy={
+                                (toolState.shapeDrawEnd.y -
+                                  Math.min(
+                                    toolState.shapeDrawStart.y,
+                                    toolState.shapeDrawEnd.y
+                                  ) +
+                                  10) *
+                                documentState.scale
+                              }
                               r="4"
                               fill="#3b82f6"
                               stroke="white"
@@ -4712,7 +5267,8 @@ export const PDFEditorContent: React.FC = () => {
                                   toolState.shapeDrawEnd.x
                                 ),
                                 viewState.currentView === "split"
-                                  ? toolState.shapeDrawTargetView === "translated"
+                                  ? toolState.shapeDrawTargetView ===
+                                      "translated"
                                   : viewState.currentView === "translated",
                                 viewState.currentView,
                                 documentState.pageWidth,
@@ -4872,6 +5428,21 @@ export const PDFEditorContent: React.FC = () => {
         progress={bulkOcrProgress}
         onCancel={handleCancelBulkOcr}
         cancelText="Cancel Transformation"
+      />
+
+      {/* Snapshot Capturing Loading Modal */}
+      <LoadingModal
+        isOpen={isCapturingSnapshots}
+        title="Creating Final Layout"
+        message="Please wait while we capture page snapshots and create the final layout..."
+        progress={snapshotProgress}
+        onCancel={() => {
+          // Cancel snapshot capturing
+          snapshotCancelRef.current.cancelled = true;
+          setIsCancellingSnapshots(true);
+          toast.info("Cancelling snapshot capture...");
+        }}
+        cancelText="Cancel"
       />
     </div>
   );

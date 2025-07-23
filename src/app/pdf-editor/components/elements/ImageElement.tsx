@@ -1,6 +1,6 @@
 import React, { memo, useCallback } from "react";
 import { Rnd } from "react-rnd";
-import { Trash2, Move } from "lucide-react";
+import { Trash2, Move, Plus, Minus } from "lucide-react";
 import { Image } from "../../types/pdf-editor.types";
 
 interface ImageElementProps {
@@ -33,6 +33,35 @@ export const MemoizedImage = memo(
         onSelect(image.id);
       },
       [image.id, onSelect]
+    );
+
+    const handleScaleUp = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const scaleStep = 0.1;
+        const newWidth = image.width * (1 + scaleStep);
+        const newHeight = image.height * (1 + scaleStep);
+        onUpdate(image.id, {
+          width: newWidth,
+          height: newHeight,
+        });
+      },
+      [image.id, image.width, image.height, onUpdate]
+    );
+
+    const handleScaleDown = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const scaleStep = 0.1;
+        const minSize = 20; // Minimum size in pixels
+        const newWidth = Math.max(minSize / scale, image.width * (1 - scaleStep));
+        const newHeight = Math.max(minSize / scale, image.height * (1 - scaleStep));
+        onUpdate(image.id, {
+          width: newWidth,
+          height: newHeight,
+        });
+      },
+      [image.id, image.width, image.height, scale, onUpdate]
     );
 
     return (
@@ -93,11 +122,28 @@ export const MemoizedImage = memo(
             </button>
           )}
 
-          {/* Move handle - only show when selected and in edit mode */}
+          {/* Move handle and scale controls - only show when selected and in edit mode */}
           {isEditMode && isSelected && (
             <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
               <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
+              </div>
+              {/* Scale controls */}
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={handleScaleDown}
+                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200"
+                  title="Scale down"
+                >
+                  <Minus size={10} />
+                </button>
+                <button
+                  onClick={handleScaleUp}
+                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200"
+                  title="Scale up"
+                >
+                  <Plus size={10} />
+                </button>
               </div>
             </div>
           )}

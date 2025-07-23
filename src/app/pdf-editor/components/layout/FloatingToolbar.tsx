@@ -28,6 +28,7 @@ interface FloatingToolbarProps {
   currentView: ViewMode;
   showDeletionRectangles: boolean;
   isSidebarCollapsed: boolean;
+  currentWorkflowStep?: string;
   onToolChange: (tool: string, enabled: boolean) => void;
   onViewChange: (view: ViewMode) => void;
   onEditModeToggle: () => void;
@@ -42,6 +43,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   currentView,
   showDeletionRectangles,
   isSidebarCollapsed,
+  currentWorkflowStep,
   onToolChange,
   onViewChange,
   onEditModeToggle,
@@ -142,7 +144,13 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               {toolState.shapeDrawingMode === "circle" ? (
                 <Circle className="w-5 h-5" />
               ) : toolState.shapeDrawingMode === "line" ? (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg
+                  className="w-5 h-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
                   <line x1="4" y1="20" x2="20" y2="4" />
                 </svg>
               ) : (
@@ -190,10 +198,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    onToolChange(
-                      "line",
-                      toolState.shapeDrawingMode !== "line"
-                    );
+                    onToolChange("line", toolState.shapeDrawingMode !== "line");
                     setIsShapeMenuOpen(false);
                   }}
                   className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-blue-50 transition-colors ${
@@ -202,7 +207,13 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                       : "text-gray-700"
                   }`}
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <line x1="4" y1="20" x2="20" y2="4" />
                   </svg>
                   Line
@@ -243,42 +254,48 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
         style={rightToolbarStyle}
       >
         <div className="bg-white rounded-lg shadow-lg border border-blue-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
-          <button
-            onClick={() => onViewChange("original")}
-            className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
-              currentView === "original"
-                ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                : "text-gray-700 hover:text-blue-600"
-            }`}
-            title="Original Document"
-          >
-            <FileText className="w-5 h-5" />
-          </button>
+          {/* View Controls - Show for all workflow steps except during snapshot capture */}
+          {currentWorkflowStep !== "final-layout" && (
+            <>
+              <button
+                onClick={() => onViewChange("original")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                  currentView === "original"
+                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                    : "text-gray-700 hover:text-blue-600"
+                }`}
+                title="Original Document"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
 
-          <button
-            onClick={() => onViewChange("translated")}
-            className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
-              currentView === "translated"
-                ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                : "text-gray-700 hover:text-blue-600"
-            }`}
-            title="Translated Document"
-          >
-            <Globe className="w-5 h-5" />
-          </button>
+              <button
+                onClick={() => onViewChange("translated")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                  currentView === "translated"
+                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                    : "text-gray-700 hover:text-blue-600"
+                }`}
+                title="Translated Document"
+              >
+                <Globe className="w-5 h-5" />
+              </button>
 
-          <button
-            onClick={() => onViewChange("split")}
-            className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
-              currentView === "split"
-                ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                : "text-gray-700 hover:text-blue-600"
-            }`}
-            title="Split Screen"
-          >
-            <SplitSquareHorizontal className="w-5 h-5" />
-          </button>
+              <button
+                onClick={() => onViewChange("split")}
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                  currentView === "split"
+                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                    : "text-gray-700 hover:text-blue-600"
+                }`}
+                title="Split Screen"
+              >
+                <SplitSquareHorizontal className="w-5 h-5" />
+              </button>
+            </>
+          )}
 
+          {/* Edit Mode Toggle - Always show */}
           <button
             onClick={onEditModeToggle}
             className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
@@ -291,6 +308,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <Edit2 className="w-5 h-5" />
           </button>
 
+          {/* Deletion Toggle - Always show */}
           <button
             onClick={onDeletionToggle}
             className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
@@ -306,6 +324,21 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           >
             <Trash2 className="w-5 h-5" />
           </button>
+
+          {/* Final Layout Specific Controls */}
+          {currentWorkflowStep === "final-layout" && (
+            <button
+              onClick={() => onViewChange("original")}
+              className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                currentView === "original"
+                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                  : "text-gray-700 hover:text-blue-600"
+              }`}
+              title="Final Layout View"
+            >
+              <Eye className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
     </>
