@@ -1141,7 +1141,7 @@ export const PDFEditorContent: React.FC = () => {
         const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
         const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
 
-        // Add first snapshot's images (top row)
+        // Add first snapshot's images (bottom row) - corrected positioning
         if (snapshot1) {
           // Calculate fitted dimensions for original image
           const originalDimensions = calculateFittedImageDimensions(
@@ -1167,22 +1167,22 @@ export const PDFEditorContent: React.FC = () => {
           const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
           const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
 
-          // Original image (top-left, centered in quadrant)
+          // Original image (bottom-left, centered in quadrant) - swapped position
           const originalImageId = handleAddImageWithUndo(
             snapshot1.originalImage,
             gridMargin + originalOffsetX,
-            pageHeight - labelSpace - quadrantHeight + originalOffsetY,
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY,
             originalDimensions.width,
             originalDimensions.height,
             pageNumber,
             "original"
           );
 
-          // Translated image (top-right, centered in quadrant)
+          // Translated image (bottom-right, centered in quadrant) - swapped position
           const translatedImageId = handleAddImageWithUndo(
             snapshot1.translatedImage,
             gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
-            pageHeight - labelSpace - quadrantHeight + translatedOffsetY,
+            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY,
             translatedDimensions.width,
             translatedDimensions.height,
             pageNumber,
@@ -1206,7 +1206,7 @@ export const PDFEditorContent: React.FC = () => {
           );
         }
 
-        // Add second snapshot's images (bottom row) if it exists
+        // Add second snapshot's images (top row) - corrected positioning
         if (snapshot2) {
           // Calculate fitted dimensions for original image
           const originalDimensions2 = calculateFittedImageDimensions(
@@ -1232,29 +1232,29 @@ export const PDFEditorContent: React.FC = () => {
           const translatedOffsetX2 = (quadrantWidth - translatedDimensions2.width) / 2;
           const translatedOffsetY2 = (quadrantHeight - translatedDimensions2.height) / 2;
 
-          // Original image (bottom-left, centered in quadrant)
+          // Original image (top-left, centered in quadrant) - swapped position
           const originalImageId2 = handleAddImageWithUndo(
             snapshot2.originalImage,
             gridMargin + originalOffsetX2,
-            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY2,
+            pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
             originalDimensions2.width,
             originalDimensions2.height,
             pageNumber,
             "original"
           );
 
-          // Translated image (bottom-right, centered in quadrant)
+          // Translated image (top-right, centered in quadrant) - swapped position
           const translatedImageId2 = handleAddImageWithUndo(
             snapshot2.translatedImage,
             gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
-            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY2,
+            pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
             translatedDimensions2.width,
             translatedDimensions2.height,
             pageNumber,
             "original"
           );
 
-          // Add dividing line between original and translated (vertical, bottom row)
+          // Add dividing line between original and translated (vertical, top row)
           const verticalLineId2 = handleAddShapeWithUndo(
             "line",
             gridMargin + quadrantWidth + gridSpacing / 2,
@@ -1267,7 +1267,7 @@ export const PDFEditorContent: React.FC = () => {
             gridMargin + quadrantWidth + gridSpacing / 2, // x1
             pageHeight - labelSpace - quadrantHeight, // y1
             gridMargin + quadrantWidth + gridSpacing / 2, // x2
-            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing // y2
+            pageHeight - labelSpace // y2 - corrected to go to top
           );
         }
 

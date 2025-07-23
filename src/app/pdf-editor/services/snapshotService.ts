@@ -254,7 +254,7 @@ export async function createFinalLayoutPdf(
       const page = pdfDoc.addPage([612, 792]); // Letter size
       const { width: pageWidth, height: pageHeight } = page.getSize();
 
-      // Get snapshots for this PDF page
+      // Get snapshots for this PDF page (for page numbering reference)
       const snapshot1 = snapshots[pdfPageIndex * 2];
       const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
 
@@ -268,30 +268,54 @@ export async function createFinalLayoutPdf(
       const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
       const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
 
-      // Add first snapshot (top row)
-      if (snapshot1) {
-        await addSnapshotToPage(page, pdfDoc, snapshot1, {
-          originalX: gridMargin,
-          originalY: pageHeight - labelSpace - quadrantHeight,
-          translatedX: gridMargin + quadrantWidth + gridSpacing,
-          translatedY: pageHeight - labelSpace - quadrantHeight,
-          quadrantWidth,
-          quadrantHeight,
-        });
-      }
+      // Create a clean white background (blank page)
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+        color: rgb(1, 1, 1), // White background
+      });
 
-      // Add second snapshot (bottom row) if it exists
-      if (snapshot2) {
-        await addSnapshotToPage(page, pdfDoc, snapshot2, {
-          originalX: gridMargin,
-          originalY: pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
-          translatedX: gridMargin + quadrantWidth + gridSpacing,
-          translatedY:
-            pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing,
-          quadrantWidth,
-          quadrantHeight,
-        });
-      }
+      // Add page labels for reference (optional - you can remove these if you don't want any text)
+      // const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      
+      // Add labels for the quadrants if snapshots exist
+      // if (snapshot1) {
+      //   // Top-left quadrant label
+      //   page.drawText(`Page ${snapshot1.pageNumber} (Original)`, {
+      //     x: gridMargin,
+      //     y: pageHeight - labelSpace + 2,
+      //     size: 8,
+      //     color: rgb(0.6, 0.6, 0.6),
+      //   });
+
+      //   // Top-right quadrant label  
+      //   page.drawText(`Page ${snapshot1.pageNumber} (Translated)`, {
+      //     x: gridMargin + quadrantWidth + gridSpacing,
+      //     y: pageHeight - labelSpace + 2,
+      //     size: 8,
+      //     color: rgb(0.6, 0.6, 0.6),
+      //   });
+      // }
+
+      // if (snapshot2) {
+      //   // Bottom-left quadrant label
+      //   page.drawText(`Page ${snapshot2.pageNumber} (Original)`, {
+      //     x: gridMargin,
+      //     y: pageHeight - labelSpace - quadrantHeight - gridSpacing + 2,
+      //     size: 8,
+      //     color: rgb(0.6, 0.6, 0.6),
+      //   });
+
+      //   // Bottom-right quadrant label
+      //   page.drawText(`Page ${snapshot2.pageNumber} (Translated)`, {
+      //     x: gridMargin + quadrantWidth + gridSpacing,
+      //     y: pageHeight - labelSpace - quadrantHeight - gridSpacing + 2,
+      //     size: 8,
+      //     color: rgb(0.6, 0.6, 0.6),
+      //   });
+      // }
     }
 
     // Convert to file
