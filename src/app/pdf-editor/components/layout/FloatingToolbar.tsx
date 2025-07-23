@@ -32,7 +32,7 @@ interface FloatingToolbarProps {
   onViewChange: (view: ViewMode) => void;
   onEditModeToggle: () => void;
   onDeletionToggle: () => void;
-  onImageUpload: () => void;
+  onImageUpload?: () => void;
 }
 
 export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
@@ -200,13 +200,16 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <Eraser className="w-5 h-5" />
           </button>
 
-          <button
-            onClick={onImageUpload}
-            className="p-2 rounded-md transition-all duration-200 hover:bg-blue-50 text-gray-700 hover:text-blue-600"
-            title="Add Image to Document"
-          >
-            <ImageIcon className="w-5 h-5" />
-          </button>
+          {/* Only show image upload button when not in split view */}
+          {onImageUpload && (
+            <button
+              onClick={onImageUpload}
+              className="p-2 rounded-md transition-all duration-200 hover:bg-blue-50 text-gray-700 hover:text-blue-600"
+              title="Add Image to Document"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
 

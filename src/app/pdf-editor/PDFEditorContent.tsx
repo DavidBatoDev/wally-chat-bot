@@ -2474,7 +2474,8 @@ export const PDFEditorContent: React.FC = () => {
           // Center the image on the page
           const x = (pageWidth - width) / 2;
           const y = (pageHeight - height) / 2;
-          // Always add to 'original' view and layer order
+          // Add to current view - only allow in 'original' or 'translated', not 'split'
+          const targetView = viewState.currentView === "split" ? "original" : viewState.currentView;
           const imageId = handleAddImageWithUndo(
             url,
             x,
@@ -2482,7 +2483,7 @@ export const PDFEditorContent: React.FC = () => {
             width,
             height,
             documentState.currentPage,
-            "original"
+            targetView
           );
           if (imageId) {
             handleImageSelect(imageId);
@@ -3401,7 +3402,11 @@ export const PDFEditorContent: React.FC = () => {
                   showDeletionRectangles: !prev.showDeletionRectangles,
                 }))
               }
-              onImageUpload={() => imageInputRef.current?.click()}
+              onImageUpload={
+                viewState.currentView !== "split" 
+                  ? () => imageInputRef.current?.click()
+                  : undefined
+              }
             />
           )}
 
