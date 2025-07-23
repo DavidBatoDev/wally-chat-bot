@@ -269,17 +269,20 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                 <FileText className="w-5 h-5" />
               </button>
 
-              <button
-                onClick={() => onViewChange("translated")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
-                  currentView === "translated"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
-                }`}
-                title="Translated Document"
-              >
-                <Globe className="w-5 h-5" />
-              </button>
+              {/* Hide Translate Document button when in translate workflow step */}
+              {currentWorkflowStep !== "translate" && (
+                <button
+                  onClick={() => onViewChange("translated")}
+                  className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                    currentView === "translated"
+                      ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                      : "text-gray-700 hover:text-blue-600"
+                  }`}
+                  title="Translated Document"
+                >
+                  <Globe className="w-5 h-5" />
+                </button>
+              )}
 
               <button
                 onClick={() => onViewChange("split")}

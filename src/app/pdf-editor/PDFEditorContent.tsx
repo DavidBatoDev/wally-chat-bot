@@ -3949,35 +3949,41 @@ export const PDFEditorContent: React.FC = () => {
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
-          {/* ElementFormatDrawer */}
-          <div className="relative z-40 transition-all duration-300">
-            <ElementFormatDrawer />
-          </div>
+        <div className="flex-1 flex overflow-hidden relative bg-white">
+          {/* Left side - Document Content */}
+          <div className={`flex flex-col overflow-hidden relative bg-white ${
+            viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" 
+              ? "flex-1" 
+              : "flex-1"
+          }`}>
+            {/* ElementFormatDrawer */}
+            <div className="relative z-40 transition-all duration-300">
+              <ElementFormatDrawer />
+            </div>
 
-          {/* Floating Toolbars - Only show when PDF is loaded */}
-          {documentState.url && !documentState.error && (
-            <FloatingToolbar
-              editorState={editorState}
-              toolState={toolState}
-              erasureState={erasureState}
-              currentView={viewState.currentView}
-              showDeletionRectangles={editorState.showDeletionRectangles}
-              isSidebarCollapsed={viewState.isSidebarCollapsed}
-              currentWorkflowStep={viewState.currentWorkflowStep}
-              onToolChange={handleToolChange}
-              onViewChange={(view) =>
-                setViewState((prev) => ({ ...prev, currentView: view }))
-              }
-              onEditModeToggle={() =>
-                setEditorState((prev) => ({
-                  ...prev,
-                  isEditMode: !prev.isEditMode,
-                }))
-              }
-              onDeletionToggle={() =>
-                setEditorState((prev) => ({
-                  ...prev,
+            {/* Floating Toolbars - Only show when PDF is loaded */}
+            {documentState.url && !documentState.error && (
+              <FloatingToolbar
+                editorState={editorState}
+                toolState={toolState}
+                erasureState={erasureState}
+                currentView={viewState.currentView}
+                showDeletionRectangles={editorState.showDeletionRectangles}
+                isSidebarCollapsed={viewState.isSidebarCollapsed}
+                currentWorkflowStep={viewState.currentWorkflowStep}
+                onToolChange={handleToolChange}
+                onViewChange={(view) =>
+                  setViewState((prev) => ({ ...prev, currentView: view }))
+                }
+                onEditModeToggle={() =>
+                  setEditorState((prev) => ({
+                    ...prev,
+                    isEditMode: !prev.isEditMode,
+                  }))
+                }
+                onDeletionToggle={() =>
+                  setEditorState((prev) => ({
+                    ...prev,
                   showDeletionRectangles: !prev.showDeletionRectangles,
                 }))
               }
@@ -4064,6 +4070,7 @@ export const PDFEditorContent: React.FC = () => {
               paddingTop: "64px",
             }}
           >
+            {/* Document Error */}
             {documentState.error && (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -4073,6 +4080,7 @@ export const PDFEditorContent: React.FC = () => {
               </div>
             )}
 
+            {/* No Document Loaded */}
             {!documentState.url && !documentState.error && (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -4103,13 +4111,13 @@ export const PDFEditorContent: React.FC = () => {
                   )}px`,
                   width: `${Math.max(
                     100,
-                    viewState.currentView === "split"
+                    viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
                       ? documentState.pageWidth * documentState.scale * 2 + 100 // Double width for split view plus gap and padding
                       : documentState.pageWidth * documentState.scale + 80
                   )}px`,
                   minWidth: `${Math.max(
                     100,
-                    viewState.currentView === "split"
+                    viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
                       ? documentState.pageWidth * documentState.scale * 2 + 100
                       : documentState.pageWidth * documentState.scale + 80
                   )}px`,
@@ -4181,12 +4189,12 @@ export const PDFEditorContent: React.FC = () => {
                   }}
                   style={{
                     width:
-                      viewState.currentView === "split"
+                      viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
                         ? documentState.pageWidth * documentState.scale * 2 + 20 // Double width plus gap for split view
                         : documentState.pageWidth * documentState.scale,
                     height: documentState.pageHeight * documentState.scale,
                     minWidth:
-                      viewState.currentView === "split"
+                      viewState.currentView === "split" && viewState.currentWorkflowStep !== "translate"
                         ? documentState.pageWidth * documentState.scale * 2 + 20
                         : documentState.pageWidth * documentState.scale,
                     minHeight: documentState.pageHeight * documentState.scale,
@@ -4300,30 +4308,7 @@ export const PDFEditorContent: React.FC = () => {
                   {viewState.currentView === "translated" && (
                     <>
                       {/* Show translation table view when in translate workflow step */}
-                      {viewState.currentWorkflowStep === "translate" ? (
-                        <TranslationTableView
-                          translatedTextBoxes={getCurrentTextBoxes(
-                            "translated"
-                          )}
-                          untranslatedTexts={
-                            elementCollections.untranslatedTexts
-                          }
-                          onUpdateTextBox={updateTranslatedTextBoxWithUndo}
-                          onUpdateUntranslatedText={updateUntranslatedText}
-                          onDeleteTextBox={
-                            handleDeleteTextBoxAndUntranslatedText
-                          }
-                          onRowClick={handleTranslationRowClick}
-                          onAddTextBox={handleAddCustomTextBox}
-                          onAddUntranslatedText={
-                            handleAddCustomUntranslatedText
-                          }
-                          pageWidth={documentState.pageWidth}
-                          pageHeight={documentState.pageHeight}
-                          scale={documentState.scale}
-                          currentPage={documentState.currentPage}
-                        />
-                      ) : (
+                      {viewState.currentWorkflowStep === "layout" && (
                         /* Show normal document layout when in layout workflow step */
                         <DocumentPanel
                           viewType="translated"
@@ -4725,30 +4710,7 @@ export const PDFEditorContent: React.FC = () => {
                       {/* Translated Document Side */}
                       <div style={{ position: "relative" }}>
                         {/* Show translation table view when in translate workflow step */}
-                        {viewState.currentWorkflowStep === "translate" ? (
-                          <TranslationTableView
-                            translatedTextBoxes={getCurrentTextBoxes(
-                              "translated"
-                            )}
-                            untranslatedTexts={
-                              elementCollections.untranslatedTexts
-                            }
-                            onUpdateTextBox={updateTranslatedTextBoxWithUndo}
-                            onUpdateUntranslatedText={updateUntranslatedText}
-                            onDeleteTextBox={
-                              handleDeleteTextBoxAndUntranslatedText
-                            }
-                            onRowClick={handleTranslationRowClick}
-                            onAddTextBox={handleAddCustomTextBox}
-                            onAddUntranslatedText={
-                              handleAddCustomUntranslatedText
-                            }
-                            pageWidth={documentState.pageWidth}
-                            pageHeight={documentState.pageHeight}
-                            scale={documentState.scale}
-                            currentPage={documentState.currentPage}
-                          />
-                        ) : (
+                        {viewState.currentWorkflowStep === "layout" && (
                           /* Show normal document layout when in layout workflow step */
                           <DocumentPanel
                             viewType="translated"
@@ -5418,6 +5380,27 @@ export const PDFEditorContent: React.FC = () => {
               </div>
             )}
           </div>
+          </div>
+          
+          {/* Right Sidebar - TranslationTableView when in translate workflow and split view */}
+          {viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" && (
+            <div className="w-[50%] bg-blue-50 border-l border-blue-200 overflow-hidden flex-shrink-0">
+              <TranslationTableView
+                translatedTextBoxes={getCurrentTextBoxes("translated")}
+                untranslatedTexts={elementCollections.untranslatedTexts}
+                onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                onUpdateUntranslatedText={updateUntranslatedText}
+                onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
+                onRowClick={handleTranslationRowClick}
+                onAddTextBox={handleAddCustomTextBox}
+                onAddUntranslatedText={handleAddCustomUntranslatedText}
+                pageWidth={documentState.pageWidth}
+                pageHeight={documentState.pageHeight}
+                scale={1}
+                currentPage={documentState.currentPage}
+              />
+            </div>
+          )}
         </div>
       </div>
 
