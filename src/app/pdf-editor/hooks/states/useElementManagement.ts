@@ -407,7 +407,7 @@ export const useElementManagement = () => {
         height: type === "line" ? 0 : height,
         page: currentPage,
         borderColor: "#000000",
-        borderWidth: type === "line" ? 3 : 2, // Default thicker line for better visibility
+        borderWidth: 1, // Set to 1px for all shapes including lines
         fillColor: "#ffffff",
         fillOpacity: type === "line" ? 0 : 0.5, // Lines don't need fill
         rotation: 0,

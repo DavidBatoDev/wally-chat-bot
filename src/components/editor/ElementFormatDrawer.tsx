@@ -17,8 +17,6 @@ import {
   Square,
   MoreHorizontal,
   Move3D,
-  Circle,
-  SquareIcon as Rectangle,
   Layers,
   SendToBack,
   BringToFront,
@@ -992,32 +990,8 @@ export const ElementFormatDrawer: React.FC = () => {
           </>
         ) : selectedElementType === "shape" ? (
           <>
-            {/* Shape Type */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.type === "rectangle"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() => onFormatChange({ type: "rectangle" })}
-              >
-                <Rectangle size={16} />
-              </button>
-              <button
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  safeFormat.type === "circle"
-                    ? "bg-blue-500 text-white shadow-md"
-                    : "hover:bg-gray-100 text-gray-700"
-                }`}
-                onClick={() => onFormatChange({ type: "circle" })}
-              >
-                <Circle size={16} />
-              </button>
-            </div>
-
             {/* Fill Color */}
-            <div className="flex items-center gap-2 border-l border-gray-300 pl-4 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <div className="flex items-center gap-1 p-1 border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200">
                 <Palette size={14} />
                 <input
