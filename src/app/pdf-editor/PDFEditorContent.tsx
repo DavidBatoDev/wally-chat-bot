@@ -5473,38 +5473,58 @@ export const PDFEditorContent: React.FC = () => {
           </div>
           
           {/* Right Sidebar - TranslationTableView when in translate workflow and split view */}
-          {documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" && (
-            <div className="w-[40%] bg-blue-50 border-l border-blue-200 overflow-hidden flex-shrink-0">
-              <TranslationTableView
-                translatedTextBoxes={getCurrentTextBoxes("translated")}
-                untranslatedTexts={elementCollections.untranslatedTexts}
-                onUpdateTextBox={updateTranslatedTextBoxWithUndo}
-                onUpdateUntranslatedText={updateUntranslatedText}
-                onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
-                onRowClick={handleTranslationRowClick}
-                onAddTextBox={handleAddCustomTextBox}
-                onAddUntranslatedText={handleAddCustomUntranslatedText}
-                pageWidth={documentState.pageWidth}
-                pageHeight={documentState.pageHeight}
-                scale={1}
-                currentPage={documentState.currentPage}
-              />
-            </div>
-          )}
+          <div 
+            className="bg-blue-50 border-l border-blue-200 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
+            style={{
+              width: documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" ? "40%" : "0px",
+              minWidth: documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" ? "40%" : "0px",
+              opacity: documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" ? 1 : 0,
+              pointerEvents: documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" ? "auto" : "none",
+            }}
+          >
+            {documentState.url && viewState.currentView === "split" && viewState.currentWorkflowStep === "translate" && (
+              <div className="h-full transition-opacity duration-300 opacity-100">
+                <TranslationTableView
+                  translatedTextBoxes={getCurrentTextBoxes("translated")}
+                  untranslatedTexts={elementCollections.untranslatedTexts}
+                  onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                  onUpdateUntranslatedText={updateUntranslatedText}
+                  onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
+                  onRowClick={handleTranslationRowClick}
+                  onAddTextBox={handleAddCustomTextBox}
+                  onAddUntranslatedText={handleAddCustomUntranslatedText}
+                  pageWidth={documentState.pageWidth}
+                  pageHeight={documentState.pageHeight}
+                  scale={1}
+                  currentPage={documentState.currentPage}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Right Sidebar - FinalLayoutSettings when in final-layout workflow and split view */}
-          {viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" && (
-            <div className="w-[35%] bg-gray-50 border-l border-gray-200 overflow-hidden flex-shrink-0">
-              <FinalLayoutSettings
-                currentPage={documentState.currentPage}
-                totalPages={documentState.numPages}
-                capturedSnapshots={capturedSnapshots}
-                isCapturingSnapshots={isCapturingSnapshots}
-                onExportPDF={exportToPDF}
-                onSaveProject={saveProject}
-              />
-            </div>
-          )}
+          <div 
+            className="bg-gray-50 border-l border-gray-200 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out"
+            style={{
+              width: viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" ? "35%" : "0px",
+              minWidth: viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" ? "35%" : "0px",
+              opacity: viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" ? 1 : 0,
+              pointerEvents: viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" ? "auto" : "none",
+            }}
+          >
+            {viewState.currentView === "split" && viewState.currentWorkflowStep === "final-layout" && (
+              <div className="transition-opacity duration-300 opacity-100">
+                <FinalLayoutSettings
+                  currentPage={documentState.currentPage}
+                  totalPages={documentState.numPages}
+                  capturedSnapshots={capturedSnapshots}
+                  isCapturingSnapshots={isCapturingSnapshots}
+                  onExportPDF={exportToPDF}
+                  onSaveProject={saveProject}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
