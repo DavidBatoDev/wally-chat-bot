@@ -462,18 +462,18 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
 
       {/* Add Button at Bottom */}
       {onAddTextBox && onAddUntranslatedText && (
-        <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
-          <button
-            onClick={handleAddCustomTextbox}
-            className="w-full inline-flex items-center justify-center px-4 py-3 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
-            title="Add custom text box"
-          >
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Text Box
-          </button>
-        </div>
+          <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
+            <button
+              onClick={handleAddCustomTextbox}
+              className="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-lg hover:border-gray-400 hover:text-gray-600 transition-colors bg-transparent"
+              title="Add custom text box"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Text Box
+            </button>
+          </div>
       )}
 
       {/* Footer */}
