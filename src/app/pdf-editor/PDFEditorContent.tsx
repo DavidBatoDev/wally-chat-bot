@@ -350,6 +350,12 @@ export const PDFEditorContent: React.FC = () => {
   const snapshotCancelRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
   });
+  const isCapturingSnapshotsRef = useRef(false);
+
+  // Update the ref whenever the state changes
+  useEffect(() => {
+    isCapturingSnapshotsRef.current = isCapturingSnapshots;
+  }, [isCapturingSnapshots]);
 
   ///////////////////////// HOOKS /////////////////////////
   // Debounce timer for batched updates
@@ -595,6 +601,10 @@ export const PDFEditorContent: React.FC = () => {
 
   // Function to create a backup of current state before final layout
   const createPreLayoutBackup = useCallback(() => {
+    console.log("Creating pre-layout backup...");
+    console.log("Current document state:", documentState);
+    console.log("Current element collections:", elementCollections);
+    
     const backup = {
       documentState: { ...documentState },
       elementCollections: {
@@ -622,6 +632,7 @@ export const PDFEditorContent: React.FC = () => {
       pageState: { ...pageState },
     };
     setPreLayoutBackup(backup);
+    console.log("Pre-layout backup created successfully");
   }, [
     documentState,
     elementCollections,
@@ -633,8 +644,14 @@ export const PDFEditorContent: React.FC = () => {
   ]);
 
   // Function to restore state from backup
-  const restoreFromPreLayoutBackup = useCallback(() => {
-    if (!preLayoutBackup) return;
+  const restoreFromPreLayoutBackup = useCallback((clearBackup = false) => {
+    if (!preLayoutBackup) {
+      console.log("No pre-layout backup available to restore");
+      return;
+    }
+
+    console.log("Restoring from pre-layout backup...");
+    console.log("Backup content:", preLayoutBackup);
 
     try {
       // Restore document state
@@ -658,9 +675,14 @@ export const PDFEditorContent: React.FC = () => {
       // Restore page state
       setPageState(preLayoutBackup.pageState);
 
-      // Clear the backup after restoring to free memory
-      setPreLayoutBackup(null);
+      // Only clear the backup if explicitly requested (e.g., when completely exiting final layout workflow)
+      if (clearBackup) {
+        console.log("Clearing backup and snapshots");
+        setPreLayoutBackup(null);
+        setCapturedSnapshots([]); // Also clear captured snapshots
+      }
 
+      console.log("Pre-layout backup restored successfully");
       toast.success("Restored previous document state");
     } catch (error) {
       console.error("Error restoring backup:", error);
@@ -895,13 +917,29 @@ export const PDFEditorContent: React.FC = () => {
       return;
     }
 
+    console.log("Starting createFinalLayoutWithSnapshots");
+    console.log("Initial cancellation status:", snapshotCancelRef.current.cancelled);
+    console.log("Document state:", documentState);
+    console.log("Element collections:", elementCollections);
+
+    // Safety check: ensure we have a valid document
+    if (documentState.numPages === 0) {
+      console.error("No valid document loaded, cannot capture snapshots");
+      toast.error("No document loaded. Please load a document first.");
+      return;
+    }
+
     try {
+      // Reset cancellation flag at the very beginning
+      snapshotCancelRef.current.cancelled = false;
       setIsCapturingSnapshots(true);
       setIsCancellingSnapshots(false);
       setSnapshotProgress({ current: 0, total: 0 });
-      snapshotCancelRef.current.cancelled = false;
+
+      console.log("Reset cancellation flag to:", snapshotCancelRef.current.cancelled);
 
       // Capture all page snapshots with cancellation support
+      console.log("Starting snapshot capture...");
       const snapshots = await captureAllPageSnapshots({
         documentRef,
         documentState,
@@ -912,6 +950,7 @@ export const PDFEditorContent: React.FC = () => {
         editorState,
         progressCallback: (current, total) => {
           if (snapshotCancelRef.current.cancelled) {
+            console.log("Progress callback detected cancellation");
             throw new Error("Snapshot capture cancelled");
           }
           setSnapshotProgress({ current, total });
@@ -920,19 +959,26 @@ export const PDFEditorContent: React.FC = () => {
 
       // Check if cancelled during capture
       if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        console.log("Snapshot capture was cancelled during capture phase");
+        console.log("Cancelled flag:", snapshotCancelRef.current.cancelled);
+        console.log("Is cancelling:", isCancellingSnapshots);
         return;
       }
 
+      console.log("Captured snapshots:", snapshots.length, "snapshots");
       setCapturedSnapshots(snapshots);
 
       // Create final layout PDF with snapshots
+      console.log("Creating final layout PDF...");
       const finalLayoutFile = await createFinalLayoutPdf(snapshots);
 
       // Check if cancelled after PDF creation
       if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        console.log("Operation cancelled after PDF creation");
         return;
       }
 
+      console.log("Clearing existing elements and state...");
       // Clear all existing elements and state first
       setElementCollections({
         originalTextBoxes: [],
@@ -1009,10 +1055,13 @@ export const PDFEditorContent: React.FC = () => {
 
         // Check for cancellation before loading
         if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+          console.log("Operation cancelled before loading document");
           return;
         }
 
+        console.log("Loading final layout document...");
         await actions.loadDocument(finalLayoutFile);
+        console.log("Document loaded successfully");
         setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
 
         // Add another small delay before adding interactive elements
@@ -1020,11 +1069,14 @@ export const PDFEditorContent: React.FC = () => {
 
         // Check for cancellation again
         if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+          console.log("Operation cancelled before adding interactive elements");
           return;
         }
 
         // Add interactive elements to the layout pages
+        console.log("Adding interactive elements to layout...");
         await addInteractiveElementsToLayout(snapshots);
+        console.log("Interactive elements added successfully");
 
         toast.success("Created final layout with interactive snapshots");
       } catch (loadError) {
@@ -1305,20 +1357,55 @@ export const PDFEditorContent: React.FC = () => {
         step !== "final-layout" &&
         preLayoutBackup
       ) {
-        restoreFromPreLayoutBackup();
+        // Don't clear backup yet - keep it for potential return to final layout
+        console.log("Leaving final-layout, restoring backup");
+        console.log("Cancellation state before restore:", snapshotCancelRef.current.cancelled);
+        restoreFromPreLayoutBackup(false);
       }
 
-      // Handle entering final-layout step - create backup and capture snapshots
+      // Handle entering final-layout step
       if (step === "final-layout" && prevStep !== "final-layout") {
-        createPreLayoutBackup();
-        // Only start snapshot capture if not already in progress
-        if (!isCapturingSnapshots) {
-          createFinalLayoutWithSnapshots();
-        } else {
-          console.warn(
-            "Snapshot capture already in progress, not starting new capture"
-          );
-        }
+        // Reset cancellation state to ensure clean entry
+        console.log("Entering final-layout, resetting cancellation state");
+        snapshotCancelRef.current.cancelled = false;
+        setIsCancellingSnapshots(false);
+        
+        // Always create a new backup from the current state before capturing snapshots
+        // Add a small delay to ensure any previous restoration is complete
+        setTimeout(() => {
+          createPreLayoutBackup();
+          
+          // Always capture fresh snapshots when entering final layout
+          // Only start snapshot capture if not already in progress
+          if (!isCapturingSnapshots) {
+            console.log("Capturing fresh snapshots for final layout");
+            // Add another small delay to ensure backup is complete
+            setTimeout(() => {
+              // Double-check cancellation state before starting
+              console.log("About to start snapshot capture, cancellation state:", snapshotCancelRef.current.cancelled);
+              createFinalLayoutWithSnapshots();
+            }, 100);
+          } else {
+            console.warn(
+              "Snapshot capture already in progress, not starting new capture"
+            );
+          }
+        }, 200);
+      }
+
+      // Handle completely exiting final layout workflow (e.g., going to a different major step)
+      // This clears the backup to free memory when we're definitely done with final layout
+      if (
+        prevStep === "final-layout" && 
+        step !== "final-layout" && 
+        !["edit-translate", "review", "final-layout"].includes(step) &&
+        preLayoutBackup
+      ) {
+        // Clear backup when moving to completely different workflow areas
+        setTimeout(() => {
+          setPreLayoutBackup(null);
+          setCapturedSnapshots([]);
+        }, 1000); // Small delay to ensure restore is complete
       }
 
       setViewState((prev) => ({
@@ -1330,6 +1417,7 @@ export const PDFEditorContent: React.FC = () => {
       viewState.currentWorkflowStep,
       isCapturingSnapshots,
       preLayoutBackup,
+      capturedSnapshots,
       restoreFromPreLayoutBackup,
       createPreLayoutBackup,
       createFinalLayoutWithSnapshots,
@@ -1859,12 +1947,13 @@ export const PDFEditorContent: React.FC = () => {
   // Cleanup snapshot capture on unmount to prevent worker issues
   useEffect(() => {
     return () => {
-      if (isCapturingSnapshots) {
+      // Only cancel if we're actually capturing when component unmounts
+      if (isCapturingSnapshotsRef.current) {
+        console.log("Component unmounting during snapshot capture, cancelling...");
         snapshotCancelRef.current.cancelled = true;
-        setIsCancellingSnapshots(true);
       }
     };
-  }, [isCapturingSnapshots]);
+  }, []); // Empty dependency array to only run on actual mount/unmount
 
   // Memoized values
   const currentPageTextBoxes = useMemo(

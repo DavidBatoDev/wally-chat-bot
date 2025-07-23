@@ -277,45 +277,6 @@ export async function createFinalLayoutPdf(
         color: rgb(1, 1, 1), // White background
       });
 
-      // Add page labels for reference (optional - you can remove these if you don't want any text)
-      // const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      
-      // Add labels for the quadrants if snapshots exist
-      // if (snapshot1) {
-      //   // Top-left quadrant label
-      //   page.drawText(`Page ${snapshot1.pageNumber} (Original)`, {
-      //     x: gridMargin,
-      //     y: pageHeight - labelSpace + 2,
-      //     size: 8,
-      //     color: rgb(0.6, 0.6, 0.6),
-      //   });
-
-      //   // Top-right quadrant label  
-      //   page.drawText(`Page ${snapshot1.pageNumber} (Translated)`, {
-      //     x: gridMargin + quadrantWidth + gridSpacing,
-      //     y: pageHeight - labelSpace + 2,
-      //     size: 8,
-      //     color: rgb(0.6, 0.6, 0.6),
-      //   });
-      // }
-
-      // if (snapshot2) {
-      //   // Bottom-left quadrant label
-      //   page.drawText(`Page ${snapshot2.pageNumber} (Original)`, {
-      //     x: gridMargin,
-      //     y: pageHeight - labelSpace - quadrantHeight - gridSpacing + 2,
-      //     size: 8,
-      //     color: rgb(0.6, 0.6, 0.6),
-      //   });
-
-      //   // Bottom-right quadrant label
-      //   page.drawText(`Page ${snapshot2.pageNumber} (Translated)`, {
-      //     x: gridMargin + quadrantWidth + gridSpacing,
-      //     y: pageHeight - labelSpace - quadrantHeight - gridSpacing + 2,
-      //     size: 8,
-      //     color: rgb(0.6, 0.6, 0.6),
-      //   });
-      // }
     }
 
     // Convert to file
