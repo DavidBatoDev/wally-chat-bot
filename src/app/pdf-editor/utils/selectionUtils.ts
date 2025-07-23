@@ -18,13 +18,17 @@ export const getElementBounds = (
   // Handle line shapes specially since they use x1,y1,x2,y2 coordinates
   if ("type" in element && element.type === "line") {
     const lineShape = element as Shape;
-    if (lineShape.x1 !== undefined && lineShape.y1 !== undefined && 
-        lineShape.x2 !== undefined && lineShape.y2 !== undefined) {
+    if (
+      lineShape.x1 !== undefined &&
+      lineShape.y1 !== undefined &&
+      lineShape.x2 !== undefined &&
+      lineShape.y2 !== undefined
+    ) {
       const minX = Math.min(lineShape.x1, lineShape.x2);
       const minY = Math.min(lineShape.y1, lineShape.y2);
       const maxX = Math.max(lineShape.x1, lineShape.x2);
       const maxY = Math.max(lineShape.y1, lineShape.y2);
-      
+
       return {
         x: minX,
         y: minY,
@@ -33,7 +37,7 @@ export const getElementBounds = (
       };
     }
   }
-  
+
   // For all other elements (textboxes, regular shapes, images), use standard bounds
   return {
     x: element.x,
@@ -172,34 +176,41 @@ export const moveSelectedElements = (
       let constrainedY = newY;
 
       // Check if this is a line shape for special boundary handling
-      const isLineShape = selectedElement.type === "shape" && "type" in element && (element as Shape).type === "line";
-      
+      const isLineShape =
+        selectedElement.type === "shape" &&
+        "type" in element &&
+        (element as Shape).type === "line";
+
       if (isLineShape) {
         const lineShape = element as Shape;
-        if (lineShape.x1 !== undefined && lineShape.y1 !== undefined && 
-            lineShape.x2 !== undefined && lineShape.y2 !== undefined) {
+        if (
+          lineShape.x1 !== undefined &&
+          lineShape.y1 !== undefined &&
+          lineShape.x2 !== undefined &&
+          lineShape.y2 !== undefined
+        ) {
           // For lines, calculate boundaries based on the entire line
           const moveDeltaX = newX - selectedElement.originalPosition.x;
           const moveDeltaY = newY - selectedElement.originalPosition.y;
-          
+
           const newX1 = lineShape.x1 + moveDeltaX;
           const newY1 = lineShape.y1 + moveDeltaY;
           const newX2 = lineShape.x2 + moveDeltaX;
           const newY2 = lineShape.y2 + moveDeltaY;
-          
+
           // Check if any part of the line would go outside boundaries
           const minX = Math.min(newX1, newX2);
           const maxX = Math.max(newX1, newX2);
           const minY = Math.min(newY1, newY2);
           const maxY = Math.max(newY1, newY2);
-          
+
           // Constrain based on line bounds
           if (minX < 0) {
             constrainedX = newX - minX;
           } else if (maxX > pageWidth) {
             constrainedX = newX - (maxX - pageWidth);
           }
-          
+
           if (minY < 0) {
             constrainedY = newY - minY;
           } else if (maxY > pageHeight) {
@@ -266,12 +277,18 @@ export const moveSelectedElements = (
           // Handle line shapes specially - they need x1,y1,x2,y2 updates
           if ("type" in element && element.type === "line") {
             const lineShape = element as Shape;
-            if (lineShape.x1 !== undefined && lineShape.y1 !== undefined && 
-                lineShape.x2 !== undefined && lineShape.y2 !== undefined) {
+            if (
+              lineShape.x1 !== undefined &&
+              lineShape.y1 !== undefined &&
+              lineShape.x2 !== undefined &&
+              lineShape.y2 !== undefined
+            ) {
               // Calculate how much to move the line coordinates
-              const moveDeltaX = constrainedX - selectedElement.originalPosition.x;
-              const moveDeltaY = constrainedY - selectedElement.originalPosition.y;
-              
+              const moveDeltaX =
+                constrainedX - selectedElement.originalPosition.x;
+              const moveDeltaY =
+                constrainedY - selectedElement.originalPosition.y;
+
               updateShape(selectedElement.id, {
                 x1: lineShape.x1 + moveDeltaX,
                 y1: lineShape.y1 + moveDeltaY,
@@ -280,11 +297,17 @@ export const moveSelectedElements = (
               });
             } else {
               // Fallback for shapes without line coordinates
-              updateShape(selectedElement.id, { x: constrainedX, y: constrainedY });
+              updateShape(selectedElement.id, {
+                x: constrainedX,
+                y: constrainedY,
+              });
             }
           } else {
             // Regular shapes (rectangles, circles)
-            updateShape(selectedElement.id, { x: constrainedX, y: constrainedY });
+            updateShape(selectedElement.id, {
+              x: constrainedX,
+              y: constrainedY,
+            });
           }
           break;
         case "image":
