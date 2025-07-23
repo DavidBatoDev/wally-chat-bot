@@ -258,14 +258,38 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             </div>
           )}
           {hasPages && (
-            <Button
-              onClick={onExportData}
-              className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
-              size="sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export PDF
-            </Button>
+            <>
+              {currentWorkflowStep === "translate" && (
+                <Button
+                  onClick={() => onWorkflowStepChange("layout")}
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
+                  size="sm"
+                >
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                  Go to Layout
+                </Button>
+              )}
+              {currentWorkflowStep === "layout" && (
+                <Button
+                  onClick={() => onWorkflowStepChange("final-layout")}
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
+                  size="sm"
+                >
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                  Go to Final Layout
+                </Button>
+              )}
+              {currentWorkflowStep === "final-layout" && (
+                <Button
+                  onClick={onExportData}
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
+                  size="sm"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export PDF
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
