@@ -333,7 +333,7 @@ export const useElementManagement = () => {
         ...elementCollections.originalTextBoxes,
         ...elementCollections.translatedTextBoxes,
       ];
-      
+
       const originalTextBox = allTextBoxes.find((tb) => tb.id === originalId);
       if (!originalTextBox) {
         console.warn("Original textbox not found for duplication:", originalId);
@@ -342,7 +342,7 @@ export const useElementManagement = () => {
 
       // Generate new ID for the duplicate
       const duplicateId = generateUUID();
-      
+
       // Create duplicate with offset position
       const offset = 20; // 20px offset
       const duplicateTextBox: TextField = {
@@ -353,10 +353,9 @@ export const useElementManagement = () => {
       };
 
       // Determine which view the original textbox belongs to and add duplicate to the same view
-      const isOriginalInOriginalView = elementCollections.originalTextBoxes.some(
-        (tb) => tb.id === originalId
-      );
-      
+      const isOriginalInOriginalView =
+        elementCollections.originalTextBoxes.some((tb) => tb.id === originalId);
+
       const targetView = isOriginalInOriginalView ? "original" : "translated";
 
       setElementCollections((prev) => {
@@ -368,7 +367,10 @@ export const useElementManagement = () => {
         } else {
           return {
             ...prev,
-            translatedTextBoxes: [...prev.translatedTextBoxes, duplicateTextBox],
+            translatedTextBoxes: [
+              ...prev.translatedTextBoxes,
+              duplicateTextBox,
+            ],
           };
         }
       });
@@ -411,12 +413,18 @@ export const useElementManagement = () => {
         rotation: 0,
         borderRadius: type === "rectangle" ? 0 : undefined,
         // Line-specific coordinates
-        ...(type === "line" && x1 !== undefined && y1 !== undefined && x2 !== undefined && y2 !== undefined ? {
-          x1,
-          y1,
-          x2,
-          y2,
-        } : {}),
+        ...(type === "line" &&
+        x1 !== undefined &&
+        y1 !== undefined &&
+        x2 !== undefined &&
+        y2 !== undefined
+          ? {
+              x1,
+              y1,
+              x2,
+              y2,
+            }
+          : {}),
       };
 
       const shouldAddToTranslated =
@@ -875,7 +883,9 @@ export const useElementManagement = () => {
   const deleteUntranslatedText = useCallback((id: string) => {
     setElementCollections((prev) => ({
       ...prev,
-      untranslatedTexts: prev.untranslatedTexts.filter((text) => text.id !== id),
+      untranslatedTexts: prev.untranslatedTexts.filter(
+        (text) => text.id !== id
+      ),
     }));
   }, []);
 

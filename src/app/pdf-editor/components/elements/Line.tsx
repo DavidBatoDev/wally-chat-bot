@@ -8,6 +8,8 @@ interface LineProps {
   isSelected: boolean;
   isEditMode: boolean;
   scale: number;
+  pageWidth: number;
+  pageHeight: number;
   onSelect: (id: string) => void;
   onUpdate: (
     id: string,
@@ -24,6 +26,8 @@ export const MemoizedLine = memo(
     isSelected,
     isEditMode,
     scale,
+    pageWidth,
+    pageHeight,
     onSelect,
     onUpdate,
     onDelete,
@@ -75,20 +79,28 @@ export const MemoizedLine = memo(
           const deltaY = (e.clientY - startY) / scale;
 
           if (isStart) {
+            // Constrain start point within page boundaries
+            const newX1 = Math.max(0, Math.min(pageWidth, originalX1 + deltaX));
+            const newY1 = Math.max(0, Math.min(pageHeight, originalY1 + deltaY));
+            
             onUpdate(
               shape.id,
               {
-                x1: originalX1 + deltaX,
-                y1: originalY1 + deltaY,
+                x1: newX1,
+                y1: newY1,
               },
               true
             );
           } else {
+            // Constrain end point within page boundaries
+            const newX2 = Math.max(0, Math.min(pageWidth, originalX2 + deltaX));
+            const newY2 = Math.max(0, Math.min(pageHeight, originalY2 + deltaY));
+            
             onUpdate(
               shape.id,
               {
-                x2: originalX2 + deltaX,
-                y2: originalY2 + deltaY,
+                x2: newX2,
+                y2: newY2,
               },
               true
             );
@@ -101,45 +113,53 @@ export const MemoizedLine = memo(
           const deltaY = (upEvent.clientY - startY) / scale;
 
           if (isStart) {
+            // Constrain start point within page boundaries
+            const newX1 = Math.max(0, Math.min(pageWidth, originalX1 + deltaX));
+            const newY1 = Math.max(0, Math.min(pageHeight, originalY1 + deltaY));
+            
             onUpdate(
               shape.id,
               {
-                x1: originalX1 + deltaX,
-                y1: originalY1 + deltaY,
+                x1: newX1,
+                y1: newY1,
               },
               false
             );
           } else {
+            // Constrain end point within page boundaries
+            const newX2 = Math.max(0, Math.min(pageWidth, originalX2 + deltaX));
+            const newY2 = Math.max(0, Math.min(pageHeight, originalY2 + deltaY));
+            
             onUpdate(
               shape.id,
               {
-                x2: originalX2 + deltaX,
-                y2: originalY2 + deltaY,
+                x2: newX2,
+                y2: newY2,
               },
               false
             );
           }
 
-          document.removeEventListener('mousemove', handleAnchorMove);
-          document.removeEventListener('mouseup', handleAnchorUp);
+          document.removeEventListener("mousemove", handleAnchorMove);
+          document.removeEventListener("mouseup", handleAnchorUp);
         };
 
-        document.addEventListener('mousemove', handleAnchorMove);
-        document.addEventListener('mouseup', handleAnchorUp);
+        document.addEventListener("mousemove", handleAnchorMove);
+        document.addEventListener("mouseup", handleAnchorUp);
       },
-      [isEditMode, isSelected, onUpdate, shape, scale]
+      [isEditMode, isSelected, onUpdate, shape, scale, pageWidth, pageHeight]
     );
 
     return (
       <Rnd
         key={shape.id}
-        position={{ 
-          x: (minX - 10), 
-          y: (minY - 10) 
+        position={{
+          x: minX - 10,
+          y: minY - 10,
         }}
-        size={{ 
-          width: boundingWidth, 
-          height: boundingHeight 
+        size={{
+          width: boundingWidth,
+          height: boundingHeight,
         }}
         bounds="parent"
         dragHandleClassName="line-drag-handle"
@@ -148,7 +168,7 @@ export const MemoizedLine = memo(
           // Calculate the offset from the original position
           const deltaX = (d.x - (minX - 10)) / scale;
           const deltaY = (d.y - (minY - 10)) / scale;
-          
+
           // Update both line points
           onUpdate(
             shape.id,
@@ -164,10 +184,10 @@ export const MemoizedLine = memo(
         className="line-element"
         style={{
           // Remove all visual styling - invisible container
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          boxShadow: 'none',
+          background: "transparent",
+          border: "none",
+          outline: "none",
+          boxShadow: "none",
         }}
       >
         <div className="w-full h-full relative group">
@@ -176,7 +196,7 @@ export const MemoizedLine = memo(
             width={boundingWidth}
             height={boundingHeight}
             className="absolute inset-0"
-            style={{ pointerEvents: 'none' }} // Prevent container from intercepting clicks
+            style={{ pointerEvents: "none" }} // Prevent container from intercepting clicks
           >
             {/* Invisible thicker line for easier clicking */}
             <line
@@ -187,13 +207,13 @@ export const MemoizedLine = memo(
               stroke="transparent"
               strokeWidth={Math.max(8, shape.borderWidth * scale + 4)} // Minimum 8px click area
               strokeLinecap="round"
-              style={{ 
-                pointerEvents: 'auto', // Allow clicking on the invisible line
-                cursor: 'pointer' 
+              style={{
+                pointerEvents: "auto", // Allow clicking on the invisible line
+                cursor: "pointer",
               }}
               onClick={handleClick}
             />
-            
+
             {/* Visible line */}
             <line
               x1={relativeX1}
@@ -201,18 +221,23 @@ export const MemoizedLine = memo(
               x2={relativeX2}
               y2={relativeY2}
               stroke={
-                isSelected ? '#3b82f6' : // Blue when selected
-                isInSelectionPreview ? '#60a5fa' : // Lighter blue for preview
-                shape.borderColor // Normal color
+                isSelected
+                  ? "#3b82f6" // Blue when selected
+                  : isInSelectionPreview
+                  ? "#60a5fa" // Lighter blue for preview
+                  : shape.borderColor // Normal color
               }
               strokeWidth={
-                isSelected ? Math.max(shape.borderWidth * scale + 1, 2) : // Slightly thicker when selected
-                shape.borderWidth * scale
+                isSelected
+                  ? Math.max(shape.borderWidth * scale + 1, 2) // Slightly thicker when selected
+                  : shape.borderWidth * scale
               }
               strokeLinecap="round"
-              style={{ 
-                pointerEvents: 'none', // Let the invisible line handle clicks
-                filter: isSelected ? 'drop-shadow(0 0 3px rgba(59, 130, 246, 0.4))' : 'none' // Subtle glow when selected
+              style={{
+                pointerEvents: "none", // Let the invisible line handle clicks
+                filter: isSelected
+                  ? "drop-shadow(0 0 3px rgba(59, 130, 246, 0.4))"
+                  : "none", // Subtle glow when selected
               }}
             />
           </svg>
@@ -242,20 +267,30 @@ export const MemoizedLine = memo(
                 title="End point"
               />
 
-              {/* Move handle */}
-              <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+              {/* Move handle - positioned at center of line */}
+              <div
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 z-20 flex items-center space-x-1"
+                style={{
+                  left: (relativeX1 + relativeX2) / 2,
+                  top: (relativeY1 + relativeY2) / 2 + 20, // Slightly below the line center
+                }}
+              >
                 <div className="line-drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                   <Move size={10} />
                 </div>
               </div>
 
-              {/* Delete button */}
+              {/* Delete button - positioned at center of line */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(shape.id);
                 }}
-                className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                className="absolute transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                style={{
+                  left: (relativeX1 + relativeX2) / 2,
+                  top: (relativeY1 + relativeY2) / 2 - 20, // Slightly above the line center
+                }}
                 title="Delete line"
               >
                 <Trash2 size={10} />

@@ -2,8 +2,8 @@ import { useCallback } from "react";
 import { TextField, ViewMode } from "../../types/pdf-editor.types";
 import { Shape as ShapeType } from "../../types/pdf-editor.types";
 import {
-AddTextBoxCommand,
-UpdateTextBoxCommand,
+  AddTextBoxCommand,
+  UpdateTextBoxCommand,
   AddDeletionRectangleCommand,
   DeleteDeletionRectangleCommand,
   AddImageCommand,
@@ -11,7 +11,7 @@ UpdateTextBoxCommand,
   DeleteTextBoxCommand,
   DeleteShapeCommand,
   AddShapeCommand,
-  UpdateShapeCommand
+  UpdateShapeCommand,
 } from "./commands";
 import {
   DeletionRectangle,
@@ -66,7 +66,8 @@ export function useHandleDuplicateTextBoxWithUndo(
       const duplicate = () => {
         newId = duplicateTextBox(originalId, currentView);
         idRef.current = newId;
-        if (!newId) throw new Error("Failed to duplicate text box: newId is null");
+        if (!newId)
+          throw new Error("Failed to duplicate text box: newId is null");
         return newId;
       };
       const remove = (id: string) => {
@@ -239,8 +240,27 @@ export function useHandleAddShapeWithUndo(
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
-        if (type === "line" && x1 !== undefined && y1 !== undefined && x2 !== undefined && y2 !== undefined) {
-          newId = addShape(type, x, y, width, height, page, view, targetView, x1, y1, x2, y2);
+        if (
+          type === "line" &&
+          x1 !== undefined &&
+          y1 !== undefined &&
+          x2 !== undefined &&
+          y2 !== undefined
+        ) {
+          newId = addShape(
+            type,
+            x,
+            y,
+            width,
+            height,
+            page,
+            view,
+            targetView,
+            x1,
+            y1,
+            x2,
+            y2
+          );
         } else {
           newId = addShape(type, x, y, width, height, page, view, targetView);
         }
@@ -433,7 +453,13 @@ export function useHandleDeleteShapeWithUndo(
         deleteShape(id, view);
       };
       const add = (shape: ShapeType) => {
-        if (shape.type === "line" && shape.x1 !== undefined && shape.y1 !== undefined && shape.x2 !== undefined && shape.y2 !== undefined) {
+        if (
+          shape.type === "line" &&
+          shape.x1 !== undefined &&
+          shape.y1 !== undefined &&
+          shape.x2 !== undefined &&
+          shape.y2 !== undefined
+        ) {
           addShape(
             shape.type,
             shape.x,

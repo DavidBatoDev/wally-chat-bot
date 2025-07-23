@@ -10,6 +10,8 @@ interface DocumentElementsLayerProps {
   viewType: 'original' | 'translated';
   currentPage: number;
   scale: number;
+  pageWidth: number;
+  pageHeight: number;
   
   // Deletion rectangles
   deletionRectangles: DeletionRectangle[];
@@ -67,6 +69,8 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   viewType,
   currentPage,
   scale,
+  pageWidth,
+  pageHeight,
   deletionRectangles,
   showDeletionRectangles,
   onDeleteDeletionRectangle,
@@ -182,6 +186,8 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               isSelected={selectedShapeId === shape.id}
               isEditMode={isEditMode}
               scale={scale}
+              pageWidth={pageWidth}
+              pageHeight={pageHeight}
               onSelect={onShapeSelect}
               onUpdate={onUpdateShape}
               onDelete={onDeleteShape}

@@ -10,6 +10,8 @@ interface ShapeProps {
   isSelected: boolean;
   isEditMode: boolean;
   scale: number;
+  pageWidth: number;
+  pageHeight: number;
   onSelect: (id: string) => void;
   onUpdate: (
     id: string,
@@ -27,6 +29,8 @@ export const MemoizedShape = memo(
     isSelected,
     isEditMode,
     scale,
+    pageWidth,
+    pageHeight,
     onSelect,
     onUpdate,
     onDelete,
@@ -49,6 +53,8 @@ export const MemoizedShape = memo(
           isSelected={isSelected}
           isEditMode={isEditMode}
           scale={scale}
+          pageWidth={pageWidth}
+          pageHeight={pageHeight}
           onSelect={onSelect}
           onUpdate={onUpdate}
           onDelete={onDelete}

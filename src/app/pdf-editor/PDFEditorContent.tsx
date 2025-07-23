@@ -2984,6 +2984,8 @@ export const PDFEditorContent: React.FC = () => {
           isSelected={editorState.selectedShapeId === shape.id}
           isEditMode={editorState.isEditMode}
           scale={documentState.scale}
+          pageWidth={documentState.pageWidth}
+          pageHeight={documentState.pageHeight}
           onSelect={handleShapeSelect}
           onUpdate={updateShapeWithUndo}
           onDelete={(id) =>
