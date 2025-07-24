@@ -124,6 +124,21 @@ import "./styles/pdf-editor.css";
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
+// Suppress specific PDF.js console warnings
+const originalConsoleWarn = console.warn;
+console.warn = (...args: any[]) => {
+  // Convert all arguments to strings to check for warning patterns
+  const message = args.join(' ');
+  
+  // Suppress PDF.js "Invalid page request" warnings during final layout
+  if (message.includes('Invalid page request')) {
+    return;
+  }
+  
+  // Call original console.warn for other warnings
+  originalConsoleWarn(...args);
+};
+
 export const PDFEditorContent: React.FC = () => {
   const {
     isDrawerOpen,

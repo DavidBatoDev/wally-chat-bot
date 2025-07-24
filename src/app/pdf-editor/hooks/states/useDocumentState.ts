@@ -72,12 +72,15 @@ export const useDocumentState = () => {
     if (
       error?.message?.includes("TextLayer task cancelled") ||
       error?.message?.includes("AbortException") ||
+      error?.message?.includes("Invalid page request") ||
       error?.name === "AbortException" ||
       error?.name === "AbortError" ||
       error?.toString?.().includes("TextLayer task cancelled") ||
       error?.toString?.().includes("AbortException") ||
+      error?.toString?.().includes("Invalid page request") ||
       (error?.error &&
         (error.error.message?.includes("TextLayer task cancelled") ||
+          error.error.message?.includes("Invalid page request") ||
           error.error.name === "AbortException"))
     ) {
       return;
