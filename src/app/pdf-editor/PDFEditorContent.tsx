@@ -1610,6 +1610,14 @@ export const PDFEditorContent: React.FC = () => {
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
     const timeoutId = setTimeout(() => {
+      // Close drawer if not in edit mode
+      if (!editorState.isEditMode) {
+        setIsDrawerOpen(false);
+        setSelectedElementId(null);
+        setCurrentFormat(null);
+        return;
+      }
+
       const { selectedElements } = editorState.multiSelection;
 
       // Handle multi-selection format drawer
@@ -1974,6 +1982,8 @@ export const PDFEditorContent: React.FC = () => {
     selectedElementId,
     selectedElementType,
     editorState.multiSelection.selectedElements,
+    editorState.isEditMode,
+    viewState.currentView,
     elementCollections,
     setIsDrawerOpen,
     setSelectedElementId,
@@ -4295,10 +4305,12 @@ export const PDFEditorContent: React.FC = () => {
                 : "flex-1"
             }`}
           >
-            {/* ElementFormatDrawer */}
-            <div className="relative z-40 transition-all duration-300">
-              <ElementFormatDrawer />
-            </div>
+            {/* ElementFormatDrawer - only show in edit mode */}
+            {editorState.isEditMode && (
+              <div className="relative z-40 transition-all duration-300">
+                <ElementFormatDrawer />
+              </div>
+            )}
 
             {/* Floating Toolbars - Only show when PDF is loaded */}
             {documentState.url && !documentState.error && (
@@ -4311,9 +4323,11 @@ export const PDFEditorContent: React.FC = () => {
                 isSidebarCollapsed={viewState.isSidebarCollapsed}
                 currentWorkflowStep={viewState.currentWorkflowStep}
                 onToolChange={handleToolChange}
-                onViewChange={(view) =>
-                  setViewState((prev) => ({ ...prev, currentView: view }))
-                }
+                onViewChange={(view) => {
+                  // Clear selection when changing views to close ElementFormatDrawer
+                  clearSelectionState();
+                  setViewState((prev) => ({ ...prev, currentView: view }));
+                }}
                 onEditModeToggle={() =>
                   setEditorState((prev) => ({
                     ...prev,

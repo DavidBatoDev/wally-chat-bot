@@ -75,8 +75,13 @@ export const measureText = (
     return { width: maxWidth, height: Math.max(wrappedHeight, fontSize * 1.1) };
   }
 
-  const finalWidth = maxLineWidth;
-  const finalHeight = Math.max(totalHeight, fontSize); // Ensure minimum height is at least font size (not forcing 2 lines)
+  // Add padding to width and height when no maxWidth constraint is provided
+  const paddingLeft = padding?.left || 0;
+  const paddingRight = padding?.right || 0;
+  const paddingTop = padding?.top || 0;
+  const paddingBottom = padding?.bottom || 0;
+  const finalWidth = maxLineWidth + paddingLeft + paddingRight;
+  const finalHeight = Math.max(totalHeight, fontSize) + paddingTop + paddingBottom; // Ensure minimum height is at least font size (not forcing 2 lines)
 
   return { width: finalWidth, height: finalHeight };
 };

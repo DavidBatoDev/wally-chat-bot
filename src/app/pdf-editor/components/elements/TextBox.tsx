@@ -130,7 +130,7 @@ export const MemoizedTextBox = memo(
             }
 
             if (!hasBeenManuallyResized) {
-              const newWidth = Math.max(textBox.width, width + padding);
+              const newWidth = Math.max(textBox.width, width);
               if (newWidth > textBox.width) {
                 updates.width = newWidth;
               }
@@ -359,8 +359,14 @@ export const MemoizedTextBox = memo(
           }
         }}
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
-          isEditMode ? "edit-mode" : ""
-        } ${
+          isEditMode &&
+          !isSelected &&
+          !isMultiSelected &&
+          !isInSelectionPreview &&
+          !isSelectedInTextMode
+            ? "ring-1 ring-gray-300"
+            : ""
+        } ${isEditMode ? "edit-mode" : ""} ${
           isSelectedInTextMode
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
