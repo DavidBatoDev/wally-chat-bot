@@ -37,7 +37,7 @@ const kanbanColumns: KanbanColumn[] = [
   {
     id: 'in-progress',
     title: 'In Progress',
-    statuses: ['in-progress'],
+    statuses: ['in-progress', 'sent-back'],
     row: 'agent',
     color: 'border-indigo-500',
   },

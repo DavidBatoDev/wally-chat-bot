@@ -132,7 +132,7 @@ export function Sidebar({
         const myProjects = projects.filter(p => p.assignedTranslator === currentUser?.name);
         return {
           assigned: myProjects.filter(p => p.status === 'assigned').length,
-          inProgress: myProjects.filter(p => p.status === 'in-progress').length,
+          inProgress: myProjects.filter(p => ['in-progress', 'sent-back'].includes(p.status)).length,
           completed: myProjects.filter(p => ['pm-review', 'completed'].includes(p.status)).length,
           overdue: myProjects.filter(p => new Date(p.deadline) < new Date()).length,
         };

@@ -32,6 +32,7 @@ const statusConfig = {
   'assigning-translator': { label: 'Assigning Translator', color: 'bg-orange-500', icon: User },
   'assigned': { label: 'Assigned', color: 'bg-purple-500', icon: User },
   'in-progress': { label: 'In Progress', color: 'bg-indigo-500', icon: Loader2 },
+  'sent-back': { label: 'Sent Back', color: 'bg-red-500', icon: AlertCircle },
   'pm-review': { label: 'PM Review', color: 'bg-orange-500', icon: CheckCircle },
   'completed': { label: 'Completed', color: 'bg-green-500', icon: CheckCircle },
 };
@@ -147,6 +148,8 @@ export function ProjectCard({ project, onClick, animationDelay = 0 }: ProjectCar
             </Badge>
           </div>
         )}
+        
+
         
         {/* View Details Indicator */}
         <div className="absolute bottom-4 right-4 opacity-0 transition-opacity group-hover:opacity-100">

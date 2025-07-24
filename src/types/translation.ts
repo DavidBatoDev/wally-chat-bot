@@ -5,6 +5,7 @@ export type ProjectStatus =
   | "assigned"
   | "in-progress"
   | "pm-review"
+  | "sent-back"
   | "completed";
 
 export type UserRoleType = "project-manager" | "translator";
@@ -47,6 +48,13 @@ export interface Project {
   translationStartedAt?: string;
   translationSubmittedAt?: string;
   finalApprovalAt?: string;
+  sentBackAt?: string;
+  
+  // PM Review functionality
+  pmNotes?: string;
+  sentBackCount?: number;
+  sentBackBy?: string;
+  finalApprovalBy?: string;
 }
 
 export interface TeamMember {

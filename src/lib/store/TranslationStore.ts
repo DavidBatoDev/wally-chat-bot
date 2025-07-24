@@ -44,6 +44,7 @@ interface TranslationState {
   acceptAssignment: (projectId: string) => void;
   submitTranslation: (projectId: string, translations: Record<string, string>) => void;
   giveFinalApproval: (projectId: string) => void;
+  sendBackToTranslator: (projectId: string, notes: string) => void;
   
   // PDF Editor Integration
   savePDFEditorState: (projectId: string, pdfState: any) => void;
@@ -521,6 +522,7 @@ export const useTranslationStore = create<TranslationState>()((set, get) => ({
               status: "completed" as ProjectStatus,
               actionType: undefined, // Remove action type when completed
               finalApprovalAt: new Date().toISOString(),
+              finalApprovalBy: state.currentUser?.name || 'Project Manager',
             }
           : p
       ),
@@ -535,6 +537,37 @@ export const useTranslationStore = create<TranslationState>()((set, get) => ({
       title: "Project Completed",
       message: "Project has been approved and marked as completed",
       type: "success",
+      read: false,
+      userId: get().currentUser?.id || "",
+    });
+  },
+  
+  sendBackToTranslator: (projectId, notes) => {
+    set((state) => ({
+      projects: state.projects.map(p =>
+        p.id === projectId
+          ? { 
+              ...p, 
+              status: "sent-back" as ProjectStatus,
+              actionType: undefined,
+              pmNotes: notes,
+              sentBackAt: new Date().toISOString(),
+              sentBackCount: (p.sentBackCount || 0) + 1,
+              sentBackBy: state.currentUser?.name || 'Project Manager',
+            }
+          : p
+      ),
+    }));
+    
+    // Save immediately after state change
+    setTimeout(() => {
+      get().saveToStorage();
+    }, 0);
+    
+    get().addNotification({
+      title: "Project Sent Back",
+      message: "Project has been sent back to translator for revisions",
+      type: "warning",
       read: false,
       userId: get().currentUser?.id || "",
     });

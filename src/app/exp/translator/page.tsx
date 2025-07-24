@@ -34,7 +34,7 @@ export default function TranslatorPage() {
   // Filter projects assigned to current translator
   const myProjects = projects.filter(p => p.assignedTranslator === currentUser.name);
   const assignedProjects = myProjects.filter(p => p.status === 'assigned');
-  const inProgressProjects = myProjects.filter(p => p.status === 'in-progress');
+  const inProgressProjects = myProjects.filter(p => ['in-progress', 'sent-back'].includes(p.status));
   const completedProjects = myProjects.filter(p => ['pm-review', 'completed'].includes(p.status));
   
   const handleAcceptAssignment = (project: Project) => {
