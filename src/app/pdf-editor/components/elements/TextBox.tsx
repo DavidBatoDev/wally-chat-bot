@@ -130,7 +130,7 @@ export const MemoizedTextBox = memo(
             }
 
             if (!hasBeenManuallyResized) {
-              const newWidth = Math.max(textBox.width, width);
+              const newWidth = Math.max(textBox.width, width + padding);
               if (newWidth > textBox.width) {
                 updates.width = newWidth;
               }
@@ -173,13 +173,22 @@ export const MemoizedTextBox = memo(
     );
 
     const handleFocus = useCallback(() => {
+      console.log(`TextBox focused: ${textBox.id}`, {
+        textBoxId: textBox.id,
+        value: textBox.value,
+        x: textBox.x,
+        y: textBox.y,
+        width: textBox.width,
+        height: textBox.height,
+        page: textBox.page,
+      });
       onSelect(textBox.id);
 
       // Clear default text when manually focusing on a textbox with "New Text Field"
       if (textBox.value === "New Text Field") {
         onUpdate(textBox.id, { value: "" }, false);
       }
-    }, [textBox.id, onSelect, textBox.value, onUpdate]);
+    }, [textBox.id, onSelect, textBox.value, onUpdate, textBox.x, textBox.y, textBox.width, textBox.height, textBox.page]);
 
     // Multi-selection drag handlers
     const handleDragStart = useCallback(
@@ -359,14 +368,8 @@ export const MemoizedTextBox = memo(
           }
         }}
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
-          isEditMode &&
-          !isSelected &&
-          !isMultiSelected &&
-          !isInSelectionPreview &&
-          !isSelectedInTextMode
-            ? "ring-1 ring-gray-300"
-            : ""
-        } ${isEditMode ? "edit-mode" : ""} ${
+          isEditMode ? "edit-mode" : ""
+        } ${
           isSelectedInTextMode
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
