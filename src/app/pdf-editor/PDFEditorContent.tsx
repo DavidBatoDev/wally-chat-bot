@@ -4902,13 +4902,6 @@ export const PDFEditorContent: React.FC = () => {
                               });
                             }}
                             onDragStopSelection={handleDragStopSelection}
-                            header={
-                              <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                                <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                                  Original Document
-                                </div>
-                              </div>
-                            }
                           />
                           {/* Interactive elements overlay for Original in Split View */}
                           <div
@@ -5202,7 +5195,7 @@ export const PDFEditorContent: React.FC = () => {
                               onDragStopSelection={handleDragStopSelection}
                               header={
                                 <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                                  <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                                  <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
                                     Translated Document
                                   </div>
                                 </div>
