@@ -239,7 +239,7 @@ async function capturePageView(
 }
 
 /**
- * Creates a blank PDF with the captured snapshots arranged in a 2x2 grid
+ * Creates a PDF with the export_first_page.pdf as the first page, followed by captured snapshots arranged in a 2x2 grid
  */
 export async function createFinalLayoutPdf(
   snapshots: SnapshotData[]
@@ -247,7 +247,23 @@ export async function createFinalLayoutPdf(
   try {
     const pdfDoc = await PDFDocument.create();
 
-    // Calculate how many PDF pages we need (2 snapshots per PDF page)
+    // Load and add the export_first_page.pdf as the first page
+    try {
+      const templateResponse = await fetch("/export_template/export_first_page.pdf");
+      const templateArrayBuffer = await templateResponse.arrayBuffer();
+      const templatePdfDoc = await PDFDocument.load(templateArrayBuffer);
+      
+      // Copy the first page from the template
+      const [templatePage] = await pdfDoc.copyPages(templatePdfDoc, [0]);
+      pdfDoc.addPage(templatePage);
+      
+      console.log("Successfully added export_first_page.pdf as the first page");
+    } catch (templateError) {
+      console.warn("Could not load export_first_page.pdf, proceeding without it:", templateError);
+      // Continue with the layout pages even if template fails to load
+    }
+
+    // Calculate how many PDF pages we need for snapshots (2 snapshots per PDF page)
     const pagesNeeded = Math.ceil(snapshots.length / 2);
 
     for (let pdfPageIndex = 0; pdfPageIndex < pagesNeeded; pdfPageIndex++) {
@@ -282,7 +298,7 @@ export async function createFinalLayoutPdf(
     // Convert to file
     const pdfBytes = await pdfDoc.save();
     const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
-    return new File([pdfBlob], "final-layout.pdf", { type: "application/pdf" });
+    return new File([pdfBlob], "final-layout-with-template.pdf", { type: "application/pdf" });
   } catch (error) {
     console.error("Error creating final layout PDF:", error);
     throw new Error(
@@ -296,93 +312,93 @@ export async function createFinalLayoutPdf(
 /**
  * Adds a snapshot's original and translated images to a PDF page
  */
-async function addSnapshotToPage(
-  page: any,
-  pdfDoc: PDFDocument,
-  snapshot: SnapshotData,
-  layout: {
-    originalX: number;
-    originalY: number;
-    translatedX: number;
-    translatedY: number;
-    quadrantWidth: number;
-    quadrantHeight: number;
-  }
-) {
-  try {
-    // Embed original image
-    const originalImageBytes = await fetch(snapshot.originalImage).then((res) =>
-      res.arrayBuffer()
-    );
-    const originalImage = await pdfDoc.embedPng(originalImageBytes);
+// async function addSnapshotToPage(
+//   page: any,
+//   pdfDoc: PDFDocument,
+//   snapshot: SnapshotData,
+//   layout: {
+//     originalX: number;
+//     originalY: number;
+//     translatedX: number;
+//     translatedY: number;
+//     quadrantWidth: number;
+//     quadrantHeight: number;
+//   }
+// ) {
+//   try {
+//     // Embed original image
+//     const originalImageBytes = await fetch(snapshot.originalImage).then((res) =>
+//       res.arrayBuffer()
+//     );
+//     const originalImage = await pdfDoc.embedPng(originalImageBytes);
 
-    // Embed translated image
-    const translatedImageBytes = await fetch(snapshot.translatedImage).then(
-      (res) => res.arrayBuffer()
-    );
-    const translatedImage = await pdfDoc.embedPng(translatedImageBytes);
+//     // Embed translated image
+//     const translatedImageBytes = await fetch(snapshot.translatedImage).then(
+//       (res) => res.arrayBuffer()
+//     );
+//     const translatedImage = await pdfDoc.embedPng(translatedImageBytes);
 
-    // Calculate scaling to fit within quadrants while maintaining aspect ratio
-    const originalAspect = snapshot.originalWidth / snapshot.originalHeight;
-    const translatedAspect =
-      snapshot.translatedWidth / snapshot.translatedHeight;
-    const quadrantAspect = layout.quadrantWidth / layout.quadrantHeight;
+//     // Calculate scaling to fit within quadrants while maintaining aspect ratio
+//     const originalAspect = snapshot.originalWidth / snapshot.originalHeight;
+//     const translatedAspect =
+//       snapshot.translatedWidth / snapshot.translatedHeight;
+//     const quadrantAspect = layout.quadrantWidth / layout.quadrantHeight;
 
-    // Scale original image
-    let originalWidth, originalHeight;
-    if (originalAspect > quadrantAspect) {
-      originalWidth = layout.quadrantWidth;
-      originalHeight = layout.quadrantWidth / originalAspect;
-    } else {
-      originalHeight = layout.quadrantHeight;
-      originalWidth = layout.quadrantHeight * originalAspect;
-    }
+//     // Scale original image
+//     let originalWidth, originalHeight;
+//     if (originalAspect > quadrantAspect) {
+//       originalWidth = layout.quadrantWidth;
+//       originalHeight = layout.quadrantWidth / originalAspect;
+//     } else {
+//       originalHeight = layout.quadrantHeight;
+//       originalWidth = layout.quadrantHeight * originalAspect;
+//     }
 
-    // Scale translated image
-    let translatedWidth, translatedHeight;
-    if (translatedAspect > quadrantAspect) {
-      translatedWidth = layout.quadrantWidth;
-      translatedHeight = layout.quadrantWidth / translatedAspect;
-    } else {
-      translatedHeight = layout.quadrantHeight;
-      translatedWidth = layout.quadrantHeight * translatedAspect;
-    }
+//     // Scale translated image
+//     let translatedWidth, translatedHeight;
+//     if (translatedAspect > quadrantAspect) {
+//       translatedWidth = layout.quadrantWidth;
+//       translatedHeight = layout.quadrantWidth / translatedAspect;
+//     } else {
+//       translatedHeight = layout.quadrantHeight;
+//       translatedWidth = layout.quadrantHeight * translatedAspect;
+//     }
 
-    // Center images in their quadrants
-    const originalCenterX =
-      layout.originalX + (layout.quadrantWidth - originalWidth) / 2;
-    const originalCenterY =
-      layout.originalY + (layout.quadrantHeight - originalHeight) / 2;
-    const translatedCenterX =
-      layout.translatedX + (layout.quadrantWidth - translatedWidth) / 2;
-    const translatedCenterY =
-      layout.translatedY + (layout.quadrantHeight - translatedHeight) / 2;
+//     // Center images in their quadrants
+//     const originalCenterX =
+//       layout.originalX + (layout.quadrantWidth - originalWidth) / 2;
+//     const originalCenterY =
+//       layout.originalY + (layout.quadrantHeight - originalHeight) / 2;
+//     const translatedCenterX =
+//       layout.translatedX + (layout.quadrantWidth - translatedWidth) / 2;
+//     const translatedCenterY =
+//       layout.translatedY + (layout.quadrantHeight - translatedHeight) / 2;
 
-    // Draw images
-    page.drawImage(originalImage, {
-      x: originalCenterX,
-      y: originalCenterY,
-      width: originalWidth,
-      height: originalHeight,
-    });
+//     // Draw images
+//     page.drawImage(originalImage, {
+//       x: originalCenterX,
+//       y: originalCenterY,
+//       width: originalWidth,
+//       height: originalHeight,
+//     });
 
-    page.drawImage(translatedImage, {
-      x: translatedCenterX,
-      y: translatedCenterY,
-      width: translatedWidth,
-      height: translatedHeight,
-    });
+//     page.drawImage(translatedImage, {
+//       x: translatedCenterX,
+//       y: translatedCenterY,
+//       width: translatedWidth,
+//       height: translatedHeight,
+//     });
 
-    // Add page number label
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    page.drawText(`Page ${snapshot.pageNumber}`, {
-      x: layout.originalX,
-      y: layout.originalY - 15,
-      size: 10,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-  } catch (error) {
-    console.error("Error adding snapshot to page:", error);
-    // Continue without this snapshot rather than failing completely
-  }
-}
+//     // Add page number label
+//     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+//     page.drawText(`Page ${snapshot.pageNumber}`, {
+//       x: layout.originalX,
+//       y: layout.originalY - 15,
+//       size: 10,
+//       color: rgb(0.5, 0.5, 0.5),
+//     });
+//   } catch (error) {
+//     console.error("Error adding snapshot to page:", error);
+//     // Continue without this snapshot rather than failing completely
+//   }
+// }

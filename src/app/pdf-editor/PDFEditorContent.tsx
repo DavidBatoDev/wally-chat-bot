@@ -969,8 +969,8 @@ export const PDFEditorContent: React.FC = () => {
       console.log("Captured snapshots:", snapshots.length, "snapshots");
       setCapturedSnapshots(snapshots);
 
-      // Create final layout PDF with snapshots
-      console.log("Creating final layout PDF...");
+      // Create final layout PDF with template page and snapshots
+      console.log("Creating final layout PDF with template page...");
       const finalLayoutFile = await createFinalLayoutPdf(snapshots);
 
       // Check if cancelled after PDF creation
@@ -1079,7 +1079,7 @@ export const PDFEditorContent: React.FC = () => {
         await addInteractiveElementsToLayout(snapshots);
         console.log("Interactive elements added successfully");
 
-        toast.success("Created final layout with interactive snapshots");
+        toast.success("Created final layout with template page and interactive snapshots");
       } catch (loadError) {
         console.error("Error loading final layout document:", loadError);
 
@@ -1179,7 +1179,8 @@ export const PDFEditorContent: React.FC = () => {
       const pagesNeeded = Math.ceil(snapshots.length / 2);
 
       for (let pdfPageIndex = 0; pdfPageIndex < pagesNeeded; pdfPageIndex++) {
-        const pageNumber = pdfPageIndex + 1;
+        // Start from page 2 since page 1 is the template page (export_first_page.pdf)
+        const pageNumber = pdfPageIndex + 2;
         const snapshot1 = snapshots[pdfPageIndex * 2];
         const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
 
