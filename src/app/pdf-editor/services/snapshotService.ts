@@ -249,17 +249,22 @@ export async function createFinalLayoutPdf(
 
     // Load and add the export_first_page.pdf as the first page
     try {
-      const templateResponse = await fetch("/export_template/export_first_page.pdf");
+      const templateResponse = await fetch(
+        "/export_template/export_first_page.pdf"
+      );
       const templateArrayBuffer = await templateResponse.arrayBuffer();
       const templatePdfDoc = await PDFDocument.load(templateArrayBuffer);
-      
+
       // Copy the first page from the template
       const [templatePage] = await pdfDoc.copyPages(templatePdfDoc, [0]);
       pdfDoc.addPage(templatePage);
-      
+
       console.log("Successfully added export_first_page.pdf as the first page");
     } catch (templateError) {
-      console.warn("Could not load export_first_page.pdf, proceeding without it:", templateError);
+      console.warn(
+        "Could not load export_first_page.pdf, proceeding without it:",
+        templateError
+      );
       // Continue with the layout pages even if template fails to load
     }
 
@@ -292,13 +297,14 @@ export async function createFinalLayoutPdf(
         height: pageHeight,
         color: rgb(1, 1, 1), // White background
       });
-
     }
 
     // Convert to file
     const pdfBytes = await pdfDoc.save();
     const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
-    return new File([pdfBlob], "final-layout-with-template.pdf", { type: "application/pdf" });
+    return new File([pdfBlob], "final-layout-with-template.pdf", {
+      type: "application/pdf",
+    });
   } catch (error) {
     console.error("Error creating final layout PDF:", error);
     throw new Error(
