@@ -1,5 +1,11 @@
 // Re-export TextField from components/types
 
+// Page data interface for storing individual pages
+export interface PageData {
+  pageNumber: number;
+  isTranslated: boolean;
+  backgroundColor?: string;
+}
 
 // Document and page related types
 export interface DocumentState {
@@ -18,6 +24,9 @@ export interface DocumentState {
   isScaleChanging: boolean;
   pdfBackgroundColor: string;
   detectedPageBackgrounds: Map<number, string>;
+  pages: PageData[];
+  deletedPages: Set<number>;
+  isTransforming: boolean;
 }
 
 export interface TextField {
@@ -282,7 +291,6 @@ export interface PageState {
   deletedPages: Set<number>;
   isPageTranslated: Map<number, boolean>;
   isTransforming: boolean;
-  showTransformButton: boolean;
 }
 
 // Event handler types

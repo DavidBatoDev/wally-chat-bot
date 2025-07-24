@@ -157,7 +157,7 @@ export const PDFEditorContent: React.FC = () => {
   } = useTextFormat();
 
   // Use custom hooks
-  const { documentState, setDocumentState, handlers, actions } =
+  const { documentState, setDocumentState, handlers, actions, pageActions } =
     useDocumentState();
   const {
     elementCollections,
@@ -325,13 +325,6 @@ export const PDFEditorContent: React.FC = () => {
     selectionStart: null,
     selectionEnd: null,
   });
-  // Page state
-  const [pageState, setPageState] = useState<PageState>({
-    deletedPages: new Set(),
-    isPageTranslated: new Map(),
-    isTransforming: false,
-    showTransformButton: true,
-  });
   // Language state
   const [sourceLanguage, setSourceLanguage] = useState<string>("");
   const [desiredLanguage, setDesiredLanguage] = useState<string>("");
@@ -351,7 +344,6 @@ export const PDFEditorContent: React.FC = () => {
     editorState: any;
     toolState: any;
     erasureState: any;
-    pageState: any;
   } | null>(null);
 
   // Snapshot capturing state for final layout
@@ -646,7 +638,6 @@ export const PDFEditorContent: React.FC = () => {
       editorState: { ...editorState },
       toolState: { ...toolState },
       erasureState: { ...erasureState },
-      pageState: { ...pageState },
     };
     setPreLayoutBackup(backup);
     console.log("Pre-layout backup created successfully");
@@ -657,7 +648,6 @@ export const PDFEditorContent: React.FC = () => {
     editorState,
     toolState,
     erasureState,
-    pageState,
   ]);
 
   // Function to restore state from backup
@@ -673,6 +663,9 @@ export const PDFEditorContent: React.FC = () => {
 
       try {
         // Restore document state
+        console.log("Restoring document state from backup");
+        console.log("Current document state before restore:", documentState);
+        console.log("Backup document state:", preLayoutBackup.documentState);
         setDocumentState(preLayoutBackup.documentState);
 
         // Restore element collections
@@ -689,9 +682,6 @@ export const PDFEditorContent: React.FC = () => {
 
         // Restore erasure state
         setErasureState(preLayoutBackup.erasureState);
-
-        // Restore page state
-        setPageState(preLayoutBackup.pageState);
 
         // Only clear the backup if explicitly requested (e.g., when completely exiting final layout workflow)
         if (clearBackup) {
@@ -715,7 +705,6 @@ export const PDFEditorContent: React.FC = () => {
       setEditorState,
       setToolState,
       setErasureState,
-      setPageState,
     ]
   );
 
@@ -969,7 +958,9 @@ export const PDFEditorContent: React.FC = () => {
       const snapshots = await captureAllPageSnapshots({
         documentRef,
         documentState,
-        pageState,
+        pageState: {
+          deletedPages: documentState.deletedPages,
+        },
         setViewState,
         setDocumentState,
         setEditorState,
@@ -1164,7 +1155,6 @@ export const PDFEditorContent: React.FC = () => {
     isCapturingSnapshots,
     isCancellingSnapshots,
     documentState,
-    pageState,
     editorState,
     actions,
     setElementCollections,
@@ -3069,6 +3059,10 @@ export const PDFEditorContent: React.FC = () => {
         const currentArrayBuffer = await currentResponse.arrayBuffer();
         const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
 
+        // Store current state before appending
+        const currentDeletedPages = new Set(documentState.deletedPages);
+        const currentPages = [...documentState.pages];
+
         // Add a new blank page (A4 size: 595.28 x 841.89 points)
         const newPage = currentPdfDoc.addPage([595.28, 841.89]);
 
@@ -3083,28 +3077,41 @@ export const PDFEditorContent: React.FC = () => {
           type: "application/pdf",
         });
 
-        // Load the updated PDF
-        actions.loadDocument(updatedFile);
+        // Update document URL without using loadDocument to preserve deletedPages
+        const newUrl = URL.createObjectURL(updatedFile);
+        const newPageNumber = currentPdfDoc.getPageCount();
+
+        setDocumentState((prev) => ({
+          ...prev,
+          url: newUrl,
+          numPages: newPageNumber,
+          pages: [...currentPages, { pageNumber: newPageNumber, isTranslated: false }],
+          deletedPages: currentDeletedPages, // Preserve deleted pages
+          isDocumentLoaded: true,
+          error: "",
+        }));
 
         // Create image URL and add as interactive element on the new page
         const imageUrl = URL.createObjectURL(imageFile);
-        const newPageNumber = currentPdfDoc.getPageCount(); // The page we just added
 
-        // Create a new image element
-        const imageId = handleAddImageWithUndo(
-          imageUrl,
-          50, // Center the image on the page
-          50,
-          300, // Default size
-          200,
-          newPageNumber,
-          "original" // Add to original view
-        );
+        // Use setTimeout to ensure the document state is updated before adding the image
+        setTimeout(() => {
+          // Create a new image element
+          const imageId = handleAddImageWithUndo(
+            imageUrl,
+            50, // Center the image on the page
+            50,
+            300, // Default size
+            200,
+            newPageNumber,
+            "original" // Add to original view
+          );
 
-        // Select the image and open format drawer
-        if (imageId) {
-          handleImageSelect(imageId);
-        }
+          // Select the image and open format drawer
+          if (imageId) {
+            handleImageSelect(imageId);
+          }
+        }, 100);
 
         toast.success("Image appended as new page successfully!");
       } catch (error) {
@@ -3112,7 +3119,7 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to append image");
       }
     },
-    [documentState.url, actions, handleAddImageWithUndo, handleImageSelect]
+    [documentState.url, documentState.deletedPages, documentState.pages, setDocumentState, handleAddImageWithUndo, handleImageSelect]
   );
 
   // Helper function to append a PDF document
@@ -3126,6 +3133,11 @@ export const PDFEditorContent: React.FC = () => {
         const currentResponse = await fetch(documentState.url);
         const currentArrayBuffer = await currentResponse.arrayBuffer();
         const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+        // Store current state before appending
+        const currentDeletedPages = new Set(documentState.deletedPages);
+        const currentPages = [...documentState.pages];
+        const currentNumPages = documentState.numPages;
 
         // Load the new document to append
         const newArrayBuffer = await pdfFile.arrayBuffer();
@@ -3149,8 +3161,26 @@ export const PDFEditorContent: React.FC = () => {
           type: "application/pdf",
         });
 
-        // Load the merged PDF
-        actions.loadDocument(mergedFile);
+        // Update document URL without using loadDocument to preserve deletedPages
+        const newUrl = URL.createObjectURL(mergedFile);
+        const totalPages = currentPdfDoc.getPageCount();
+        const addedPagesCount = newPages.length;
+
+        // Create new page entries for the appended pages
+        const newPageEntries = Array.from({ length: addedPagesCount }, (_, index) => ({
+          pageNumber: currentNumPages + index + 1,
+          isTranslated: false,
+        }));
+
+        setDocumentState((prev) => ({
+          ...prev,
+          url: newUrl,
+          numPages: totalPages,
+          pages: [...currentPages, ...newPageEntries],
+          deletedPages: currentDeletedPages, // Preserve deleted pages
+          isDocumentLoaded: true,
+          error: "",
+        }));
 
         toast.success("PDF document appended successfully!");
       } catch (error) {
@@ -3158,7 +3188,7 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to append PDF document");
       }
     },
-    [documentState.url, actions]
+    [documentState.url, documentState.deletedPages, documentState.pages, documentState.numPages, setDocumentState]
   );
 
   // File handlers
@@ -3174,14 +3204,10 @@ export const PDFEditorContent: React.FC = () => {
         if (fileType === "image") {
           // For images, create a blank PDF and add the image as an interactive element
           createBlankPdfAndAddImage(file);
-          // Reset deletedPages after upload
-          setPageState((prev) => ({ ...prev, deletedPages: new Set() }));
         } else {
           // For PDFs, load normally
           actions.loadDocument(file);
           setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
-          // Reset deletedPages after upload
-          setPageState((prev) => ({ ...prev, deletedPages: new Set() }));
         }
       }
     },
@@ -3292,28 +3318,31 @@ export const PDFEditorContent: React.FC = () => {
 
   const handlePageDelete = useCallback(
     (pageNumber: number) => {
-      const remainingPages =
-        documentState.numPages - pageState.deletedPages.size;
-
-      if (remainingPages <= 1) {
-        toast.error("Cannot delete the last remaining page");
-        return;
-      }
-
-      setPageState((prev) => ({
-        ...prev,
-        deletedPages: new Set([...prev.deletedPages, pageNumber]),
-      }));
-
-      toast.success(`Page ${pageNumber} deleted`);
+      pageActions.deletePage(pageNumber);
     },
-    [documentState.numPages, pageState.deletedPages]
+    [pageActions]
   );
 
   // Transform page to textbox functionality
   const handleTransformPageToTextbox = useCallback(
     async (pageNumber: number) => {
       try {
+        // Create a compatibility wrapper for setPageState
+        const setPageStateCompat = (updater: (prev: any) => any) => {
+          const prev = {
+            isTransforming: documentState.isTransforming,
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+            ),
+          };
+          const newState = updater(prev);
+          
+          if (newState.isTransforming !== undefined) {
+            pageActions.setIsTransforming(newState.isTransforming);
+          }
+        };
+
         await performPageOcr({
           pageNumber,
           documentRef,
@@ -3321,7 +3350,7 @@ export const PDFEditorContent: React.FC = () => {
           documentState,
           viewState,
           editorState,
-          setPageState,
+          setPageState: setPageStateCompat,
           setViewState,
           setEditorState,
           actions,
@@ -3342,7 +3371,7 @@ export const PDFEditorContent: React.FC = () => {
       documentState,
       viewState,
       editorState,
-      setPageState,
+      pageActions,
       setViewState,
       setEditorState,
       actions,
@@ -3379,10 +3408,7 @@ export const PDFEditorContent: React.FC = () => {
       });
 
       // Reset page translation state
-      setPageState((prev) => ({
-        ...prev,
-        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, false)),
-      }));
+      pageActions.setPageTranslated(pageNumber, false);
 
       toast.success(`Translation cleared for page ${pageNumber}`);
     },
@@ -3393,6 +3419,7 @@ export const PDFEditorContent: React.FC = () => {
       deleteTextBox,
       deleteShape,
       deleteImage,
+      pageActions,
     ]
   );
 
@@ -3425,10 +3452,19 @@ export const PDFEditorContent: React.FC = () => {
   // Actual export function
   const performExport = useCallback(async () => {
     try {
+      // Create compatibility pageState object
+      const pageStateCompat = {
+        deletedPages: documentState.deletedPages,
+        isPageTranslated: new Map(
+          documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+        ),
+        isTransforming: documentState.isTransforming,
+      };
+      
       await exportPdfDocument({
         documentRef,
         documentState,
-        pageState,
+        pageState: pageStateCompat,
         editorState,
         viewState,
         templateCanvas,
@@ -3443,7 +3479,6 @@ export const PDFEditorContent: React.FC = () => {
   }, [
     documentRef,
     documentState,
-    pageState,
     editorState,
     viewState,
     templateCanvas,
@@ -3506,7 +3541,7 @@ export const PDFEditorContent: React.FC = () => {
 
       // Capture all non-deleted pages from original view only
       const totalPages = documentState.numPages;
-      const deletedPages = pageState.deletedPages;
+      const deletedPages = documentState.deletedPages;
       
       // Get all non-deleted page numbers
       const nonDeletedPages = [];
@@ -3649,7 +3684,6 @@ export const PDFEditorContent: React.FC = () => {
   }, [
     documentRef,
     documentState,
-    pageState,
     editorState,
     viewState,
     setDocumentState,
@@ -3825,8 +3859,8 @@ export const PDFEditorContent: React.FC = () => {
 
   // Add effect to monitor page translation state for debugging
   useEffect(() => {}, [
-    pageState.isPageTranslated,
-    pageState.isTransforming,
+    documentState.pages,
+    documentState.isTransforming,
     documentState.currentPage,
   ]);
 
@@ -3996,13 +4030,27 @@ export const PDFEditorContent: React.FC = () => {
         actions,
         setEditorState,
         setViewState,
-        setPageState,
+        setPageState: (updater: (prev: any) => any) => {
+          // Compatibility wrapper for bulk OCR
+          const prev = {
+            isTransforming: documentState.isTransforming,
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+            ),
+          };
+          const newState = updater(prev);
+          
+          if (newState.isTransforming !== undefined) {
+            pageActions.setIsTransforming(newState.isTransforming);
+          }
+        },
         sourceLanguage,
         desiredLanguage,
         handleAddTextBoxWithUndo,
         setIsTranslating,
         totalPages: documentState.numPages,
-        deletedPages: pageState.deletedPages,
+        deletedPages: documentState.deletedPages,
         currentPage: documentState.currentPage,
         onProgress: (current, total) => {
           setBulkOcrProgress({ current, total });
@@ -4036,11 +4084,10 @@ export const PDFEditorContent: React.FC = () => {
     documentState,
     editorState,
     viewState,
-    pageState.deletedPages,
+    pageActions,
     actions,
     setEditorState,
     setViewState,
-    setPageState,
     sourceLanguage,
     desiredLanguage,
     handleAddTextBoxWithUndo,
@@ -4241,7 +4288,7 @@ export const PDFEditorContent: React.FC = () => {
           handleClearPageTranslation(documentState.currentPage)
         }
         isCurrentPageTranslated={
-          pageState.isPageTranslated.get(documentState.currentPage) || false
+          documentState.pages.find(p => p.pageNumber === documentState.currentPage)?.isTranslated || false
         }
         currentWorkflowStep={viewState.currentWorkflowStep}
         onWorkflowStepChange={handleWorkflowStepChange}
@@ -4276,7 +4323,13 @@ export const PDFEditorContent: React.FC = () => {
         <PDFEditorSidebar
           viewState={viewState}
           documentState={documentState}
-          pageState={pageState}
+          pageState={{
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+            ),
+            isTransforming: documentState.isTransforming,
+          }}
           elementCollections={elementCollections}
           onPageChange={handlePageChange}
           onPageDelete={handlePageDelete}
@@ -4326,6 +4379,8 @@ export const PDFEditorContent: React.FC = () => {
                 onViewChange={(view) => {
                   // Clear selection when changing views to close ElementFormatDrawer
                   clearSelectionState();
+                  console.log(`View changing from ${viewState.currentView} to ${view}`);
+                  console.log("Current deleted pages before view change:", documentState.deletedPages);
                   setViewState((prev) => ({ ...prev, currentView: view }));
                 }}
                 onEditModeToggle={() =>
@@ -4695,11 +4750,9 @@ export const PDFEditorContent: React.FC = () => {
                             actions={actions}
                             setDocumentState={setDocumentState}
                             isPageTranslated={
-                              pageState.isPageTranslated.get(
-                                documentState.currentPage
-                              ) || false
+                              documentState.pages.find(p => p.pageNumber === documentState.currentPage)?.isTranslated || false
                             }
-                            isTransforming={pageState.isTransforming}
+                            isTransforming={documentState.isTransforming}
                             isTranslating={isTranslating}
                             onRunOcr={() =>
                               checkLanguageAndRunOcr(
@@ -5114,11 +5167,9 @@ export const PDFEditorContent: React.FC = () => {
                               actions={actions}
                               setDocumentState={setDocumentState}
                               isPageTranslated={
-                                pageState.isPageTranslated.get(
-                                  documentState.currentPage
-                                ) || false
+                                documentState.pages.find(p => p.pageNumber === documentState.currentPage)?.isTranslated || false
                               }
-                              isTransforming={pageState.isTransforming}
+                              isTransforming={documentState.isTransforming}
                               isTranslating={isTranslating}
                               onRunOcr={() =>
                                 checkLanguageAndRunOcr(
@@ -5890,7 +5941,13 @@ export const PDFEditorContent: React.FC = () => {
         documentState={documentState}
         viewState={viewState}
         elementCollections={elementCollections}
-        pageState={pageState}
+        pageState={{
+          deletedPages: documentState.deletedPages,
+          isPageTranslated: new Map(
+            documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+          ),
+          isTransforming: documentState.isTransforming,
+        }}
         onZoomChange={(scale) => actions.updateScale(Math.max(1.0, scale))}
         onZoomIn={() =>
           actions.updateScale(Math.min(5.0, documentState.scale + 0.1))
