@@ -128,13 +128,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 const originalConsoleWarn = console.warn;
 console.warn = (...args: any[]) => {
   // Convert all arguments to strings to check for warning patterns
-  const message = args.join(' ');
-  
+  const message = args.join(" ");
+
   // Suppress PDF.js "Invalid page request" warnings during final layout
-  if (message.includes('Invalid page request')) {
+  if (message.includes("Invalid page request")) {
     return;
   }
-  
+
   // Call original console.warn for other warnings
   originalConsoleWarn(...args);
 };
@@ -1392,12 +1392,35 @@ export const PDFEditorContent: React.FC = () => {
   // Workflow step change handler
   const handleWorkflowStepChange = useCallback(
     (step: WorkflowStep, previousStep?: WorkflowStep) => {
-      // Get the previous step from current state if not provided
+      // Only intercept when switching to 'layout' from a different step
       const prevStep = previousStep || viewState.currentWorkflowStep;
+      if (step === "layout" && prevStep !== "layout") {
+        // Check untranslated texts
+        const untranslated = elementCollections.untranslatedTexts || [];
+        const needsCheck = untranslated.filter(
+          (t) => t.status === "isEmpty" || t.status === "needsChecking"
+        );
+        if (needsCheck.length > 0) {
+          // Prepare list for modal
+          setUntranslatedCheckList(
+            needsCheck.map((t) => ({
+              id: t.id,
+              page: t.page,
+              status: t.status,
+              originalText: t.originalText,
+            }))
+          );
+          setShowUntranslatedCheckModal(true);
+          setPendingWorkflowStep(step);
+          return; // Block workflow change for now
+        }
+      }
+      // Get the previous step from current state if not provided
+      const prev = previousStep || viewState.currentWorkflowStep;
 
       // Handle leaving final-layout step - restore backup if available
       if (
-        prevStep === "final-layout" &&
+        prev === "final-layout" &&
         step !== "final-layout" &&
         preLayoutBackup
       ) {
@@ -1411,7 +1434,7 @@ export const PDFEditorContent: React.FC = () => {
       }
 
       // Handle entering final-layout step
-      if (step === "final-layout" && prevStep !== "final-layout") {
+      if (step === "final-layout" && prev !== "final-layout") {
         // Reset cancellation state to ensure clean entry
         console.log("Entering final-layout, resetting cancellation state");
         snapshotCancelRef.current.cancelled = false;
@@ -1446,7 +1469,7 @@ export const PDFEditorContent: React.FC = () => {
       // Handle completely exiting final layout workflow (e.g., going to a different major step)
       // This clears the backup to free memory when we're definitely done with final layout
       if (
-        prevStep === "final-layout" &&
+        prev === "final-layout" &&
         step !== "final-layout" &&
         !["edit-translate", "review", "final-layout"].includes(step) &&
         preLayoutBackup
@@ -1471,6 +1494,7 @@ export const PDFEditorContent: React.FC = () => {
       restoreFromPreLayoutBackup,
       createPreLayoutBackup,
       createFinalLayoutWithSnapshots,
+      elementCollections.untranslatedTexts,
     ]
   );
 
@@ -3085,7 +3109,10 @@ export const PDFEditorContent: React.FC = () => {
           ...prev,
           url: newUrl,
           numPages: newPageNumber,
-          pages: [...currentPages, { pageNumber: newPageNumber, isTranslated: false }],
+          pages: [
+            ...currentPages,
+            { pageNumber: newPageNumber, isTranslated: false },
+          ],
           deletedPages: currentDeletedPages, // Preserve deleted pages
           isDocumentLoaded: true,
           error: "",
@@ -3119,7 +3146,14 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to append image");
       }
     },
-    [documentState.url, documentState.deletedPages, documentState.pages, setDocumentState, handleAddImageWithUndo, handleImageSelect]
+    [
+      documentState.url,
+      documentState.deletedPages,
+      documentState.pages,
+      setDocumentState,
+      handleAddImageWithUndo,
+      handleImageSelect,
+    ]
   );
 
   // Helper function to append a PDF document
@@ -3167,10 +3201,13 @@ export const PDFEditorContent: React.FC = () => {
         const addedPagesCount = newPages.length;
 
         // Create new page entries for the appended pages
-        const newPageEntries = Array.from({ length: addedPagesCount }, (_, index) => ({
-          pageNumber: currentNumPages + index + 1,
-          isTranslated: false,
-        }));
+        const newPageEntries = Array.from(
+          { length: addedPagesCount },
+          (_, index) => ({
+            pageNumber: currentNumPages + index + 1,
+            isTranslated: false,
+          })
+        );
 
         setDocumentState((prev) => ({
           ...prev,
@@ -3188,7 +3225,13 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to append PDF document");
       }
     },
-    [documentState.url, documentState.deletedPages, documentState.pages, documentState.numPages, setDocumentState]
+    [
+      documentState.url,
+      documentState.deletedPages,
+      documentState.pages,
+      documentState.numPages,
+      setDocumentState,
+    ]
   );
 
   // File handlers
@@ -3333,11 +3376,11 @@ export const PDFEditorContent: React.FC = () => {
             isTransforming: documentState.isTransforming,
             deletedPages: documentState.deletedPages,
             isPageTranslated: new Map(
-              documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
             ),
           };
           const newState = updater(prev);
-          
+
           if (newState.isTransforming !== undefined) {
             pageActions.setIsTransforming(newState.isTransforming);
           }
@@ -3456,11 +3499,11 @@ export const PDFEditorContent: React.FC = () => {
       const pageStateCompat = {
         deletedPages: documentState.deletedPages,
         isPageTranslated: new Map(
-          documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+          documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
         ),
         isTransforming: documentState.isTransforming,
       };
-      
+
       await exportPdfDocument({
         documentRef,
         documentState,
@@ -3542,7 +3585,7 @@ export const PDFEditorContent: React.FC = () => {
       // Capture all non-deleted pages from original view only
       const totalPages = documentState.numPages;
       const deletedPages = documentState.deletedPages;
-      
+
       // Get all non-deleted page numbers
       const nonDeletedPages = [];
       for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
@@ -3552,13 +3595,15 @@ export const PDFEditorContent: React.FC = () => {
       }
 
       if (nonDeletedPages.length === 0) {
-        toast.error("No pages available for export. All pages have been deleted.");
+        toast.error(
+          "No pages available for export. All pages have been deleted."
+        );
         return;
       }
 
       // Set view to original
       setViewState((prev) => ({ ...prev, currentView: "original" }));
-      
+
       // Temporarily disable text rendering for export
       setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
 
@@ -3587,14 +3632,14 @@ export const PDFEditorContent: React.FC = () => {
             width: documentContainer.offsetWidth,
             height: documentContainer.offsetHeight,
             style: {
-              transform: 'scale(1)',
-              transformOrigin: 'top left',
+              transform: "scale(1)",
+              transformOrigin: "top left",
             },
             filter: (node: Node): boolean => {
               // Filter out unwanted elements
               if (node.nodeType === Node.ELEMENT_NODE) {
                 const element = node as HTMLElement;
-                
+
                 // Skip interactive UI elements
                 if (
                   element.classList.contains("drag-handle") ||
@@ -3612,11 +3657,13 @@ export const PDFEditorContent: React.FC = () => {
                 }
               }
               return true;
-            }
+            },
           });
 
           // Convert data URL to image and embed in PDF
-          const imageBytes = await fetch(dataUrl).then((res) => res.arrayBuffer());
+          const imageBytes = await fetch(dataUrl).then((res) =>
+            res.arrayBuffer()
+          );
           const embeddedImage = await pdfDoc.embedPng(imageBytes);
 
           // Create a new page with the captured image
@@ -3642,7 +3689,6 @@ export const PDFEditorContent: React.FC = () => {
             width: scaledWidth,
             height: scaledHeight,
           });
-
         } catch (pageError) {
           console.error(`Error capturing page ${pageNumber}:`, pageError);
           // Continue with other pages rather than failing completely
@@ -3664,14 +3710,17 @@ export const PDFEditorContent: React.FC = () => {
 
       toast.dismiss(loadingToast);
       toast.success("PDF exported successfully!");
-
     } catch (error) {
       console.error("Error exporting PDF:", error);
       toast.dismiss(loadingToast);
       toast.error("Failed to export PDF");
     } finally {
       // Restore original state
-      setDocumentState((prev) => ({ ...prev, scale: originalScale, currentPage: documentState.currentPage }));
+      setDocumentState((prev) => ({
+        ...prev,
+        scale: originalScale,
+        currentPage: documentState.currentPage,
+      }));
       setViewState((prev) => ({ ...prev, currentView: originalView }));
       setEditorState((prev) => ({
         ...prev,
@@ -4036,11 +4085,11 @@ export const PDFEditorContent: React.FC = () => {
             isTransforming: documentState.isTransforming,
             deletedPages: documentState.deletedPages,
             isPageTranslated: new Map(
-              documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
             ),
           };
           const newState = updater(prev);
-          
+
           if (newState.isTransforming !== undefined) {
             pageActions.setIsTransforming(newState.isTransforming);
           }
@@ -4227,6 +4276,32 @@ export const PDFEditorContent: React.FC = () => {
     }
   }, [pendingTemplateExport, templateCanvas, performExport]);
 
+  // Add state for untranslated check modal
+  const [showUntranslatedCheckModal, setShowUntranslatedCheckModal] =
+    useState(false);
+  const [untranslatedCheckList, setUntranslatedCheckList] = useState<
+    { id: string; page: number; status: string; originalText: string }[]
+  >([]);
+  const [pendingWorkflowStep, setPendingWorkflowStep] =
+    useState<WorkflowStep | null>(null);
+
+  // Handler for modal continue/cancel
+  const handleUntranslatedCheckContinue = useCallback(() => {
+    setShowUntranslatedCheckModal(false);
+    if (pendingWorkflowStep) {
+      // Actually proceed to layout
+      setViewState((prev) => ({
+        ...prev,
+        currentWorkflowStep: pendingWorkflowStep,
+      }));
+      setPendingWorkflowStep(null);
+    }
+  }, [pendingWorkflowStep]);
+  const handleUntranslatedCheckCancel = useCallback(() => {
+    setShowUntranslatedCheckModal(false);
+    setPendingWorkflowStep(null);
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
@@ -4288,7 +4363,9 @@ export const PDFEditorContent: React.FC = () => {
           handleClearPageTranslation(documentState.currentPage)
         }
         isCurrentPageTranslated={
-          documentState.pages.find(p => p.pageNumber === documentState.currentPage)?.isTranslated || false
+          documentState.pages.find(
+            (p) => p.pageNumber === documentState.currentPage
+          )?.isTranslated || false
         }
         currentWorkflowStep={viewState.currentWorkflowStep}
         onWorkflowStepChange={handleWorkflowStepChange}
@@ -4326,7 +4403,7 @@ export const PDFEditorContent: React.FC = () => {
           pageState={{
             deletedPages: documentState.deletedPages,
             isPageTranslated: new Map(
-              documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
             ),
             isTransforming: documentState.isTransforming,
           }}
@@ -4379,8 +4456,13 @@ export const PDFEditorContent: React.FC = () => {
                 onViewChange={(view) => {
                   // Clear selection when changing views to close ElementFormatDrawer
                   clearSelectionState();
-                  console.log(`View changing from ${viewState.currentView} to ${view}`);
-                  console.log("Current deleted pages before view change:", documentState.deletedPages);
+                  console.log(
+                    `View changing from ${viewState.currentView} to ${view}`
+                  );
+                  console.log(
+                    "Current deleted pages before view change:",
+                    documentState.deletedPages
+                  );
                   setViewState((prev) => ({ ...prev, currentView: view }));
                 }}
                 onEditModeToggle={() =>
@@ -4750,7 +4832,10 @@ export const PDFEditorContent: React.FC = () => {
                             actions={actions}
                             setDocumentState={setDocumentState}
                             isPageTranslated={
-                              documentState.pages.find(p => p.pageNumber === documentState.currentPage)?.isTranslated || false
+                              documentState.pages.find(
+                                (p) =>
+                                  p.pageNumber === documentState.currentPage
+                              )?.isTranslated || false
                             }
                             isTransforming={documentState.isTransforming}
                             isTranslating={isTranslating}
@@ -5167,7 +5252,10 @@ export const PDFEditorContent: React.FC = () => {
                               actions={actions}
                               setDocumentState={setDocumentState}
                               isPageTranslated={
-                                documentState.pages.find(p => p.pageNumber === documentState.currentPage)?.isTranslated || false
+                                documentState.pages.find(
+                                  (p) =>
+                                    p.pageNumber === documentState.currentPage
+                                )?.isTranslated || false
                               }
                               isTransforming={documentState.isTransforming}
                               isTranslating={isTranslating}
@@ -5944,7 +6032,7 @@ export const PDFEditorContent: React.FC = () => {
         pageState={{
           deletedPages: documentState.deletedPages,
           isPageTranslated: new Map(
-            documentState.pages.map(p => [p.pageNumber, p.isTranslated])
+            documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
           ),
           isTransforming: documentState.isTransforming,
         }}
@@ -6034,6 +6122,43 @@ export const PDFEditorContent: React.FC = () => {
           setIsCancellingSnapshots(true);
           toast.info("Cancelling snapshot capture...");
         }}
+        cancelText="Cancel"
+      />
+
+      {/* Untranslated Check Modal */}
+      <ConfirmationModal
+        open={showUntranslatedCheckModal}
+        title="Some pages require review before layout"
+        description={
+          untranslatedCheckList.length > 0 ? (
+            <div>
+              <div className="mb-2 text-gray-700">
+                Before proceeding to layout, please review the following page
+                {[...new Set(untranslatedCheckList.map((t) => t.page))].length >
+                1
+                  ? "s"
+                  : ""}
+                :
+              </div>
+              <ul className="mb-4 pl-5 list-disc text-base text-blue-700 font-semibold">
+                {Array.from(
+                  new Set(untranslatedCheckList.map((t) => t.page))
+                ).map((page) => (
+                  <li key={page} className="mb-1">
+                    Page {page}
+                  </li>
+                ))}
+              </ul>
+              <div className="text-gray-500 text-sm">
+                These pages have textboxes that are empty or need checking. You
+                can continue anyway, or go back and review them.
+              </div>
+            </div>
+          ) : undefined
+        }
+        onConfirm={handleUntranslatedCheckContinue}
+        onCancel={handleUntranslatedCheckCancel}
+        confirmText="Continue Anyway"
         cancelText="Cancel"
       />
     </div>

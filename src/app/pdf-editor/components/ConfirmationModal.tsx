@@ -3,7 +3,7 @@ import React from "react";
 const ConfirmationModal: React.FC<{
   open: boolean;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
   confirmText?: string;
@@ -31,7 +31,7 @@ const ConfirmationModal: React.FC<{
             {cancelText}
           </button>
           <button
-            className="px-4 py-2 rounded bg-red-600 hover:bg-red-700 text-white font-semibold"
+            className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold"
             onClick={onConfirm}
           >
             {confirmText}
