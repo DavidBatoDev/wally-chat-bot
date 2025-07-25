@@ -5918,6 +5918,8 @@ export const PDFEditorContent: React.FC = () => {
           snapshotCancelRef.current.cancelled = true;
           setIsCancellingSnapshots(true);
           toast.info("Cancelling snapshot capture...");
+          // Go back to layout step
+          handleWorkflowStepChange("layout", "final-layout");
         }}
         cancelText="Cancel"
       />
