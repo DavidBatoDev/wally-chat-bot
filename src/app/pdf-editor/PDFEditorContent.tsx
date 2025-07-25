@@ -235,7 +235,7 @@ export const PDFEditorContent: React.FC = () => {
     containerWidth: 0,
     isCtrlPressed: false,
     transformOrigin: "center center",
-    isSidebarCollapsed: false,
+    isSidebarCollapsed: true, // Close sidebar initially
     activeSidebarTab: "pages",
     currentWorkflowStep: "translate",
   });
@@ -3740,6 +3740,12 @@ export const PDFEditorContent: React.FC = () => {
   // Check for languages after document is loaded
   useEffect(() => {
     if (documentState.isDocumentLoaded && documentState.url) {
+      // Open sidebar when document is loaded
+      setViewState((prev) => ({
+        ...prev,
+        isSidebarCollapsed: false,
+      }));
+
       // Don't show language modal if we're in final-layout workflow step
       if (viewState.currentWorkflowStep === "final-layout") {
         return;
@@ -3763,6 +3769,7 @@ export const PDFEditorContent: React.FC = () => {
     sourceLanguage,
     desiredLanguage,
     viewState.currentWorkflowStep,
+    setViewState,
   ]);
 
   // Cleanup effect to clear any remaining debounce timers
@@ -4438,16 +4445,63 @@ export const PDFEditorContent: React.FC = () => {
               {/* No Document Loaded */}
               {!documentState.url && !documentState.error && (
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="text-gray-500 text-lg mb-2">
-                      No document loaded
+                  <div className="text-center max-w-md mx-auto p-8">
+                    {/* Icon */}
+                    <div className="mb-6">
+                      <div className="w-24 h-24 mx-auto bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-12 h-12 text-blue-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                      </div>
                     </div>
+
+                    {/* Title */}
+                    <h2 className="text-2xl font-semibold text-gray-800 mb-3">
+                      Welcome to Wally Editor
+                    </h2>
+
+                    {/* Description */}
+                    <p className="text-gray-600 mb-8 leading-relaxed">
+                      Upload a PDF document to get started with editing,
+                      translation, and layout creation. Support for images and
+                      various file formats available.
+                    </p>
+
+                    {/* Upload Button */}
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium rounded-lg hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        />
+                      </svg>
                       Upload Document
                     </button>
+
+                    {/* File type info */}
+                    <div className="mt-6 text-sm text-gray-500">
+                      <p>Supported formats: PDF, JPG, PNG, GIF, BMP, WebP</p>
+                    </div>
                   </div>
                 </div>
               )}
