@@ -3710,6 +3710,26 @@ export const PDFEditorContent: React.FC = () => {
     documentState.currentPage,
   ]);
 
+  // Check for languages after document is loaded
+  useEffect(() => {
+    if (documentState.isDocumentLoaded && documentState.url) {
+      // Check if source and desired languages are set
+      if (
+        !sourceLanguage ||
+        !desiredLanguage ||
+        sourceLanguage === desiredLanguage
+      ) {
+        // Open language selection modal
+        setShowLanguageModal(true);
+      }
+    }
+  }, [
+    documentState.isDocumentLoaded,
+    documentState.url,
+    sourceLanguage,
+    desiredLanguage,
+  ]);
+
   // Cleanup effect to clear any remaining debounce timers
   useEffect(() => {
     return () => {
