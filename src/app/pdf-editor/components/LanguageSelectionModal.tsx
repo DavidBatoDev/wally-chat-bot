@@ -102,17 +102,22 @@ const LanguageSelectionModal: React.FC<{
     { code: "ug", name: "Uyghur" },
   ];
 
+  // Language options for desired language (excluding "Auto detect")
+  const desiredLanguageOptions = languageOptions.filter(
+    (lang) => lang.code !== "auto"
+  );
+
   // Filter languages based on search
   const filteredSourceLanguages = useMemo(() => {
     if (!sourceSearch) return languageOptions;
-    return languageOptions.filter(lang =>
+    return languageOptions.filter((lang) =>
       lang.name.toLowerCase().includes(sourceSearch.toLowerCase())
     );
   }, [sourceSearch]);
 
   const filteredDesiredLanguages = useMemo(() => {
-    if (!desiredSearch) return languageOptions;
-    return languageOptions.filter(lang =>
+    if (!desiredSearch) return desiredLanguageOptions;
+    return desiredLanguageOptions.filter((lang) =>
       lang.name.toLowerCase().includes(desiredSearch.toLowerCase())
     );
   }, [desiredSearch]);
@@ -121,7 +126,7 @@ const LanguageSelectionModal: React.FC<{
 
   // Get display name for selected language
   const getLanguageName = (code: string) => {
-    const lang = languageOptions.find(l => l.code === code);
+    const lang = languageOptions.find((l) => l.code === code);
     return lang ? lang.name : "";
   };
 
@@ -182,19 +187,37 @@ const LanguageSelectionModal: React.FC<{
           {/* Source Language */}
           <div className="flex flex-col items-center">
             <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-400 rounded-full flex items-center justify-center shadow-lg mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              <svg
+                className="w-8 h-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Source Language</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">
+              Source Language
+            </h3>
             <div className="relative w-64">
               <input
                 type="text"
-                placeholder={sourceLanguage ? getLanguageName(sourceLanguage) : "Search or select language..."}
+                placeholder={
+                  sourceLanguage
+                    ? getLanguageName(sourceLanguage)
+                    : "Search or select language..."
+                }
                 value={sourceSearch}
                 onChange={(e) => setSourceSearch(e.target.value)}
                 onFocus={() => setSourceDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setSourceDropdownOpen(false), 200)}
+                onBlur={() =>
+                  setTimeout(() => setSourceDropdownOpen(false), 200)
+                }
                 className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300 bg-white shadow-sm hover:border-blue-300"
               />
               {sourceDropdownOpen && (
@@ -216,29 +239,59 @@ const LanguageSelectionModal: React.FC<{
           {/* Arrow */}
           <div className="flex flex-col items-center">
             <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center shadow-lg mb-4">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 7l5 5m0 0l-5 5m5-5H6"
+                />
               </svg>
             </div>
-            <div className="text-sm font-medium text-gray-500">Translate to</div>
+            <div className="text-sm font-medium text-gray-500">
+              Translate to
+            </div>
           </div>
 
           {/* Target Language */}
           <div className="flex flex-col items-center">
             <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-400 rounded-full flex items-center justify-center shadow-lg mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+              <svg
+                className="w-8 h-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+                />
               </svg>
             </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Target Language</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">
+              Target Language
+            </h3>
             <div className="relative w-64">
               <input
                 type="text"
-                placeholder={desiredLanguage ? getLanguageName(desiredLanguage) : "Search or select language..."}
+                placeholder={
+                  desiredLanguage
+                    ? getLanguageName(desiredLanguage)
+                    : "Search or select language..."
+                }
                 value={desiredSearch}
                 onChange={(e) => setDesiredSearch(e.target.value)}
                 onFocus={() => setDesiredDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setDesiredDropdownOpen(false), 200)}
+                onBlur={() =>
+                  setTimeout(() => setDesiredDropdownOpen(false), 200)
+                }
                 className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300 bg-white shadow-sm hover:border-blue-300"
               />
               {desiredDropdownOpen && (
