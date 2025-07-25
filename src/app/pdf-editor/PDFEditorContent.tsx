@@ -3562,15 +3562,24 @@ export const PDFEditorContent: React.FC = () => {
 
   // Export function that directly exports original view pages without template popup
   const exportToPDF = useCallback(async () => {
-    await exportToPDFService({
-      documentRef,
-      documentState,
-      editorState,
-      viewState,
-      setDocumentState,
-      setViewState,
-      setEditorState,
-    });
+    setIsExportingPDF(true);
+    try {
+      await exportToPDFService({
+        documentRef,
+        documentState,
+        editorState,
+        viewState,
+        setDocumentState,
+        setViewState,
+        setEditorState,
+      });
+      toast.success("PDF exported successfully!");
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExportingPDF(false);
+    }
   }, [
     documentRef,
     documentState,
@@ -3583,15 +3592,24 @@ export const PDFEditorContent: React.FC = () => {
 
   // Export to PNG function
   const exportToPNG = useCallback(async () => {
-    await exportToPNGService({
-      documentRef,
-      documentState,
-      editorState,
-      viewState,
-      setDocumentState,
-      setViewState,
-      setEditorState,
-    });
+    setIsExportingPNG(true);
+    try {
+      await exportToPNGService({
+        documentRef,
+        documentState,
+        editorState,
+        viewState,
+        setDocumentState,
+        setViewState,
+        setEditorState,
+      });
+      toast.success("PNG exported successfully!");
+    } catch (error) {
+      console.error("Error exporting PNG:", error);
+      toast.error("Failed to export PNG");
+    } finally {
+      setIsExportingPNG(false);
+    }
   }, [
     documentRef,
     documentState,
@@ -3604,15 +3622,24 @@ export const PDFEditorContent: React.FC = () => {
 
   // Export to JPEG function
   const exportToJPEG = useCallback(async () => {
-    await exportToJPEGService({
-      documentRef,
-      documentState,
-      editorState,
-      viewState,
-      setDocumentState,
-      setViewState,
-      setEditorState,
-    });
+    setIsExportingJPEG(true);
+    try {
+      await exportToJPEGService({
+        documentRef,
+        documentState,
+        editorState,
+        viewState,
+        setDocumentState,
+        setViewState,
+        setEditorState,
+      });
+      toast.success("JPEG exported successfully!");
+    } catch (error) {
+      console.error("Error exporting JPEG:", error);
+      toast.error("Failed to export JPEG");
+    } finally {
+      setIsExportingJPEG(false);
+    }
   }, [
     documentRef,
     documentState,
@@ -3713,14 +3740,21 @@ export const PDFEditorContent: React.FC = () => {
   // Check for languages after document is loaded
   useEffect(() => {
     if (documentState.isDocumentLoaded && documentState.url) {
+      // Don't show language modal if we're in final-layout workflow step
+      if (viewState.currentWorkflowStep === "final-layout") {
+        return;
+      }
+
       // Check if source and desired languages are set
       if (
         !sourceLanguage ||
         !desiredLanguage ||
         sourceLanguage === desiredLanguage
       ) {
-        // Open language selection modal
+        // Open language selection modal with auto-OCR flag
         setShowLanguageModal(true);
+        // Set flag to indicate this is the first load and we should run OCR after language selection
+        setPendingOcrAction({ type: "bulk", isFirstLoad: true });
       }
     }
   }, [
@@ -3728,6 +3762,7 @@ export const PDFEditorContent: React.FC = () => {
     documentState.url,
     sourceLanguage,
     desiredLanguage,
+    viewState.currentWorkflowStep,
   ]);
 
   // Cleanup effect to clear any remaining debounce timers
@@ -3977,7 +4012,7 @@ export const PDFEditorContent: React.FC = () => {
         }
       } else {
         // Show language selection modal
-        setPendingOcrAction({ type, pageNumber });
+        setPendingOcrAction({ type, pageNumber, isFirstLoad: false });
         setShowLanguageModal(true);
       }
     },
@@ -4006,6 +4041,7 @@ export const PDFEditorContent: React.FC = () => {
   const [pendingOcrAction, setPendingOcrAction] = useState<{
     type: "single" | "bulk";
     pageNumber?: number;
+    isFirstLoad?: boolean;
   } | null>(null);
 
   // Add state for settings modal
@@ -4048,6 +4084,12 @@ export const PDFEditorContent: React.FC = () => {
         handleTransformPageToTextbox(pendingOcrAction.pageNumber);
       } else if (pendingOcrAction.type === "bulk") {
         handleRunOcrAllPages();
+        // Show success message for first load
+        if (pendingOcrAction.isFirstLoad) {
+          toast.success(
+            "Document loaded and OCR processing started for all pages!"
+          );
+        }
       }
       setPendingOcrAction(null);
     }
@@ -4101,6 +4143,11 @@ export const PDFEditorContent: React.FC = () => {
   >([]);
   const [pendingWorkflowStep, setPendingWorkflowStep] =
     useState<WorkflowStep | null>(null);
+
+  // Add state for export loading modals
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingPNG, setIsExportingPNG] = useState(false);
+  const [isExportingJPEG, setIsExportingJPEG] = useState(false);
 
   // Handler for modal continue/cancel
   const handleUntranslatedCheckContinue = useCallback(() => {
@@ -5946,6 +5993,27 @@ export const PDFEditorContent: React.FC = () => {
           handleWorkflowStepChange("layout", "final-layout");
         }}
         cancelText="Cancel"
+      />
+
+      {/* PDF Export Loading Modal */}
+      <LoadingModal
+        isOpen={isExportingPDF}
+        title="Exporting PDF"
+        message="Please wait while we generate your PDF file..."
+      />
+
+      {/* PNG Export Loading Modal */}
+      <LoadingModal
+        isOpen={isExportingPNG}
+        title="Exporting PNG"
+        message="Please wait while we generate your PNG file..."
+      />
+
+      {/* JPEG Export Loading Modal */}
+      <LoadingModal
+        isOpen={isExportingJPEG}
+        title="Exporting JPEG"
+        message="Please wait while we generate your JPEG file..."
       />
 
       {/* Untranslated Check Modal */}
