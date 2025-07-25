@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { TextField, UntranslatedText } from "../types/pdf-editor.types";
+import { Languages } from "lucide-react";
 
 interface TranslationTableViewProps {
   translatedTextBoxes: TextField[];
@@ -25,6 +26,8 @@ interface TranslationTableViewProps {
   pageHeight?: number;
   scale?: number;
   currentPage: number;
+  sourceLanguage?: string;
+  desiredLanguage?: string;
 }
 
 export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
@@ -40,6 +43,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   pageHeight = 1000,
   scale = 1,
   currentPage,
+  sourceLanguage,
+  desiredLanguage,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(
@@ -267,9 +272,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   return (
     <div className="bg-white h-full flex flex-col">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">
+      <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0 flex items-start justify-between min-w-0">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             Translation Editor
           </h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -277,6 +282,18 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
             {textboxesForTable.length === 1 ? "box" : "boxes"}
           </p>
         </div>
+        {(sourceLanguage || desiredLanguage) && (
+          <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 shadow-sm border border-gray-200 flex-nowrap min-w-0">
+            <Languages className="w-5 h-5 text-blue-500 mr-1 flex-shrink-0" />
+            <span className="text-xs text-gray-700 font-medium whitespace-nowrap overflow-hidden">
+              {sourceLanguage || "Source"}
+            </span>
+            <span className="mx-1 text-gray-400 flex-shrink-0">→</span>
+            <span className="text-xs text-gray-700 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+              {desiredLanguage || "Target"}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Table Container */}

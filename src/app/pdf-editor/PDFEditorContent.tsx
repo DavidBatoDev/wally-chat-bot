@@ -1405,7 +1405,9 @@ export const PDFEditorContent: React.FC = () => {
         // Check untranslated texts
         const untranslated = elementCollections.untranslatedTexts || [];
         const needsCheck = untranslated.filter(
-          (t) => (t.status === "isEmpty" || t.status === "needsChecking") && !t.isCustomTextbox
+          (t) =>
+            (t.status === "isEmpty" || t.status === "needsChecking") &&
+            !t.isCustomTextbox
         );
         if (needsCheck.length > 0) {
           // Prepare list for modal
@@ -5771,6 +5773,8 @@ export const PDFEditorContent: React.FC = () => {
                     pageHeight={documentState.pageHeight}
                     scale={1}
                     currentPage={documentState.currentPage}
+                    sourceLanguage={sourceLanguage}
+                    desiredLanguage={desiredLanguage}
                   />
                 </div>
               )}
