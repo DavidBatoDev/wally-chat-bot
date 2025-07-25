@@ -1098,6 +1098,9 @@ export const PDFEditorContent: React.FC = () => {
         toast.success(
           "Created final layout with template page and interactive snapshots"
         );
+        // Set view to split and zoom to 100% after final layout creation
+        setViewState((prev) => ({ ...prev, currentView: "split" }));
+        actions.updateScale(1.0);
       } catch (loadError) {
         console.error("Error loading final layout document:", loadError);
 
@@ -1435,6 +1438,12 @@ export const PDFEditorContent: React.FC = () => {
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
+        // Set view to split and zoom to 100%
+        setViewState((prev) => ({
+          ...prev,
+          currentView: "split",
+        }));
+        actions.updateScale(1.0);
         // Reset cancellation state to ensure clean entry
         console.log("Entering final-layout, resetting cancellation state");
         snapshotCancelRef.current.cancelled = false;
