@@ -158,10 +158,10 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       }
     );
 
-    // Create corresponding untranslated text
+    // Create corresponding untranslated text with 'Custom Textbox' as value
     onAddUntranslatedText({
       translatedTextboxId: textboxId,
-      originalText: "",
+      originalText: "Custom Textbox",
       page: currentPage,
       x: 20,
       y: 20,
@@ -215,11 +215,12 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
               No translations on page {currentPage}
             </div>
             <div className="text-sm text-gray-500 max-w-md">
-              Switch to Layout mode to create text boxes, then return here to translate them.
+              Switch to Layout mode to create text boxes, then return here to
+              translate them.
             </div>
           </div>
         </div>
-        
+
         {/* Add Button at Bottom */}
         {onAddTextBox && onAddUntranslatedText && (
           <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
@@ -228,8 +229,18 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
               className="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-lg hover:border-gray-400 hover:text-gray-600 transition-colors bg-transparent"
               title="Add custom text box"
             >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
               Add Text Box
             </button>
@@ -248,7 +259,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
             Translation Editor
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Page {currentPage} • {textboxesForTable.length} text {textboxesForTable.length === 1 ? 'box' : 'boxes'}
+            Page {currentPage} • {textboxesForTable.length} text{" "}
+            {textboxesForTable.length === 1 ? "box" : "boxes"}
           </p>
         </div>
       </div>
@@ -276,8 +288,13 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 const untranslatedText = untranslatedTexts.find(
                   (text) => text.translatedTextboxId === textbox.id
                 );
-                const effectiveStatus = getEffectiveStatus(textbox, untranslatedText);
-                const isEditing = editingId === textbox.id || editingOriginalId === untranslatedText?.id;
+                const effectiveStatus = getEffectiveStatus(
+                  textbox,
+                  untranslatedText
+                );
+                const isEditing =
+                  editingId === textbox.id ||
+                  editingOriginalId === untranslatedText?.id;
 
                 return (
                   <tr
@@ -292,21 +309,30 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                       <div className="relative">
                         {untranslatedText?.isCustomTextbox ? (
                           <div className="flex items-center justify-center h-12 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300">
-                            <span className="text-xs font-medium text-gray-500">Custom Text Box</span>
+                            <span className="text-xs font-medium text-gray-500">
+                              Custom Text Box
+                            </span>
                           </div>
                         ) : untranslatedText && onUpdateUntranslatedText ? (
                           <textarea
                             ref={(el) => {
                               if (el) {
-                                originalTextareaRefs.current[untranslatedText.id] = el;
+                                originalTextareaRefs.current[
+                                  untranslatedText.id
+                                ] = el;
                                 autoResizeTextarea(el);
                               }
                             }}
                             value={originalText || ""}
                             onChange={(e) =>
-                              handleOriginalTextChange(untranslatedText.id, e.target.value)
+                              handleOriginalTextChange(
+                                untranslatedText.id,
+                                e.target.value
+                              )
                             }
-                            onFocus={() => handleOriginalTextareaFocus(untranslatedText.id)}
+                            onFocus={() =>
+                              handleOriginalTextareaFocus(untranslatedText.id)
+                            }
                             onBlur={handleOriginalTextareaBlur}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && e.ctrlKey) {
@@ -315,7 +341,11 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               }
                               e.stopPropagation();
                             }}
-                            onInput={(e) => autoResizeTextarea(e.target as HTMLTextAreaElement)}
+                            onInput={(e) =>
+                              autoResizeTextarea(
+                                e.target as HTMLTextAreaElement
+                              )
+                            }
                             onClick={(e) => e.stopPropagation()}
                             className={`w-full p-3 text-sm border rounded-lg resize-none transition-all duration-200 ${
                               editingOriginalId === untranslatedText.id
@@ -324,7 +354,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             } focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent`}
                             style={{
                               minHeight: "48px",
-                              fontFamily: "system-ui, -apple-system, sans-serif",
+                              fontFamily:
+                                "system-ui, -apple-system, sans-serif",
                               lineHeight: "1.4",
                             }}
                             placeholder="Enter original text..."
@@ -336,7 +367,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                           </div>
                         ) : (
                           <div className="flex items-center justify-center h-12 bg-gray-50 rounded-lg border border-gray-200">
-                            <span className="text-xs text-gray-400">No original text</span>
+                            <span className="text-xs text-gray-400">
+                              No original text
+                            </span>
                           </div>
                         )}
                       </div>
@@ -354,14 +387,20 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               }
                             }}
                             value={textbox.value || ""}
-                            onChange={(e) => handleTextChange(textbox.id, e.target.value)}
+                            onChange={(e) =>
+                              handleTextChange(textbox.id, e.target.value)
+                            }
                             onFocus={() => handleTextareaFocus(textbox.id)}
                             onBlur={handleTextareaBlur}
                             onKeyDown={(e) => {
                               handleKeyDown(e, textbox.id);
                               e.stopPropagation();
                             }}
-                            onInput={(e) => autoResizeTextarea(e.target as HTMLTextAreaElement)}
+                            onInput={(e) =>
+                              autoResizeTextarea(
+                                e.target as HTMLTextAreaElement
+                              )
+                            }
                             onClick={(e) => e.stopPropagation()}
                             className={`w-full p-3 text-sm border rounded-lg resize-none transition-all duration-200 ${
                               editingId === textbox.id
@@ -370,29 +409,47 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             } focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent`}
                             style={{
                               minHeight: "48px",
-                              fontFamily: textbox.fontFamily || "system-ui, -apple-system, sans-serif",
-                              fontSize: `${Math.max(13, (textbox.fontSize || 13) * 0.9)}px`,
+                              fontFamily:
+                                textbox.fontFamily ||
+                                "system-ui, -apple-system, sans-serif",
+                              fontSize: `${Math.max(
+                                13,
+                                (textbox.fontSize || 13) * 0.9
+                              )}px`,
                               lineHeight: "1.4",
                             }}
                             placeholder="Enter translation..."
                             spellCheck={false}
                           />
                           {/* Status indicator circle */}
-                          <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
-                            effectiveStatus === "checked" ? "bg-green-500" :
-                            effectiveStatus === "needsChecking" ? "bg-yellow-500" : "bg-gray-400"
-                          }`}></div>
+                          <div
+                            className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
+                              effectiveStatus === "checked"
+                                ? "bg-green-500"
+                                : effectiveStatus === "needsChecking"
+                                ? "bg-yellow-500"
+                                : "bg-gray-400"
+                            }`}
+                          ></div>
                         </div>
-                        
+
                         {/* Metadata */}
                         <div className="flex items-center text-xs">
                           <div className="flex items-center gap-1.5">
-                            <span className={`font-medium ${
-                              effectiveStatus === "checked" ? "text-green-600" :
-                              effectiveStatus === "needsChecking" ? "text-yellow-600" : "text-gray-500"
-                            }`}>
-                              {effectiveStatus === "checked" ? "Approved" :
-                               effectiveStatus === "needsChecking" ? "Pending" : "Empty"}
+                            <span
+                              className={`font-medium ${
+                                effectiveStatus === "checked"
+                                  ? "text-green-600"
+                                  : effectiveStatus === "needsChecking"
+                                  ? "text-yellow-600"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {effectiveStatus === "checked"
+                                ? "Approved"
+                                : effectiveStatus === "needsChecking"
+                                ? "Pending"
+                                : "Empty"}
                             </span>
                             {untranslatedText?.isCustomTextbox && (
                               <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">
@@ -422,17 +479,40 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               : "bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-700"
                           }`}
                           title={
-                            effectiveStatus === "isEmpty" ? "Cannot approve empty text" :
-                            effectiveStatus === "checked" ? "Mark as pending" : "Approve translation"
+                            effectiveStatus === "isEmpty"
+                              ? "Cannot approve empty text"
+                              : effectiveStatus === "checked"
+                              ? "Mark as pending"
+                              : "Approve translation"
                           }
                         >
                           {effectiveStatus === "checked" ? (
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
                             </svg>
                           ) : (
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5 13l4 4L19 7"
+                              />
                             </svg>
                           )}
                         </button>
@@ -446,8 +526,18 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                           className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200"
                           title="Delete text box"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
                           </svg>
                         </button>
                       </div>
@@ -462,24 +552,37 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
 
       {/* Add Button at Bottom */}
       {onAddTextBox && onAddUntranslatedText && (
-          <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
-            <button
-              onClick={handleAddCustomTextbox}
-              className="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-lg hover:border-gray-400 hover:text-gray-600 transition-colors bg-transparent"
-              title="Add custom text box"
+        <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
+          <button
+            onClick={handleAddCustomTextbox}
+            className="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-lg hover:border-gray-400 hover:text-gray-600 transition-colors bg-transparent"
+            title="Add custom text box"
+          >
+            <svg
+              className="w-4 h-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Text Box
-            </button>
-          </div>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Add Text Box
+          </button>
+        </div>
       )}
 
       {/* Footer */}
       <div className="px-6 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>Use Ctrl+Enter to finish editing • Click rows to highlight text location</span>
+          <span>
+            Use Ctrl+Enter to finish editing • Click rows to highlight text
+            location
+          </span>
           <span>Switch to Layout mode to modify positions and styling</span>
         </div>
       </div>
