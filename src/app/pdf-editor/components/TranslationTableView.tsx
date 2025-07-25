@@ -131,6 +131,12 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       ) {
         return "isEmpty";
       }
+      // For custom textboxes, only allow 'isEmpty' or 'checked'
+      if (untranslatedText?.isCustomTextbox) {
+        return untranslatedText.originalText.trim() === ""
+          ? "isEmpty"
+          : "checked";
+      }
       // Otherwise, use the stored status
       return untranslatedText?.status || "needsChecking";
     },
@@ -140,10 +146,18 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   const handleAddCustomTextbox = useCallback(() => {
     if (!onAddTextBox || !onAddUntranslatedText) return;
 
+    // Count how many custom textboxes are on the current page
+    const customCount = untranslatedTexts.filter(
+      (t) => t.isCustomTextbox && t.page === currentPage
+    ).length;
+
+    // Apply offset based on count
+    const offset = 20 + customCount * 10;
+
     // Create a new textbox with custom properties
     const textboxId = onAddTextBox(
-      20, // x position
-      20, // y position
+      offset, // x position
+      offset, // y position
       currentPage,
       "translated",
       {
@@ -161,16 +175,16 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     // Create corresponding untranslated text with 'Custom Textbox' as value
     onAddUntranslatedText({
       translatedTextboxId: textboxId,
-      originalText: "Custom Textbox",
+      originalText: `Custom Textbox ${customCount + 1}`,
       page: currentPage,
-      x: 20,
-      y: 20,
-      width: 200,
-      height: 30,
+      x: offset,
+      y: offset,
+      width: 30,
+      height: 10,
       isCustomTextbox: true,
       status: "isEmpty",
     });
-  }, [onAddTextBox, onAddUntranslatedText, currentPage]);
+  }, [onAddTextBox, onAddUntranslatedText, untranslatedTexts, currentPage]);
 
   const handleDelete = useCallback(
     (textboxId: string) => {
@@ -307,13 +321,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     {/* Original Text Column */}
                     <td className="px-6 py-2 align-top">
                       <div className="relative">
-                        {untranslatedText?.isCustomTextbox ? (
-                          <div className="flex items-center justify-center h-12 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300">
-                            <span className="text-xs font-medium text-gray-500">
-                              Custom Text Box
-                            </span>
-                          </div>
-                        ) : untranslatedText && onUpdateUntranslatedText ? (
+                        {untranslatedText?.isCustomTextbox &&
+                        untranslatedText &&
+                        onUpdateUntranslatedText ? (
                           <textarea
                             ref={(el) => {
                               if (el) {
@@ -465,58 +475,59 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     <td className="px-6 py-2 align-top">
                       <div className="flex items-center gap-1">
                         {/* Toggle Check/X Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleApprove(textbox.id);
-                          }}
-                          disabled={effectiveStatus === "isEmpty"}
-                          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                            effectiveStatus === "isEmpty"
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : effectiveStatus === "checked"
-                              ? "bg-green-100 text-green-700 hover:bg-green-200"
-                              : "bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-700"
-                          }`}
-                          title={
-                            effectiveStatus === "isEmpty"
-                              ? "Cannot approve empty text"
-                              : effectiveStatus === "checked"
-                              ? "Mark as pending"
-                              : "Approve translation"
-                          }
-                        >
-                          {effectiveStatus === "checked" ? (
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="w-3.5 h-3.5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                        </button>
-
+                        {!untranslatedText?.isCustomTextbox && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleApprove(textbox.id);
+                            }}
+                            disabled={effectiveStatus === "isEmpty"}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              effectiveStatus === "isEmpty"
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : effectiveStatus === "checked"
+                                ? "bg-green-100 text-green-700 hover:bg-green-200"
+                                : "bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-700"
+                            }`}
+                            title={
+                              effectiveStatus === "isEmpty"
+                                ? "Cannot approve empty text"
+                                : effectiveStatus === "checked"
+                                ? "Mark as pending"
+                                : "Approve translation"
+                            }
+                          >
+                            {effectiveStatus === "checked" ? (
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M6 18L18 6M6 6l12 12"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        )}
                         {/* Delete Button */}
                         <button
                           onClick={(e) => {
