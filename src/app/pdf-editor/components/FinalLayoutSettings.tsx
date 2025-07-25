@@ -20,6 +20,8 @@ interface FinalLayoutSettingsProps {
   capturedSnapshots: any[];
   isCapturingSnapshots: boolean;
   onExportPDF: () => void;
+  onExportPNG: () => void;
+  onExportJPEG: () => void;
   onSaveProject: () => void;
   onPreviewToggle?: () => void;
   isPreviewMode?: boolean;
@@ -31,6 +33,8 @@ export const FinalLayoutSettings: React.FC<FinalLayoutSettingsProps> = ({
   capturedSnapshots,
   isCapturingSnapshots,
   onExportPDF,
+  onExportPNG,
+  onExportJPEG,
   onSaveProject,
   onPreviewToggle,
   isPreviewMode = false,
@@ -374,7 +378,21 @@ export const FinalLayoutSettings: React.FC<FinalLayoutSettingsProps> = ({
               Save Project
             </Button>
             <Button
-              onClick={onExportPDF}
+              onClick={() => {
+                switch (exportSettings.format) {
+                  case 'pdf':
+                    onExportPDF();
+                    break;
+                  case 'png':
+                    onExportPNG();
+                    break;
+                  case 'jpg':
+                    onExportJPEG();
+                    break;
+                  default:
+                    onExportPDF();
+                }
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white"
               size="sm"
             >

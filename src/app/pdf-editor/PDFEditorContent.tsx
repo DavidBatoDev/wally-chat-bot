@@ -3749,91 +3749,308 @@ export const PDFEditorContent: React.FC = () => {
     setEditorState,
   ]);
 
-  // Simple test export function to verify template page
-  const testTemplateExport = useCallback(async () => {
-    if (!templateCanvas) {
-      toast.error("No template canvas available");
+
+  // Export to PNG function
+  const exportToPNG = useCallback(async () => {
+    if (!documentRef.current) {
+      toast.error("Document not loaded");
       return;
     }
 
+    // Save current state
+    const originalScale = documentState.scale;
+    const originalView = viewState.currentView;
+    const originalSelectedField = editorState.selectedFieldId;
+    const originalSelectedShape = editorState.selectedShapeId;
+    const originalEditMode = editorState.isEditMode;
+
+    const loadingToast = toast.loading("Generating PNG images...");
+
     try {
-      const loadingToast = toast.loading("Testing template export...");
+      // Set up for export - hide UI elements and set optimal scale
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: null,
+        selectedShapeId: null,
+        isEditMode: false,
+        isTextSelectionMode: false,
+        isAddTextBoxMode: false,
+        isSelectionMode: false,
+      }));
 
-      // Create PDF document
-      const pdfDoc = await PDFDocument.create();
+      // Set zoom to 300% for high quality
+      setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
 
-      // Add template page as the first page
-      console.log("Adding template page to test PDF");
-      const templateDataUrl = templateCanvas.toDataURL("image/png", 1.0);
-      const templateImageBytes = await fetch(templateDataUrl).then((res) =>
-        res.arrayBuffer()
-      );
-      const templateImage = await pdfDoc.embedPng(templateImageBytes);
+      // Wait for zoom to update
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Create first page with template
-      const templatePage = pdfDoc.addPage([612, 792]); // Letter size
-      const { width: pageWidth, height: pageHeight } = templatePage.getSize();
+      // Get all non-deleted page numbers
+      const totalPages = documentState.numPages;
+      const deletedPages = documentState.deletedPages;
+      const nonDeletedPages = [];
+      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+        if (!deletedPages.has(pageNumber)) {
+          nonDeletedPages.push(pageNumber);
+        }
+      }
 
-      // Scale template to fit page while maintaining aspect ratio
-      const templateDims = templateImage.scale(1);
-      const scaleX = pageWidth / templateDims.width;
-      const scaleY = pageHeight / templateDims.height;
-      const templateScale = Math.min(scaleX, scaleY);
+      if (nonDeletedPages.length === 0) {
+        toast.error("No pages available for export");
+        return;
+      }
 
-      const scaledWidth = templateDims.width * templateScale;
-      const scaledHeight = templateDims.height * templateScale;
+      // Set view to original
+      setViewState((prev) => ({ ...prev, currentView: "original" }));
 
-      // Center the template on the page
-      const x = (pageWidth - scaledWidth) / 2;
-      const y = (pageHeight - scaledHeight) / 2;
+      // Temporarily disable text rendering for export
+      setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
 
-      templatePage.drawImage(templateImage, {
-        x: x,
-        y: y,
-        width: scaledWidth,
-        height: scaledHeight,
-      });
+      // Wait for view to update
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Add a title to the template page
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      templatePage.drawText("TEMPLATE TEST PAGE", {
-        x: pageWidth / 2 - 80,
-        y: pageHeight - 30,
-        size: 16,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
+      // Capture each page as PNG
+      for (const pageNumber of nonDeletedPages) {
+        // Set page number
+        setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
 
-      // Add page number
-      templatePage.drawText("Page 1 (Template Only)", {
-        x: pageWidth / 2 - 60,
-        y: 30,
-        size: 12,
-        font: font,
-        color: rgb(0.5, 0.5, 0.5),
-      });
+        // Wait for page to update
+        await new Promise((resolve) => setTimeout(resolve, 800));
 
-      console.log("Template test PDF page count:", pdfDoc.getPageCount());
+        const documentContainer = documentRef.current;
+        if (!documentContainer) {
+          console.warn(`Document container not found for page ${pageNumber}`);
+          continue;
+        }
 
-      // Save the PDF
-      const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
+        try {
+          // Use dom-to-image to capture the page
+          const dataUrl = await domtoimage.toPng(documentContainer, {
+            quality: 1.0,
+            bgcolor: "#ffffff",
+            width: documentContainer.offsetWidth,
+            height: documentContainer.offsetHeight,
+            style: {
+              transform: "scale(1)",
+              transformOrigin: "top left",
+            },
+            filter: (node: Node): boolean => {
+              // Filter out unwanted elements
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node as HTMLElement;
 
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `template-test.pdf`;
-      link.click();
+                // Skip interactive UI elements
+                if (
+                  element.classList.contains("drag-handle") ||
+                  element.tagName === "BUTTON" ||
+                  element.classList.contains("settings-popup") ||
+                  element.classList.contains("text-selection-popup") ||
+                  element.classList.contains("shape-dropdown") ||
+                  element.classList.contains("field-status-dropdown") ||
+                  element.classList.contains("fixed") ||
+                  element.closest(".fixed") !== null ||
+                  element.classList.contains("react-resizable-handle") ||
+                  element.classList.contains("resizable-handle")
+                ) {
+                  return false;
+                }
+              }
+              return true;
+            },
+          });
 
-      URL.revokeObjectURL(url);
+          // Create download link for PNG
+          const link = document.createElement("a");
+          link.href = dataUrl;
+          link.download = `page-${pageNumber}.png`;
+          link.click();
+        } catch (pageError) {
+          console.error(`Error capturing page ${pageNumber}:`, pageError);
+          continue;
+        }
+      }
 
       toast.dismiss(loadingToast);
-      toast.success("Template test PDF exported!");
+      toast.success(`${nonDeletedPages.length} PNG images exported successfully!`);
     } catch (error) {
-      console.error("Error in template test export:", error);
-      toast.error("Template test export failed");
+      console.error("Error exporting PNG images:", error);
+      toast.dismiss(loadingToast);
+      toast.error("Failed to export PNG images");
+    } finally {
+      // Restore original state
+      setDocumentState((prev) => ({
+        ...prev,
+        scale: originalScale,
+        currentPage: documentState.currentPage,
+      }));
+      setViewState((prev) => ({ ...prev, currentView: originalView }));
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: originalSelectedField,
+        selectedShapeId: originalSelectedShape,
+        isEditMode: originalEditMode,
+        isAddTextBoxMode: editorState.isAddTextBoxMode,
+      }));
     }
-  }, [templateCanvas]);
+  }, [
+    documentRef,
+    documentState,
+    editorState,
+    viewState,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  ]);
+
+  // Export to JPEG function
+  const exportToJPEG = useCallback(async () => {
+    if (!documentRef.current) {
+      toast.error("Document not loaded");
+      return;
+    }
+
+    // Save current state
+    const originalScale = documentState.scale;
+    const originalView = viewState.currentView;
+    const originalSelectedField = editorState.selectedFieldId;
+    const originalSelectedShape = editorState.selectedShapeId;
+    const originalEditMode = editorState.isEditMode;
+
+    const loadingToast = toast.loading("Generating JPEG images...");
+
+    try {
+      // Set up for export - hide UI elements and set optimal scale
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: null,
+        selectedShapeId: null,
+        isEditMode: false,
+        isTextSelectionMode: false,
+        isAddTextBoxMode: false,
+        isSelectionMode: false,
+      }));
+
+      // Set zoom to 300% for high quality
+      setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
+
+      // Wait for zoom to update
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Get all non-deleted page numbers
+      const totalPages = documentState.numPages;
+      const deletedPages = documentState.deletedPages;
+      const nonDeletedPages = [];
+      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+        if (!deletedPages.has(pageNumber)) {
+          nonDeletedPages.push(pageNumber);
+        }
+      }
+
+      if (nonDeletedPages.length === 0) {
+        toast.error("No pages available for export");
+        return;
+      }
+
+      // Set view to original
+      setViewState((prev) => ({ ...prev, currentView: "original" }));
+
+      // Temporarily disable text rendering for export
+      setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
+
+      // Wait for view to update
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Capture each page as JPEG
+      for (const pageNumber of nonDeletedPages) {
+        // Set page number
+        setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
+
+        // Wait for page to update
+        await new Promise((resolve) => setTimeout(resolve, 800));
+
+        const documentContainer = documentRef.current;
+        if (!documentContainer) {
+          console.warn(`Document container not found for page ${pageNumber}`);
+          continue;
+        }
+
+        try {
+          // Use dom-to-image to capture the page as JPEG
+          const dataUrl = await domtoimage.toJpeg(documentContainer, {
+            quality: 0.9,
+            bgcolor: "#ffffff",
+            width: documentContainer.offsetWidth,
+            height: documentContainer.offsetHeight,
+            style: {
+              transform: "scale(1)",
+              transformOrigin: "top left",
+            },
+            filter: (node: Node): boolean => {
+              // Filter out unwanted elements
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node as HTMLElement;
+
+                // Skip interactive UI elements
+                if (
+                  element.classList.contains("drag-handle") ||
+                  element.tagName === "BUTTON" ||
+                  element.classList.contains("settings-popup") ||
+                  element.classList.contains("text-selection-popup") ||
+                  element.classList.contains("shape-dropdown") ||
+                  element.classList.contains("field-status-dropdown") ||
+                  element.classList.contains("fixed") ||
+                  element.closest(".fixed") !== null ||
+                  element.classList.contains("react-resizable-handle") ||
+                  element.classList.contains("resizable-handle")
+                ) {
+                  return false;
+                }
+              }
+              return true;
+            },
+          });
+
+          // Create download link for JPEG
+          const link = document.createElement("a");
+          link.href = dataUrl;
+          link.download = `page-${pageNumber}.jpg`;
+          link.click();
+        } catch (pageError) {
+          console.error(`Error capturing page ${pageNumber}:`, pageError);
+          continue;
+        }
+      }
+
+      toast.dismiss(loadingToast);
+      toast.success(`${nonDeletedPages.length} JPEG images exported successfully!`);
+    } catch (error) {
+      console.error("Error exporting JPEG images:", error);
+      toast.dismiss(loadingToast);
+      toast.error("Failed to export JPEG images");
+    } finally {
+      // Restore original state
+      setDocumentState((prev) => ({
+        ...prev,
+        scale: originalScale,
+        currentPage: documentState.currentPage,
+      }));
+      setViewState((prev) => ({ ...prev, currentView: originalView }));
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: originalSelectedField,
+        selectedShapeId: originalSelectedShape,
+        isEditMode: originalEditMode,
+        isAddTextBoxMode: editorState.isAddTextBoxMode,
+      }));
+    }
+  }, [
+    documentRef,
+    documentState,
+    editorState,
+    viewState,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  ]);
 
   // Export confirmation handlers
   const handleConfirmExport = useCallback(() => {
@@ -6025,6 +6242,8 @@ export const PDFEditorContent: React.FC = () => {
                     capturedSnapshots={capturedSnapshots}
                     isCapturingSnapshots={isCapturingSnapshots}
                     onExportPDF={exportToPDF}
+                    onExportPNG={exportToPNG}
+                    onExportJPEG={exportToJPEG}
                     onSaveProject={saveProject}
                   />
                 </div>
