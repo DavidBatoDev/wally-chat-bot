@@ -21,6 +21,7 @@ import {
   createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
   appendImageAsNewPage as appendImageAsNewPageService,
   appendPdfDocument as appendPdfDocumentService,
+  downloadImagesAsZip,
 } from "./services/pdfExportService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
@@ -3749,7 +3750,6 @@ export const PDFEditorContent: React.FC = () => {
     setEditorState,
   ]);
 
-
   // Export to PNG function
   const exportToPNG = useCallback(async () => {
     if (!documentRef.current) {
@@ -3808,22 +3808,17 @@ export const PDFEditorContent: React.FC = () => {
       // Wait for view to update
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Capture each page as PNG
+      // Collect all PNGs as canvases
+      const images = [];
       for (const pageNumber of nonDeletedPages) {
-        // Set page number
         setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
-
-        // Wait for page to update
         await new Promise((resolve) => setTimeout(resolve, 800));
-
         const documentContainer = documentRef.current;
         if (!documentContainer) {
           console.warn(`Document container not found for page ${pageNumber}`);
           continue;
         }
-
         try {
-          // Use dom-to-image to capture the page
           const dataUrl = await domtoimage.toPng(documentContainer, {
             quality: 1.0,
             bgcolor: "#ffffff",
@@ -3834,11 +3829,8 @@ export const PDFEditorContent: React.FC = () => {
               transformOrigin: "top left",
             },
             filter: (node: Node): boolean => {
-              // Filter out unwanted elements
               if (node.nodeType === Node.ELEMENT_NODE) {
                 const element = node as HTMLElement;
-
-                // Skip interactive UI elements
                 if (
                   element.classList.contains("drag-handle") ||
                   element.tagName === "BUTTON" ||
@@ -3857,26 +3849,37 @@ export const PDFEditorContent: React.FC = () => {
               return true;
             },
           });
-
-          // Create download link for PNG
-          const link = document.createElement("a");
-          link.href = dataUrl;
-          link.download = `page-${pageNumber}.png`;
-          link.click();
+          // Convert dataUrl to canvas for zip function
+          const img = new window.Image();
+          img.src = dataUrl;
+          await new Promise((resolve) => {
+            img.onload = resolve;
+          });
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0);
+          images.push({
+            canvas,
+            filename: `page-${pageNumber}`,
+            viewType: "original",
+          });
         } catch (pageError) {
           console.error(`Error capturing page ${pageNumber}:`, pageError);
           continue;
         }
       }
 
+      // Download all images as a zip
+      await downloadImagesAsZip(images, "png", "exported-pages.zip");
       toast.dismiss(loadingToast);
-      toast.success(`${nonDeletedPages.length} PNG images exported successfully!`);
+      toast.success(`${images.length} PNG images exported as ZIP!`);
     } catch (error) {
       console.error("Error exporting PNG images:", error);
       toast.dismiss(loadingToast);
       toast.error("Failed to export PNG images");
     } finally {
-      // Restore original state
       setDocumentState((prev) => ({
         ...prev,
         scale: originalScale,
@@ -3959,22 +3962,17 @@ export const PDFEditorContent: React.FC = () => {
       // Wait for view to update
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Capture each page as JPEG
+      // Collect all JPEGs as canvases
+      const images = [];
       for (const pageNumber of nonDeletedPages) {
-        // Set page number
         setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
-
-        // Wait for page to update
         await new Promise((resolve) => setTimeout(resolve, 800));
-
         const documentContainer = documentRef.current;
         if (!documentContainer) {
           console.warn(`Document container not found for page ${pageNumber}`);
           continue;
         }
-
         try {
-          // Use dom-to-image to capture the page as JPEG
           const dataUrl = await domtoimage.toJpeg(documentContainer, {
             quality: 0.9,
             bgcolor: "#ffffff",
@@ -3985,11 +3983,8 @@ export const PDFEditorContent: React.FC = () => {
               transformOrigin: "top left",
             },
             filter: (node: Node): boolean => {
-              // Filter out unwanted elements
               if (node.nodeType === Node.ELEMENT_NODE) {
                 const element = node as HTMLElement;
-
-                // Skip interactive UI elements
                 if (
                   element.classList.contains("drag-handle") ||
                   element.tagName === "BUTTON" ||
@@ -4008,26 +4003,37 @@ export const PDFEditorContent: React.FC = () => {
               return true;
             },
           });
-
-          // Create download link for JPEG
-          const link = document.createElement("a");
-          link.href = dataUrl;
-          link.download = `page-${pageNumber}.jpg`;
-          link.click();
+          // Convert dataUrl to canvas for zip function
+          const img = new window.Image();
+          img.src = dataUrl;
+          await new Promise((resolve) => {
+            img.onload = resolve;
+          });
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          ctx?.drawImage(img, 0, 0);
+          images.push({
+            canvas,
+            filename: `page-${pageNumber}`,
+            viewType: "original",
+          });
         } catch (pageError) {
           console.error(`Error capturing page ${pageNumber}:`, pageError);
           continue;
         }
       }
 
+      // Download all images as a zip
+      await downloadImagesAsZip(images, "jpeg", "exported-pages-jpeg.zip");
       toast.dismiss(loadingToast);
-      toast.success(`${nonDeletedPages.length} JPEG images exported successfully!`);
+      toast.success(`${images.length} JPEG images exported as ZIP!`);
     } catch (error) {
       console.error("Error exporting JPEG images:", error);
       toast.dismiss(loadingToast);
       toast.error("Failed to export JPEG images");
     } finally {
-      // Restore original state
       setDocumentState((prev) => ({
         ...prev,
         scale: originalScale,

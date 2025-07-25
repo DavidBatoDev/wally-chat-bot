@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import domtoimage from "dom-to-image";
+import JSZip from "jszip";
 
 // Types for PDF operations
 export interface PdfExportOptions {
@@ -53,11 +54,11 @@ export interface ImageExportOptions {
     currentView: string;
   };
   exportSettings: {
-    format: 'png' | 'jpg';
+    format: "png" | "jpg";
     quality: number;
     includeOriginal: boolean;
     includeTranslated: boolean;
-    pageRange: 'all' | 'current' | 'custom';
+    pageRange: "all" | "current" | "custom";
     customRange: string;
   };
   setDocumentState: (updater: (prev: any) => any) => void;
@@ -834,14 +835,14 @@ async function captureAllPagesWithDomToImage(
         width: documentContainer.offsetWidth,
         height: documentContainer.offsetHeight,
         style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
+          transform: "scale(1)",
+          transformOrigin: "top left",
         },
         filter: (node: Node): boolean => {
           // Filter out unwanted elements
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node as HTMLElement;
-            
+
             // Skip interactive UI elements
             if (
               element.classList.contains("drag-handle") ||
@@ -859,14 +860,14 @@ async function captureAllPagesWithDomToImage(
             }
           }
           return true;
-        }
+        },
       });
 
       // Convert data URL to canvas for consistency with the rest of the code
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
       const img = new Image();
-      
+
       return new Promise<HTMLCanvasElement>((resolve, reject) => {
         img.onload = () => {
           canvas.width = img.width;
@@ -874,25 +875,31 @@ async function captureAllPagesWithDomToImage(
           ctx?.drawImage(img, 0, 0);
           resolve(canvas);
         };
-        
+
         img.onerror = reject;
         img.src = dataUrl;
       });
-
     } catch (error) {
-      console.error(`Error capturing ${viewType} view for page ${pageNumber}:`, error);
+      console.error(
+        `Error capturing ${viewType} view for page ${pageNumber}:`,
+        error
+      );
       // Fallback: create an error canvas
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = 800;
       canvas.height = 600;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.fillStyle = '#f0f0f0';
+        ctx.fillStyle = "#f0f0f0";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#666';
-        ctx.font = '16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Error capturing page', canvas.width / 2, canvas.height / 2);
+        ctx.fillStyle = "#666";
+        ctx.font = "16px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          "Error capturing page",
+          canvas.width / 2,
+          canvas.height / 2
+        );
       }
       return canvas;
     } finally {
@@ -947,7 +954,10 @@ async function captureAllPagesWithDomToImage(
         });
       }
     } catch (error) {
-      console.error(`Error capturing pages ${page1}${hasPage2 ? ` and ${page2}` : ''}:`, error);
+      console.error(
+        `Error capturing pages ${page1}${hasPage2 ? ` and ${page2}` : ""}:`,
+        error
+      );
       // Continue with what we have
     }
 
@@ -1160,30 +1170,34 @@ function getPagesToExport(
   totalPages: number,
   deletedPages: Set<number>,
   exportSettings: {
-    pageRange: 'all' | 'current' | 'custom';
+    pageRange: "all" | "current" | "custom";
     customRange: string;
   }
 ): number[] {
   const pagesToExport: number[] = [];
 
-  if (exportSettings.pageRange === 'all') {
+  if (exportSettings.pageRange === "all") {
     // Export all non-deleted pages
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
         pagesToExport.push(pageNumber);
       }
     }
-  } else if (exportSettings.pageRange === 'current') {
+  } else if (exportSettings.pageRange === "current") {
     // Export current page only (assuming it's not deleted)
     const currentPage = 1; // This should be passed from the component
     if (!deletedPages.has(currentPage)) {
       pagesToExport.push(currentPage);
     }
-  } else if (exportSettings.pageRange === 'custom') {
+  } else if (exportSettings.pageRange === "custom") {
     // Parse custom range (e.g., "1-3, 5, 7-9")
     const customPages = parseCustomPageRange(exportSettings.customRange);
     for (const pageNumber of customPages) {
-      if (pageNumber >= 1 && pageNumber <= totalPages && !deletedPages.has(pageNumber)) {
+      if (
+        pageNumber >= 1 &&
+        pageNumber <= totalPages &&
+        !deletedPages.has(pageNumber)
+      ) {
         pagesToExport.push(pageNumber);
       }
     }
@@ -1197,11 +1211,11 @@ function getPagesToExport(
  */
 function parseCustomPageRange(rangeString: string): number[] {
   const pages: number[] = [];
-  const parts = rangeString.split(',').map(part => part.trim());
+  const parts = rangeString.split(",").map((part) => part.trim());
 
   for (const part of parts) {
-    if (part.includes('-')) {
-      const [start, end] = part.split('-').map(num => parseInt(num.trim()));
+    if (part.includes("-")) {
+      const [start, end] = part.split("-").map((num) => parseInt(num.trim()));
       if (!isNaN(start) && !isNaN(end) && start <= end) {
         for (let i = start; i <= end; i++) {
           pages.push(i);
@@ -1232,8 +1246,14 @@ async function capturePageAsImages(
   setDocumentState: (updater: (prev: any) => any) => void,
   setEditorState: (updater: (prev: any) => any) => void,
   editorState: any
-): Promise<Array<{ canvas: HTMLCanvasElement; filename: string; viewType: string }>> {
-  const images: Array<{ canvas: HTMLCanvasElement; filename: string; viewType: string }> = [];
+): Promise<
+  Array<{ canvas: HTMLCanvasElement; filename: string; viewType: string }>
+> {
+  const images: Array<{
+    canvas: HTMLCanvasElement;
+    filename: string;
+    viewType: string;
+  }> = [];
 
   // Function to capture view as image for a specific page using DOM-to-image
   const captureViewAsImage = async (
@@ -1270,14 +1290,14 @@ async function capturePageAsImages(
         width: documentContainer.offsetWidth,
         height: documentContainer.offsetHeight,
         style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
+          transform: "scale(1)",
+          transformOrigin: "top left",
         },
         filter: (node: Node): boolean => {
           // Filter out unwanted elements
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node as HTMLElement;
-            
+
             // Skip interactive UI elements
             if (
               element.classList.contains("drag-handle") ||
@@ -1295,14 +1315,14 @@ async function capturePageAsImages(
             }
           }
           return true;
-        }
+        },
       });
 
       // Convert data URL to canvas for consistency with the rest of the code
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
       const img = new Image();
-      
+
       return new Promise<HTMLCanvasElement>((resolve, reject) => {
         img.onload = () => {
           canvas.width = img.width;
@@ -1310,25 +1330,31 @@ async function capturePageAsImages(
           ctx?.drawImage(img, 0, 0);
           resolve(canvas);
         };
-        
+
         img.onerror = reject;
         img.src = dataUrl;
       });
-
     } catch (error) {
-      console.error(`Error capturing ${viewType} view for page ${pageNumber}:`, error);
+      console.error(
+        `Error capturing ${viewType} view for page ${pageNumber}:`,
+        error
+      );
       // Fallback: create an error canvas
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = 800;
       canvas.height = 600;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.fillStyle = '#f0f0f0';
+        ctx.fillStyle = "#f0f0f0";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#666';
-        ctx.font = '16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Error capturing page', canvas.width / 2, canvas.height / 2);
+        ctx.fillStyle = "#666";
+        ctx.font = "16px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          "Error capturing page",
+          canvas.width / 2,
+          canvas.height / 2
+        );
       }
       return canvas;
     } finally {
@@ -1347,10 +1373,13 @@ async function capturePageAsImages(
       images.push({
         canvas,
         filename: `page-${pageNumber}-original`,
-        viewType: "original"
+        viewType: "original",
       });
     } catch (error) {
-      console.error(`Error capturing original view for page ${pageNumber}:`, error);
+      console.error(
+        `Error capturing original view for page ${pageNumber}:`,
+        error
+      );
     }
   }
 
@@ -1361,10 +1390,13 @@ async function capturePageAsImages(
       images.push({
         canvas,
         filename: `page-${pageNumber}-translated`,
-        viewType: "translated"
+        viewType: "translated",
       });
     } catch (error) {
-      console.error(`Error capturing translated view for page ${pageNumber}:`, error);
+      console.error(
+        `Error capturing translated view for page ${pageNumber}:`,
+        error
+      );
     }
   }
 
@@ -1375,19 +1407,27 @@ async function capturePageAsImages(
  * Downloads multiple images as files
  */
 async function downloadImages(
-  images: Array<{ canvas: HTMLCanvasElement; filename: string; viewType: string }>,
-  format: 'png' | 'jpeg'
+  images: Array<{
+    canvas: HTMLCanvasElement;
+    filename: string;
+    viewType: string;
+  }>,
+  format: "png" | "jpeg"
 ): Promise<void> {
-  const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
-  const fileExtension = format === 'png' ? 'png' : 'jpg';
+  const mimeType = format === "png" ? "image/png" : "image/jpeg";
+  const fileExtension = format === "png" ? "png" : "jpg";
 
   for (const image of images) {
     try {
       // Convert canvas to blob
       const blob = await new Promise<Blob>((resolve) => {
-        image.canvas.toBlob((blob) => {
-          resolve(blob!);
-        }, mimeType, 0.9); // 0.9 quality for JPEG
+        image.canvas.toBlob(
+          (blob) => {
+            resolve(blob!);
+          },
+          mimeType,
+          0.9
+        ); // 0.9 quality for JPEG
       });
 
       // Create download link
@@ -1403,4 +1443,48 @@ async function downloadImages(
       console.error(`Error downloading image ${image.filename}:`, error);
     }
   }
+}
+
+/**
+ * Downloads multiple images as a zip file
+ */
+export async function downloadImagesAsZip(
+  images: Array<{
+    canvas: HTMLCanvasElement;
+    filename: string;
+    viewType: string;
+  }>,
+  format: "png" | "jpeg",
+  zipFilename = "exported-images.zip"
+): Promise<void> {
+  const mimeType = format === "png" ? "image/png" : "image/jpeg";
+  const fileExtension = format === "png" ? "png" : "jpg";
+  const zip = new JSZip();
+
+  for (const image of images) {
+    try {
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        image.canvas.toBlob(
+          (blob) => {
+            resolve(blob!);
+          },
+          mimeType,
+          0.9
+        );
+      });
+      zip.file(`${image.filename}.${fileExtension}`, blob);
+    } catch (error) {
+      console.error(`Error zipping image ${image.filename}:`, error);
+    }
+  }
+
+  // Generate the zip and trigger download
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(zipBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = zipFilename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
