@@ -1,11 +1,25 @@
 // Re-export TextField from components/types
 
+// Template interface for birth certificate templates
+export interface BirthCertTemplate {
+  id: string;
+  doc_type: string;
+  variation: string;
+  file_url: string;
+  info_json: any;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // Page data interface for storing individual pages
 export interface PageData {
   pageNumber: number;
   isTranslated: boolean;
   backgroundColor?: string;
   pageType?: "social_media" | "birth_cert" | "dynamic_content";
+  // Birth certificate specific data
+  birthCertTemplate?: BirthCertTemplate | null;
+  birthCertType?: string; // e.g., "English_1993_template", "Spanish_1993_template"
 }
 
 // Document and page related types
@@ -265,7 +279,7 @@ export interface SidebarProps {
     pageNumber: number,
     pageType: "social_media" | "birth_cert" | "dynamic_content"
   ) => void;
-  onBirthCertModalOpen?: () => void;
+  onBirthCertModalOpen?: (pageNumber?: number) => void;
   documentRef?: React.RefObject<HTMLDivElement | null>;
   sourceLanguage?: string;
   desiredLanguage?: string;

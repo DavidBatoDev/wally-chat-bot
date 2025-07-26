@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { BirthCertTemplate } from "../types/pdf-editor.types";
 
 interface BirthCertificateSelectionModalProps {
   isOpen: boolean;
@@ -19,19 +20,10 @@ interface BirthCertificateSelectionModalProps {
   pageHeight: number;
   sourceLanguage?: string;
   desiredLanguage?: string;
+  pageNumber?: number; // The page number this template is being applied to
+  currentTemplate?: BirthCertTemplate | null; // Current template for this page
+  onTemplateSelect?: (template: BirthCertTemplate, pageNumber: number) => void;
 }
-
-// Prebuilt templates for birth certificates
-const birthCertificateTemplates = [
-  "Standard Birth Certificate Template",
-  "International Birth Certificate Template",
-  "Hospital Birth Certificate Template",
-  "Government Birth Certificate Template",
-  "Custom Birth Certificate Template",
-  "Multilingual Birth Certificate Template",
-  "Digital Birth Certificate Template",
-  "Traditional Birth Certificate Template",
-];
 
 export const BirthCertificateSelectionModal: React.FC<
   BirthCertificateSelectionModalProps
@@ -44,17 +36,71 @@ export const BirthCertificateSelectionModal: React.FC<
   pageHeight,
   sourceLanguage = "English",
   desiredLanguage = "Spanish",
+  pageNumber,
+  currentTemplate,
+  onTemplateSelect,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<"below" | "above">(
     "below"
   );
+  const [templates, setTemplates] = useState<BirthCertTemplate[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<BirthCertTemplate | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filteredTemplates = birthCertificateTemplates.filter((template) =>
-    template.toLowerCase().includes(searchTerm.toLowerCase())
+  // Fetch templates from API and initialize selected template
+  useEffect(() => {
+    if (isOpen) {
+      fetchTemplates();
+      // Initialize with current template if available
+      if (currentTemplate) {
+        setSelectedTemplate(currentTemplate);
+        setSearchTerm(currentTemplate.variation);
+      } else {
+        setSelectedTemplate(null);
+        setSearchTerm("");
+      }
+    }
+  }, [isOpen, currentTemplate]);
+
+  const fetchTemplates = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/proxy/templates/");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+
+      // Filter to only show birth certificate templates
+      const birthCertTemplates = data.filter(
+        (template: BirthCertTemplate) =>
+          template.doc_type.toLowerCase().includes("birth") ||
+          template.doc_type.toLowerCase().includes("certificate")
+      );
+
+      setTemplates(birthCertTemplates);
+      console.log("Fetched birth certificate templates:", birthCertTemplates);
+    } catch (err) {
+      console.error("Error fetching templates:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch templates"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredTemplates = templates.filter(
+    (template) =>
+      template.variation.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.doc_type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Close dropdown when clicking outside
@@ -98,8 +144,9 @@ export const BirthCertificateSelectionModal: React.FC<
     }
   };
 
-  const handleTemplateSelect = (template: string) => {
-    setSearchTerm(template);
+  const handleTemplateSelect = (template: BirthCertTemplate) => {
+    setSelectedTemplate(template);
+    setSearchTerm(template.variation);
     setShowDropdown(false);
     inputRef.current?.blur();
   };
@@ -112,6 +159,13 @@ export const BirthCertificateSelectionModal: React.FC<
     }
   };
 
+  const handleApplyTemplate = () => {
+    if (selectedTemplate && onTemplateSelect) {
+      onTemplateSelect(selectedTemplate, pageNumber || currentPage);
+    }
+    onClose();
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[75vh] overflow-hidden bg-white border-0 shadow-2xl">
@@ -119,10 +173,12 @@ export const BirthCertificateSelectionModal: React.FC<
         <div className="px-4 pt-4 pb-2 border-b border-gray-100">
           <div className="text-center space-y-1">
             <h2 className="text-xl font-semibold text-gray-900">
-              Select Template
+              Select Template for Page {pageNumber || currentPage}
             </h2>
             <p className="text-gray-600 text-sm">
-              Choose a prebuilt template for your birth certificate translation
+              {currentTemplate
+                ? `Current: ${currentTemplate.variation}`
+                : "Choose a prebuilt template for your birth certificate translation"}
             </p>
           </div>
         </div>
@@ -211,12 +267,19 @@ export const BirthCertificateSelectionModal: React.FC<
             <div className="flex flex-col items-center space-y-2">
               <h3 className="text-sm font-medium text-gray-800">
                 Template Preview
+                {selectedTemplate &&
+                  currentTemplate &&
+                  selectedTemplate.id === currentTemplate.id && (
+                    <span className="ml-2 text-xs text-green-600 font-normal">
+                      (Current)
+                    </span>
+                  )}
               </h3>
               <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
-                {documentUrl ? (
+                {selectedTemplate?.file_url ? (
                   <div className="p-2">
                     <Document
-                      file={documentUrl}
+                      file={selectedTemplate.file_url}
                       loading={
                         <div className="flex items-center justify-center h-24 w-36">
                           <div className="text-gray-400 text-xs">
@@ -226,7 +289,7 @@ export const BirthCertificateSelectionModal: React.FC<
                       }
                     >
                       <Page
-                        pageNumber={currentPage}
+                        pageNumber={1}
                         width={pageWidth * 0.8}
                         height={pageHeight * 0.8}
                         renderTextLayer={false}
@@ -235,10 +298,18 @@ export const BirthCertificateSelectionModal: React.FC<
                     </Document>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-24 w-36 text-gray-400">
-                    <div className="text-center space-y-1">
-                      <FileText className="w-4 h-4 mx-auto text-gray-300" />
-                      <p className="text-xs">Template preview</p>
+                  <div className="p-2">
+                    <div
+                      className="flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded"
+                      style={{
+                        width: pageWidth * 0.8,
+                        height: pageHeight * 0.8,
+                      }}
+                    >
+                      <div className="text-center space-y-1">
+                        <FileText className="w-4 h-4 mx-auto text-gray-300" />
+                        <p className="text-xs">Select a template</p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -256,18 +327,22 @@ export const BirthCertificateSelectionModal: React.FC<
                 <Input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search templates..."
+                  placeholder={
+                    loading ? "Loading templates..." : "Search templates..."
+                  }
                   value={searchTerm}
                   onChange={(e) => handleInputChange(e.target.value)}
                   onFocus={() => {
                     setShowDropdown(true);
                     checkDropdownPosition();
                   }}
-                  className="pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white shadow-sm hover:border-gray-400 transition-colors"
+                  disabled={loading}
+                  className="pl-9 pr-9 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white shadow-sm hover:border-gray-400 transition-colors disabled:bg-gray-50"
                 />
                 <button
                   onClick={toggleDropdown}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  disabled={loading}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
                 >
                   <ChevronDown
                     className={`w-4 h-4 transition-transform ${
@@ -276,6 +351,13 @@ export const BirthCertificateSelectionModal: React.FC<
                   />
                 </button>
               </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="mt-2 text-red-500 text-xs text-center">
+                  {error}
+                </div>
+              )}
 
               {/* Dropdown */}
               {showDropdown && (
@@ -286,26 +368,37 @@ export const BirthCertificateSelectionModal: React.FC<
                       : "top-full mt-1"
                   } bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto z-[99999]`}
                 >
-                  {filteredTemplates.length > 0 ? (
+                  {loading ? (
+                    <div className="px-3 py-3 text-gray-500 text-xs text-center">
+                      Loading templates...
+                    </div>
+                  ) : filteredTemplates.length > 0 ? (
                     <div className="py-1">
-                      {filteredTemplates.map((template, index) => (
+                      {filteredTemplates.map((template) => (
                         <button
-                          key={index}
+                          key={template.id}
                           onClick={() => handleTemplateSelect(template)}
                           className="w-full text-left px-3 py-2 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none transition-colors group"
                         >
                           <div className="flex items-center space-x-2">
                             <FileText className="w-3 h-3 text-gray-400 group-hover:text-gray-600" />
-                            <span className="text-xs text-gray-700 group-hover:text-gray-900">
-                              {template}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="text-xs text-gray-700 group-hover:text-gray-900 font-medium">
+                                {template.variation}
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {template.doc_type}
+                              </span>
+                            </div>
                           </div>
                         </button>
                       ))}
                     </div>
                   ) : (
                     <div className="px-3 py-3 text-gray-500 text-xs text-center">
-                      No templates found
+                      {searchTerm
+                        ? "No templates found"
+                        : "No templates available"}
                     </div>
                   )}
                 </div>
@@ -325,11 +418,8 @@ export const BirthCertificateSelectionModal: React.FC<
             </button>
             <button
               className="px-5 py-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => {
-                console.log("Selected template:", searchTerm);
-                onClose();
-              }}
-              disabled={!searchTerm}
+              onClick={handleApplyTemplate}
+              disabled={!selectedTemplate}
             >
               <div className="flex items-center space-x-1">
                 <svg
@@ -345,7 +435,13 @@ export const BirthCertificateSelectionModal: React.FC<
                     d="M13 10V3L4 14h7v7l9-11h-7z"
                   />
                 </svg>
-                <span>Apply</span>
+                <span>
+                  {selectedTemplate &&
+                  currentTemplate &&
+                  selectedTemplate.id === currentTemplate.id
+                    ? "Keep Current"
+                    : "Apply"}
+                </span>
               </div>
             </button>
           </div>

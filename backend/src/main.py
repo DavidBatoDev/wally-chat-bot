@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, projects, pages
+from routers import auth, projects, pages, templates
 
 # This is for Swagger UI auth
 from fastapi.openapi.utils import get_openapi
@@ -21,6 +21,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 app.include_router(pages.router, prefix="/pages", tags=["Pages"])
+app.include_router(templates.router, prefix="/templates", tags=["Templates"])
 
 
 @app.get("/", tags=["Root"])

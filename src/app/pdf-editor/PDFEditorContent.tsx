@@ -229,6 +229,50 @@ export const PDFEditorContent: React.FC = () => {
     },
     isSelectionMode: false,
   });
+  // Template state
+  const [birthCertModalPage, setBirthCertModalPage] = useState<number>(1);
+
+  // Helper functions for birth certificate templates
+  const getPageBirthCertTemplate = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+      return page?.birthCertTemplate || null;
+    },
+    [documentState.pages]
+  );
+
+  const getPageBirthCertType = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+      return page?.birthCertType || null;
+    },
+    [documentState.pages]
+  );
+
+  const setPageBirthCertTemplate = useCallback(
+    (pageNumber: number, template: any) => {
+      setDocumentState((prev) => {
+        const updatedPages = [...prev.pages];
+        const pageIndex = pageNumber - 1;
+
+        if (pageIndex >= 0 && pageIndex < updatedPages.length) {
+          updatedPages[pageIndex] = {
+            ...updatedPages[pageIndex],
+            pageType: "birth_cert" as const,
+            birthCertTemplate: template,
+            birthCertType: template.variation,
+          };
+        }
+
+        return {
+          ...prev,
+          pages: updatedPages,
+        };
+      });
+    },
+    []
+  );
+
   // View state
   const [viewState, setViewState] = useState<ViewState>({
     currentView: "split",
@@ -4109,9 +4153,13 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   // Birth certificate modal handler
-  const handleBirthCertModalOpen = useCallback(() => {
-    setShowBirthCertModal(true);
-  }, []);
+  const handleBirthCertModalOpen = useCallback(
+    (pageNumber?: number) => {
+      setBirthCertModalPage(pageNumber || documentState.currentPage);
+      setShowBirthCertModal(true);
+    },
+    [documentState.currentPage]
+  );
 
   // Language modal handlers
   const handleLanguageConfirm = useCallback(() => {
@@ -6015,6 +6063,21 @@ export const PDFEditorContent: React.FC = () => {
         pageHeight={documentState.pageHeight}
         sourceLanguage={sourceLanguage}
         desiredLanguage={desiredLanguage}
+        pageNumber={birthCertModalPage}
+        currentTemplate={getPageBirthCertTemplate(birthCertModalPage)}
+        onTemplateSelect={(template, pageNumber) => {
+          console.log("Selected template:", template, "for page:", pageNumber);
+
+          // Update the specific page with the template information
+          setPageBirthCertTemplate(pageNumber, template);
+
+          // Show success message
+          toast.success(
+            `Template "${template.variation}" applied to page ${pageNumber}`
+          );
+
+          setShowBirthCertModal(false);
+        }}
       />
 
       {/* Settings Modal */}

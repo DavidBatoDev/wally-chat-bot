@@ -173,7 +173,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onBirthCertModalOpen?.();
+                        onBirthCertModalOpen?.(pageNum);
                       }}
                       className="p-1 hover:bg-gray-100 rounded transition-colors"
                       title="Configure Birth Certificate Template"
@@ -181,6 +181,13 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       <Settings className="w-3 h-3 text-gray-400" />
                     </button>
                   )}
+                  {/* Show current template name for birth certificate pages */}
+                  {currentPageType === "birth_cert" &&
+                    pageData?.birthCertType && (
+                      <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border">
+                        {pageData.birthCertType}
+                      </div>
+                    )}
                   <Select
                     value={currentPageType}
                     onValueChange={(value) => {
