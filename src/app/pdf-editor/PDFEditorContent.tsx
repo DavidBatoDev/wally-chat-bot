@@ -4514,7 +4514,7 @@ export const PDFEditorContent: React.FC = () => {
                     {/* Upload Button */}
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-primary to-primaryLight text-white font-medium rounded-lg hover:from-primaryLight hover:to-primary focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      className="inline-flex items-center px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primaryLight focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                     >
                       <svg
                         className="w-5 h-5 mr-2"
