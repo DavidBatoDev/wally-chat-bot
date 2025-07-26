@@ -17,6 +17,9 @@ interface SidebarPagePreviewProps {
   pdfBackgroundColor: string;
   scale?: number; // e.g. 0.15 for sidebar
   pdfUrl?: string; // new prop
+  currentWorkflowStep?: string; // new prop
+  originalDeletionRectangles?: any[]; // new
+  translatedDeletionRectangles?: any[]; // new
 }
 
 const renderTextBox = (tb: TextField, scale: number) => (
@@ -138,6 +141,27 @@ const renderImage = (img: Image, scale: number) => (
   />
 );
 
+const renderDeletionRectangle = (rect: any, scale: number) => (
+  <div
+    key={rect.id}
+    style={{
+      position: "absolute",
+      left: rect.x * scale,
+      top: rect.y * scale,
+      width: rect.width * scale,
+      height: rect.height * scale,
+      background: rect.background ? rect.background : "rgba(255,0,0,0.15)", // fallback to light red
+      opacity: rect.opacity ?? 0.5,
+      border: rect.borderColor
+        ? `${rect.borderWidth || 1}px solid ${rect.borderColor}`
+        : "1px dashed #f00",
+      zIndex: 10,
+      pointerEvents: "none",
+    }}
+    title="Deletion Rectangle"
+  />
+);
+
 const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   pageNum,
   pageWidth,
@@ -151,6 +175,9 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   pdfBackgroundColor,
   scale = 0.15,
   pdfUrl,
+  currentWorkflowStep,
+  originalDeletionRectangles = [],
+  translatedDeletionRectangles = [],
 }) => {
   // Only render elements for this page
   const origTextBoxes = originalTextBoxes.filter((tb) => tb.page === pageNum);
@@ -161,9 +188,107 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   const transShapes = translatedShapes.filter((s) => s.page === pageNum);
   const origImages = originalImages.filter((img) => img.page === pageNum);
   const transImages = translatedImages.filter((img) => img.page === pageNum);
+  const origDeletions = originalDeletionRectangles.filter(
+    (r) => r.page === pageNum
+  );
+  const transDeletions = translatedDeletionRectangles.filter(
+    (r) => r.page === pageNum
+  );
 
   // Use isPdfFile to check for PDF
   const isPdf = pdfUrl && isPdfFile(pdfUrl);
+
+  // In final-layout mode, only show original view
+  const showOnlyOriginal = currentWorkflowStep === "final-layout";
+
+  // Helper function to create sorted elements array
+  const createSortedElements = (elements: {
+    deletions: any[];
+    shapes: Shape[];
+    images: Image[];
+    textboxes: TextField[];
+  }) => {
+    const allElements: Array<{
+      type: "deletion" | "shape" | "image" | "textbox";
+      element: any;
+      zIndex: number;
+    }> = [];
+
+    // Add deletion rectangles with lowest zIndex (rendered first)
+    elements.deletions.forEach((rect) => {
+      allElements.push({
+        type: "deletion",
+        element: rect,
+        zIndex: rect.zIndex || 1,
+      });
+    });
+
+    // Add shapes
+    elements.shapes.forEach((shape) => {
+      allElements.push({
+        type: "shape",
+        element: shape,
+        zIndex: (shape as any).zIndex || 2,
+      });
+    });
+
+    // Add images
+    elements.images.forEach((image) => {
+      allElements.push({
+        type: "image",
+        element: image,
+        zIndex: (image as any).zIndex || 3,
+      });
+    });
+
+    // Add textboxes with highest zIndex (rendered last)
+    elements.textboxes.forEach((textbox) => {
+      allElements.push({
+        type: "textbox",
+        element: textbox,
+        zIndex: textbox.zIndex || 4,
+      });
+    });
+
+    // Sort by zIndex
+    return allElements.sort((a, b) => a.zIndex - b.zIndex);
+  };
+
+  // Create sorted elements for original view
+  const originalSortedElements = createSortedElements({
+    deletions: origDeletions,
+    shapes: origShapes,
+    images: origImages,
+    textboxes: origTextBoxes,
+  });
+
+  // Create sorted elements for translated view
+  const translatedSortedElements = createSortedElements({
+    deletions: transDeletions,
+    shapes: transShapes,
+    images: transImages,
+    textboxes: transTextBoxes,
+  });
+
+  // Helper function to render element based on type
+  const renderElement = (item: {
+    type: string;
+    element: any;
+    zIndex: number;
+  }) => {
+    switch (item.type) {
+      case "deletion":
+        return renderDeletionRectangle(item.element, scale);
+      case "shape":
+        return renderShape(item.element, scale);
+      case "image":
+        return renderImage(item.element, scale);
+      case "textbox":
+        return renderTextBox(item.element, scale);
+      default:
+        return null;
+    }
+  };
 
   return (
     <div style={{ display: "flex", gap: 4 }}>
@@ -219,27 +344,26 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
             draggable={false}
           />
         ) : null}
-        {/* Overlay interactive elements */}
-        {origShapes.map((s) => renderShape(s, scale))}
-        {origImages.map((img) => renderImage(img, scale))}
-        {origTextBoxes.map((tb) => renderTextBox(tb, scale))}
+        {/* Render all elements in correct layering order */}
+        {originalSortedElements.map((item) => renderElement(item))}
       </div>
-      {/* Translated view (no PDF background) */}
-      <div
-        style={{
-          position: "relative",
-          width: pageWidth * scale,
-          height: pageHeight * scale,
-          background: pdfBackgroundColor,
-          border: "1px solid #e5e7eb",
-          borderRadius: 4,
-          overflow: "hidden",
-        }}
-      >
-        {transShapes.map((s) => renderShape(s, scale))}
-        {transImages.map((img) => renderImage(img, scale))}
-        {transTextBoxes.map((tb) => renderTextBox(tb, scale))}
-      </div>
+      {/* Translated view (no PDF background) - only show if not in final-layout */}
+      {!showOnlyOriginal && (
+        <div
+          style={{
+            position: "relative",
+            width: pageWidth * scale,
+            height: pageHeight * scale,
+            background: pdfBackgroundColor,
+            border: "1px solid #e5e7eb",
+            borderRadius: 4,
+            overflow: "hidden",
+          }}
+        >
+          {/* Render all elements in correct layering order */}
+          {translatedSortedElements.map((item) => renderElement(item))}
+        </div>
+      )}
     </div>
   );
 };

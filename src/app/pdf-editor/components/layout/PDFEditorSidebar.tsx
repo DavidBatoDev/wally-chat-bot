@@ -120,6 +120,13 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   pdfBackgroundColor={documentState.pdfBackgroundColor}
                   scale={0.5}
                   pdfUrl={documentState.url}
+                  currentWorkflowStep={viewState.currentWorkflowStep}
+                  originalDeletionRectangles={
+                    elementCollections.originalDeletionRectangles
+                  }
+                  translatedDeletionRectangles={
+                    elementCollections.translatedDeletionRectangles
+                  }
                 />
                 {/* Page number overlay */}
                 <div className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs px-1 py-0.5 rounded">
