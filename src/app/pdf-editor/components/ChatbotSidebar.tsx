@@ -231,7 +231,6 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
       {/* Document Preview and Language Info */}
       {(documentState?.url || sourceLanguage || desiredLanguage) && (
         <div className="p-4 border-b border-gray-100 bg-gray-50">
-          {/* Document Preview */}
           {documentState?.url && (
             <div className="p-3 bg-white rounded-lg border border-gray-200">
               <div className="flex items-center space-x-2 mb-2">
@@ -290,11 +289,118 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
                     <Bot className="w-4 h-4 mt-1 flex-shrink-0 text-blue-600" />
                   )}
                   <div className="flex-1">
-                    <div className="text-sm whitespace-pre-wrap">
+                    <div className="text-sm leading-relaxed">
                       {message.sender === "bot" ? (
-                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                        <div className="prose prose-sm max-w-none prose-gray">
+                          <ReactMarkdown
+                            components={{
+                              // Headings
+                              h1: ({ children }) => (
+                                <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">
+                                  {children}
+                                </h1>
+                              ),
+                              h2: ({ children }) => (
+                                <h2 className="text-base font-semibold mb-2 mt-3 first:mt-0">
+                                  {children}
+                                </h2>
+                              ),
+                              h3: ({ children }) => (
+                                <h3 className="text-sm font-semibold mb-1 mt-2 first:mt-0">
+                                  {children}
+                                </h3>
+                              ),
+                              // Paragraphs
+                              p: ({ children }) => (
+                                <p className="mb-2 last:mb-0 leading-relaxed">
+                                  {children}
+                                </p>
+                              ),
+                              // Lists
+                              ul: ({ children }) => (
+                                <ul className="list-disc list-inside mb-2 space-y-1 ml-2">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className="list-decimal list-inside mb-2 space-y-1 ml-2">
+                                  {children}
+                                </ol>
+                              ),
+                              li: ({ children }) => (
+                                <li className="leading-relaxed">{children}</li>
+                              ),
+                              // Code blocks
+                              code: ({ children, className }) => {
+                                const isInline = !className;
+                                return isInline ? (
+                                  <code className="bg-gray-200 dark:bg-gray-700 px-1 py-0.5 rounded text-xs font-mono">
+                                    {children}
+                                  </code>
+                                ) : (
+                                  <pre className="bg-gray-100 dark:bg-gray-800 p-2 rounded text-xs font-mono overflow-x-auto mb-2">
+                                    <code>{children}</code>
+                                  </pre>
+                                );
+                              },
+                              // Blockquotes
+                              blockquote: ({ children }) => (
+                                <blockquote className="border-l-4 border-blue-500 pl-3 italic text-gray-700 dark:text-gray-300 mb-2">
+                                  {children}
+                                </blockquote>
+                              ),
+                              // Links
+                              a: ({ children, href }) => (
+                                <a
+                                  href={href}
+                                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                              // Strong text
+                              strong: ({ children }) => (
+                                <strong className="font-semibold">
+                                  {children}
+                                </strong>
+                              ),
+                              // Emphasis
+                              em: ({ children }) => (
+                                <em className="italic">{children}</em>
+                              ),
+                              // Horizontal rule
+                              hr: () => (
+                                <hr className="border-gray-300 dark:border-gray-600 my-3" />
+                              ),
+                              // Tables
+                              table: ({ children }) => (
+                                <div className="overflow-x-auto mb-2">
+                                  <table className="min-w-full border border-gray-300 dark:border-gray-600">
+                                    {children}
+                                  </table>
+                                </div>
+                              ),
+                              th: ({ children }) => (
+                                <th className="border border-gray-300 dark:border-gray-600 px-2 py-1 bg-gray-100 dark:bg-gray-700 font-semibold text-left">
+                                  {children}
+                                </th>
+                              ),
+                              td: ({ children }) => (
+                                <td className="border border-gray-300 dark:border-gray-600 px-2 py-1">
+                                  {children}
+                                </td>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
                       ) : (
-                        message.content
+                        <span className="whitespace-pre-wrap leading-relaxed">
+                          {message.content}
+                        </span>
                       )}
                     </div>
                     <p
