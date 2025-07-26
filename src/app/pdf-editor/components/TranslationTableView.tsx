@@ -50,10 +50,14 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(
     null
   );
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [originalColumnWidth, setOriginalColumnWidth] = useState<number>(50); // percentage
+  const [isResizing, setIsResizing] = useState<boolean>(false);
   const textareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>({});
   const originalTextareaRefs = useRef<{ [key: string]: HTMLTextAreaElement }>(
     {}
   );
+  const resizeRef = useRef<HTMLDivElement>(null);
 
   // Filter textboxes to show only those on the current page
   const textboxesForTable = translatedTextBoxes.filter(
@@ -200,7 +204,6 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         // Fallback: just clear the text
         onUpdateTextBox(textboxId, { value: "" });
       }
-      console.log("Delete textbox:", textboxId);
     },
     [onDeleteTextBox, onUpdateTextBox]
   );
@@ -215,10 +218,44 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     }
   }, []);
 
+  const handleRowClick = useCallback((textboxId: string) => {
+    setSelectedRowId(textboxId);
+    onRowClick?.(textboxId);
+  }, [onRowClick]);
+
+  // Handle column resizing
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    
+    const startX = e.clientX;
+    const startWidth = originalColumnWidth;
+    const tableRect = resizeRef.current?.closest('table')?.getBoundingClientRect();
+    
+    if (!tableRect) return;
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const tableWidth = tableRect.width - 40; // Account for row number column
+      const deltaPercent = (deltaX / tableWidth) * 100;
+      const newWidth = Math.min(75, Math.max(25, startWidth + deltaPercent));
+      setOriginalColumnWidth(newWidth);
+    };
+    
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [originalColumnWidth]);
+
   // Auto-resize textarea
   const autoResizeTextarea = useCallback((textarea: HTMLTextAreaElement) => {
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.max(48, textarea.scrollHeight)}px`;
+    textarea.style.height = `${Math.max(32, textarea.scrollHeight)}px`;
   }, []);
 
   useEffect(() => {
@@ -227,10 +264,10 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
 
   if (textboxesForTable.length === 0) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex-1 flex items-center justify-center bg-gray-50 min-h-[400px]">
+      <div className="flex flex-col h-full bg-white">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 border border-gray-200 min-h-[400px]">
           <div className="text-center p-8">
-            <div className="text-xl mb-3 text-gray-600 font-medium">
+            <div className="text-lg mb-2 text-gray-600 font-medium">
               No translations on page {currentPage}
             </div>
             <div className="text-sm text-gray-500 max-w-md">
@@ -270,50 +307,66 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   }
 
   return (
-    <div className="bg-white h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0 flex items-start justify-between min-w-0">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            Translation Editor
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Page {currentPage} • {textboxesForTable.length} text{" "}
-            {textboxesForTable.length === 1 ? "box" : "boxes"}
-          </p>
-        </div>
-        {(sourceLanguage || desiredLanguage) && (
-          <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-2 shadow-sm border border-gray-200 flex-nowrap min-w-0">
-            <Languages className="w-5 h-5 text-blue-500 mr-1 flex-shrink-0" />
-            <span className="text-xs text-gray-700 font-medium whitespace-nowrap overflow-hidden">
-              {sourceLanguage || "Source"}
-            </span>
-            <span className="mx-1 text-gray-400 flex-shrink-0">→</span>
-            <span className="text-xs text-gray-700 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
-              {desiredLanguage || "Target"}
-            </span>
+    <div className="bg-white h-full flex flex-col border border-gray-300">
+      {/* Header - Excel-style toolbar */}
+      <div className="px-4 py-2 bg-gray-100 border-b border-gray-300 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h2 className="text-sm font-semibold text-gray-800">
+              Translation Editor
+            </h2>
+            <div className="text-xs text-gray-600">
+              Page {currentPage} • {textboxesForTable.length} entries
+            </div>
           </div>
-        )}
+          {(sourceLanguage || desiredLanguage) && (
+            <div className="flex items-center gap-2 bg-white rounded border border-gray-300 px-3 py-1 shadow-sm">
+              <Languages className="w-4 h-4 text-gray-600" />
+              <span className="text-xs text-gray-700 font-medium">
+                {sourceLanguage || "Source"}
+              </span>
+              <span className="mx-1 text-gray-400">→</span>
+              <span className="text-xs text-gray-700 font-medium">
+                {desiredLanguage || "Target"}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Table Container */}
-      <div className="flex-1 overflow-hidden">
+      {/* Excel-style table container */}
+      <div className="flex-1 overflow-hidden bg-white">
         <div className="h-full overflow-auto">
-          <table className="w-full">
+          <table className="w-full border-collapse">
             <thead className="sticky top-0 bg-gray-50 z-10">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200 w-1/2">
+                <th className="px-1 py-0 text-center text-xs font-semibold text-gray-700 border-r border-b border-gray-300 w-8 bg-gray-100">
+                  #
+                </th>
+                <th 
+                  className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-b border-gray-300 bg-gray-50 relative"
+                  style={{ width: `${originalColumnWidth}%` }}
+                >
                   Original Text
+                  {/* Column resize handle */}
+                  <div
+                    ref={resizeRef}
+                    onMouseDown={handleMouseDown}
+                    className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors ${
+                      isResizing ? 'bg-blue-500' : 'bg-transparent'
+                    }`}
+                    title="Resize column"
+                  />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200 w-1/2">
+                <th 
+                  className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-300 bg-gray-50"
+                  style={{ width: `${100 - originalColumnWidth}%` }}
+                >
                   Translation
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider border-b border-gray-200 w-20">
-                  Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
+            <tbody className="bg-white">
               {textboxesForTable.map((textbox, index) => {
                 const originalText = findOriginalText(textbox);
                 const untranslatedText = untranslatedTexts.find(
@@ -326,18 +379,27 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 const isEditing =
                   editingId === textbox.id ||
                   editingOriginalId === untranslatedText?.id;
+                const isSelected = selectedRowId === textbox.id;
 
                 return (
                   <tr
                     key={textbox.id}
-                    className={`hover:bg-gray-50 transition-colors cursor-pointer ${
-                      isEditing ? "bg-gray-50" : ""
+                    className={`border-b border-gray-200 hover:bg-blue-50 transition-colors cursor-pointer group ${
+                      isSelected ? "bg-blue-50" : isEditing ? "bg-blue-25" : ""
                     }`}
-                    onClick={() => onRowClick?.(textbox.id)}
+                    onClick={() => handleRowClick(textbox.id)}
                   >
+                    {/* Row Number */}
+                    <td className="px-1 py-2 text-center text-xs text-gray-500 border-r border-gray-200 bg-gray-50 font-mono">
+                      {index + 1}
+                    </td>
+
                     {/* Original Text Column */}
-                    <td className="px-6 py-2 align-top">
-                      <div className="relative">
+                    <td 
+                      className="px-0 py-0 align-top border-r border-gray-200 relative"
+                      style={{ width: `${originalColumnWidth}%` }}
+                    >
+                      <div className="p-2">
                         {untranslatedText?.isCustomTextbox &&
                         untranslatedText &&
                         onUpdateUntranslatedText ? (
@@ -374,83 +436,134 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               )
                             }
                             onClick={(e) => e.stopPropagation()}
-                            className={`w-full p-3 text-sm border rounded-lg resize-none transition-all duration-200 ${
+                            className={`w-full p-2 text-sm border-0 resize-none bg-transparent focus:outline-none ${
                               editingOriginalId === untranslatedText.id
-                                ? "border-gray-400 bg-white shadow-sm ring-1 ring-gray-400"
-                                : "border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-white"
-                            } focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent`}
+                                ? ""
+                                : ""
+                            }`}
                             style={{
-                              minHeight: "48px",
-                              fontFamily:
-                                "system-ui, -apple-system, sans-serif",
-                              lineHeight: "1.4",
+                              minHeight: "32px",
+                              fontFamily: "system-ui, -apple-system, sans-serif",
+                              lineHeight: "1.3",
                             }}
                             placeholder="Enter original text..."
                             spellCheck={false}
                           />
                         ) : originalText ? (
-                          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-700 leading-relaxed">
+                          <div className="p-2 text-sm text-gray-800 leading-snug min-h-[32px] flex items-start">
                             {originalText}
                           </div>
                         ) : (
-                          <div className="flex items-center justify-center h-12 bg-gray-50 rounded-lg border border-gray-200">
-                            <span className="text-xs text-gray-400">
-                              No original text
-                            </span>
+                          <div className="flex items-center justify-center h-8 text-xs text-gray-400">
+                            No original text
                           </div>
                         )}
                       </div>
                     </td>
 
                     {/* Translation Column */}
-                    <td className="px-6 py-2 align-top">
-                      <div className="space-y-1">
-                        <div className="relative">
-                          <textarea
-                            ref={(el) => {
-                              if (el) {
-                                textareaRefs.current[textbox.id] = el;
-                                autoResizeTextarea(el);
+                    <td 
+                      className="px-0 py-0 align-top relative group"
+                      style={{ width: `${100 - originalColumnWidth}%` }}
+                    >
+                      <div className="p-2 relative">
+                        <textarea
+                          ref={(el) => {
+                            if (el) {
+                              textareaRefs.current[textbox.id] = el;
+                              autoResizeTextarea(el);
+                            }
+                          }}
+                          value={textbox.value || ""}
+                          onChange={(e) =>
+                            handleTextChange(textbox.id, e.target.value)
+                          }
+                          onFocus={() => handleTextareaFocus(textbox.id)}
+                          onBlur={handleTextareaBlur}
+                          onKeyDown={(e) => {
+                            handleKeyDown(e, textbox.id);
+                            e.stopPropagation();
+                          }}
+                          onInput={(e) =>
+                            autoResizeTextarea(
+                              e.target as HTMLTextAreaElement
+                            )
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          className={`w-full p-2 pr-12 text-sm border-0 resize-none bg-transparent focus:outline-none ${
+                            editingId === textbox.id ? "" : ""
+                          }`}
+                          style={{
+                            minHeight: "32px",
+                            fontFamily:
+                              textbox.fontFamily ||
+                              "system-ui, -apple-system, sans-serif",
+                            fontSize: `${Math.max(
+                              12,
+                              (textbox.fontSize || 12) * 0.9
+                            )}px`,
+                            lineHeight: "1.3",
+                          }}
+                          placeholder="Enter translation..."
+                          spellCheck={false}
+                        />
+                        
+                        {/* Action buttons - positioned in top right corner */}
+                        <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          {/* Toggle Check/X Button */}
+                          {!untranslatedText?.isCustomTextbox && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleApprove(textbox.id);
+                              }}
+                              disabled={effectiveStatus === "isEmpty"}
+                              className={`w-5 h-5 rounded flex items-center justify-center transition-all duration-200 text-xs bg-white border ${
+                                effectiveStatus === "isEmpty"
+                                  ? "border-gray-200 text-gray-400 cursor-not-allowed"
+                                  : effectiveStatus === "checked"
+                                  ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                                  : "border-gray-300 text-gray-600 hover:bg-green-50 hover:text-green-700 hover:border-green-300"
+                              }`}
+                              title={
+                                effectiveStatus === "isEmpty"
+                                  ? "Cannot approve empty text"
+                                  : effectiveStatus === "checked"
+                                  ? "Mark as pending"
+                                  : "Approve translation"
                               }
-                            }}
-                            value={textbox.value || ""}
-                            onChange={(e) =>
-                              handleTextChange(textbox.id, e.target.value)
-                            }
-                            onFocus={() => handleTextareaFocus(textbox.id)}
-                            onBlur={handleTextareaBlur}
-                            onKeyDown={(e) => {
-                              handleKeyDown(e, textbox.id);
+                            >
+                              {effectiveStatus === "checked" ? "✗" : "✓"}
+                            </button>
+                          )}
+                          {/* Delete Button */}
+                          <button
+                            onClick={(e) => {
                               e.stopPropagation();
+                              handleDelete(textbox.id);
                             }}
-                            onInput={(e) =>
-                              autoResizeTextarea(
-                                e.target as HTMLTextAreaElement
-                              )
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            className={`w-full p-3 text-sm border rounded-lg resize-none transition-all duration-200 ${
-                              editingId === textbox.id
-                                ? "border-gray-400 bg-white shadow-sm ring-1 ring-gray-400"
-                                : "border-gray-200 bg-white hover:border-gray-300"
-                            } focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent`}
-                            style={{
-                              minHeight: "48px",
-                              fontFamily:
-                                textbox.fontFamily ||
-                                "system-ui, -apple-system, sans-serif",
-                              fontSize: `${Math.max(
-                                13,
-                                (textbox.fontSize || 13) * 0.9
-                              )}px`,
-                              lineHeight: "1.4",
-                            }}
-                            placeholder="Enter translation..."
-                            spellCheck={false}
-                          />
-                          {/* Status indicator circle */}
+                            className="w-5 h-5 rounded flex items-center justify-center bg-white border border-gray-300 text-gray-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all duration-200 text-xs"
+                            title="Delete text box"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Status indicator in bottom right corner */}
+                        <div
+                          className={`absolute bottom-1 right-1 w-2 h-2 rounded-full ${
+                            effectiveStatus === "checked"
+                              ? "bg-green-500"
+                              : effectiveStatus === "needsChecking"
+                              ? "bg-yellow-500"
+                              : "bg-gray-400"
+                          }`}
+                        ></div>
+                        
+                        {/* Status bar */}
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-60">
                           <div
-                            className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
+                            className={`h-full ${
                               effectiveStatus === "checked"
                                 ? "bg-green-500"
                                 : effectiveStatus === "needsChecking"
@@ -459,115 +572,13 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             }`}
                           ></div>
                         </div>
-
-                        {/* Metadata */}
-                        <div className="flex items-center text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`font-medium ${
-                                effectiveStatus === "checked"
-                                  ? "text-green-600"
-                                  : effectiveStatus === "needsChecking"
-                                  ? "text-yellow-600"
-                                  : "text-gray-500"
-                              }`}
-                            >
-                              {effectiveStatus === "checked"
-                                ? "Approved"
-                                : effectiveStatus === "needsChecking"
-                                ? "Pending"
-                                : "Empty"}
-                            </span>
-                            {untranslatedText?.isCustomTextbox && (
-                              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs font-medium">
-                                Custom
-                              </span>
-                            )}
+                        
+                        {/* Custom textbox indicator */}
+                        {untranslatedText?.isCustomTextbox && (
+                          <div className="absolute top-1 left-1 px-1 py-0.5 bg-gray-200 text-gray-600 rounded text-xs font-medium opacity-70">
+                            Custom
                           </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Actions Column */}
-                    <td className="px-6 py-2 align-top">
-                      <div className="flex items-center gap-1">
-                        {/* Toggle Check/X Button */}
-                        {!untranslatedText?.isCustomTextbox && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleApprove(textbox.id);
-                            }}
-                            disabled={effectiveStatus === "isEmpty"}
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                              effectiveStatus === "isEmpty"
-                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                : effectiveStatus === "checked"
-                                ? "bg-green-100 text-green-700 hover:bg-green-200"
-                                : "bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-700"
-                            }`}
-                            title={
-                              effectiveStatus === "isEmpty"
-                                ? "Cannot approve empty text"
-                                : effectiveStatus === "checked"
-                                ? "Mark as pending"
-                                : "Approve translation"
-                            }
-                          >
-                            {effectiveStatus === "checked" ? (
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                            ) : (
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M5 13l4 4L19 7"
-                                />
-                              </svg>
-                            )}
-                          </button>
                         )}
-                        {/* Delete Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(textbox.id);
-                          }}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200"
-                          title="Delete text box"
-                        >
-                          <svg
-                            className="w-3.5 h-3.5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
                       </div>
                     </td>
                   </tr>
@@ -578,7 +589,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         </div>
       </div>
 
-      {/* Add Button at Bottom */}
+      {/* Add Button - Original style */}
       {onAddTextBox && onAddUntranslatedText && (
         <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
           <button
@@ -604,14 +615,13 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         </div>
       )}
 
-      {/* Footer */}
-      <div className="px-6 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-        <div className="flex items-center justify-between text-xs text-gray-500">
+      {/* Footer - Excel-style status bar */}
+      <div className="px-4 py-1 border-t border-gray-300 bg-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-between text-xs text-gray-600">
           <span>
-            Use Ctrl+Enter to finish editing • Click rows to highlight text
-            location
+            Use Ctrl+Enter to finish editing • Click rows to highlight text location
           </span>
-          <span>Switch to Layout mode to modify positions and styling</span>
+          <span>Ready</span>
         </div>
       </div>
     </div>

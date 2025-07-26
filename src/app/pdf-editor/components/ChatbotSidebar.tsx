@@ -206,7 +206,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+      {/* <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
         <div className="flex items-center space-x-3">
           <Button
             variant="ghost"
@@ -226,7 +226,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Document Preview and Language Info */}
       {(documentState?.url || sourceLanguage || desiredLanguage) && (

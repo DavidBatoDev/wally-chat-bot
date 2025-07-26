@@ -102,6 +102,7 @@ import {
   createFinalLayoutPdf,
   SnapshotData,
 } from "./services/snapshotService";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 // Import utilities
 import { isPdfFile, measureText } from "./utils/measurements";
@@ -357,12 +358,14 @@ export const PDFEditorContent: React.FC = () => {
     current: 0,
     total: 0,
   });
+
   const [capturedSnapshots, setCapturedSnapshots] = useState<SnapshotData[]>(
     []
   );
   const snapshotCancelRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
   });
+
   const isCapturingSnapshotsRef = useRef(false);
 
   // Update the ref whenever the state changes
@@ -4292,9 +4295,11 @@ export const PDFEditorContent: React.FC = () => {
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden relative bg-white">
+        <PanelGroup direction="horizontal" className="flex-1">
           {/* Left side - Document Content */}
-          <div
+          <Panel
+            defaultSize={100}
+            minSize={20}
             className={`flex flex-col overflow-hidden relative bg-white ${
               viewState.currentView === "split" &&
               (viewState.currentWorkflowStep === "translate" ||
@@ -5842,47 +5847,29 @@ export const PDFEditorContent: React.FC = () => {
                 </div>
               )}
             </div>
-          </div>
+          </Panel>
 
-          {/* Right Sidebar - TranslationTableView when in translate workflow and split view */}
-          <div
+          {/* Resize Handle - Only show when sidebar is visible */}
+          {viewState.currentView === "split" &&
+            (viewState.currentWorkflowStep === "translate" ||
+              viewState.currentWorkflowStep === "final-layout") && (
+              <PanelResizeHandle className="w-1 bg-blue-300 hover:bg-blue-400 transition-colors duration-200" />
+            )}
+
+          {/* Right Sidebar - Resizable */}
+          <Panel
+            defaultSize={
+              viewState.currentWorkflowStep === "translate" ? 60 : 35
+            }
+            minSize={20}
+            maxSize={80}
             className={
               viewState.currentView === "split" &&
               (viewState.currentWorkflowStep === "translate" ||
                 viewState.currentWorkflowStep === "final-layout")
                 ? "bg-blue-50 border-l border-blue-200 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
-                : "bg-blue-50 border-l border-blue-200 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
+                : "hidden"
             }
-            style={{
-              width:
-                viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "translate"
-                  ? "60%"
-                  : viewState.currentView === "split" &&
-                    viewState.currentWorkflowStep === "final-layout"
-                  ? "35%"
-                  : "0px",
-              minWidth:
-                viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "translate"
-                  ? "60%"
-                  : viewState.currentView === "split" &&
-                    viewState.currentWorkflowStep === "final-layout"
-                  ? "35%"
-                  : "0px",
-              opacity:
-                viewState.currentView === "split" &&
-                (viewState.currentWorkflowStep === "translate" ||
-                  viewState.currentWorkflowStep === "final-layout")
-                  ? 1
-                  : 0,
-              pointerEvents:
-                viewState.currentView === "split" &&
-                (viewState.currentWorkflowStep === "translate" ||
-                  viewState.currentWorkflowStep === "final-layout")
-                  ? "auto"
-                  : "none",
-            }}
           >
             {viewState.currentView === "split" &&
               viewState.currentWorkflowStep === "translate" && (
@@ -5920,8 +5907,8 @@ export const PDFEditorContent: React.FC = () => {
                   />
                 </div>
               )}
-          </div>
-        </div>
+          </Panel>
+        </PanelGroup>
       </div>
 
       {/* Status Bar */}
