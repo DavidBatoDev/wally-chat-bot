@@ -103,17 +103,17 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           className="absolute z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300"
           style={leftToolbarStyle}
         >
-          <div className="bg-white rounded-lg shadow-lg border border-blue-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
+          <div className="bg-white rounded-lg shadow-lg border border-primary/20 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
             {/* All tools are shown in all workflow states except translate. See comment above for how to customize by workflow. */}
             <button
               onClick={() =>
                 onToolChange("selection", !editorState.isSelectionMode)
               }
               disabled={!shouldEnableControls}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+              className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                 editorState.isSelectionMode
-                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                  : "text-gray-700 hover:text-blue-600"
+                  ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                  : "text-gray-700 hover:text-primary"
               } ${
                 !shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""
               }`}
@@ -127,10 +127,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                 onToolChange("addTextBox", !editorState.isAddTextBoxMode)
               }
               disabled={!shouldEnableControls}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+              className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                 editorState.isAddTextBoxMode
-                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                  : "text-gray-700 hover:text-blue-600"
+                  ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                  : "text-gray-700 hover:text-primary"
               } ${
                 !shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""
               }`}
@@ -144,12 +144,12 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               <button
                 onClick={() => setIsShapeMenuOpen(!isShapeMenuOpen)}
                 disabled={!shouldEnableControls}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 flex items-center gap-1 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 flex items-center gap-1 ${
                   toolState.shapeDrawingMode === "rectangle" ||
                   toolState.shapeDrawingMode === "circle" ||
                   toolState.shapeDrawingMode === "line"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 } ${
                   !shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""
                 }`}
@@ -175,7 +175,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
               {/* Dropdown Menu */}
               {isShapeMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-blue-100 py-1 min-w-[120px] z-50">
+                <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-primary/20 py-1 min-w-[120px] z-50">
                   <button
                     onClick={() => {
                       onToolChange(
@@ -184,9 +184,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                       );
                       setIsShapeMenuOpen(false);
                     }}
-                    className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-blue-50 transition-colors ${
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-primary/10 transition-colors ${
                       toolState.shapeDrawingMode === "rectangle"
-                        ? "bg-blue-50 text-blue-600"
+                        ? "bg-primary/10 text-primary"
                         : "text-gray-700"
                     }`}
                   >
@@ -201,9 +201,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                       );
                       setIsShapeMenuOpen(false);
                     }}
-                    className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-blue-50 transition-colors ${
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-primary/10 transition-colors ${
                       toolState.shapeDrawingMode === "circle"
-                        ? "bg-blue-50 text-blue-600"
+                        ? "bg-primary/10 text-primary"
                         : "text-gray-700"
                     }`}
                   >
@@ -218,9 +218,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                       );
                       setIsShapeMenuOpen(false);
                     }}
-                    className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-blue-50 transition-colors ${
+                    className={`w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-primary/10 transition-colors ${
                       toolState.shapeDrawingMode === "line"
-                        ? "bg-blue-50 text-blue-600"
+                        ? "bg-primary/10 text-primary"
                         : "text-gray-700"
                     }`}
                   >
@@ -244,10 +244,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                 onToolChange("erasure", !erasureState.isErasureMode)
               }
               disabled={!shouldEnableControls}
-              className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+              className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                 erasureState.isErasureMode
-                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                  : "text-gray-700 hover:text-blue-600"
+                  ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                  : "text-gray-700 hover:text-primary"
               } ${
                 !shouldEnableControls ? "opacity-50 cursor-not-allowed" : ""
               }`}
@@ -260,7 +260,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             {onImageUpload && (
               <button
                 onClick={onImageUpload}
-                className="p-2 rounded-md transition-all duration-200 hover:bg-blue-50 text-gray-700 hover:text-blue-600"
+                className="p-2 rounded-md transition-all duration-200 hover:bg-primary/10 text-gray-700 hover:text-primary"
                 title="Add Image to Document"
               >
                 <ImageIcon className="w-5 h-5" />
@@ -275,7 +275,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
         className="absolute z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300"
         style={rightToolbarStyle}
       >
-        <div className="bg-white rounded-lg shadow-lg border border-blue-100 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
+        <div className="bg-white rounded-lg shadow-lg border border-primary/20 p-2 flex flex-col space-y-1 backdrop-blur-sm bg-white/95">
           {/* --- VIEW CONTROLS ORGANIZED BY WORKFLOW STATE --- */}
 
           {/* Translate Step: Only show Original and Split, hide edit mode and deletion area */}
@@ -283,10 +283,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <>
               <button
                 onClick={() => onViewChange("original")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "original"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Original Document"
               >
@@ -294,10 +294,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={() => onViewChange("split")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "split"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Split Screen"
               >
@@ -311,10 +311,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <>
               <button
                 onClick={() => onViewChange("original")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "original"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Original Document"
               >
@@ -322,10 +322,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={() => onViewChange("translated")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "translated"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Translated Document"
               >
@@ -333,10 +333,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={() => onViewChange("split")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "split"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Split Screen"
               >
@@ -344,10 +344,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={onEditModeToggle}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   editorState.isEditMode
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Toggle Edit Mode"
               >
@@ -355,10 +355,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={onDeletionToggle}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   showDeletionRectangles
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title={
                   showDeletionRectangles
@@ -376,10 +376,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <>
               <button
                 onClick={() => onViewChange("original")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "original"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Original Document"
               >
@@ -387,10 +387,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={() => onViewChange("split")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   currentView === "split"
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Split Screen"
               >
@@ -398,10 +398,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={onEditModeToggle}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   editorState.isEditMode
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title="Toggle Edit Mode"
               >
@@ -409,10 +409,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               </button>
               <button
                 onClick={onDeletionToggle}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-blue-50 ${
+                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
                   showDeletionRectangles
-                    ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                    : "text-gray-700 hover:text-blue-600"
+                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                    : "text-gray-700 hover:text-primary"
                 }`}
                 title={
                   showDeletionRectangles

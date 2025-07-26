@@ -146,14 +146,14 @@ const LanguageSelectionModal: React.FC<{
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
-      <div className="bg-gradient-to-br from-blue-50 via-white to-blue-100 rounded-2xl shadow-2xl p-8 min-w-[600px] max-w-[90vw] border border-blue-100">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 min-w-[600px] max-w-[90vw] border border-primary/20">
         {/* Header */}
         <div className="flex items-center justify-center mb-6">
           <div>
             <h2 className="text-2xl font-bold text-center text-gray-900">
               {isSettings ? "Language Settings" : "Select Languages"}
             </h2>
-            <p className="text-blue-600 font-medium">
+            <p className="text-primary font-medium">
               {isSettings
                 ? "Configure Translation Languages"
                 : "Document Translation Setup"}
@@ -171,7 +171,7 @@ const LanguageSelectionModal: React.FC<{
         <div className="flex items-center justify-center gap-8 mb-8">
           {/* Source Language */}
           <div className="flex flex-col items-center">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-400 rounded-full flex items-center justify-center shadow-lg mb-4">
+            <div className="w-20 h-20 bg-gradient-to-br from-primary to-primaryLight rounded-full flex items-center justify-center shadow-lg mb-4">
               <svg
                 className="w-8 h-8 text-white"
                 fill="none"
@@ -203,15 +203,15 @@ const LanguageSelectionModal: React.FC<{
                 onBlur={() =>
                   setTimeout(() => setSourceDropdownOpen(false), 200)
                 }
-                className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300 bg-white shadow-sm hover:border-blue-300"
+                className="w-full px-4 py-3 border-2 border-primary/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 bg-white shadow-sm hover:border-primary/50"
               />
               {sourceDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-blue-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-10">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-primary/30 rounded-xl shadow-lg max-h-60 overflow-y-auto z-10">
                   {filteredSourceLanguages.map((lang) => (
                     <div
                       key={lang.code}
                       onClick={() => handleSourceSelect(lang.code)}
-                      className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0 transition-colors"
+                      className="px-4 py-3 hover:bg-primary/10 cursor-pointer border-b border-primary/20 last:border-b-0 transition-colors"
                     >
                       <span className="text-gray-800">{lang.name}</span>
                     </div>
@@ -223,7 +223,7 @@ const LanguageSelectionModal: React.FC<{
 
           {/* Arrow */}
           <div className="flex flex-col items-center">
-            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center shadow-lg mb-4">
+            <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center shadow-lg mb-4">
               <svg
                 className="w-6 h-6 text-white"
                 fill="none"
@@ -245,7 +245,7 @@ const LanguageSelectionModal: React.FC<{
 
           {/* Target Language */}
           <div className="flex flex-col items-center">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-400 rounded-full flex items-center justify-center shadow-lg mb-4">
+            <div className="w-20 h-20 bg-gradient-to-br from-primary to-primaryLight rounded-full flex items-center justify-center shadow-lg mb-4">
               <svg
                 className="w-8 h-8 text-white"
                 fill="none"
@@ -277,15 +277,15 @@ const LanguageSelectionModal: React.FC<{
                 onBlur={() =>
                   setTimeout(() => setDesiredDropdownOpen(false), 200)
                 }
-                className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300 bg-white shadow-sm hover:border-blue-300"
+                className="w-full px-4 py-3 border-2 border-primary/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 bg-white shadow-sm hover:border-primary/50"
               />
               {desiredDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-blue-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-10">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-primary/30 rounded-xl shadow-lg max-h-60 overflow-y-auto z-10">
                   {filteredDesiredLanguages.map((lang) => (
                     <div
                       key={lang.code}
                       onClick={() => handleDesiredSelect(lang.code)}
-                      className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0 transition-colors"
+                      className="px-4 py-3 hover:bg-primary/10 cursor-pointer border-b border-primary/20 last:border-b-0 transition-colors"
                     >
                       <span className="text-gray-800">{lang.name}</span>
                     </div>
@@ -297,15 +297,15 @@ const LanguageSelectionModal: React.FC<{
         </div>
 
         {/* Action buttons */}
-        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-blue-100">
+        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-primary/20">
           <button
-            className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-blue-50 text-gray-700 font-semibold"
+            className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-primary/10 text-gray-700 font-semibold"
             onClick={onCancel}
           >
             Set without Translating
           </button>
           <button
-            className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+            className="px-8 py-3 rounded-xl bg-primary hover:bg-primaryLight text-white font-semibold"
             onClick={onConfirm}
           >
             <div className="flex items-center">

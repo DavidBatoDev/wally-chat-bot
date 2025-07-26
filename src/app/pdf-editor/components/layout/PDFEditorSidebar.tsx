@@ -104,8 +104,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               key={pageNum}
               className={`border rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md group relative ${
                 documentState.currentPage === pageNum
-                  ? "border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-200"
-                  : "border-gray-200 hover:border-blue-300 hover:bg-blue-25"
+                  ? "border-primary bg- shadow-sm ring-1 ring-primary/20"
+                  : "border-gray-200 hover:border-primary/30 hover:bg-primary/5"
               }`}
               onClick={() => onPageChange(pageNum)}
             >
@@ -116,7 +116,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                     e.stopPropagation();
                     onPageDelete(pageNum);
                   }}
-                  className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-blue-600 z-10 shadow-md"
+                  className="absolute top-2 right-2 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-primaryLight z-10 shadow-md"
                   title={`Delete page ${pageNum}`}
                 >
                   <X className="w-3 h-3" />
@@ -152,7 +152,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                 </div>
                 {/* Current page indicator */}
                 {documentState.currentPage === pageNum && (
-                  <div className="absolute inset-0 bg-blue-500 bg-opacity-10 rounded" />
+                  <div className="absolute inset-0 bg-primary/10 rounded" />
                 )}
               </div>
 
@@ -204,7 +204,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                     <SelectTrigger
                       className={`h-7 text-xs ${
                         currentPageType === "social_media"
-                          ? "bg-blue-100 text-blue-800 border-blue-200"
+                          ? "bg-primary/20 text-primary border-primary/30"
                           : currentPageType === "birth_cert"
                           ? "bg-yellow-100 text-yellow-800 border-yellow-200"
                           : "bg-gray-100 text-gray-800 border-gray-200"
@@ -297,11 +297,11 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         <div className="space-y-3">
           <button
             onClick={() => onTabChange("chat")}
-            className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
+            className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-primary/30 hover:bg-primary/10 transition-all duration-200 group"
           >
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <MessageSquare className="w-5 h-5 text-blue-600" />
+              <div className="p-2 bg-primary/20 rounded-lg group-hover:bg-primary/30 transition-colors">
+                <MessageSquare className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
@@ -320,7 +320,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
   return (
     <div
-      className={`bg-white border-r border-blue-100 overflow-y-auto shadow-sm transition-all duration-500 ease-in-out flex-shrink-0`}
+      className={`bg-white border-r border-primary/20 overflow-y-auto shadow-sm transition-all duration-500 ease-in-out flex-shrink-0`}
       style={{
         width: viewState.isSidebarCollapsed
           ? "0px"
@@ -345,15 +345,15 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         style={{ display: viewState.isSidebarCollapsed ? "none" : "flex" }}
       >
         {/* Tab Navigation */}
-        <div className="flex border-b border-blue-100 mb-4">
+        <div className="flex border-b border-primary/20 mb-4">
           <button
             onClick={() => onTabChange("tools")}
             className={`${
               documentState.url ? "flex-1" : "w-full"
             } px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
               viewState.activeSidebarTab === "tools"
-                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                : "text-gray-900 hover:text-blue-600 hover:bg-blue-50"
+                ? "text-primary border-b-2 border-primary bg-primary/10"
+                : "text-gray-900 hover:text-primary hover:bg-primary/10"
             }`}
           >
             <div className="flex items-center justify-center space-x-2">
@@ -366,8 +366,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               onClick={() => onTabChange("pages")}
               className={`flex-1 px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
                 viewState.activeSidebarTab === "pages"
-                  ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                  : "text-gray-900 hover:text-blue-600 hover:bg-blue-50"
+                  ? "text-primary border-b-2 border-primary bg-primary/10"
+                  : "text-gray-900 hover:text-primary hover:bg-primary/10"
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -390,10 +390,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               </div>
 
               {/* Upload Buttons at Bottom */}
-              <div className="border-t border-blue-100 pt-4 mt-4 space-y-2">
+              <div className="border-t border-primary/20 pt-4 mt-4 space-y-2">
                 <Button
                   onClick={onFileUpload}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
+                  className="w-full bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   {documentState.url
@@ -405,7 +405,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   <Button
                     onClick={onAppendDocument}
                     variant="outline"
-                    className="w-full border-blue-200 text-gray-900 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
+                    className="w-full border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Upload More Document/Image

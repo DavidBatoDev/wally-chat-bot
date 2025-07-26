@@ -234,12 +234,12 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
           {documentState?.url && (
             <div className="p-3 bg-white rounded-lg border border-gray-200">
               <div className="flex items-center space-x-2 mb-2">
-                <FileText className="w-4 h-4 text-blue-600" />
+                <FileText className="w-4 h-4 text-primary" />
                 <span className="text-sm font-medium text-gray-900">
                   Using this reference
                 </span>
                 {isCapturingDocument && (
-                  <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                  <Loader2 className="w-3 h-3 animate-spin text-primary" />
                 )}
               </div>
               {documentImage ? (
@@ -280,13 +280,13 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
               <div
                 className={`max-w-[80%] rounded-lg px-4 py-3 ${
                   message.sender === "user"
-                    ? "bg-blue-600 text-white"
+                    ? "bg-primary text-white"
                     : "bg-gray-100 text-gray-900"
                 }`}
               >
                 <div className="flex items-start space-x-2">
                   {message.sender === "bot" && (
-                    <Bot className="w-4 h-4 mt-1 flex-shrink-0 text-blue-600" />
+                    <Bot className="w-4 h-4 mt-1 flex-shrink-0 text-primary" />
                   )}
                   <div className="flex-1">
                     <div className="text-sm leading-relaxed">
@@ -345,7 +345,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
                               },
                               // Blockquotes
                               blockquote: ({ children }) => (
-                                <blockquote className="border-l-4 border-blue-500 pl-3 italic text-gray-700 dark:text-gray-300 mb-2">
+                                <blockquote className="border-l-4 border-primary pl-3 italic text-gray-700 dark:text-gray-300 mb-2">
                                   {children}
                                 </blockquote>
                               ),
@@ -353,7 +353,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
                               a: ({ children, href }) => (
                                 <a
                                   href={href}
-                                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                                  className="text-primary dark:text-primaryLight hover:underline"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 >
@@ -406,7 +406,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
                     <p
                       className={`text-xs mt-2 ${
                         message.sender === "user"
-                          ? "text-blue-100"
+                          ? "text-primary/20"
                           : "text-gray-500"
                       }`}
                     >
@@ -414,7 +414,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
                     </p>
                   </div>
                   {message.sender === "user" && (
-                    <User className="w-4 h-4 mt-1 flex-shrink-0 text-blue-100" />
+                    <User className="w-4 h-4 mt-1 flex-shrink-0 text-primary/20" />
                   )}
                 </div>
               </div>
@@ -425,9 +425,9 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
             <div className="flex justify-start">
               <div className="bg-gray-100 text-gray-900 rounded-lg px-4 py-3">
                 <div className="flex items-center space-x-2">
-                  <Bot className="w-4 h-4 text-blue-600" />
+                  <Bot className="w-4 h-4 text-primary" />
                   <div className="flex items-center space-x-1">
-                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
                     <span className="text-sm">Wally is typing...</span>
                   </div>
                 </div>
@@ -451,7 +451,7 @@ export const ChatbotSidebar: React.FC<ChatbotSidebarProps> = ({
           <Button
             onClick={sendMessage}
             disabled={!inputValue.trim() || isLoading}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-primary hover:bg-primaryLight text-white"
           >
             <Send className="w-4 h-4" />
           </Button>
