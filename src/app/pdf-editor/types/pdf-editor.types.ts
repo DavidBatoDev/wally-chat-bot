@@ -5,6 +5,7 @@ export interface PageData {
   pageNumber: number;
   isTranslated: boolean;
   backgroundColor?: string;
+  pageType?: "social_media" | "birth_cert" | "dynamic_content";
 }
 
 // Document and page related types
@@ -260,6 +261,11 @@ export interface SidebarProps {
   onAppendDocument: () => void;
   onSidebarToggle: () => void;
   onTabChange: (tab: "pages" | "tools" | "chat") => void;
+  onPageTypeChange?: (
+    pageNumber: number,
+    pageType: "social_media" | "birth_cert" | "dynamic_content"
+  ) => void;
+  onBirthCertModalOpen?: () => void;
   documentRef?: React.RefObject<HTMLDivElement | null>;
   sourceLanguage?: string;
   desiredLanguage?: string;

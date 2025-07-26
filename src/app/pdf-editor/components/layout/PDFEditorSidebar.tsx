@@ -12,11 +12,22 @@ import {
   Files,
   Wrench,
   MessageSquare,
+  Settings,
+  Share,
+  FileText,
+  Zap,
 } from "lucide-react";
 import { SidebarProps } from "../../types/pdf-editor.types";
 import { isPdfFile } from "../../utils/measurements";
 import { ChatbotSidebar } from "../ChatbotSidebar";
 import { SidebarPagePreview } from "./SidebarPagePreview";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   viewState,
@@ -32,6 +43,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   documentRef,
   sourceLanguage,
   desiredLanguage,
+  onPageTypeChange,
+  onBirthCertModalOpen,
 }) => {
   const renderPagePreview = () => {
     if (!documentState.url) {
@@ -54,6 +67,11 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           if (pageState.deletedPages.has(pageNum)) {
             return null;
           }
+
+          const pageData = documentState.pages.find(
+            (p) => p.pageNumber === pageNum
+          );
+          const currentPageType = pageData?.pageType || "dynamic_content";
 
           const pageTextBoxes = [
             ...elementCollections.originalTextBoxes,
@@ -139,7 +157,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               </div>
 
               {/* Page Info */}
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm">Page {pageNum}</span>
                   {totalElements > 0 && (
@@ -147,6 +165,89 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       {totalElements} element{totalElements !== 1 ? "s" : ""}
                     </span>
                   )}
+                </div>
+
+                {/* Page Type Selector */}
+                <div className="flex items-center space-x-2">
+                  {currentPageType === "birth_cert" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBirthCertModalOpen?.();
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Configure Birth Certificate Template"
+                    >
+                      <Settings className="w-3 h-3 text-gray-400" />
+                    </button>
+                  )}
+                  <Select
+                    value={currentPageType}
+                    onValueChange={(value) => {
+                      if (onPageTypeChange) {
+                        onPageTypeChange(
+                          pageNum,
+                          value as
+                            | "social_media"
+                            | "birth_cert"
+                            | "dynamic_content"
+                        );
+                      }
+                    }}
+                    onOpenChange={(open) => {
+                      if (open) {
+                        // Prevent page selection when opening dropdown
+                        event?.stopPropagation();
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      className={`h-7 text-xs ${
+                        currentPageType === "social_media"
+                          ? "bg-blue-100 text-blue-800 border-blue-200"
+                          : currentPageType === "birth_cert"
+                          ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                          : "bg-gray-100 text-gray-800 border-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-1">
+                        {currentPageType === "social_media" ? (
+                          <Share className="w-3 h-3" />
+                        ) : currentPageType === "birth_cert" ? (
+                          <FileText className="w-3 h-3" />
+                        ) : (
+                          <Zap className="w-3 h-3" />
+                        )}
+                        <span>
+                          {currentPageType === "social_media"
+                            ? "Social Media"
+                            : currentPageType === "birth_cert"
+                            ? "Birth Certificate"
+                            : "Dynamic Content"}
+                        </span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="social_media">
+                        <div className="flex items-center space-x-2">
+                          <Share className="w-3 h-3" />
+                          <span>Social Media</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="birth_cert">
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-3 h-3" />
+                          <span>Birth Certificate</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="dynamic_content">
+                        <div className="flex items-center space-x-2">
+                          <Zap className="w-3 h-3" />
+                          <span>Dynamic Content</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {totalElements > 0 && (

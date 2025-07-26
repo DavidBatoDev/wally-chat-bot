@@ -44,11 +44,16 @@ export const useDocumentState = () => {
     ({ numPages }: { numPages: number }) => {
       console.log(`handleDocumentLoadSuccess called with ${numPages} pages`);
       console.log("Current document state before load success:", documentState);
-      
+
       // Only reset pages and deletedPages if this is truly a new document load
       // Check if numPages has actually changed or if we're reloading the same document
-      if (documentState.numPages === numPages && documentState.isDocumentLoaded) {
-        console.log("Document already loaded with same page count, skipping reset");
+      if (
+        documentState.numPages === numPages &&
+        documentState.isDocumentLoaded
+      ) {
+        console.log(
+          "Document already loaded with same page count, skipping reset"
+        );
         setDocumentState((prev) => ({
           ...prev,
           isDocumentLoaded: true,
@@ -58,10 +63,14 @@ export const useDocumentState = () => {
       }
 
       // Initialize pages array when document loads
-      const initialPages: PageData[] = Array.from({ length: numPages }, (_, index) => ({
-        pageNumber: index + 1,
-        isTranslated: false,
-      }));
+      const initialPages: PageData[] = Array.from(
+        { length: numPages },
+        (_, index) => ({
+          pageNumber: index + 1,
+          isTranslated: false,
+          pageType: "dynamic_content",
+        })
+      );
 
       console.log("Resetting document state for new document");
       setDocumentState((prev) => ({
@@ -270,19 +279,22 @@ export const useDocumentState = () => {
     }));
   }, []);
 
-  const updatePage = useCallback((pageNumber: number, updates: Partial<PageData>) => {
-    setDocumentState((prev) => ({
-      ...prev,
-      pages: prev.pages.map((page) => 
-        page.pageNumber === pageNumber ? { ...page, ...updates } : page
-      ),
-    }));
-  }, []);
+  const updatePage = useCallback(
+    (pageNumber: number, updates: Partial<PageData>) => {
+      setDocumentState((prev) => ({
+        ...prev,
+        pages: prev.pages.map((page) =>
+          page.pageNumber === pageNumber ? { ...page, ...updates } : page
+        ),
+      }));
+    },
+    []
+  );
 
   const deletePage = useCallback((pageNumber: number) => {
     setDocumentState((prev) => {
       const remainingPages = prev.numPages - prev.deletedPages.size;
-      
+
       if (remainingPages <= 1) {
         toast.error("Cannot delete the last remaining page");
         return prev;
@@ -293,21 +305,30 @@ export const useDocumentState = () => {
         deletedPages: new Set([...prev.deletedPages, pageNumber]),
       };
     });
-    
+
     toast.success(`Page ${pageNumber} deleted`);
   }, []);
 
   const getCurrentPage = useCallback(() => {
-    return documentState.pages.find(page => page.pageNumber === documentState.currentPage) || null;
+    return (
+      documentState.pages.find(
+        (page) => page.pageNumber === documentState.currentPage
+      ) || null
+    );
   }, [documentState.pages, documentState.currentPage]);
 
   const getNonDeletedPages = useCallback(() => {
-    return documentState.pages.filter(page => !documentState.deletedPages.has(page.pageNumber));
+    return documentState.pages.filter(
+      (page) => !documentState.deletedPages.has(page.pageNumber)
+    );
   }, [documentState.pages, documentState.deletedPages]);
 
-  const setPageTranslated = useCallback((pageNumber: number, isTranslated: boolean) => {
-    updatePage(pageNumber, { isTranslated });
-  }, [updatePage]);
+  const setPageTranslated = useCallback(
+    (pageNumber: number, isTranslated: boolean) => {
+      updatePage(pageNumber, { isTranslated });
+    },
+    [updatePage]
+  );
 
   const setIsTransforming = useCallback((isTransforming: boolean) => {
     setDocumentState((prev) => ({
@@ -317,14 +338,21 @@ export const useDocumentState = () => {
   }, []);
 
   // Handle document appending - used when appending additional pages from new documents
-  const handleDocumentAppend = useCallback((additionalPages: number) => {
-    const newPages: PageData[] = Array.from({ length: additionalPages }, (_, index) => ({
-      pageNumber: documentState.numPages + index + 1,
-      isTranslated: false,
-    }));
-    
-    appendPages(newPages);
-  }, [documentState.numPages, appendPages]);
+  const handleDocumentAppend = useCallback(
+    (additionalPages: number) => {
+      const newPages: PageData[] = Array.from(
+        { length: additionalPages },
+        (_, index) => ({
+          pageNumber: documentState.numPages + index + 1,
+          isTranslated: false,
+          pageType: "dynamic_content",
+        })
+      );
+
+      appendPages(newPages);
+    },
+    [documentState.numPages, appendPages]
+  );
 
   return {
     documentState,

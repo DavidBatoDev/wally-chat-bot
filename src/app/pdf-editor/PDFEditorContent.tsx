@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { toast } from "sonner";
-import domtoimage from "dom-to-image";
 import { useTextFormat } from "@/components/editor/ElementFormatContext";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
@@ -94,6 +93,7 @@ import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
 import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
+import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
@@ -3129,7 +3129,11 @@ export const PDFEditorContent: React.FC = () => {
           numPages: newPageNumber,
           pages: [
             ...currentPages,
-            { pageNumber: newPageNumber, isTranslated: false },
+            {
+              pageNumber: newPageNumber,
+              isTranslated: false,
+              pageType: "dynamic_content" as const,
+            },
           ],
           deletedPages: currentDeletedPages, // Preserve deleted pages
           isDocumentLoaded: true,
@@ -3224,6 +3228,7 @@ export const PDFEditorContent: React.FC = () => {
           (_, index) => ({
             pageNumber: currentNumPages + index + 1,
             isTranslated: false,
+            pageType: "dynamic_content" as const,
           })
         );
 
@@ -4057,6 +4062,9 @@ export const PDFEditorContent: React.FC = () => {
   const [tempSourceLanguage, setTempSourceLanguage] = useState<string>("");
   const [tempDesiredLanguage, setTempDesiredLanguage] = useState<string>("");
 
+  // Add state for birth certificate modal
+  const [showBirthCertModal, setShowBirthCertModal] = useState(false);
+
   // Intercept file upload to show confirmation if a document is loaded
   const handleFileUploadIntercept = useCallback(() => {
     if (documentState.url) {
@@ -4084,6 +4092,27 @@ export const PDFEditorContent: React.FC = () => {
     setPendingFileUpload(null);
   }, []);
 
+  // Page type change handler
+  const handlePageTypeChange = useCallback(
+    (
+      pageNumber: number,
+      pageType: "social_media" | "birth_cert" | "dynamic_content"
+    ) => {
+      setDocumentState((prev) => ({
+        ...prev,
+        pages: prev.pages.map((page) =>
+          page.pageNumber === pageNumber ? { ...page, pageType } : page
+        ),
+      }));
+    },
+    []
+  );
+
+  // Birth certificate modal handler
+  const handleBirthCertModalOpen = useCallback(() => {
+    setShowBirthCertModal(true);
+  }, []);
+
   // Language modal handlers
   const handleLanguageConfirm = useCallback(() => {
     setShowLanguageModal(false);
@@ -4094,6 +4123,7 @@ export const PDFEditorContent: React.FC = () => {
     }
   }, [pendingOcrAction, handleRunOcrAllPages]);
 
+  // Deprecated
   const handleLanguageCancel = useCallback(() => {
     setShowLanguageModal(false);
     setPendingOcrAction(null);
@@ -4289,6 +4319,8 @@ export const PDFEditorContent: React.FC = () => {
           onTabChange={(tab) =>
             setViewState((prev) => ({ ...prev, activeSidebarTab: tab }))
           }
+          onPageTypeChange={handlePageTypeChange}
+          onBirthCertModalOpen={handleBirthCertModalOpen}
           documentRef={documentRef}
           sourceLanguage={sourceLanguage}
           desiredLanguage={desiredLanguage}
@@ -5971,6 +6003,18 @@ export const PDFEditorContent: React.FC = () => {
         onDesiredLanguageChange={setDesiredLanguage}
         onConfirm={handleLanguageConfirm}
         onCancel={handleLanguageCancel}
+      />
+
+      {/* Birth Certificate Selection Modal */}
+      <BirthCertificateSelectionModal
+        isOpen={showBirthCertModal}
+        onClose={() => setShowBirthCertModal(false)}
+        documentUrl={documentState.url}
+        currentPage={documentState.currentPage}
+        pageWidth={documentState.pageWidth}
+        pageHeight={documentState.pageHeight}
+        sourceLanguage={sourceLanguage}
+        desiredLanguage={desiredLanguage}
       />
 
       {/* Settings Modal */}
