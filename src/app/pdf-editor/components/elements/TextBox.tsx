@@ -370,6 +370,8 @@ export const MemoizedTextBox = memo(
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
           isEditMode ? "edit-mode" : ""
         } ${
+          isEditMode && !isSelected ? "edit-mode-unselected" : ""
+        } ${
           isSelectedInTextMode
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
