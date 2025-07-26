@@ -4292,6 +4292,9 @@ export const PDFEditorContent: React.FC = () => {
           onTabChange={(tab) =>
             setViewState((prev) => ({ ...prev, activeSidebarTab: tab }))
           }
+          documentRef={documentRef}
+          sourceLanguage={sourceLanguage}
+          desiredLanguage={desiredLanguage}
         />
 
         {/* Main Content Area */}

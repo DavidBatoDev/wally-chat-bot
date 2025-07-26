@@ -354,7 +354,7 @@ const LanguageSelectionModal: React.FC<{
                 className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-blue-50 text-gray-700 font-semibold"
                 onClick={onCancel}
               >
-                Cancel
+                Set without Translating
               </button>
               <button
                 className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"

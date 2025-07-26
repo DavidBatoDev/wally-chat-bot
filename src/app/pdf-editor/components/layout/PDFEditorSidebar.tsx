@@ -11,16 +11,11 @@ import {
   Image as ImageIcon,
   Files,
   Wrench,
-  FileSearch,
-  MousePointer,
-  Scan,
   MessageSquare,
-  FileText,
-  Globe,
-  Languages,
 } from "lucide-react";
 import { SidebarProps } from "../../types/pdf-editor.types";
 import { isPdfFile } from "../../utils/measurements";
+import { ChatbotSidebar } from "../ChatbotSidebar";
 
 export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   viewState,
@@ -33,6 +28,9 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   onAppendDocument,
   onSidebarToggle,
   onTabChange,
+  documentRef,
+  sourceLanguage,
+  desiredLanguage,
 }) => {
   const renderPagePreview = () => {
     if (!documentState.url) {
@@ -208,106 +206,20 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           <span>Tools</span>
         </h3>
         <div className="space-y-3">
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <FileSearch className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Document Extraction
-                </div>
-                <div className="text-xs text-gray-500">
-                  Extract data from documents
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <MousePointer className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Select & Translate Field
-                </div>
-                <div className="text-xs text-gray-500">
-                  Select and translate specific fields
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <Scan className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Scan & OCR
-                </div>
-                <div className="text-xs text-gray-500">
-                  Optical character recognition
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
+          <button
+            onClick={() => onTabChange("chat")}
+            className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
+          >
             <div className="flex items-center space-x-3">
               <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
                 <MessageSquare className="w-5 h-5 text-blue-600" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
-                  Chat with Wally AI Assistant
+                  Chat with Wally
                 </div>
                 <div className="text-xs text-gray-500">
-                  Get AI-powered assistance
-                </div>
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      {/* Translation Section */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
-          <Languages className="w-5 h-5" />
-          <span>Translation</span>
-        </h3>
-        <div className="space-y-3">
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Translate Birth Certificate
-                </div>
-                <div className="text-xs text-gray-500">
-                  Specialized birth certificate translation
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <Globe className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Translate Dynamic Content
-                </div>
-                <div className="text-xs text-gray-500">
-                  Real-time content translation
+                  Translation specialist assistant
                 </div>
               </div>
             </div>
@@ -321,8 +233,16 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
     <div
       className={`bg-white border-r border-blue-100 overflow-y-auto shadow-sm transition-all duration-500 ease-in-out flex-shrink-0`}
       style={{
-        width: viewState.isSidebarCollapsed ? "0px" : "20rem",
-        minWidth: viewState.isSidebarCollapsed ? "0px" : "20rem",
+        width: viewState.isSidebarCollapsed
+          ? "0px"
+          : viewState.activeSidebarTab === "chat"
+          ? "25rem"
+          : "20rem",
+        minWidth: viewState.isSidebarCollapsed
+          ? "0px"
+          : viewState.activeSidebarTab === "chat"
+          ? "25rem"
+          : "20rem",
         opacity: viewState.isSidebarCollapsed ? 0 : 1,
         padding: viewState.isSidebarCollapsed ? "0px" : "1rem",
         pointerEvents: viewState.isSidebarCollapsed ? "none" : "auto",
@@ -404,6 +324,14 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
             </div>
+          ) : viewState.activeSidebarTab === "chat" ? (
+            <ChatbotSidebar
+              onBack={() => onTabChange("tools")}
+              documentRef={documentRef}
+              sourceLanguage={sourceLanguage}
+              desiredLanguage={desiredLanguage}
+              documentState={documentState}
+            />
           ) : (
             renderToolsTab()
           )}
