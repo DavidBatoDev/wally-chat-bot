@@ -5846,36 +5846,45 @@ export const PDFEditorContent: React.FC = () => {
 
           {/* Right Sidebar - TranslationTableView when in translate workflow and split view */}
           <div
-            className="bg-blue-50 border-l border-blue-200 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
+            className={
+              viewState.currentView === "split" &&
+              (viewState.currentWorkflowStep === "translate" ||
+                viewState.currentWorkflowStep === "final-layout")
+                ? "bg-blue-50 border-l border-blue-200 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
+                : "bg-blue-50 border-l border-blue-200 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
+            }
             style={{
               width:
-                documentState.url &&
                 viewState.currentView === "split" &&
                 viewState.currentWorkflowStep === "translate"
-                  ? "40%"
+                  ? "60%"
+                  : viewState.currentView === "split" &&
+                    viewState.currentWorkflowStep === "final-layout"
+                  ? "35%"
                   : "0px",
               minWidth:
-                documentState.url &&
                 viewState.currentView === "split" &&
                 viewState.currentWorkflowStep === "translate"
-                  ? "40%"
+                  ? "60%"
+                  : viewState.currentView === "split" &&
+                    viewState.currentWorkflowStep === "final-layout"
+                  ? "35%"
                   : "0px",
               opacity:
-                documentState.url &&
                 viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "translate"
+                (viewState.currentWorkflowStep === "translate" ||
+                  viewState.currentWorkflowStep === "final-layout")
                   ? 1
                   : 0,
               pointerEvents:
-                documentState.url &&
                 viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "translate"
+                (viewState.currentWorkflowStep === "translate" ||
+                  viewState.currentWorkflowStep === "final-layout")
                   ? "auto"
                   : "none",
             }}
           >
-            {documentState.url &&
-              viewState.currentView === "split" &&
+            {viewState.currentView === "split" &&
               viewState.currentWorkflowStep === "translate" && (
                 <div className="h-full transition-opacity duration-300 opacity-100">
                   <TranslationTableView
@@ -5896,34 +5905,6 @@ export const PDFEditorContent: React.FC = () => {
                   />
                 </div>
               )}
-          </div>
-
-          {/* Right Sidebar - FinalLayoutSettings when in final-layout workflow and split view */}
-          <div
-            className="bg-gray-50 border-l border-gray-200 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out"
-            style={{
-              width:
-                viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "final-layout"
-                  ? "35%"
-                  : "0px",
-              minWidth:
-                viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "final-layout"
-                  ? "35%"
-                  : "0px",
-              opacity:
-                viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "final-layout"
-                  ? 1
-                  : 0,
-              pointerEvents:
-                viewState.currentView === "split" &&
-                viewState.currentWorkflowStep === "final-layout"
-                  ? "auto"
-                  : "none",
-            }}
-          >
             {viewState.currentView === "split" &&
               viewState.currentWorkflowStep === "final-layout" && (
                 <div className="transition-opacity duration-300 opacity-100">
