@@ -16,6 +16,7 @@ import {
 import { SidebarProps } from "../../types/pdf-editor.types";
 import { isPdfFile } from "../../utils/measurements";
 import { ChatbotSidebar } from "../ChatbotSidebar";
+import { SidebarPagePreview } from "./SidebarPagePreview";
 
 export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   viewState,
@@ -106,48 +107,28 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
               {/* Page Thumbnail */}
               <div className="relative mb-2">
-                <div
-                  className="w-full bg-white flex items-center justify-center relative overflow-hidden shadow-sm"
-                  style={{
-                    aspectRatio: "8.5/11",
-                    height: "120px",
-                  }}
-                >
-                  {isPdfFile(documentState.url) ? (
-                    <div className="w-full h-full bg-white relative">
-                      <Document
-                        file={documentState.url}
-                        loading={null}
-                        error={null}
-                      >
-                        <Page
-                          pageNumber={pageNum}
-                          width={200}
-                          renderTextLayer={false}
-                          renderAnnotationLayer={false}
-                          loading={null}
-                          error={null}
-                        />
-                      </Document>
-                    </div>
-                  ) : (
-                    <img
-                      src={documentState.url}
-                      alt={`Page ${pageNum}`}
-                      className="w-full h-full object-contain"
-                    />
-                  )}
-
-                  {/* Page number overlay */}
-                  <div className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs px-1 py-0.5 rounded">
-                    {pageNum}
-                  </div>
-
-                  {/* Current page indicator */}
-                  {documentState.currentPage === pageNum && (
-                    <div className="absolute inset-0 bg-blue-500 bg-opacity-10 rounded" />
-                  )}
+                <SidebarPagePreview
+                  pageNum={pageNum}
+                  pageWidth={documentState.pageWidth}
+                  pageHeight={documentState.pageHeight}
+                  originalTextBoxes={elementCollections.originalTextBoxes}
+                  translatedTextBoxes={elementCollections.translatedTextBoxes}
+                  originalShapes={elementCollections.originalShapes}
+                  translatedShapes={elementCollections.translatedShapes}
+                  originalImages={elementCollections.originalImages}
+                  translatedImages={elementCollections.translatedImages}
+                  pdfBackgroundColor={documentState.pdfBackgroundColor}
+                  scale={0.5}
+                  pdfUrl={documentState.url}
+                />
+                {/* Page number overlay */}
+                <div className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs px-1 py-0.5 rounded">
+                  {pageNum}
                 </div>
+                {/* Current page indicator */}
+                {documentState.currentPage === pageNum && (
+                  <div className="absolute inset-0 bg-blue-500 bg-opacity-10 rounded" />
+                )}
               </div>
 
               {/* Page Info */}
