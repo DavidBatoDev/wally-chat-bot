@@ -158,14 +158,14 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
               {/* Page Info */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                {/* <div className="flex items-center justify-between">
                   <span className="font-medium text-sm">Page {pageNum}</span>
                   {totalElements > 0 && (
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                       {totalElements} element{totalElements !== 1 ? "s" : ""}
                     </span>
                   )}
-                </div>
+                </div> */}
 
                 {/* Page Type Selector */}
                 <div className="flex items-center space-x-2">
@@ -250,7 +250,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   </Select>
                 </div>
 
-                {totalElements > 0 && (
+                {/* {totalElements > 0 && (
                   <div className="flex items-center space-x-3 text-xs text-gray-500">
                     {pageTextBoxes.length > 0 && (
                       <span className="flex items-center space-x-1">
@@ -277,7 +277,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       </span>
                     )}
                   </div>
-                )}
+                )} */}
               </div>
             </div>
           );
