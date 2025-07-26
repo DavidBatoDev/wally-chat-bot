@@ -147,23 +147,8 @@ const LanguageSelectionModal: React.FC<{
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
       <div className="bg-gradient-to-br from-blue-50 via-white to-blue-100 rounded-2xl shadow-2xl p-8 min-w-[600px] max-w-[90vw] border border-blue-100">
-        {/* Header with icon */}
+        {/* Header */}
         <div className="flex items-center justify-center mb-6">
-          {/* <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-400 rounded-full flex items-center justify-center shadow-lg mr-4">
-            <svg
-              className="w-6 h-6 text-white"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
-              />
-            </svg>
-          </div> */}
           <div>
             <h2 className="text-2xl font-bold text-center text-gray-900">
               {isSettings ? "Language Settings" : "Select Languages"}
@@ -313,77 +298,33 @@ const LanguageSelectionModal: React.FC<{
 
         {/* Action buttons */}
         <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-blue-100">
-          {isSettings ? (
-            <>
-              <button
-                className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-blue-50 text-gray-700 font-semibold"
-                onClick={onBack}
+          <button
+            className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-blue-50 text-gray-700 font-semibold"
+            onClick={onCancel}
+          >
+            Set without Translating
+          </button>
+          <button
+            className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+            onClick={onConfirm}
+          >
+            <div className="flex items-center">
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                Back
-              </button>
-              <button
-                className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={onSave}
-                disabled={
-                  !sourceLanguage ||
-                  !desiredLanguage ||
-                  sourceLanguage === desiredLanguage
-                }
-              >
-                <div className="flex items-center">
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  Save Settings
-                </div>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                className="px-6 py-3 rounded-xl bg-gray-100 hover:bg-blue-50 text-gray-700 font-semibold"
-                onClick={onCancel}
-              >
-                Set without Translating
-              </button>
-              <button
-                className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={onConfirm}
-                disabled={
-                  !sourceLanguage ||
-                  !desiredLanguage ||
-                  sourceLanguage === desiredLanguage
-                }
-              >
-                <div className="flex items-center">
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  Translate Document
-                </div>
-              </button>
-            </>
-          )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
+              </svg>
+              Translate Document
+            </div>
+          </button>
         </div>
       </div>
     </div>

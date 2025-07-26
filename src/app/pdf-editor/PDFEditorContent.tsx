@@ -3757,10 +3757,9 @@ export const PDFEditorContent: React.FC = () => {
         !desiredLanguage ||
         sourceLanguage === desiredLanguage
       ) {
-        // Open language selection modal with auto-OCR flag
+        // Open language selection modal
         setShowLanguageModal(true);
-        // Set flag to indicate this is the first load and we should run OCR after language selection
-        setPendingOcrAction({ type: "bulk", isFirstLoad: true });
+        setPendingOcrAction({ type: "bulk" });
       }
     }
   }, [
@@ -4019,7 +4018,7 @@ export const PDFEditorContent: React.FC = () => {
         }
       } else {
         // Show language selection modal
-        setPendingOcrAction({ type, pageNumber, isFirstLoad: false });
+        setPendingOcrAction({ type, pageNumber });
         setShowLanguageModal(true);
       }
     },
@@ -4048,7 +4047,6 @@ export const PDFEditorContent: React.FC = () => {
   const [pendingOcrAction, setPendingOcrAction] = useState<{
     type: "single" | "bulk";
     pageNumber?: number;
-    isFirstLoad?: boolean;
   } | null>(null);
 
   // Add state for settings modal
@@ -4086,25 +4084,19 @@ export const PDFEditorContent: React.FC = () => {
   // Language modal handlers
   const handleLanguageConfirm = useCallback(() => {
     setShowLanguageModal(false);
+    // Always run bulk OCR when Translate Document is clicked
+    handleRunOcrAllPages();
     if (pendingOcrAction) {
-      if (pendingOcrAction.type === "single" && pendingOcrAction.pageNumber) {
-        handleTransformPageToTextbox(pendingOcrAction.pageNumber);
-      } else if (pendingOcrAction.type === "bulk") {
-        handleRunOcrAllPages();
-        // Show success message for first load
-        if (pendingOcrAction.isFirstLoad) {
-          toast.success(
-            "Document loaded and OCR processing started for all pages!"
-          );
-        }
-      }
       setPendingOcrAction(null);
     }
-  }, [pendingOcrAction, handleTransformPageToTextbox, handleRunOcrAllPages]);
+  }, [pendingOcrAction, handleRunOcrAllPages]);
 
   const handleLanguageCancel = useCallback(() => {
     setShowLanguageModal(false);
     setPendingOcrAction(null);
+    // Save the current language selections when "Set without Translating" is clicked
+    // The languages are already saved through the onSourceLanguageChange and onDesiredLanguageChange props
+    toast.success("Language settings saved successfully");
   }, []);
 
   // Settings modal handlers
@@ -4118,15 +4110,17 @@ export const PDFEditorContent: React.FC = () => {
     setSourceLanguage(tempSourceLanguage);
     setDesiredLanguage(tempDesiredLanguage);
     setShowSettingsModal(false);
-    toast.success("Language settings saved successfully");
-  }, [tempSourceLanguage, tempDesiredLanguage]);
+    // Always run bulk OCR when Translate Document is clicked from settings
+    handleRunOcrAllPages();
+  }, [tempSourceLanguage, tempDesiredLanguage, handleRunOcrAllPages]);
 
   const handleSettingsBack = useCallback(() => {
     setShowSettingsModal(false);
-    // Reset temp values to current values
-    setTempSourceLanguage(sourceLanguage);
-    setTempDesiredLanguage(desiredLanguage);
-  }, [sourceLanguage, desiredLanguage]);
+    // Save the temporary language values to the actual state
+    setSourceLanguage(tempSourceLanguage);
+    setDesiredLanguage(tempDesiredLanguage);
+    toast.success("Language settings saved successfully");
+  }, [tempSourceLanguage, tempDesiredLanguage]);
 
   useEffect(() => {
     if (pendingExport && templateCanvas) {

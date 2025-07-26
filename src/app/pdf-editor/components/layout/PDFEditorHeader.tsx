@@ -230,7 +230,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               <Settings className="w-4 h-4" />
             </Button>
           )}
-          {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
+          {/* {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
             <Button
               onClick={onRunOcrAllPages}
               variant="outline"
@@ -240,8 +240,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             >
               <span className="font-semibold">Run OCR to All Page</span>
             </Button>
-          )}
-          {isBulkOcrRunning && (
+          )} */}
+          {/* {isBulkOcrRunning && (
             <div className="flex items-center space-x-2">
               <span className="text-green-700 font-medium text-sm">
                 Transforming: {bulkOcrProgress?.current ?? 0} /{" "}
@@ -256,7 +256,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 Cancel
               </Button>
             </div>
-          )}
+          )} */}
           {hasPages && (
             <>
               {currentWorkflowStep === "translate" && (
