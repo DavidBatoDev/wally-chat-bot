@@ -238,7 +238,7 @@ export interface ViewState {
   isCtrlPressed: boolean;
   transformOrigin: string;
   isSidebarCollapsed: boolean;
-  activeSidebarTab: "pages" | "tools";
+  activeSidebarTab: "pages" | "tools" | "chat";
   currentWorkflowStep: WorkflowStep;
 }
 
@@ -259,7 +259,10 @@ export interface SidebarProps {
   onFileUpload: () => void;
   onAppendDocument: () => void;
   onSidebarToggle: () => void;
-  onTabChange: (tab: "pages" | "tools") => void;
+  onTabChange: (tab: "pages" | "tools" | "chat") => void;
+  documentRef?: React.RefObject<HTMLDivElement | null>;
+  sourceLanguage?: string;
+  desiredLanguage?: string;
 }
 
 export interface StatusBarProps {
@@ -402,7 +405,7 @@ export interface SidebarProps {
   onFileUpload: () => void;
   onAppendDocument: () => void;
   onSidebarToggle: () => void;
-  onTabChange: (tab: "pages" | "tools") => void;
+  onTabChange: (tab: "pages" | "tools" | "chat") => void;
 }
 
 export interface StatusBarProps {
