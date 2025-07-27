@@ -116,6 +116,7 @@ import {
   createTextFieldFromSpan as createTextFieldFromSpanUtil,
   createDeletionRectangleForSpan,
 } from "./utils/textSpanUtils";
+import { calculateImageFitAndPosition } from "./utils/measurements";
 import {
   findElementsInSelection,
   calculateSelectionBounds,
@@ -3104,16 +3105,23 @@ export const PDFEditorContent: React.FC = () => {
         actions.loadDocument(pdfFile);
         setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
 
+        // Calculate proper image dimensions and position
+        const { x, y, width, height } = await calculateImageFitAndPosition(
+          imageFile,
+          documentState.pageWidth,
+          documentState.pageHeight
+        );
+
         // Create image URL and add as interactive element
         const imageUrl = URL.createObjectURL(imageFile);
 
-        // Create a new image element
+        // Create a new image element with proper positioning
         const imageId = handleAddImageWithUndo(
           imageUrl,
-          50, // Center the image on the page
-          50,
-          300, // Default size
-          200,
+          x,
+          y,
+          width,
+          height,
           1, // Page 1
           "original" // Add to original view
         );
@@ -3129,7 +3137,13 @@ export const PDFEditorContent: React.FC = () => {
         toast.error("Failed to create blank PDF");
       }
     },
-    [actions, handleAddImageWithUndo, handleImageSelect]
+    [
+      actions,
+      handleAddImageWithUndo,
+      handleImageSelect,
+      documentState.pageWidth,
+      documentState.pageHeight,
+    ]
   );
 
   // Helper function to append an image as a new page
@@ -3183,18 +3197,25 @@ export const PDFEditorContent: React.FC = () => {
           error: "",
         }));
 
+        // Calculate proper image dimensions and position
+        const { x, y, width, height } = await calculateImageFitAndPosition(
+          imageFile,
+          documentState.pageWidth,
+          documentState.pageHeight
+        );
+
         // Create image URL and add as interactive element on the new page
         const imageUrl = URL.createObjectURL(imageFile);
 
         // Use setTimeout to ensure the document state is updated before adding the image
         setTimeout(() => {
-          // Create a new image element
+          // Create a new image element with proper positioning
           const imageId = handleAddImageWithUndo(
             imageUrl,
-            50, // Center the image on the page
-            50,
-            300, // Default size
-            200,
+            x,
+            y,
+            width,
+            height,
             newPageNumber,
             "original" // Add to original view
           );
@@ -3215,6 +3236,8 @@ export const PDFEditorContent: React.FC = () => {
       documentState.url,
       documentState.deletedPages,
       documentState.pages,
+      documentState.pageWidth,
+      documentState.pageHeight,
       setDocumentState,
       handleAddImageWithUndo,
       handleImageSelect,
