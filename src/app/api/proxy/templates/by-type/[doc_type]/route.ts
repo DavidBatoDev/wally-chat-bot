@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest) {
-  console.log("=== TEMPLATES PROXY ROUTE DEBUG ===");
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { doc_type: string } }
+) {
+  console.log("=== TEMPLATES BY TYPE PROXY ROUTE DEBUG ===");
   console.log("Request method:", request.method);
   console.log("Request URL:", request.url);
+  console.log("Document type:", params.doc_type);
 
   try {
     // Forward the request to the backend
     const backendUrl =
       process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
-    const backendEndpoint = `${backendUrl}/templates/`;
+    const backendEndpoint = `${backendUrl}/templates/by-type/${params.doc_type}`;
 
     console.log("Backend URL:", backendEndpoint);
     console.log("Sending request to backend...");
@@ -42,7 +46,7 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: errorText || "Failed to fetch templates",
+          error: errorText || "Failed to fetch templates by type",
           status: response.status,
           statusText: response.statusText,
         },
@@ -56,12 +60,12 @@ export async function GET(request: NextRequest) {
       "Response data length:",
       Array.isArray(data) ? data.length : "Not an array"
     );
-    console.log("=== TEMPLATES PROXY ROUTE SUCCESS ===");
+    console.log("=== TEMPLATES BY TYPE PROXY ROUTE SUCCESS ===");
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error("=== TEMPLATES PROXY ROUTE ERROR ===");
-    console.error("Error proxying templates request:", error);
+    console.error("=== TEMPLATES BY TYPE PROXY ROUTE ERROR ===");
+    console.error("Error proxying templates by type request:", error);
     console.error(
       "Error message:",
       error instanceof Error ? error.message : "Unknown error"

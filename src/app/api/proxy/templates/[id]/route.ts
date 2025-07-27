@@ -1,43 +1,82 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
-
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log("=== TEMPLATE BY ID PROXY ROUTE DEBUG ===");
+  console.log("Request method:", request.method);
+  console.log("Request URL:", request.url);
+  console.log("Template ID:", params.id);
+
   try {
-    const templateId = params.id;
+    // Forward the request to the backend
+    const backendUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    const backendEndpoint = `${backendUrl}/templates/${params.id}`;
 
-    const backendResponse = await fetch(
-      `${BACKEND_URL}/templates/${templateId}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
+    console.log("Backend URL:", backendEndpoint);
+    console.log("Sending request to backend...");
+
+    const response = await fetch(backendEndpoint, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        // Forward any auth headers if needed
+        ...(request.headers.get("Authorization")
+          ? {
+              Authorization: request.headers.get("Authorization")!,
+            }
+          : {}),
+      },
+    });
+
+    console.log("Backend response status:", response.status);
+
+    if (!response.ok) {
+      console.error("Backend returned error status:", response.status);
+      let errorText = "";
+      try {
+        errorText = await response.text();
+        console.error("Backend error response:", errorText);
+      } catch (textError) {
+        console.error("Could not read error response as text:", textError);
+        errorText = "Failed to read error response";
+      }
+
+      return NextResponse.json(
+        {
+          error: errorText || "Failed to fetch template",
+          status: response.status,
+          statusText: response.statusText,
         },
-      }
-    );
-
-    if (!backendResponse.ok) {
-      if (backendResponse.status === 404) {
-        return NextResponse.json(
-          { error: "Template not found" },
-          { status: 404 }
-        );
-      }
-      throw new Error(
-        `Backend responded with status: ${backendResponse.status}`
+        { status: response.status }
       );
     }
 
-    const data = await backendResponse.json();
+    console.log("Parsing successful response...");
+    const data = await response.json();
+    console.log("Response data keys:", Object.keys(data));
+    console.log("=== TEMPLATE BY ID PROXY ROUTE SUCCESS ===");
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Error proxying template request:", error);
+    console.error("=== TEMPLATE BY ID PROXY ROUTE ERROR ===");
+    console.error("Error proxying template by ID request:", error);
+    console.error(
+      "Error message:",
+      error instanceof Error ? error.message : "Unknown error"
+    );
+    console.error(
+      "Error stack:",
+      error instanceof Error ? error.stack : "No stack trace"
+    );
+
     return NextResponse.json(
-      { error: "Failed to fetch template" },
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }

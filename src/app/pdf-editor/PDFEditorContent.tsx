@@ -15,12 +15,11 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { performPageOcr, performBulkOcr } from "./services/ocrService";
 import {
   exportPdfDocument,
-  handleFileUpload as handleFileUploadService,
-  handleAppendDocument,
-  createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
-  appendImageAsNewPage as appendImageAsNewPageService,
-  appendPdfDocument as appendPdfDocumentService,
-  downloadImagesAsZip,
+  // handleFileUpload as handleFileUploadService,
+  // handleAppendDocument,
+  // createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
+  // appendImageAsNewPage as appendImageAsNewPageService,
+  // appendPdfDocument as appendPdfDocumentService,
   exportToPDFService,
   exportToPNGService,
   exportToJPEGService,
