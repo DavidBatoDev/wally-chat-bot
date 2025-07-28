@@ -3942,6 +3942,8 @@ export const PDFEditorContent: React.FC = () => {
           isSelected={selectedElementId === image.id}
           isEditMode={editorState.isEditMode}
           scale={documentState.scale}
+          pageWidth={documentState.pageWidth}
+          pageHeight={documentState.pageHeight}
           onSelect={handleImageSelect}
           onUpdate={updateImage}
           onDelete={(id) =>
@@ -6087,6 +6089,10 @@ export const PDFEditorContent: React.FC = () => {
         desiredLanguage={desiredLanguage}
         pageNumber={birthCertModalPage}
         currentTemplate={getPageBirthCertTemplate(birthCertModalPage)}
+        originalTextBoxes={elementCollections.originalTextBoxes}
+        originalShapes={elementCollections.originalShapes}
+        originalImages={elementCollections.originalImages}
+        pdfBackgroundColor={documentState.pdfBackgroundColor}
         onTemplateSelect={(template, pageNumber) => {
           console.log("Selected template:", template, "for page:", pageNumber);
 

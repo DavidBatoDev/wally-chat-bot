@@ -124,7 +124,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               )}
 
               {/* Page Thumbnail */}
-              <div className="relative mb-2">
+              <div className="relative mb-2 h-[300px] overflow-y-hidden">
                 <SidebarPagePreview
                   pageNum={pageNum}
                   pageWidth={documentState.pageWidth}

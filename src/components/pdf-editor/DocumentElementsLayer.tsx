@@ -1,18 +1,23 @@
-import React from 'react';
-import { MemoizedTextBox } from '@/app/pdf-editor/components/elements/TextBox';
-import { MemoizedShape } from '@/app/pdf-editor/components/elements/Shape';
-import { MemoizedImage } from '@/app/pdf-editor/components/elements/ImageElement';
-import { SelectionPreview } from '@/app/pdf-editor/components/elements/SelectionPreview';
-import { SelectionRectangle } from '@/app/pdf-editor/components/elements/SelectionRectangle';
-import { TextField, Shape as ShapeType, Image as ImageType, DeletionRectangle } from '@/app/pdf-editor/types/pdf-editor.types';
+import React from "react";
+import { MemoizedTextBox } from "@/app/pdf-editor/components/elements/TextBox";
+import { MemoizedShape } from "@/app/pdf-editor/components/elements/Shape";
+import { MemoizedImage } from "@/app/pdf-editor/components/elements/ImageElement";
+import { SelectionPreview } from "@/app/pdf-editor/components/elements/SelectionPreview";
+import { SelectionRectangle } from "@/app/pdf-editor/components/elements/SelectionRectangle";
+import {
+  TextField,
+  Shape as ShapeType,
+  Image as ImageType,
+  DeletionRectangle,
+} from "@/app/pdf-editor/types/pdf-editor.types";
 
 interface DocumentElementsLayerProps {
-  viewType: 'original' | 'translated';
+  viewType: "original" | "translated";
   currentPage: number;
   scale: number;
   pageWidth: number;
   pageHeight: number;
-  
+
   // Deletion rectangles
   deletionRectangles: DeletionRectangle[];
   showDeletionRectangles: boolean;
@@ -20,7 +25,10 @@ interface DocumentElementsLayerProps {
   colorToRgba: (color: string, opacity: number) => string;
 
   // Elements
-  sortedElements: Array<{ type: 'textbox' | 'shape' | 'image'; element: TextField | ShapeType | ImageType }>;
+  sortedElements: Array<{
+    type: "textbox" | "shape" | "image";
+    element: TextField | ShapeType | ImageType;
+  }>;
   getElementsInSelectionPreview: () => Set<string>;
 
   // Element handlers
@@ -53,12 +61,12 @@ interface DocumentElementsLayerProps {
     isDrawingSelection: boolean;
     selectionStart: { x: number; y: number } | null;
     selectionEnd: { x: number; y: number } | null;
-    targetView: 'original' | 'translated' | null;
+    targetView: "original" | "translated" | null;
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
   };
-  currentView: 'original' | 'translated' | 'split';
+  currentView: "original" | "translated" | "split";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;
@@ -107,12 +115,14 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
 
   const shouldShowSelectionComponents = () => {
     if (!multiSelection.targetView) return false;
-    if (currentView === 'split') {
+    if (currentView === "split") {
       return multiSelection.targetView === viewType;
     }
     return (
-      (currentView === 'original' && multiSelection.targetView === 'original') ||
-      (currentView === 'translated' && multiSelection.targetView === 'translated')
+      (currentView === "original" &&
+        multiSelection.targetView === "original") ||
+      (currentView === "translated" &&
+        multiSelection.targetView === "translated")
     );
   };
 
@@ -157,7 +167,9 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
       {sortedElements.map(({ type, element }) => {
         if (type === "textbox") {
           const textBox = element as TextField;
-          const isInSelectionPreview = elementsInSelectionPreview.has(textBox.id);
+          const isInSelectionPreview = elementsInSelectionPreview.has(
+            textBox.id
+          );
           return (
             <MemoizedTextBox
               key={`${viewType}-text-${textBox.id}`}
@@ -170,7 +182,9 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               onUpdate={onUpdateTextBox}
               onDelete={onDeleteTextBox}
               isTextSelectionMode={isTextSelectionMode}
-              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(textBox.id)}
+              isSelectedInTextMode={selectedTextBoxes.textBoxIds.includes(
+                textBox.id
+              )}
               autoFocusId={autoFocusTextBoxId}
               onAutoFocusComplete={onAutoFocusComplete}
               isInSelectionPreview={isInSelectionPreview}
@@ -204,6 +218,8 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               isSelected={selectedElementId === image.id}
               isEditMode={isEditMode}
               scale={scale}
+              pageWidth={pageWidth}
+              pageHeight={pageHeight}
               onSelect={onImageSelect}
               onUpdate={onUpdateImage}
               onDelete={onDeleteImage}

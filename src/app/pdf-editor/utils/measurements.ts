@@ -197,12 +197,26 @@ export const calculateImageFitAndPosition = (
         height = width / aspectRatio;
       }
 
+      // Ensure height doesn't exceed page height
+      if (height > pageHeight) {
+        height = pageHeight;
+        width = height * aspectRatio;
+      }
+
       // Position the image to fill the page - center horizontally, align to top
-      const x = (pageWidth - width) / 2;
-      const y = 0; // Start from the top of the page
+      let x = (pageWidth - width) / 2;
+      let y = 0; // Start from the top of the page
+
+      // Ensure the image stays within page boundaries
+      x = Math.max(0, Math.min(x, pageWidth - width));
+      y = Math.max(0, Math.min(y, pageHeight - height));
+
+      // Final boundary check - ensure width and height don't exceed page dimensions
+      const finalWidth = Math.min(width, pageWidth - x);
+      const finalHeight = Math.min(height, pageHeight - y);
 
       URL.revokeObjectURL(url); // Clean up
-      resolve({ x, y, width, height });
+      resolve({ x, y, width: finalWidth, height: finalHeight });
     };
 
     img.onerror = () => {

@@ -1,6 +1,6 @@
 import React, { memo, useCallback } from "react";
 import { Rnd } from "react-rnd";
-import { Trash2, Move, Plus, Minus } from "lucide-react";
+import { Trash2, Move } from "lucide-react";
 import { Image } from "../../types/pdf-editor.types";
 
 interface ImageElementProps {
@@ -8,6 +8,8 @@ interface ImageElementProps {
   isSelected: boolean;
   isEditMode: boolean;
   scale: number;
+  pageWidth: number;
+  pageHeight: number;
   onSelect: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Image>) => void;
   onDelete: (id: string) => void;
@@ -21,6 +23,8 @@ export const MemoizedImage = memo(
     isSelected,
     isEditMode,
     scale,
+    pageWidth,
+    pageHeight,
     onSelect,
     onUpdate,
     onDelete,
@@ -35,33 +39,133 @@ export const MemoizedImage = memo(
       [image.id, onSelect]
     );
 
-    const handleScaleUp = useCallback(
-      (e: React.MouseEvent) => {
+    // Custom resize handlers
+    const handleResizeStart = useCallback(
+      (e: React.MouseEvent, direction: string) => {
         e.stopPropagation();
-        const scaleStep = 0.1;
-        const newWidth = image.width * (1 + scaleStep);
-        const newHeight = image.height * (1 + scaleStep);
-        onUpdate(image.id, {
-          width: newWidth,
-          height: newHeight,
-        });
-      },
-      [image.id, image.width, image.height, onUpdate]
-    );
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = image.width * scale;
+        const startHeight = image.height * scale;
+        const startXPos = image.x * scale;
+        const startYPos = image.y * scale;
+        const originalAspectRatio = image.width / image.height;
 
-    const handleScaleDown = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const scaleStep = 0.1;
-        const minSize = 20; // Minimum size in pixels
-        const newWidth = Math.max(minSize / scale, image.width * (1 - scaleStep));
-        const newHeight = Math.max(minSize / scale, image.height * (1 - scaleStep));
-        onUpdate(image.id, {
-          width: newWidth,
-          height: newHeight,
-        });
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+          const deltaX = (moveEvent.clientX - startX) / scale;
+          const deltaY = (moveEvent.clientY - startY) / scale;
+
+          let newWidth = startWidth / scale;
+          let newHeight = startHeight / scale;
+          let newX = startXPos / scale;
+          let newY = startYPos / scale;
+
+          // Handle different resize directions
+          switch (direction) {
+            case "nw":
+              // Corner: proportional resize
+              newWidth = Math.max(20, newWidth - deltaX);
+              newHeight = newWidth / originalAspectRatio;
+              newX = startXPos / scale + deltaX;
+              newY = startYPos / scale + (startHeight / scale - newHeight);
+              break;
+            case "ne":
+              // Corner: proportional resize
+              newWidth = Math.max(20, newWidth + deltaX);
+              newHeight = newWidth / originalAspectRatio;
+              newY = startYPos / scale + (startHeight / scale - newHeight);
+              break;
+            case "sw":
+              // Corner: proportional resize
+              newWidth = Math.max(20, newWidth - deltaX);
+              newHeight = newWidth / originalAspectRatio;
+              newX = startXPos / scale + deltaX;
+              break;
+            case "se":
+              // Corner: proportional resize
+              newWidth = Math.max(20, newWidth + deltaX);
+              newHeight = newWidth / originalAspectRatio;
+              break;
+            case "n":
+              // Edge: only height, maintain width
+              newHeight = Math.max(20, newHeight - deltaY);
+              newY = startYPos / scale + deltaY;
+              break;
+            case "s":
+              // Edge: only height, maintain width
+              newHeight = Math.max(20, newHeight + deltaY);
+              break;
+            case "e":
+              // Edge: only width, maintain height
+              newWidth = Math.max(20, newWidth + deltaX);
+              break;
+            case "w":
+              // Edge: only width, maintain height
+              newWidth = Math.max(20, newWidth - deltaX);
+              newX = startXPos / scale + deltaX;
+              break;
+          }
+
+          // Apply boundary constraints using the same logic as calculateImageFitAndPosition
+          let constrainedX = newX;
+          let constrainedY = newY;
+          let constrainedWidth = newWidth;
+          let constrainedHeight = newHeight;
+
+          // Ensure width and height don't exceed page dimensions
+          if (constrainedWidth > pageWidth) {
+            constrainedWidth = pageWidth;
+          }
+          if (constrainedHeight > pageHeight) {
+            constrainedHeight = pageHeight;
+          }
+
+          // Ensure the image stays within page boundaries
+          constrainedX = Math.max(
+            0,
+            Math.min(constrainedX, pageWidth - constrainedWidth)
+          );
+          constrainedY = Math.max(
+            0,
+            Math.min(constrainedY, pageHeight - constrainedHeight)
+          );
+
+          // Final boundary check - ensure width and height don't exceed page dimensions
+          const finalWidth = Math.min(
+            constrainedWidth,
+            pageWidth - constrainedX
+          );
+          const finalHeight = Math.min(
+            constrainedHeight,
+            pageHeight - constrainedY
+          );
+
+          // Ensure minimum size (20px)
+          const minSize = 20;
+          if (finalWidth < minSize) {
+            constrainedX = Math.min(constrainedX, pageWidth - minSize);
+          }
+          if (finalHeight < minSize) {
+            constrainedY = Math.min(constrainedY, pageHeight - minSize);
+          }
+
+          onUpdate(image.id, {
+            x: constrainedX,
+            y: constrainedY,
+            width: finalWidth,
+            height: finalHeight,
+          });
+        };
+
+        const handleMouseUp = () => {
+          document.removeEventListener("mousemove", handleMouseMove);
+          document.removeEventListener("mouseup", handleMouseUp);
+        };
+
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("mouseup", handleMouseUp);
       },
-      [image.id, image.width, image.height, scale, onUpdate]
+      [image.id, image.width, image.height, image.x, image.y, scale, onUpdate]
     );
 
     return (
@@ -72,39 +176,20 @@ export const MemoizedImage = memo(
         bounds="parent"
         dragHandleClassName="drag-handle"
         disableDragging={!isEditMode}
-        enableResizing={
-          isEditMode && isSelected
-            ? {
-                top: true,
-                right: true,
-                bottom: true,
-                left: true,
-                topRight: true,
-                bottomRight: true,
-                bottomLeft: true,
-                topLeft: true,
-              }
-            : false
-        }
+        enableResizing={false}
         onDragStop={(e, d) => {
           onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
         }}
-        onResizeStop={(e, direction, ref, delta, position) => {
-          onUpdate(image.id, {
-            x: position.x / scale,
-            y: position.y / scale,
-            width: parseInt(ref.style.width) / scale,
-            height: parseInt(ref.style.height) / scale,
-          });
-        }}
-        className={`image-element ${
+        className={`image-element select-none ${
           isSelected ? "ring-2 ring-blue-500 selected" : ""
         } ${isEditMode ? "edit-mode" : ""} ${
           isInSelectionPreview
             ? "ring-2 ring-blue-400 ring-dashed selection-preview"
             : ""
         }`}
-        style={{ transform: "none" }}
+        style={{
+          transform: "none",
+        }}
         onClick={handleClick}
       >
         <div className="w-full h-full relative group">
@@ -115,42 +200,25 @@ export const MemoizedImage = memo(
                 e.stopPropagation();
                 onDelete(image.id);
               }}
-              className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+              className="absolute top-[-15px] left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
               title="Delete image"
             >
               <Trash2 size={10} />
             </button>
           )}
 
-          {/* Move handle and scale controls - only show when selected and in edit mode */}
+          {/* Move handle - only show when selected and in edit mode */}
           {isEditMode && isSelected && (
-            <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+            <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20">
               <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
-              </div>
-              {/* Scale controls */}
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={handleScaleDown}
-                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200"
-                  title="Scale down"
-                >
-                  <Minus size={10} />
-                </button>
-                <button
-                  onClick={handleScaleUp}
-                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200"
-                  title="Scale up"
-                >
-                  <Plus size={10} />
-                </button>
               </div>
             </div>
           )}
 
           {/* Image content */}
           <div
-            className="w-full h-full absolute"
+            className="w-full h-full absolute select-none"
             style={{
               transform: image.rotation
                 ? `rotate(${image.rotation}deg)`
@@ -161,7 +229,7 @@ export const MemoizedImage = memo(
             <img
               src={image.src}
               alt="Document image"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover select-none"
               style={{
                 opacity: image.opacity || 1,
                 border: image.borderWidth
@@ -174,6 +242,47 @@ export const MemoizedImage = memo(
               draggable={false}
             />
           </div>
+
+          {/* Custom resize handles - only show when selected and in edit mode */}
+          {isEditMode && isSelected && (
+            <>
+              {/* Corner handles */}
+              <div
+                className="absolute top-0 left-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-nw-resize transform -translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "nw")}
+              />
+              <div
+                className="absolute top-0 right-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-ne-resize transform translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "ne")}
+              />
+              <div
+                className="absolute bottom-0 left-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-sw-resize transform -translate-x-1/2 translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "sw")}
+              />
+              <div
+                className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-se-resize transform translate-x-1/2 translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "se")}
+              />
+
+              {/* Edge handles */}
+              <div
+                className="absolute top-0 left-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-n-resize transform -translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "n")}
+              />
+              <div
+                className="absolute bottom-0 left-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-s-resize transform -translate-x-1/2 translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "s")}
+              />
+              <div
+                className="absolute left-0 top-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-w-resize transform -translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "w")}
+              />
+              <div
+                className="absolute right-0 top-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-e-resize transform translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                onMouseDown={(e) => handleResizeStart(e, "e")}
+              />
+            </>
+          )}
         </div>
       </Rnd>
     );

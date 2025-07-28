@@ -9,7 +9,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { BirthCertTemplate } from "../types/pdf-editor.types";
+import {
+  BirthCertTemplate,
+  TextField,
+  Shape,
+  Image,
+} from "../types/pdf-editor.types";
+import { colorToRgba } from "../utils/colors";
+import { isPdfFile } from "../utils/measurements";
 
 interface BirthCertificateSelectionModalProps {
   isOpen: boolean;
@@ -23,6 +30,11 @@ interface BirthCertificateSelectionModalProps {
   pageNumber?: number; // The page number this template is being applied to
   currentTemplate?: BirthCertTemplate | null; // Current template for this page
   onTemplateSelect?: (template: BirthCertTemplate, pageNumber: number) => void;
+  // Interactive elements props
+  originalTextBoxes?: TextField[];
+  originalShapes?: Shape[];
+  originalImages?: Image[];
+  pdfBackgroundColor?: string;
 }
 
 export const BirthCertificateSelectionModal: React.FC<
@@ -39,6 +51,10 @@ export const BirthCertificateSelectionModal: React.FC<
   pageNumber,
   currentTemplate,
   onTemplateSelect,
+  originalTextBoxes = [],
+  originalShapes = [],
+  originalImages = [],
+  pdfBackgroundColor = "#ffffff",
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -52,6 +68,204 @@ export const BirthCertificateSelectionModal: React.FC<
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Rendering functions for interactive elements
+  // Calculate scale factor for 72 DPI
+  const calculateScale = (
+    originalWidth: number,
+    originalHeight: number,
+    targetWidth: number,
+    targetHeight: number
+  ) => {
+    const scaleX = targetWidth / originalWidth;
+    const scaleY = targetHeight / originalHeight;
+    return Math.min(scaleX, scaleY);
+  };
+
+  // Helper function to create sorted elements array with proper layering
+  const createSortedElements = (elements: {
+    textboxes: TextField[];
+    shapes: Shape[];
+    images: Image[];
+  }) => {
+    const allElements: Array<{
+      type: "textbox" | "shape" | "image";
+      element: TextField | Shape | Image;
+      zIndex: number;
+    }> = [];
+
+    // Add shapes with lowest zIndex (rendered first)
+    elements.shapes.forEach((shape) => {
+      allElements.push({
+        type: "shape",
+        element: shape,
+        zIndex: (shape as any).zIndex || 2,
+      });
+    });
+
+    // Add images
+    elements.images.forEach((image) => {
+      allElements.push({
+        type: "image",
+        element: image,
+        zIndex: (image as any).zIndex || 3,
+      });
+    });
+
+    // Add textboxes with highest zIndex (rendered last)
+    elements.textboxes.forEach((textbox) => {
+      allElements.push({
+        type: "textbox",
+        element: textbox,
+        zIndex: textbox.zIndex || 4,
+      });
+    });
+
+    // Sort by zIndex
+    return allElements.sort((a, b) => a.zIndex - b.zIndex);
+  };
+
+  const renderTextBox = (tb: TextField, scale: number) => (
+    <div
+      key={tb.id}
+      style={{
+        position: "absolute",
+        left: tb.x * scale,
+        top: tb.y * scale,
+        width: tb.width * scale,
+        height: tb.height * scale,
+        fontSize: (tb.fontSize || 12) * scale,
+        fontFamily: tb.fontFamily || "Arial",
+        fontWeight: tb.bold ? "bold" : "normal",
+        fontStyle: tb.italic ? "italic" : "normal",
+        color: tb.color || "#000",
+        background:
+          tb.backgroundColor && tb.backgroundColor !== "transparent"
+            ? colorToRgba(tb.backgroundColor, tb.backgroundOpacity ?? 1)
+            : "transparent",
+        border: tb.borderWidth
+          ? `${tb.borderWidth * scale}px solid ${tb.borderColor || "#000"}`
+          : undefined,
+        borderRadius: (tb.borderRadius || 0) * scale,
+        padding: `${(tb.paddingTop || 0) * scale}px ${
+          (tb.paddingRight || 0) * scale
+        }px ${(tb.paddingBottom || 0) * scale}px ${
+          (tb.paddingLeft || 0) * scale
+        }px`,
+        overflow: "hidden",
+        whiteSpace: "pre-wrap",
+        textAlign: tb.textAlign || "left",
+        lineHeight: tb.lineHeight || 1.1,
+        opacity: tb.textOpacity ?? 1,
+        zIndex: tb.zIndex ?? 1,
+        pointerEvents: "none",
+      }}
+      title={tb.value}
+    >
+      {tb.value}
+    </div>
+  );
+
+  const renderShape = (shape: Shape, scale: number) => {
+    if (shape.type === "line") {
+      // Render as SVG line
+      const x1 = (shape.x1 ?? shape.x) * scale;
+      const y1 = (shape.y1 ?? shape.y) * scale;
+      const x2 = (shape.x2 ?? shape.x + shape.width) * scale;
+      const y2 = (shape.y2 ?? shape.y + shape.height) * scale;
+      return (
+        <svg
+          key={shape.id}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        >
+          <line
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
+            stroke={shape.borderColor || "#000"}
+            strokeWidth={(shape.borderWidth || 2) * scale}
+          />
+        </svg>
+      );
+    }
+    // Rectangle or circle
+    return (
+      <div
+        key={shape.id}
+        style={{
+          position: "absolute",
+          left: shape.x * scale,
+          top: shape.y * scale,
+          width: shape.width * scale,
+          height: shape.height * scale,
+          background: colorToRgba(shape.fillColor, shape.fillOpacity ?? 1),
+          border: `${(shape.borderWidth || 1) * scale}px solid ${
+            shape.borderColor || "#000"
+          }`,
+          borderRadius:
+            shape.type === "circle" ? "50%" : (shape.borderRadius || 0) * scale,
+          transform: shape.rotation
+            ? `rotate(${shape.rotation}deg)`
+            : undefined,
+          zIndex: 2,
+          pointerEvents: "none",
+        }}
+      />
+    );
+  };
+
+  const renderImage = (img: Image, scale: number) => (
+    <img
+      key={img.id}
+      src={img.src}
+      alt=""
+      style={{
+        position: "absolute",
+        left: img.x * scale,
+        top: img.y * scale,
+        width: img.width * scale,
+        height: img.height * scale,
+        border: img.borderWidth
+          ? `${img.borderWidth * scale}px solid ${img.borderColor || "#000"}`
+          : undefined,
+        borderRadius: (img.borderRadius || 0) * scale,
+        opacity: img.opacity ?? 1,
+        objectFit: "cover",
+        zIndex: 3,
+        pointerEvents: "none",
+      }}
+      draggable={false}
+    />
+  );
+
+  // Helper function to render element based on type
+  const renderElement = (
+    item: {
+      type: "textbox" | "shape" | "image";
+      element: TextField | Shape | Image;
+      zIndex: number;
+    },
+    scale: number
+  ) => {
+    switch (item.type) {
+      case "textbox":
+        return renderTextBox(item.element as TextField, scale);
+      case "shape":
+        return renderShape(item.element as Shape, scale);
+      case "image":
+        return renderImage(item.element as Image, scale);
+      default:
+        return null;
+    }
+  };
 
   // Fetch templates from API and initialize selected template
   useEffect(() => {
@@ -213,27 +427,129 @@ export const BirthCertificateSelectionModal: React.FC<
               <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                 {documentUrl ? (
                   <div className="p-2">
-                    <Document
-                      file={documentUrl}
-                      loading={
-                        <div className="flex items-center justify-center h-24 w-36">
-                          <div className="text-gray-400 text-xs">
-                            Loading...
-                          </div>
-                        </div>
-                      }
+                    <div
+                      style={{
+                        position: "relative",
+                        width: "245px",
+                        height: "316px",
+                        background: pdfBackgroundColor,
+                        overflow: "hidden",
+                      }}
                     >
-                      <Page
-                        pageNumber={currentPage}
-                        width={pageWidth * 0.8}
-                        height={pageHeight * 0.8}
-                        renderTextLayer={false}
-                        renderAnnotationLayer={false}
-                      />
-                    </Document>
+                      {/* PDF or image background */}
+                      {isPdfFile(documentUrl) ? (
+                        <div
+                          style={{
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            width: "100%",
+                            height: "100%",
+                            zIndex: 0,
+                          }}
+                        >
+                          <Document
+                            file={documentUrl}
+                            loading={
+                              <div
+                                className="flex items-center justify-center"
+                                style={{ width: "245px", height: "316px" }}
+                              >
+                                <div className="text-gray-400 text-xs">
+                                  Loading...
+                                </div>
+                              </div>
+                            }
+                          >
+                            <Page
+                              pageNumber={currentPage}
+                              width={245}
+                              height={316}
+                              renderTextLayer={false}
+                              renderAnnotationLayer={false}
+                            />
+                          </Document>
+                        </div>
+                      ) : (
+                        <img
+                          src={documentUrl}
+                          alt="Document preview"
+                          style={{
+                            width: "245px",
+                            height: "316px",
+                            maxWidth: "none",
+                            display: "block",
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            zIndex: 0,
+                          }}
+                          draggable={false}
+                        />
+                      )}
+
+                      {/* Render interactive elements in correct layering order */}
+                      {(() => {
+                        const scale = calculateScale(
+                          pageWidth,
+                          pageHeight,
+                          245,
+                          316
+                        );
+
+                        // Filter elements for current page
+                        const pageTextBoxes = originalTextBoxes.filter(
+                          (tb) => tb.page === currentPage
+                        );
+                        const pageShapes = originalShapes.filter(
+                          (s) => s.page === currentPage
+                        );
+                        const pageImages = originalImages.filter(
+                          (img) => img.page === currentPage
+                        );
+
+                        // Create sorted elements array
+                        const sortedElements = createSortedElements({
+                          textboxes: pageTextBoxes,
+                          shapes: pageShapes,
+                          images: pageImages,
+                        });
+
+                        console.log(
+                          "BirthCertModal - Original dimensions:",
+                          pageWidth,
+                          "x",
+                          pageHeight
+                        );
+                        console.log(
+                          "BirthCertModal - Target dimensions: 245 x 316"
+                        );
+                        console.log(
+                          "BirthCertModal - Calculated scale:",
+                          scale
+                        );
+                        console.log(
+                          "BirthCertModal - Elements on current page:",
+                          {
+                            textBoxes: pageTextBoxes.length,
+                            shapes: pageShapes.length,
+                            images: pageImages.length,
+                            sortedElements: sortedElements.length,
+                          }
+                        );
+
+                        // Render elements in sorted order
+                        return sortedElements.map((item) =>
+                          renderElement(item, scale)
+                        );
+                      })()}
+                    </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-24 w-36 text-gray-400">
+                  <div
+                    className="flex items-center justify-center text-gray-400"
+                    style={{ width: "245px", height: "316px" }}
+                  >
                     <div className="text-center space-y-1">
                       <FileText className="w-4 h-4 mx-auto text-gray-300" />
                       <p className="text-xs">No document</p>
@@ -281,7 +597,10 @@ export const BirthCertificateSelectionModal: React.FC<
                     <Document
                       file={selectedTemplate.file_url}
                       loading={
-                        <div className="flex items-center justify-center h-24 w-36">
+                        <div
+                          className="flex items-center justify-center"
+                          style={{ width: "245px", height: "316px" }}
+                        >
                           <div className="text-gray-400 text-xs">
                             Loading...
                           </div>
@@ -290,8 +609,8 @@ export const BirthCertificateSelectionModal: React.FC<
                     >
                       <Page
                         pageNumber={1}
-                        width={pageWidth * 0.8}
-                        height={pageHeight * 0.8}
+                        width={245}
+                        height={316}
                         renderTextLayer={false}
                         renderAnnotationLayer={false}
                       />
@@ -302,8 +621,8 @@ export const BirthCertificateSelectionModal: React.FC<
                     <div
                       className="flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded"
                       style={{
-                        width: pageWidth * 0.8,
-                        height: pageHeight * 0.8,
+                        width: "245px",
+                        height: "316px",
                       }}
                     >
                       <div className="text-center space-y-1">
