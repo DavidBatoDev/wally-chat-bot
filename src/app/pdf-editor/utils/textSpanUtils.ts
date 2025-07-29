@@ -265,8 +265,9 @@ export const createTextFieldFromSpan = (
   span: HTMLElement,
   pdfPageEl: HTMLElement,
   currentPage: number,
-  currentView: "original" | "translated",
+  currentView: "original" | "translated" | "split",
   scale: number,
+  pageWidth: number,
   addTextBox: (
     x: number,
     y: number,
@@ -288,6 +289,21 @@ export const createTextFieldFromSpan = (
   pdfBackgroundColor: string,
   erasureOpacity: number
 ): { textFieldId: string; properties: any } | null => {
+  // Determine which view the span belongs to based on its position
+  let targetView = currentView;
+  if (currentView === "split") {
+    const spanRect = span.getBoundingClientRect();
+    const pageRect = pdfPageEl.getBoundingClientRect();
+    const spanCenterX = spanRect.left + spanRect.width / 2;
+    const pageCenterX = pageRect.left + pageRect.width / 2;
+
+    // If span is in the right half of the page, it's in the translated view
+    if (spanCenterX > pageCenterX) {
+      targetView = "translated";
+    } else {
+      targetView = "original";
+    }
+  }
   const textContent = span.textContent || "";
   console.log("Original text content:", textContent);
 
@@ -305,10 +321,23 @@ export const createTextFieldFromSpan = (
   const pageRect = pdfPageEl.getBoundingClientRect();
 
   // Calculate dimensions in original scale
-  const pageWidth = spanRect.width / scale;
-  const pageHeight = spanRect.height / scale;
-  const pageX = (spanRect.left - pageRect.left) / scale;
-  const pageY = (spanRect.top - pageRect.top) / scale;
+  const spanWidth = spanRect.width / scale;
+  const spanHeight = spanRect.height / scale;
+
+  // Calculate coordinates based on view
+  let pageX = (spanRect.left - pageRect.left) / scale;
+  let pageY = (spanRect.top - pageRect.top) / scale;
+
+  // Adjust coordinates for split view when span is in translated view
+  if (currentView === "split" && targetView === "translated") {
+    // In split view, the translated document is positioned to the right of the original
+    // Each document has width = pageWidth * scale, with a 20px gap between them
+    const singleDocWidth = pageWidth * scale; // Width of one document
+    const gap = 20; // Gap between documents in pixels
+
+    // Adjust X coordinate to account for the translated document position
+    pageX = (spanRect.left - pageRect.left - singleDocWidth - gap) / scale;
+  }
 
   // Enhanced text cleaning to handle newlines, whitespace, and special characters
   let cleanedTextContent = textContent;
@@ -391,8 +420,8 @@ export const createTextFieldFromSpan = (
   );
 
   // Ensure minimum dimensions for the text field
-  const minWidth = Math.max(pageWidth, width || 50);
-  const minHeight = Math.max(pageHeight, height || 20);
+  const minWidth = Math.max(spanWidth, width || 50);
+  const minHeight = Math.max(spanHeight, height || 20);
 
   // Final validation to ensure we have valid text content
   const finalTextContent =
@@ -424,8 +453,8 @@ export const createTextFieldFromSpan = (
     pageX,
     pageY,
     currentPage,
-    currentView,
-    undefined,
+    targetView,
+    targetView,
     initialProperties
   );
 
@@ -433,10 +462,10 @@ export const createTextFieldFromSpan = (
   addDeletionRectangle(
     pageX,
     pageY,
-    pageWidth,
-    pageHeight,
+    spanWidth,
+    spanHeight,
     currentPage,
-    currentView,
+    targetView,
     pdfBackgroundColor,
     erasureOpacity
   );
@@ -475,8 +504,9 @@ export const createDeletionRectangleForSpan = (
   span: HTMLElement,
   pdfPageEl: HTMLElement,
   currentPage: number,
-  currentView: "original" | "translated",
+  currentView: "original" | "translated" | "split",
   scale: number,
+  pageWidth: number,
   addDeletionRectangle: (
     x: number,
     y: number,
@@ -494,19 +524,50 @@ export const createDeletionRectangleForSpan = (
     console.log("PDF page element not provided");
     return "";
   }
+
+  // Determine which view the span belongs to based on its position
+  let targetView = currentView;
+  if (currentView === "split") {
+    const spanRect = span.getBoundingClientRect();
+    const pageRect = pdfPageEl.getBoundingClientRect();
+    const spanCenterX = spanRect.left + spanRect.width / 2;
+    const pageCenterX = pageRect.left + pageRect.width / 2;
+
+    // If span is in the right half of the page, it's in the translated view
+    if (spanCenterX > pageCenterX) {
+      targetView = "translated";
+    } else {
+      targetView = "original";
+    }
+  }
+
   const spanRect = span.getBoundingClientRect();
   const pageRect = pdfPageEl.getBoundingClientRect();
-  const pageWidth = spanRect.width / scale;
-  const pageHeight = spanRect.height / scale;
-  const pageX = (spanRect.left - pageRect.left) / scale;
-  const pageY = (spanRect.top - pageRect.top) / scale;
+  const spanWidth = spanRect.width / scale;
+  const spanHeight = spanRect.height / scale;
+
+  // Calculate coordinates based on view
+  let pageX = (spanRect.left - pageRect.left) / scale;
+  let pageY = (spanRect.top - pageRect.top) / scale;
+
+  // Adjust coordinates for split view when span is in translated view
+  if (currentView === "split" && targetView === "translated") {
+    // In split view, the translated document is positioned to the right of the original
+    // Each document has width = pageWidth * scale, with a 20px gap between them
+    const singleDocWidth = pageWidth * scale; // Width of one document
+    const gap = 20; // Gap between documents in pixels
+
+    // Adjust X coordinate to account for the translated document position
+    pageX = (spanRect.left - pageRect.left - singleDocWidth - gap) / scale;
+  }
+
   return addDeletionRectangle(
     pageX,
     pageY,
-    pageWidth,
-    pageHeight,
+    spanWidth,
+    spanHeight,
     currentPage,
-    currentView,
+    targetView,
     pdfBackgroundColor,
     erasureOpacity
   );

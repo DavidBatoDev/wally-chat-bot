@@ -1662,8 +1662,6 @@ export const PDFEditorContent: React.FC = () => {
     pdfBackgroundColor: documentState.pdfBackgroundColor,
     erasureSettings: erasureState.erasureSettings,
     createDeletionRectangleForSpan: (span: HTMLElement) => {
-      const targetView =
-        viewState.currentView === "split" ? "original" : viewState.currentView;
       const pdfPageEl = documentRef.current?.querySelector(
         ".react-pdf__Page"
       ) as HTMLElement;
@@ -1671,8 +1669,9 @@ export const PDFEditorContent: React.FC = () => {
         span,
         pdfPageEl,
         documentState.currentPage,
-        targetView,
+        viewState.currentView,
         documentState.scale,
+        documentState.pageWidth,
         (x, y, width, height, page, view, background, opacity) => {
           const result = handleAddDeletionRectangleWithUndo(
             x,
@@ -1691,8 +1690,6 @@ export const PDFEditorContent: React.FC = () => {
       );
     },
     createTextFieldFromSpan: (span: HTMLElement) => {
-      const targetView =
-        viewState.currentView === "split" ? "original" : viewState.currentView;
       const pdfPageEl = documentRef.current?.querySelector(
         ".react-pdf__Page"
       ) as HTMLElement;
@@ -1700,8 +1697,9 @@ export const PDFEditorContent: React.FC = () => {
         span,
         pdfPageEl,
         documentState.currentPage,
-        targetView,
+        viewState.currentView,
         documentState.scale,
+        documentState.pageWidth,
         (x, y, page, view, targetView, initialProperties) => {
           const result = handleAddTextBoxWithUndo(
             x,
@@ -1731,15 +1729,13 @@ export const PDFEditorContent: React.FC = () => {
       );
     },
     addDeletionRectangle: (x, y, width, height, page, background, opacity) => {
-      const targetView =
-        viewState.currentView === "split" ? "original" : viewState.currentView;
       const result = handleAddDeletionRectangleWithUndo(
         x,
         y,
         width,
         height,
         page,
-        targetView,
+        viewState.currentView,
         background || "",
         opacity || 1.0
       );
@@ -4746,7 +4742,7 @@ export const PDFEditorContent: React.FC = () => {
                 >
                   <div
                     ref={documentRef}
-                    className={`relative bg-white document-page ${
+                    className={`relative bg-transparent document-page ${
                       documentState.isScaleChanging ? "" : "zoom-transition"
                     } ${
                       editorState.isAddTextBoxMode ? "add-text-box-mode" : ""
