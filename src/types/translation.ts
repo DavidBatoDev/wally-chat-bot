@@ -32,7 +32,8 @@ export interface Project {
   status: ProjectStatus;
   assignedTranslator?: string;
   assignedProofreader?: string;
-  actionType?: "confirmation" | "final-approval";
+  actionType?: "confirmation" | "final-approval" | "manual-assignment";
+  createdBy?: string; // PM who created/uploaded the project
   createdAt: string;
   updatedAt: string;
   fileName?: string;
@@ -41,6 +42,7 @@ export interface Project {
   detectedDocumentType?: string; // Detected by OCR
   detectedSourceLanguage?: string; // Detected by OCR
   pdfEditorState?: any; // PDF editor state for seamless integration
+  assignmentReason?: string; // Reason for manual assignment
   
   // Workflow timestamps
   ocrCompletedAt?: string;
@@ -49,6 +51,29 @@ export interface Project {
   translationSubmittedAt?: string;
   finalApprovalAt?: string;
   sentBackAt?: string;
+  
+  // Multiple submission tracking
+  translationSubmissions?: Array<{
+    submittedAt: string;
+    submittedBy: string;
+    revisionNumber: number;
+  }>;
+  
+  // Multiple sent-back tracking
+  sentBackEvents?: Array<{
+    sentBackAt: string;
+    sentBackBy: string;
+    pmNotes: string;
+    revisionNumber: number;
+  }>;
+
+  // PM notes history
+  pmNotesHistory?: Array<{
+    note: string;
+    revisionNumber: number;
+    sentBackAt: string;
+    sentBackBy: string;
+  }>;
   
   // PM Review functionality
   pmNotes?: string;
@@ -67,6 +92,9 @@ export interface TeamMember {
   availability: "available" | "busy" | "offline";
   currentProjects?: number;
   completedProjects?: number;
+  score?: number; // Translator rating/score
+  availableTime?: string; // Available time in UTC format (e.g., "09:00-17:00")
+  specialtyLanguages?: string[]; // Specialty languages
 }
 
 export interface UserRole {
@@ -82,9 +110,10 @@ export interface Notification {
   title: string;
   message: string;
   type: "info" | "success" | "warning" | "error";
+  priority: "low" | "medium" | "high";
   read: boolean;
   createdAt: string;
-  userId: string;
+  userId?: string;
 }
 
 export interface ProcessingState {

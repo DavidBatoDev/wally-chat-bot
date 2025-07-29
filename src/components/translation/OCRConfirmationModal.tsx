@@ -53,13 +53,14 @@ export function OCRConfirmationModal({ project, open, onOpenChange }: OCRConfirm
         sourceLanguage: detectedSourceLanguage, // Set the source language
         document: updatedDocument,
         actionType: undefined,
+        status: 'assigning-translator', // Trigger translator assignment
       });
       
       // Auto-assign translator
       const { autoAssignTranslator } = useTranslationStore.getState();
       autoAssignTranslator(project.id);
       
-      toast.success('Document types and source language confirmed! Agent is assigning translator...');
+      toast.success('Document types and source language confirmed! AI Agent is now finding the best translator match...');
       onOpenChange(false);
     } catch (error) {
       toast.error('Failed to confirm OCR results');

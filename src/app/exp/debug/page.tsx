@@ -19,7 +19,8 @@ export default function DebugPage() {
   };
   
   const handleDebugStorage = () => {
-    store.debugStorage();
+    console.log('Current store state:', store);
+    console.log('localStorage content:', localStorage.getItem('translation-storage'));
   };
   
   const handleTestPersistence = () => {

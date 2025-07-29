@@ -48,21 +48,58 @@ interface ProjectDetailsModalProps {
 }
 
 export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDetailsModalProps) {
-  const { currentUser, updateProject, sendBackToTranslator } = useTranslationStore();
-  const [activeTab, setActiveTab] = useState('overview');
-  const [translationText, setTranslationText] = useState<Record<string, string>>({});
-  const [comments, setComments] = useState('');
+  const { 
+    updateProject, 
+    approveTranslation, 
+    sendBackToTranslator, 
+    teamMembers,
+    currentUser 
+  } = useTranslationStore();
+  
   const [pmNotes, setPmNotes] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
   const [showSendBackDialog, setShowSendBackDialog] = useState(false);
   const router = useRouter();
-  
+
+  // Get assigned translator name
+  const getAssignedTranslatorName = () => {
+    if (project.assignedTranslator) {
+      const translator = teamMembers.find(member => member.id === project.assignedTranslator);
+      return translator ? translator.name : project.assignedTranslator;
+    }
+    return null;
+  };
+
+  // Get created by name
+  const getCreatedByName = () => {
+    if (project.createdBy) {
+      const creator = teamMembers.find(member => member.id === project.createdBy || member.name === project.createdBy);
+      return creator ? creator.name : project.createdBy;
+    }
+    return null;
+  };
+
+  // Get approved by name  
+  const getApprovedByName = () => {
+    if (project.finalApprovalBy) {
+      const approver = teamMembers.find(member => member.id === project.finalApprovalBy || member.name === project.finalApprovalBy);
+      return approver ? approver.name : project.finalApprovalBy;
+    }
+    return null;
+  };
+
+  const assignedTranslatorName = getAssignedTranslatorName();
+  const createdByName = getCreatedByName();
+  const approvedByName = getApprovedByName();
+
   const statusConfig = {
     'ocr-processing': { label: 'OCR Processing', color: 'bg-blue-500' },
     'pending-confirmation': { label: 'Pending Confirmation', color: 'bg-yellow-500' },
     'assigning-translator': { label: 'Assigning Translator', color: 'bg-orange-500' },
     'assigned': { label: 'Assigned', color: 'bg-purple-500' },
     'in-progress': { label: 'In Progress', color: 'bg-indigo-500' },
-    'pm-review': { label: 'PM Review', color: 'bg-orange-500' },
+    'pm-review': { label: 'PM Review', color: 'bg-pink-500' },
     'sent-back': { label: 'Sent Back', color: 'bg-red-500' },
     'completed': { label: 'Completed', color: 'bg-green-500' },
   };
@@ -73,9 +110,17 @@ export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDeta
       return;
     }
     
+    // Create mock translations for all document pages
+    const translations: Record<string, string> = {};
+    if (project.document) {
+      project.document.forEach(page => {
+        translations[page.id] = page.translatedText || `Translated: ${page.originalText}`;
+      });
+    }
+    
     // Submit translation and proofreading using the new workflow function
     const { submitTranslation } = useTranslationStore.getState();
-    submitTranslation(project.id, translationText);
+    submitTranslation(project.id, translations);
     
     toast.success('Translation and proofreading submitted! Awaiting PM review.');
     onOpenChange(false);
@@ -87,9 +132,9 @@ export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDeta
       return;
     }
     
-    // Give final approval using the new workflow function
-    const { giveFinalApproval } = useTranslationStore.getState();
-    giveFinalApproval(project.id);
+    // Give final approval using the correct workflow function
+    const { approveTranslation } = useTranslationStore.getState();
+    approveTranslation(project.id);
     
     toast.success('Project completed successfully!');
     onOpenChange(false);
@@ -135,6 +180,136 @@ export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDeta
 
   const formatTimestamp = (timestamp: string) => {
     return format(new Date(timestamp), 'MMM dd, yyyy HH:mm');
+  };
+
+  // Helper function to get all chronological events
+  const getChronologicalEvents = () => {
+    const events: Array<{
+      type: string;
+      timestamp: string;
+      data: any;
+      order: number;
+    }> = [];
+
+    // Project Created
+    events.push({
+      type: 'created',
+      timestamp: project.createdAt,
+      data: { qCode: project.qCode, clientName: project.clientName },
+      order: 1
+    });
+
+    // OCR Completed
+    if (project.ocrCompletedAt) {
+      events.push({
+        type: 'ocr-completed',
+        timestamp: project.ocrCompletedAt,
+        data: { documentLength: project.document.length, sourceLanguage: project.sourceLanguage, targetLanguages: project.targetLanguages },
+        order: 2
+      });
+    }
+
+    // Translator Assigned
+    if (project.translatorAssignedAt) {
+      events.push({
+        type: 'translator-assigned',
+        timestamp: project.translatorAssignedAt,
+        data: { translator: project.assignedTranslator },
+        order: 3
+      });
+    }
+
+    // Translation Started
+    if (project.translationStartedAt) {
+      events.push({
+        type: 'translation-started',
+        timestamp: project.translationStartedAt,
+        data: { translator: project.assignedTranslator, deadline: project.deadline },
+        order: 4
+      });
+    }
+
+    // Translation Submissions
+    if (project.translationSubmissions && project.translationSubmissions.length > 0) {
+      project.translationSubmissions.forEach((submission, index) => {
+        events.push({
+          type: 'translation-submitted',
+          timestamp: submission.submittedAt,
+          data: { 
+            translator: project.assignedTranslator, 
+            revisionNumber: submission.revisionNumber,
+            submittedBy: submission.submittedBy
+          },
+          order: 5 + index * 2
+        });
+      });
+    } else if (project.translationSubmittedAt) {
+      // Fallback for backward compatibility
+      events.push({
+        type: 'translation-submitted',
+        timestamp: project.translationSubmittedAt,
+        data: { 
+          translator: project.assignedTranslator, 
+          revisionNumber: 1,
+          submittedBy: project.assignedTranslator
+        },
+        order: 5
+      });
+    }
+
+    // Sent Back Events
+    if (project.sentBackEvents && project.sentBackEvents.length > 0) {
+      project.sentBackEvents.forEach((sentBackEvent, index) => {
+        events.push({
+          type: 'sent-back',
+          timestamp: sentBackEvent.sentBackAt,
+          data: { 
+            sentBackBy: sentBackEvent.sentBackBy, 
+            pmNotes: sentBackEvent.pmNotes,
+            revisionNumber: sentBackEvent.revisionNumber,
+            translator: project.assignedTranslator
+          },
+          order: 6 + index * 2
+        });
+      });
+    } else if (project.sentBackAt) {
+      // Fallback for backward compatibility
+      events.push({
+        type: 'sent-back',
+        timestamp: project.sentBackAt,
+        data: { 
+          sentBackBy: project.sentBackBy || 'Project Manager', 
+          pmNotes: project.pmNotes,
+          revisionNumber: project.sentBackCount || 1,
+          translator: project.assignedTranslator
+        },
+        order: 6
+      });
+    }
+
+    // Project Completed
+    if (project.finalApprovalAt) {
+      events.push({
+        type: 'completed',
+        timestamp: project.finalApprovalAt,
+        data: { 
+          approvedBy: project.finalApprovalBy || 'Project Manager',
+          translator: project.assignedTranslator,
+          deliveryDate: project.deliveryDate
+        },
+        order: 999
+      });
+    }
+
+    // Sort by timestamp and then by order for events with same timestamp
+    return events.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return a.order - b.order;
+    });
   };
 
   return (
@@ -208,13 +383,13 @@ export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDeta
                       </div>
                     </div>
                     
-                    {project.assignedTranslator && (
+                    {assignedTranslatorName && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-muted-foreground" />
                           <span className="text-sm font-medium">Assigned Translator</span>
                         </div>
-                        <p className="text-sm text-muted-foreground">{project.assignedTranslator}</p>
+                        <p className="text-sm text-muted-foreground">{assignedTranslatorName}</p>
                       </div>
                     )}
                   </CardContent>
@@ -263,191 +438,151 @@ export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDeta
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {/* Project Created */}
-                      <div className="flex items-start gap-3">
-                        <div className="h-2 w-2 rounded-full bg-gray-500 mt-1.5" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">Project Created</p>
-                          <p className="text-xs text-muted-foreground">
-                            Project {project.qCode} created for {project.clientName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Created: {formatTimestamp(project.createdAt)}
-                          </p>
-                        </div>
-                      </div>
+                      {getChronologicalEvents().map((event, index) => {
+                        const getEventColor = (type: string) => {
+                          switch (type) {
+                            case 'created': return 'bg-gray-500';
+                            case 'ocr-completed': return 'bg-blue-500';
+                            case 'translator-assigned': return 'bg-purple-500';
+                            case 'translation-started': return 'bg-indigo-500';
+                            case 'translation-submitted': return 'bg-orange-500';
+                            case 'sent-back': return 'bg-red-500';
+                            case 'completed': return 'bg-green-500';
+                            default: return 'bg-gray-500';
+                          }
+                        };
 
-                      {/* OCR Processing */}
-                      {project.ocrCompletedAt && (
-                        <div className="flex items-start gap-3">
-                          <div className="h-2 w-2 rounded-full bg-blue-500 mt-1.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">OCR Processing Completed</p>
-                            <p className="text-xs text-muted-foreground">
-                              Document processed with {project.document.length} pages
-                            </p>
-                            <div className="mt-1 space-y-1">
+                        const getEventTitle = (type: string, data: any) => {
+                          switch (type) {
+                            case 'created':
+                              return `Project Created`;
+                            case 'ocr-completed':
+                              return `OCR Processing Completed`;
+                            case 'translator-assigned':
+                              return `Translator Assigned`;
+                            case 'translation-started':
+                              return `Translation Started`;
+                            case 'translation-submitted':
+                              return data.revisionNumber > 1 
+                                ? `Translation & Proofreading Submitted (Revision ${data.revisionNumber})`
+                                : `Translation & Proofreading Submitted`;
+                            case 'sent-back':
+                              return data.revisionNumber > 1
+                                ? `Project Sent Back to Translator (Revision ${data.revisionNumber})`
+                                : `Project Sent Back to Translator`;
+                            case 'completed':
+                              return `Project Completed`;
+                            default:
+                              return 'Unknown Event';
+                          }
+                        };
+
+                        const getEventDescription = (type: string, data: any) => {
+                          switch (type) {
+                            case 'created':
+                              return `Project ${data.qCode} created for ${data.clientName}`;
+                            case 'ocr-completed':
+                              return `Document processed with ${data.documentLength} pages`;
+                            case 'translator-assigned':
+                              return `Project moved to translation phase`;
+                            case 'translation-started':
+                              return `Translator began working on document`;
+                            case 'translation-submitted':
+                              return `Awaiting PM review and final approval`;
+                            case 'sent-back':
+                              return `PM requested revisions`;
+                            case 'completed':
+                              return `Final approval given by Project Manager`;
+                            default:
+                              return '';
+                          }
+                        };
+
+                        const getEventDetails = (type: string, data: any) => {
+                          const details = [];
+                          
+                          switch (type) {
+                            case 'ocr-completed':
+                              details.push(`Source: ${data.sourceLanguage} → Target: ${data.targetLanguages.join(', ')}`);
+                              details.push(`Average confidence: ${Math.round(project.document.reduce((acc, page) => acc + page.confidence, 0) / project.document.length)}%`);
+                              break;
+                            case 'translator-assigned':
+                              details.push(`Translator: ${data.translator}`);
+                              break;
+                            case 'translation-started':
+                              details.push(`Translator: ${data.translator}`);
+                              details.push(`Deadline: ${format(new Date(data.deadline), 'MMM dd, yyyy')}`);
+                              break;
+                            case 'translation-submitted':
+                              details.push(`Translator: ${data.translator}`);
+                              details.push(`Translator completed initial proofreading`);
+                              if (data.revisionNumber > 1) {
+                                details.push(`Submitted by: ${data.submittedBy}`);
+                              }
+                              break;
+                            case 'sent-back':
+                              details.push(`Sent by: ${data.sentBackBy}`);
+                              details.push(`Sent to: ${data.translator}`);
+                              details.push(`Notes: ${data.pmNotes}`);
+                              break;
+                            case 'completed':
+                              details.push(`Approved by: ${data.approvedBy}`);
+                              details.push(`Translator: ${data.translator}`);
+                              details.push(`Delivery Date: ${format(new Date(data.deliveryDate), 'MMM dd, yyyy')}`);
+                              break;
+                          }
+                          
+                          return details;
+                        };
+
+                        return (
+                          <div key={`${event.type}-${event.timestamp}`} className="flex items-start gap-3">
+                            <div className={`h-2 w-2 rounded-full ${getEventColor(event.type)} mt-1.5`} />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{getEventTitle(event.type, event.data)}</p>
                               <p className="text-xs text-muted-foreground">
-                                Source: {project.sourceLanguage} → Target: {project.targetLanguages.join(', ')}
+                                {getEventDescription(event.type, event.data)}
                               </p>
-                              <p className="text-xs text-muted-foreground">
-                                Average confidence: {Math.round(project.document.reduce((acc, page) => acc + page.confidence, 0) / project.document.length)}%
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Completed: {formatTimestamp(project.ocrCompletedAt)}
+                              {getEventDetails(event.type, event.data).map((detail, detailIndex) => (
+                                <p key={detailIndex} className="text-xs text-muted-foreground mt-1">
+                                  {detail}
+                                </p>
+                              ))}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {formatTimestamp(event.timestamp)}
                               </p>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })}
+                    </div>
 
-                      {/* Translator Assignment */}
-                      {project.translatorAssignedAt && (
-                        <div className="flex items-start gap-3">
-                          <div className="h-2 w-2 rounded-full bg-purple-500 mt-1.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Translator Assigned</p>
-                            <p className="text-xs text-muted-foreground">
-                              {project.assignedTranslator}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Project moved to translation phase
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Assigned: {formatTimestamp(project.translatorAssignedAt)}
-                            </p>
-                          </div>
+                    {/* Project Statistics */}
+                    <Separator className="my-4" />
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Project Statistics</p>
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Total Pages:</span>
+                          <span className="ml-2 font-medium">{project.document.length}</span>
                         </div>
-                      )}
-
-                      {/* Translation Started */}
-                      {project.translationStartedAt && (
-                        <div className="flex items-start gap-3">
-                          <div className="h-2 w-2 rounded-full bg-indigo-500 mt-1.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Translation Started</p>
-                            <p className="text-xs text-muted-foreground">
-                              Translator began working on document
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Translator: {project.assignedTranslator}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Deadline: {format(new Date(project.deadline), 'MMM dd, yyyy')}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Started: {formatTimestamp(project.translationStartedAt)}
-                            </p>
-                          </div>
+                        <div>
+                          <span className="text-muted-foreground">Document Types:</span>
+                          <span className="ml-2 font-medium">
+                            {[...new Set(project.document.map(p => p.documentType))].join(', ')}
+                          </span>
                         </div>
-                      )}
-
-                      {/* Translation Submitted */}
-                      {project.translationSubmittedAt && (
-                        <div className="flex items-start gap-3">
-                          <div className="h-2 w-2 rounded-full bg-orange-500 mt-1.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Translation & Proofreading Submitted</p>
-                            <p className="text-xs text-muted-foreground">
-                              Awaiting PM review and final approval
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Translator: {project.assignedTranslator}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Translator completed initial proofreading
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Submitted: {formatTimestamp(project.translationSubmittedAt)}
-                            </p>
-                          </div>
+                        <div>
+                          <span className="text-muted-foreground">Created:</span>
+                          <span className="ml-2 font-medium">
+                            {format(new Date(project.createdAt), 'MMM dd, yyyy')}
+                          </span>
                         </div>
-                      )}
-
-                      {/* Project Sent Back */}
-                      {project.sentBackAt && (
-                        <div className="flex items-start gap-3">
-                          <div className="h-2 w-2 rounded-full bg-red-500 mt-1.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Project Sent Back to Translator</p>
-                            <p className="text-xs text-muted-foreground">
-                              PM requested revisions
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Sent by: {project.sentBackBy || 'Project Manager'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Sent to: {project.assignedTranslator}
-                            </p>
-                            {project.pmNotes && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Notes: {project.pmNotes}
-                              </p>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                              Sent back: {formatTimestamp(project.sentBackAt)}
-                            </p>
-                            {project.sentBackCount && project.sentBackCount > 1 && (
-                              <p className="text-xs text-muted-foreground">
-                                Revision #{project.sentBackCount}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Project Completed */}
-                      {project.finalApprovalAt && (
-                        <div className="flex items-start gap-3">
-                          <div className="h-2 w-2 rounded-full bg-green-500 mt-1.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Project Completed</p>
-                            <p className="text-xs text-muted-foreground">
-                              Final approval given by Project Manager
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Approved by: {project.finalApprovalBy || 'Project Manager'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Translator: {project.assignedTranslator}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Delivery Date: {format(new Date(project.deliveryDate), 'MMM dd, yyyy')}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Completed: {formatTimestamp(project.finalApprovalAt)}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Project Statistics */}
-                      <Separator className="my-4" />
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium">Project Statistics</p>
-                        <div className="grid grid-cols-2 gap-4 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">Total Pages:</span>
-                            <span className="ml-2 font-medium">{project.document.length}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Document Types:</span>
-                            <span className="ml-2 font-medium">
-                              {[...new Set(project.document.map(p => p.documentType))].join(', ')}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Created:</span>
-                            <span className="ml-2 font-medium">
-                              {format(new Date(project.createdAt), 'MMM dd, yyyy')}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Last Updated:</span>
-                            <span className="ml-2 font-medium">
-                              {format(new Date(project.updatedAt), 'MMM dd, yyyy')}
-                            </span>
-                          </div>
+                        <div>
+                          <span className="text-muted-foreground">Last Updated:</span>
+                          <span className="ml-2 font-medium">
+                            {format(new Date(project.updatedAt), 'MMM dd, yyyy')}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -464,7 +599,27 @@ export function ProjectDetailsModal({ project, open, onOpenChange }: ProjectDeta
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {project.pmNotes ? (
+                    {project.pmNotesHistory && project.pmNotesHistory.length > 0 ? (
+                      <div className="space-y-4">
+                        {project.pmNotesHistory.map((note, idx) => (
+                          <div key={note.sentBackAt + note.revisionNumber} className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertCircle className="h-4 w-4 text-red-600" />
+                              <span className="text-sm font-medium text-red-800">
+                                PM Revision Notes (Revision {note.revisionNumber})
+                              </span>
+                            </div>
+                            <p className="text-sm text-red-700 whitespace-pre-wrap">{note.note}</p>
+                            <p className="text-xs text-red-600 mt-2">
+                              Sent back: {formatTimestamp(note.sentBackAt)}
+                            </p>
+                            <p className="text-xs text-red-600">
+                              Sent by: {note.sentBackBy}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : project.pmNotes ? (
                       <div className="space-y-4">
                         <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                           <div className="flex items-center gap-2 mb-2">
