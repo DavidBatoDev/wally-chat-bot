@@ -249,9 +249,97 @@ export const PDFEditorContent: React.FC = () => {
     [documentState.pages]
   );
 
+  // Helper function to get the translated document URL for a specific page
+  const getTranslatedDocumentUrl = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+      console.log(
+        "Getting translated document URL for page:",
+        pageNumber,
+        "page data:",
+        page
+      );
+      // If the page has a birth certificate template, use its URL for translated view
+      if (page?.translatedTemplateURL) {
+        console.log("Using template URL:", page.translatedTemplateURL);
+        return page.translatedTemplateURL;
+      }
+      // Otherwise, return empty string to show blank page
+      console.log("No template URL found, returning empty string");
+      return "";
+    },
+    [documentState.pages]
+  );
+
+  // Function to update template dimensions when template loads
+  const updateTemplateDimensions = useCallback(
+    (pageNumber: number, width: number, height: number) => {
+      setDocumentState((prev) => {
+        const updatedPages = [...prev.pages];
+        const pageIndex = pageNumber - 1;
+
+        if (pageIndex >= 0 && pageIndex < updatedPages.length) {
+          updatedPages[pageIndex] = {
+            ...updatedPages[pageIndex],
+            translatedTemplateWidth: width,
+            translatedTemplateHeight: height,
+          };
+        }
+
+        return {
+          ...prev,
+          pages: updatedPages,
+        };
+      });
+    },
+    []
+  );
+
+  // Helper function to get the translated template dimensions for a specific page
+  const getTranslatedTemplateDimensions = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+
+      // If the page has a template URL but no dimensions yet, return original dimensions
+      // The dimensions will be updated when the template actually loads
+      if (
+        page?.translatedTemplateURL &&
+        (!page?.translatedTemplateWidth || !page?.translatedTemplateHeight)
+      ) {
+        return {
+          width: documentState.pageWidth,
+          height: documentState.pageHeight,
+        };
+      }
+
+      // If the page has template dimensions, use them
+      if (page?.translatedTemplateWidth && page?.translatedTemplateHeight) {
+        return {
+          width: page.translatedTemplateWidth,
+          height: page.translatedTemplateHeight,
+        };
+      }
+
+      // If no template is applied, return original document dimensions
+      return {
+        width: documentState.pageWidth,
+        height: documentState.pageHeight,
+      };
+    },
+    [documentState.pages, documentState.pageWidth, documentState.pageHeight]
+  );
+
   const setPageBirthCertTemplate = useCallback(
     (pageNumber: number, template: any) => {
+      console.log(
+        "Setting birth certificate template for page:",
+        pageNumber,
+        "template:",
+        template
+      );
+
       setDocumentState((prev) => {
+        console.log("Previous document state:", prev);
         const updatedPages = [...prev.pages];
         const pageIndex = pageNumber - 1;
 
@@ -261,13 +349,19 @@ export const PDFEditorContent: React.FC = () => {
             pageType: "birth_cert" as const,
             birthCertTemplate: template,
             birthCertType: template.variation,
+            translatedTemplateURL: template.file_url, // Store the template URL for translated view
+            // Template dimensions will be set when the template is actually loaded
+            translatedTemplateWidth: undefined, // Will be set when template loads
+            translatedTemplateHeight: undefined, // Will be set when template loads
           };
         }
 
-        return {
+        const newState = {
           ...prev,
           pages: updatedPages,
         };
+        console.log("New document state:", newState);
+        return newState;
       });
     },
     []
@@ -4842,7 +4936,9 @@ export const PDFEditorContent: React.FC = () => {
                           /* Show normal document layout when in layout workflow step */
                           <DocumentPanel
                             viewType="translated"
-                            documentUrl={documentState.url}
+                            documentUrl={getTranslatedDocumentUrl(
+                              documentState.currentPage
+                            )}
                             currentPage={documentState.currentPage}
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
@@ -4863,6 +4959,17 @@ export const PDFEditorContent: React.FC = () => {
                             }
                             isTransforming={documentState.isTransforming}
                             isTranslating={isTranslating}
+                            templateWidth={
+                              getTranslatedTemplateDimensions(
+                                documentState.currentPage
+                              ).width
+                            }
+                            templateHeight={
+                              getTranslatedTemplateDimensions(
+                                documentState.currentPage
+                              ).height
+                            }
+                            onTemplateLoadSuccess={updateTemplateDimensions}
                             onRunOcr={() =>
                               checkLanguageAndRunOcr(
                                 "single",
@@ -5262,7 +5369,9 @@ export const PDFEditorContent: React.FC = () => {
                             /* Show normal document layout when in layout workflow step */
                             <DocumentPanel
                               viewType="translated"
-                              documentUrl={documentState.url}
+                              documentUrl={getTranslatedDocumentUrl(
+                                documentState.currentPage
+                              )}
                               currentPage={documentState.currentPage}
                               pageWidth={documentState.pageWidth}
                               pageHeight={documentState.pageHeight}
@@ -5283,6 +5392,17 @@ export const PDFEditorContent: React.FC = () => {
                               }
                               isTransforming={documentState.isTransforming}
                               isTranslating={isTranslating}
+                              templateWidth={
+                                getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).width
+                              }
+                              templateHeight={
+                                getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).height
+                              }
+                              onTemplateLoadSuccess={updateTemplateDimensions}
                               onRunOcr={() =>
                                 checkLanguageAndRunOcr(
                                   "single",
@@ -5400,10 +5520,13 @@ export const PDFEditorContent: React.FC = () => {
                               className="absolute top-0 left-0 interactive-elements-wrapper"
                               style={{
                                 width:
-                                  documentState.pageWidth * documentState.scale,
+                                  getTranslatedTemplateDimensions(
+                                    documentState.currentPage
+                                  ).width * documentState.scale,
                                 height:
-                                  documentState.pageHeight *
-                                  documentState.scale,
+                                  getTranslatedTemplateDimensions(
+                                    documentState.currentPage
+                                  ).height * documentState.scale,
                                 pointerEvents: "auto",
                                 zIndex: 10000,
                               }}
@@ -5564,6 +5687,18 @@ export const PDFEditorContent: React.FC = () => {
                       <div
                         className="absolute inset-0 interactive-elements-wrapper"
                         style={{
+                          width:
+                            viewState.currentView === "translated"
+                              ? getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).width * documentState.scale
+                              : documentState.pageWidth * documentState.scale,
+                          height:
+                            viewState.currentView === "translated"
+                              ? getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).height * documentState.scale
+                              : documentState.pageHeight * documentState.scale,
                           zIndex:
                             editorState.isTextSelectionMode ||
                             editorState.isAddTextBoxMode

@@ -20,6 +20,9 @@ export interface PageData {
   // Birth certificate specific data
   birthCertTemplate?: BirthCertTemplate | null;
   birthCertType?: string; // e.g., "English_1993_template", "Spanish_1993_template"
+  translatedTemplateURL?: string; // URL of the birth certificate template for translated view
+  translatedTemplateWidth?: number; // Width of the template for translated view
+  translatedTemplateHeight?: number; // Height of the template for translated view
 }
 
 // Document and page related types

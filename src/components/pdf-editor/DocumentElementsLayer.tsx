@@ -17,6 +17,9 @@ interface DocumentElementsLayerProps {
   scale: number;
   pageWidth: number;
   pageHeight: number;
+  // Template dimensions for translated view
+  templateWidth?: number;
+  templateHeight?: number;
 
   // Deletion rectangles
   deletionRectangles: DeletionRectangle[];
@@ -79,6 +82,8 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   scale,
   pageWidth,
   pageHeight,
+  templateWidth,
+  templateHeight,
   deletionRectangles,
   showDeletionRectangles,
   onDeleteDeletionRectangle,
@@ -111,6 +116,11 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   onDragSelection,
   onDragStopSelection,
 }) => {
+  // Use template dimensions for translated view if available, otherwise use original dimensions
+  const effectivePageWidth =
+    viewType === "translated" && templateWidth ? templateWidth : pageWidth;
+  const effectivePageHeight =
+    viewType === "translated" && templateHeight ? templateHeight : pageHeight;
   const elementsInSelectionPreview = getElementsInSelectionPreview();
 
   const shouldShowSelectionComponents = () => {
@@ -200,8 +210,8 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               isSelected={selectedShapeId === shape.id}
               isEditMode={isEditMode}
               scale={scale}
-              pageWidth={pageWidth}
-              pageHeight={pageHeight}
+              pageWidth={effectivePageWidth}
+              pageHeight={effectivePageHeight}
               onSelect={onShapeSelect}
               onUpdate={onUpdateShape}
               onDelete={onDeleteShape}
@@ -218,8 +228,8 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               isSelected={selectedElementId === image.id}
               isEditMode={isEditMode}
               scale={scale}
-              pageWidth={pageWidth}
-              pageHeight={pageHeight}
+              pageWidth={effectivePageWidth}
+              pageHeight={effectivePageHeight}
               onSelect={onImageSelect}
               onUpdate={onUpdateImage}
               onDelete={onDeleteImage}

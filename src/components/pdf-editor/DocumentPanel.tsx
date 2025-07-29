@@ -1,12 +1,17 @@
-import React from 'react';
-import DocumentView from './DocumentView';
-import DocumentElementsLayer from './DocumentElementsLayer';
-import BlankTranslatedView from './BlankTranslatedView';
-import { TextField, Shape as ShapeType, Image as ImageType, DeletionRectangle } from '@/app/pdf-editor/types/pdf-editor.types';
+import React from "react";
+import DocumentView from "./DocumentView";
+import DocumentElementsLayer from "./DocumentElementsLayer";
+import BlankTranslatedView from "./BlankTranslatedView";
+import {
+  TextField,
+  Shape as ShapeType,
+  Image as ImageType,
+  DeletionRectangle,
+} from "@/app/pdf-editor/types/pdf-editor.types";
 
 interface DocumentPanelProps {
-  viewType: 'original' | 'translated';
-  
+  viewType: "original" | "translated";
+
   // Document props
   documentUrl: string;
   currentPage: number;
@@ -18,35 +23,49 @@ interface DocumentPanelProps {
   isAddTextBoxMode: boolean;
   isTextSpanZooming: boolean;
   isPdfFile: (url: string) => boolean;
-  
+
   // Handlers and actions
   handlers: {
     handleDocumentLoadSuccess: (pdf: any) => void;
     handleDocumentLoadError: (error: any) => void;
     handlePageLoadSuccess: (page: any) => void;
     handlePageLoadError: (error: any) => void;
-    handleImageLoadSuccess: (event: React.SyntheticEvent<HTMLImageElement>) => void;
+    handleImageLoadSuccess: (
+      event: React.SyntheticEvent<HTMLImageElement>
+    ) => void;
     handleImageLoadError: () => void;
   };
   actions: {
     capturePdfBackgroundColor: () => void;
   };
   setDocumentState: React.Dispatch<React.SetStateAction<any>>;
-  
+
   // Translated view specific props
   isPageTranslated?: boolean;
   isTransforming?: boolean;
   isTranslating?: boolean;
   onRunOcr?: () => void;
-  
+  // Template dimensions for translated view
+  templateWidth?: number;
+  templateHeight?: number;
+  // Template dimension update callback
+  onTemplateLoadSuccess?: (
+    pageNumber: number,
+    width: number,
+    height: number
+  ) => void;
+
   // Elements layer props
   deletionRectangles: DeletionRectangle[];
   showDeletionRectangles: boolean;
   onDeleteDeletionRectangle: (id: string) => void;
   colorToRgba: (color: string, opacity: number) => string;
-  sortedElements: Array<{ type: 'textbox' | 'shape' | 'image'; element: TextField | ShapeType | ImageType }>;
+  sortedElements: Array<{
+    type: "textbox" | "shape" | "image";
+    element: TextField | ShapeType | ImageType;
+  }>;
   getElementsInSelectionPreview: () => Set<string>;
-  
+
   // Element handlers
   selectedFieldId: string | null;
   selectedShapeId: string | null;
@@ -62,32 +81,32 @@ interface DocumentPanelProps {
   onDeleteTextBox: (id: string) => void;
   onDeleteShape: (id: string) => void;
   onDeleteImage: (id: string) => void;
-  
+
   // Text selection mode
   isTextSelectionMode: boolean;
   selectedTextBoxes: { textBoxIds: string[] };
-  
+
   // Auto focus
   autoFocusTextBoxId: string | null;
   onAutoFocusComplete: (id: string) => void;
-  
+
   // Selection mode
   isSelectionMode: boolean;
   multiSelection: {
     isDrawingSelection: boolean;
     selectionStart: { x: number; y: number } | null;
     selectionEnd: { x: number; y: number } | null;
-    targetView: 'original' | 'translated' | null;
+    targetView: "original" | "translated" | null;
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
   };
-  currentView: 'original' | 'translated' | 'split';
+  currentView: "original" | "translated" | "split";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;
   onDragStopSelection: (deltaX: number, deltaY: number) => void;
-  
+
   // Optional header
   header?: React.ReactNode;
 }
@@ -143,14 +162,23 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
   onDragSelection,
   onDragStopSelection,
   header,
+  templateWidth,
+  templateHeight,
+  onTemplateLoadSuccess,
 }) => {
+  // Use template dimensions for translated view if available, otherwise use original dimensions
+  const effectivePageWidth =
+    viewType === "translated" && templateWidth ? templateWidth : pageWidth;
+  const effectivePageHeight =
+    viewType === "translated" && templateHeight ? templateHeight : pageHeight;
+
   return (
     <DocumentView
       viewType={viewType}
       documentUrl={documentUrl}
       currentPage={currentPage}
-      pageWidth={pageWidth}
-      pageHeight={pageHeight}
+      pageWidth={effectivePageWidth}
+      pageHeight={effectivePageHeight}
       scale={scale}
       isScaleChanging={isScaleChanging}
       isAddTextBoxMode={isAddTextBoxMode}
@@ -160,19 +188,22 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
       actions={actions}
       setDocumentState={setDocumentState}
       header={header}
+      onTemplateLoadSuccess={onTemplateLoadSuccess}
     >
-      {/* Translated view content */}
-      {viewType === 'translated' && onRunOcr && (
-        <BlankTranslatedView
-          currentPage={currentPage}
-          numPages={numPages}
-          isPageTranslated={isPageTranslated}
-          isTransforming={isTransforming}
-          isTranslating={isTranslating}
-          onRunOcr={onRunOcr}
-        />
-      )}
-      
+      {/* Translated view content - show BlankTranslatedView when no template document URL */}
+      {viewType === "translated" &&
+        onRunOcr &&
+        (!documentUrl || documentUrl === "") && (
+          <BlankTranslatedView
+            currentPage={currentPage}
+            numPages={numPages}
+            isPageTranslated={isPageTranslated}
+            isTransforming={isTransforming}
+            isTranslating={isTranslating}
+            onRunOcr={onRunOcr}
+          />
+        )}
+
       {/* Elements Layer */}
       <DocumentElementsLayer
         viewType={viewType}
@@ -180,6 +211,8 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
         scale={scale}
         pageWidth={pageWidth}
         pageHeight={pageHeight}
+        templateWidth={templateWidth}
+        templateHeight={templateHeight}
         deletionRectangles={deletionRectangles}
         showDeletionRectangles={showDeletionRectangles}
         onDeleteDeletionRectangle={onDeleteDeletionRectangle}

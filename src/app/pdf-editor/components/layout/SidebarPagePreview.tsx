@@ -16,10 +16,14 @@ interface SidebarPagePreviewProps {
   translatedImages: Image[];
   pdfBackgroundColor: string;
   scale?: number; // e.g. 0.15 for sidebar
-  pdfUrl?: string; // new prop
+  pdfUrl?: string; // original document URL
+  translatedPdfUrl?: string; // translated document URL (template)
   currentWorkflowStep?: string; // new prop
   originalDeletionRectangles?: any[]; // new
   translatedDeletionRectangles?: any[]; // new
+  // Template dimensions for translated view
+  translatedTemplateWidth?: number;
+  translatedTemplateHeight?: number;
 }
 
 const renderTextBox = (tb: TextField, scale: number) => (
@@ -175,9 +179,12 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   pdfBackgroundColor,
   scale = 0.15,
   pdfUrl,
+  translatedPdfUrl,
   currentWorkflowStep,
   originalDeletionRectangles = [],
   translatedDeletionRectangles = [],
+  translatedTemplateWidth,
+  translatedTemplateHeight,
 }) => {
   // Only render elements for this page
   const origTextBoxes = originalTextBoxes.filter((tb) => tb.page === pageNum);
@@ -271,11 +278,16 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   });
 
   // Helper function to render element based on type
-  const renderElement = (item: {
-    type: string;
-    element: any;
-    zIndex: number;
-  }) => {
+  const renderElement = (
+    item: {
+      type: string;
+      element: any;
+      zIndex: number;
+    },
+    scale: number,
+    effectivePageWidth?: number,
+    effectivePageHeight?: number
+  ) => {
     switch (item.type) {
       case "deletion":
         return renderDeletionRectangle(item.element, scale);
@@ -345,23 +357,74 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
           />
         ) : null}
         {/* Render all elements in correct layering order */}
-        {originalSortedElements.map((item) => renderElement(item))}
+        {originalSortedElements.map((item) => renderElement(item, scale))}
       </div>
-      {/* Translated view (no PDF background) - only show if not in final-layout */}
+      {/* Translated view - only show if not in final-layout */}
       {!showOnlyOriginal && (
         <div
           style={{
             position: "relative",
-            width: pageWidth * scale,
-            height: pageHeight * scale,
+            width: (translatedTemplateWidth || pageWidth) * scale,
+            height: (translatedTemplateHeight || pageHeight) * scale,
             background: pdfBackgroundColor,
             border: "1px solid #e5e7eb",
             borderRadius: 4,
             overflow: "hidden",
           }}
         >
+          {/* PDF or image background for translated view - only if template URL exists */}
+          {translatedPdfUrl && translatedPdfUrl !== "" && (
+            <>
+              {isPdfFile(translatedPdfUrl) ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: "100%",
+                    height: "100%",
+                    zIndex: 0,
+                  }}
+                >
+                  <Document file={translatedPdfUrl} loading={null} error={null}>
+                    <Page
+                      pageNumber={1}
+                      width={pageWidth * scale}
+                      renderAnnotationLayer={false}
+                      renderTextLayer={false}
+                      loading={null}
+                      error={null}
+                    />
+                  </Document>
+                </div>
+              ) : (
+                <img
+                  src={translatedPdfUrl}
+                  alt="Translated document preview"
+                  style={{
+                    width: pageWidth * scale,
+                    height: pageHeight * scale,
+                    maxWidth: "none",
+                    display: "block",
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    zIndex: 0,
+                  }}
+                  draggable={false}
+                />
+              )}
+            </>
+          )}
           {/* Render all elements in correct layering order */}
-          {translatedSortedElements.map((item) => renderElement(item))}
+          {translatedSortedElements.map((item) =>
+            renderElement(
+              item,
+              scale,
+              translatedTemplateWidth || pageWidth,
+              translatedTemplateHeight || pageHeight
+            )
+          )}
         </div>
       )}
     </div>
