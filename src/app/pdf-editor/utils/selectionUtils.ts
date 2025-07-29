@@ -15,6 +15,30 @@ export interface ElementBounds {
 export const getElementBounds = (
   element: TextField | Shape | Image
 ): ElementBounds => {
+  // Handle line shapes specially since they use x1,y1,x2,y2 coordinates
+  if ("type" in element && element.type === "line") {
+    const lineShape = element as Shape;
+    if (
+      lineShape.x1 !== undefined &&
+      lineShape.y1 !== undefined &&
+      lineShape.x2 !== undefined &&
+      lineShape.y2 !== undefined
+    ) {
+      const minX = Math.min(lineShape.x1, lineShape.x2);
+      const minY = Math.min(lineShape.y1, lineShape.y2);
+      const maxX = Math.max(lineShape.x1, lineShape.x2);
+      const maxY = Math.max(lineShape.y1, lineShape.y2);
+
+      return {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+      };
+    }
+  }
+
+  // For all other elements (textboxes, regular shapes, images), use standard bounds
   return {
     x: element.x,
     y: element.y,
@@ -151,35 +175,80 @@ export const moveSelectedElements = (
       let constrainedX = newX;
       let constrainedY = newY;
 
-      // Prevent element from going outside left boundary (x < 0)
-      if (newX < 0) {
-        constrainedX = 0;
-      }
+      // Check if this is a line shape for special boundary handling
+      const isLineShape =
+        selectedElement.type === "shape" &&
+        "type" in element &&
+        (element as Shape).type === "line";
 
-      // Prevent element from going outside top boundary (y < 0)
-      if (newY < 0) {
-        constrainedY = 0;
-      }
+      if (isLineShape) {
+        const lineShape = element as Shape;
+        if (
+          lineShape.x1 !== undefined &&
+          lineShape.y1 !== undefined &&
+          lineShape.x2 !== undefined &&
+          lineShape.y2 !== undefined
+        ) {
+          // For lines, calculate boundaries based on the entire line
+          const moveDeltaX = newX - selectedElement.originalPosition.x;
+          const moveDeltaY = newY - selectedElement.originalPosition.y;
 
-      // Prevent element from going outside right boundary (x + width > pageWidth)
-      if (newX + element.width > pageWidth) {
-        constrainedX = pageWidth - element.width;
-      }
+          const newX1 = lineShape.x1 + moveDeltaX;
+          const newY1 = lineShape.y1 + moveDeltaY;
+          const newX2 = lineShape.x2 + moveDeltaX;
+          const newY2 = lineShape.y2 + moveDeltaY;
 
-      // Prevent element from going outside bottom boundary (y + height > pageHeight)
-      if (newY + element.height > pageHeight) {
-        constrainedY = pageHeight - element.height;
-      }
+          // Check if any part of the line would go outside boundaries
+          const minX = Math.min(newX1, newX2);
+          const maxX = Math.max(newX1, newX2);
+          const minY = Math.min(newY1, newY2);
+          const maxY = Math.max(newY1, newY2);
 
-      // Ensure element doesn't go outside boundaries (additional safety check)
-      constrainedX = Math.max(
-        0,
-        Math.min(constrainedX, pageWidth - element.width)
-      );
-      constrainedY = Math.max(
-        0,
-        Math.min(constrainedY, pageHeight - element.height)
-      );
+          // Constrain based on line bounds
+          if (minX < 0) {
+            constrainedX = newX - minX;
+          } else if (maxX > pageWidth) {
+            constrainedX = newX - (maxX - pageWidth);
+          }
+
+          if (minY < 0) {
+            constrainedY = newY - minY;
+          } else if (maxY > pageHeight) {
+            constrainedY = newY - (maxY - pageHeight);
+          }
+        }
+      } else {
+        // Regular boundary constraints for non-line elements
+        // Prevent element from going outside left boundary (x < 0)
+        if (newX < 0) {
+          constrainedX = 0;
+        }
+
+        // Prevent element from going outside top boundary (y < 0)
+        if (newY < 0) {
+          constrainedY = 0;
+        }
+
+        // Prevent element from going outside right boundary (x + width > pageWidth)
+        if (newX + element.width > pageWidth) {
+          constrainedX = pageWidth - element.width;
+        }
+
+        // Prevent element from going outside bottom boundary (y + height > pageHeight)
+        if (newY + element.height > pageHeight) {
+          constrainedY = pageHeight - element.height;
+        }
+
+        // Ensure element doesn't go outside boundaries (additional safety check)
+        constrainedX = Math.max(
+          0,
+          Math.min(constrainedX, pageWidth - element.width)
+        );
+        constrainedY = Math.max(
+          0,
+          Math.min(constrainedY, pageHeight - element.height)
+        );
+      }
 
       console.log("Moving element", {
         id: selectedElement.id,
@@ -205,7 +274,41 @@ export const moveSelectedElements = (
           });
           break;
         case "shape":
-          updateShape(selectedElement.id, { x: constrainedX, y: constrainedY });
+          // Handle line shapes specially - they need x1,y1,x2,y2 updates
+          if ("type" in element && element.type === "line") {
+            const lineShape = element as Shape;
+            if (
+              lineShape.x1 !== undefined &&
+              lineShape.y1 !== undefined &&
+              lineShape.x2 !== undefined &&
+              lineShape.y2 !== undefined
+            ) {
+              // Calculate how much to move the line coordinates
+              const moveDeltaX =
+                constrainedX - selectedElement.originalPosition.x;
+              const moveDeltaY =
+                constrainedY - selectedElement.originalPosition.y;
+
+              updateShape(selectedElement.id, {
+                x1: lineShape.x1 + moveDeltaX,
+                y1: lineShape.y1 + moveDeltaY,
+                x2: lineShape.x2 + moveDeltaX,
+                y2: lineShape.y2 + moveDeltaY,
+              });
+            } else {
+              // Fallback for shapes without line coordinates
+              updateShape(selectedElement.id, {
+                x: constrainedX,
+                y: constrainedY,
+              });
+            }
+          } else {
+            // Regular shapes (rectangles, circles)
+            updateShape(selectedElement.id, {
+              x: constrainedX,
+              y: constrainedY,
+            });
+          }
           break;
         case "image":
           updateImage(selectedElement.id, { x: constrainedX, y: constrainedY });

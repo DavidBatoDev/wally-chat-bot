@@ -97,7 +97,7 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
           counts.translated ? (
             <>
               <span className="flex items-center space-x-2">
-                <span className="text-blue-600 font-medium">Original:</span>
+                <span className="text-primary font-medium">Original:</span>
                 <span>{counts.original.textBoxes} text</span>
                 <span>{counts.original.shapes} shapes</span>
                 <span>{counts.original.images} images</span>

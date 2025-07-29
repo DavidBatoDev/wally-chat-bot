@@ -11,16 +11,23 @@ import {
   Image as ImageIcon,
   Files,
   Wrench,
-  FileSearch,
-  MousePointer,
-  Scan,
   MessageSquare,
+  Settings,
+  Share,
   FileText,
-  Globe,
-  Languages,
+  Zap,
 } from "lucide-react";
 import { SidebarProps } from "../../types/pdf-editor.types";
 import { isPdfFile } from "../../utils/measurements";
+import { ChatbotSidebar } from "../ChatbotSidebar";
+import { SidebarPagePreview } from "./SidebarPagePreview";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   viewState,
@@ -33,6 +40,11 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   onAppendDocument,
   onSidebarToggle,
   onTabChange,
+  documentRef,
+  sourceLanguage,
+  desiredLanguage,
+  onPageTypeChange,
+  onBirthCertModalOpen,
 }) => {
   const renderPagePreview = () => {
     if (!documentState.url) {
@@ -55,6 +67,11 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           if (pageState.deletedPages.has(pageNum)) {
             return null;
           }
+
+          const pageData = documentState.pages.find(
+            (p) => p.pageNumber === pageNum
+          );
+          const currentPageType = pageData?.pageType || "dynamic_content";
 
           const pageTextBoxes = [
             ...elementCollections.originalTextBoxes,
@@ -87,8 +104,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               key={pageNum}
               className={`border rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md group relative ${
                 documentState.currentPage === pageNum
-                  ? "border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-200"
-                  : "border-gray-200 hover:border-blue-300 hover:bg-blue-25"
+                  ? "border-primary bg- shadow-sm ring-1 ring-primary/20"
+                  : "border-gray-200 hover:border-primary/30 hover:bg-primary/5"
               }`}
               onClick={() => onPageChange(pageNum)}
             >
@@ -99,7 +116,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                     e.stopPropagation();
                     onPageDelete(pageNum);
                   }}
-                  className="absolute top-2 right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-blue-600 z-10 shadow-md"
+                  className="absolute top-2 right-2 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-primaryLight z-10 shadow-md"
                   title={`Delete page ${pageNum}`}
                 >
                   <X className="w-3 h-3" />
@@ -107,63 +124,143 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               )}
 
               {/* Page Thumbnail */}
-              <div className="relative mb-2">
-                <div
-                  className="w-full bg-white flex items-center justify-center relative overflow-hidden shadow-sm"
-                  style={{
-                    aspectRatio: "8.5/11",
-                    height: "120px",
-                  }}
-                >
-                  {isPdfFile(documentState.url) ? (
-                    <div className="w-full h-full bg-white relative">
-                      <Document
-                        file={documentState.url}
-                        loading={null}
-                        error={null}
-                      >
-                        <Page
-                          pageNumber={pageNum}
-                          width={200}
-                          renderTextLayer={false}
-                          renderAnnotationLayer={false}
-                          loading={null}
-                          error={null}
-                        />
-                      </Document>
-                    </div>
-                  ) : (
-                    <img
-                      src={documentState.url}
-                      alt={`Page ${pageNum}`}
-                      className="w-full h-full object-contain"
-                    />
-                  )}
-
-                  {/* Page number overlay */}
-                  <div className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs px-1 py-0.5 rounded">
-                    {pageNum}
-                  </div>
-
-                  {/* Current page indicator */}
-                  {documentState.currentPage === pageNum && (
-                    <div className="absolute inset-0 bg-blue-500 bg-opacity-10 rounded" />
-                  )}
+              <div className="relative mb-2 h-[300px] overflow-y-hidden">
+                <SidebarPagePreview
+                  pageNum={pageNum}
+                  pageWidth={documentState.pageWidth}
+                  pageHeight={documentState.pageHeight}
+                  originalTextBoxes={elementCollections.originalTextBoxes}
+                  translatedTextBoxes={elementCollections.translatedTextBoxes}
+                  originalShapes={elementCollections.originalShapes}
+                  translatedShapes={elementCollections.translatedShapes}
+                  originalImages={elementCollections.originalImages}
+                  translatedImages={elementCollections.translatedImages}
+                  pdfBackgroundColor={documentState.pdfBackgroundColor}
+                  scale={0.5}
+                  pdfUrl={documentState.url}
+                  translatedPdfUrl={pageData?.translatedTemplateURL}
+                  currentWorkflowStep={viewState.currentWorkflowStep}
+                  originalDeletionRectangles={
+                    elementCollections.originalDeletionRectangles
+                  }
+                  translatedDeletionRectangles={
+                    elementCollections.translatedDeletionRectangles
+                  }
+                  translatedTemplateWidth={pageData?.translatedTemplateWidth}
+                  translatedTemplateHeight={pageData?.translatedTemplateHeight}
+                />
+                {/* Page number overlay */}
+                <div className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs px-1 py-0.5 rounded">
+                  {pageNum}
                 </div>
+                {/* Current page indicator */}
+                {documentState.currentPage === pageNum && (
+                  <div className="absolute inset-0 bg-primary/10 rounded" />
+                )}
               </div>
 
               {/* Page Info */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                {/* <div className="flex items-center justify-between">
                   <span className="font-medium text-sm">Page {pageNum}</span>
                   {totalElements > 0 && (
                     <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                       {totalElements} element{totalElements !== 1 ? "s" : ""}
                     </span>
                   )}
+                </div> */}
+
+                {/* Page Type Selector */}
+                <div className="flex items-center space-x-2">
+                  {currentPageType === "birth_cert" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBirthCertModalOpen?.(pageNum);
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Configure Birth Certificate Template"
+                    >
+                      <Settings className="w-3 h-3 text-gray-400" />
+                    </button>
+                  )}
+                  {/* Show current template name for birth certificate pages */}
+                  {currentPageType === "birth_cert" &&
+                    pageData?.birthCertType && (
+                      <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border">
+                        {pageData.birthCertType}
+                      </div>
+                    )}
+                  <Select
+                    value={currentPageType}
+                    onValueChange={(value) => {
+                      if (onPageTypeChange) {
+                        onPageTypeChange(
+                          pageNum,
+                          value as
+                            | "social_media"
+                            | "birth_cert"
+                            | "dynamic_content"
+                        );
+                      }
+                    }}
+                    onOpenChange={(open) => {
+                      if (open) {
+                        // Prevent page selection when opening dropdown
+                        event?.stopPropagation();
+                      }
+                    }}
+                  >
+                    <SelectTrigger
+                      className={`h-7 text-xs ${
+                        currentPageType === "social_media"
+                          ? "bg-primary/20 text-primary border-primary/30"
+                          : currentPageType === "birth_cert"
+                          ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                          : "bg-gray-100 text-gray-800 border-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-center space-x-1">
+                        {currentPageType === "social_media" ? (
+                          <Share className="w-3 h-3" />
+                        ) : currentPageType === "birth_cert" ? (
+                          <FileText className="w-3 h-3" />
+                        ) : (
+                          <Zap className="w-3 h-3" />
+                        )}
+                        <span>
+                          {currentPageType === "social_media"
+                            ? "Social Media"
+                            : currentPageType === "birth_cert"
+                            ? "Birth Certificate"
+                            : "Dynamic Content"}
+                        </span>
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="social_media">
+                        <div className="flex items-center space-x-2">
+                          <Share className="w-3 h-3" />
+                          <span>Social Media</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="birth_cert">
+                        <div className="flex items-center space-x-2">
+                          <FileText className="w-3 h-3" />
+                          <span>Birth Certificate</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="dynamic_content">
+                        <div className="flex items-center space-x-2">
+                          <Zap className="w-3 h-3" />
+                          <span>Dynamic Content</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {totalElements > 0 && (
+                {/* {totalElements > 0 && (
                   <div className="flex items-center space-x-3 text-xs text-gray-500">
                     {pageTextBoxes.length > 0 && (
                       <span className="flex items-center space-x-1">
@@ -190,7 +287,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       </span>
                     )}
                   </div>
-                )}
+                )} */}
               </div>
             </div>
           );
@@ -208,106 +305,20 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           <span>Tools</span>
         </h3>
         <div className="space-y-3">
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
+          <button
+            onClick={() => onTabChange("chat")}
+            className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-primary/30 hover:bg-primary/10 transition-all duration-200 group"
+          >
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <FileSearch className="w-5 h-5 text-blue-600" />
+              <div className="p-2 bg-primary/20 rounded-lg group-hover:bg-primary/30 transition-colors">
+                <MessageSquare className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <div className="font-medium text-sm text-gray-900">
-                  Document Extraction
+                  Chat with Wally
                 </div>
                 <div className="text-xs text-gray-500">
-                  Extract data from documents
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <MousePointer className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Select & Translate Field
-                </div>
-                <div className="text-xs text-gray-500">
-                  Select and translate specific fields
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <Scan className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Scan & OCR
-                </div>
-                <div className="text-xs text-gray-500">
-                  Optical character recognition
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <MessageSquare className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Chat with Wally AI Assistant
-                </div>
-                <div className="text-xs text-gray-500">
-                  Get AI-powered assistance
-                </div>
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      {/* Translation Section */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
-          <Languages className="w-5 h-5" />
-          <span>Translation</span>
-        </h3>
-        <div className="space-y-3">
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Translate Birth Certificate
-                </div>
-                <div className="text-xs text-gray-500">
-                  Specialized birth certificate translation
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <button className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
-                <Globe className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-medium text-sm text-gray-900">
-                  Translate Dynamic Content
-                </div>
-                <div className="text-xs text-gray-500">
-                  Real-time content translation
+                  Translation specialist assistant
                 </div>
               </div>
             </div>
@@ -319,10 +330,18 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
   return (
     <div
-      className={`bg-white border-r border-blue-100 overflow-y-auto shadow-sm transition-all duration-500 ease-in-out flex-shrink-0`}
+      className={`bg-white border-r border-primary/20 overflow-y-auto shadow-sm transition-all duration-500 ease-in-out flex-shrink-0`}
       style={{
-        width: viewState.isSidebarCollapsed ? "0px" : "20rem",
-        minWidth: viewState.isSidebarCollapsed ? "0px" : "20rem",
+        width: viewState.isSidebarCollapsed
+          ? "0px"
+          : viewState.activeSidebarTab === "chat"
+          ? "25rem"
+          : "20rem",
+        minWidth: viewState.isSidebarCollapsed
+          ? "0px"
+          : viewState.activeSidebarTab === "chat"
+          ? "25rem"
+          : "20rem",
         opacity: viewState.isSidebarCollapsed ? 0 : 1,
         padding: viewState.isSidebarCollapsed ? "0px" : "1rem",
         pointerEvents: viewState.isSidebarCollapsed ? "none" : "auto",
@@ -336,15 +355,15 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         style={{ display: viewState.isSidebarCollapsed ? "none" : "flex" }}
       >
         {/* Tab Navigation */}
-        <div className="flex border-b border-blue-100 mb-4">
+        <div className="flex border-b border-primary/20 mb-4">
           <button
             onClick={() => onTabChange("tools")}
             className={`${
               documentState.url ? "flex-1" : "w-full"
             } px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
               viewState.activeSidebarTab === "tools"
-                ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                : "text-gray-900 hover:text-blue-600 hover:bg-blue-50"
+                ? "text-primary border-b-2 border-primary bg-primary/10"
+                : "text-gray-900 hover:text-primary hover:bg-primary/10"
             }`}
           >
             <div className="flex items-center justify-center space-x-2">
@@ -357,8 +376,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               onClick={() => onTabChange("pages")}
               className={`flex-1 px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
                 viewState.activeSidebarTab === "pages"
-                  ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                  : "text-gray-900 hover:text-blue-600 hover:bg-blue-50"
+                  ? "text-primary border-b-2 border-primary bg-primary/10"
+                  : "text-gray-900 hover:text-primary hover:bg-primary/10"
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -381,10 +400,10 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               </div>
 
               {/* Upload Buttons at Bottom */}
-              <div className="border-t border-blue-100 pt-4 mt-4 space-y-2">
+              <div className="border-t border-primary/20 pt-4 mt-4 space-y-2">
                 <Button
                   onClick={onFileUpload}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
+                  className="w-full bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   {documentState.url
@@ -396,7 +415,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   <Button
                     onClick={onAppendDocument}
                     variant="outline"
-                    className="w-full border-blue-200 text-gray-900 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
+                    className="w-full border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Upload More Document/Image
@@ -404,6 +423,14 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                 )}
               </div>
             </div>
+          ) : viewState.activeSidebarTab === "chat" ? (
+            <ChatbotSidebar
+              onBack={() => onTabChange("tools")}
+              documentRef={documentRef}
+              sourceLanguage={sourceLanguage}
+              desiredLanguage={desiredLanguage}
+              documentState={documentState}
+            />
           ) : (
             renderToolsTab()
           )}

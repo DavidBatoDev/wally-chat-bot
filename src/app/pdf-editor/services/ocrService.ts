@@ -45,7 +45,7 @@ export interface OcrResult {
   message?: string;
 }
 
-export interface BulkOcrOptions extends Omit<OcrOptions, 'pageNumber'> {
+export interface BulkOcrOptions extends Omit<OcrOptions, "pageNumber"> {
   totalPages: number;
   deletedPages: Set<number>;
   currentPage: number;
@@ -71,7 +71,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     setPageState,
     sourceLanguage,
     desiredLanguage,
-    setIsTranslating
+    setIsTranslating,
   } = options;
 
   const previousView = viewState.currentView;
@@ -130,7 +130,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     // Capture the PDF page as an image using dom-to-image
     const containerEl = documentRef.current;
     if (!containerEl) throw new Error("Document container not found");
-    
+
     // Use DOM-to-image to capture the element
     const dataUrl = await domtoimage.toPng(containerEl, {
       quality: 1.0,
@@ -141,7 +141,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
         // Filter out unwanted elements
         if (node.nodeType === Node.ELEMENT_NODE) {
           const element = node as HTMLElement;
-          
+
           // Skip interactive UI elements
           return !(
             element.classList.contains("text-format-drawer") ||
@@ -159,14 +159,14 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
           );
         }
         return true;
-      }
+      },
     });
 
     // Convert data URL to canvas for blob conversion
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
     const img = new Image();
-    
+
     await new Promise<void>((resolve, reject) => {
       img.onload = () => {
         canvas.width = img.width;
@@ -174,7 +174,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
         ctx?.drawImage(img, 0, 0);
         resolve();
       };
-      
+
       img.onerror = reject;
       img.src = dataUrl;
     });
@@ -202,10 +202,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     formData.append("page_number", "1");
 
     // Send frontend document dimensions to backend for accurate coordinate calculations
-    formData.append(
-      "frontend_page_width",
-      documentState.pageWidth.toString()
-    );
+    formData.append("frontend_page_width", documentState.pageWidth.toString());
     formData.append(
       "frontend_page_height",
       documentState.pageHeight.toString()
@@ -281,14 +278,19 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
         desiredLanguage &&
         sourceLanguage !== desiredLanguage
       ) {
-        await translateTextBoxes(newTextBoxes, sourceLanguage, desiredLanguage, setIsTranslating);
+        await translateTextBoxes(
+          newTextBoxes,
+          sourceLanguage,
+          desiredLanguage,
+          setIsTranslating
+        );
       }
 
       // Add all textboxes to the translated view using the undo system
       newTextBoxes.forEach((textbox, index) => {
         // Store original text before adding the textbox
         const originalText = entities[index]?.text || "";
-        
+
         const textboxId = options.handleAddTextBoxWithUndo(
           textbox.x,
           textbox.y,
@@ -345,16 +347,12 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
       // Mark the page as transformed
       setPageState((prev) => ({
         ...prev,
-        isPageTranslated: new Map(
-          prev.isPageTranslated.set(pageNumber, true)
-        ),
+        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, true)),
         isTransforming: false,
       }));
 
       const translationMessage =
-        sourceLanguage &&
-        desiredLanguage &&
-        sourceLanguage !== desiredLanguage
+        sourceLanguage && desiredLanguage && sourceLanguage !== desiredLanguage
           ? `Transformed and translated ${newTextBoxes.length} entities into textboxes`
           : `Transformed ${newTextBoxes.length} entities into textboxes`;
 
@@ -364,7 +362,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
       return {
         textBoxes: newTextBoxes,
         success: true,
-        message: translationMessage
+        message: translationMessage,
       };
     } else {
       // Reset transforming state when no entities are found
@@ -379,7 +377,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
       return {
         textBoxes: [],
         success: false,
-        message: "No text entities found in the document"
+        message: "No text entities found in the document",
       };
     }
   } catch (error) {
@@ -397,7 +395,7 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     return {
       textBoxes: [],
       success: false,
-      message: "Failed to transform page to textboxes"
+      message: "Failed to transform page to textboxes",
     };
   }
 }
@@ -434,7 +432,7 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
   try {
     for (let i = 0; i < pagesToProcess.length; i++) {
       if (cancelRef.current.cancelled) break;
-      
+
       const page = pagesToProcess[i];
 
       // Switch to the page
@@ -449,9 +447,9 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
       try {
         const result = await performPageOcr({
           ...ocrOptions,
-          pageNumber: page
+          pageNumber: page,
         });
-        
+
         if (result.success) {
           processedCount++;
         }
@@ -471,18 +469,17 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
       success: true,
       processedPages: processedCount,
       totalPages: pagesToProcess.length,
-      message: `Successfully processed ${processedCount} out of ${pagesToProcess.length} pages`
+      message: `Successfully processed ${processedCount} out of ${pagesToProcess.length} pages`,
     };
-
   } catch (error) {
     console.error("Bulk OCR error:", error);
     onPageChange(originalPage);
-    
+
     return {
       success: false,
       processedPages: processedCount,
       totalPages: pagesToProcess.length,
-      message: "Bulk OCR process failed"
+      message: "Bulk OCR process failed",
     };
   }
 }
@@ -537,7 +534,10 @@ export async function convertEntitiesToTextBoxes(
     ): string => {
       if (!rgb) return "#000000";
 
-      let r: number, g: number, b: number, a: number = 1;
+      let r: number,
+        g: number,
+        b: number,
+        a: number = 1;
 
       if (Array.isArray(rgb)) {
         r = Math.round(rgb[0] * 255);
@@ -585,8 +585,7 @@ export async function convertEntitiesToTextBoxes(
         ? rgbToHex(colors.fill_color || colors.text_color)
         : "#000000";
     const borderRadius =
-      styling.background?.border_radius ||
-      getStyleValue("border_radius", 0);
+      styling.background?.border_radius || getStyleValue("border_radius", 0);
     const textPadding =
       styling.text_padding || getStyleValue("text_padding", 0);
     const fontWeight =
@@ -632,14 +631,10 @@ export async function convertEntitiesToTextBoxes(
       // Fallback: calculate from bounding_poly vertices
       const vertices = entity.bounding_poly.vertices;
 
-      const minX =
-        Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      const maxX =
-        Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      const minY =
-        Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
-      const maxY =
-        Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+      const minX = Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+      const maxX = Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+      const minY = Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+      const maxY = Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
 
       x = minX;
       y = pdfPageHeight - maxY;
@@ -728,9 +723,7 @@ export async function translateTextBoxes(
       .filter((text) => text && text.trim());
 
     if (textsToTranslate.length > 0) {
-      console.log(
-        `Translating ${textsToTranslate.length} text elements...`
-      );
+      console.log(`Translating ${textsToTranslate.length} text elements...`);
 
       // Prepare translation options
       const translationOptions: any = {};
@@ -741,12 +734,11 @@ export async function translateTextBoxes(
       }
 
       // Translate all texts in batch
-      const translationResults =
-        await translationService.translateTexts(
-          textsToTranslate,
-          desiredLanguage,
-          translationOptions
-        );
+      const translationResults = await translationService.translateTexts(
+        textsToTranslate,
+        desiredLanguage,
+        translationOptions
+      );
 
       // Update textbox values with translated text
       let translationIndex = 0;
@@ -754,18 +746,15 @@ export async function translateTextBoxes(
 
       textBoxes.forEach((textbox) => {
         if (textbox.value && textbox.value.trim()) {
-          textbox.value =
-            translationResults[translationIndex].translatedText;
+          textbox.value = translationResults[translationIndex].translatedText;
 
           // Collect detected languages if auto-detection was used
           if (
             sourceLanguage === "auto" &&
-            translationResults[translationIndex]
-              .detectedSourceLanguage
+            translationResults[translationIndex].detectedSourceLanguage
           ) {
             const detectedLang =
-              translationResults[translationIndex]
-                .detectedSourceLanguage;
+              translationResults[translationIndex].detectedSourceLanguage;
             if (detectedLang) {
               detectedLanguages.add(detectedLang);
             }

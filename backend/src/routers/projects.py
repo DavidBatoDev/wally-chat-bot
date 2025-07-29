@@ -345,15 +345,15 @@ async def process_file_ocr_download(file: UploadFile = File(...)):
             else:
                 mime_type = 'application/octet-stream'
 
-        # Process with Document AI and get layout and PDF
-        pdf_bytes, _, _ = process_document(file_content, mime_type)
+        # # Process with Document AI and get layout and PDF
+        # pdf_bytes, _, _ = process_document(file_content, mime_type)
         
         # Generate output filename
         output_filename = f"processed_{file.filename.rsplit('.', 1)[0]}.pdf"
         
         # Return PDF as downloadable file
         return Response(
-            content=pdf_bytes,
+            # content=pdf_bytes,
             media_type="application/pdf",
             headers={
                 "Content-Disposition": f'attachment; filename="{output_filename}"'

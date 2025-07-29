@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { DocumentState } from "../../types/pdf-editor.types";
+import { DocumentState, PageData } from "../../types/pdf-editor.types";
 import { getFileType, isPdfFile } from "../../utils/measurements";
 import { toast } from "sonner";
 
@@ -20,6 +20,9 @@ export const useDocumentState = () => {
     isScaleChanging: false,
     pdfBackgroundColor: "white",
     detectedPageBackgrounds: new Map(),
+    pages: [],
+    deletedPages: new Set(),
+    isTransforming: false,
   });
 
   // Refs for scale changing
@@ -39,14 +42,46 @@ export const useDocumentState = () => {
   // Document loading handlers
   const handleDocumentLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
+      console.log(`handleDocumentLoadSuccess called with ${numPages} pages`);
+      console.log("Current document state before load success:", documentState);
+
+      // Only reset pages and deletedPages if this is truly a new document load
+      // Check if numPages has actually changed or if we're reloading the same document
+      if (
+        documentState.numPages === numPages &&
+        documentState.isDocumentLoaded
+      ) {
+        console.log(
+          "Document already loaded with same page count, skipping reset"
+        );
+        setDocumentState((prev) => ({
+          ...prev,
+          isDocumentLoaded: true,
+          error: "",
+        }));
+        return;
+      }
+
+      // Initialize pages array when document loads
+      const initialPages: PageData[] = Array.from(
+        { length: numPages },
+        (_, index) => ({
+          pageNumber: index + 1,
+          isTranslated: false,
+        })
+      );
+
+      console.log("Resetting document state for new document");
       setDocumentState((prev) => ({
         ...prev,
         numPages,
         isDocumentLoaded: true,
         error: "",
+        pages: initialPages,
+        deletedPages: new Set(),
       }));
     },
-    []
+    [documentState.numPages, documentState.isDocumentLoaded]
   );
 
   const handleDocumentLoadError = useCallback((error: Error) => {
@@ -72,12 +107,15 @@ export const useDocumentState = () => {
     if (
       error?.message?.includes("TextLayer task cancelled") ||
       error?.message?.includes("AbortException") ||
+      error?.message?.includes("Invalid page request") ||
       error?.name === "AbortException" ||
       error?.name === "AbortError" ||
       error?.toString?.().includes("TextLayer task cancelled") ||
       error?.toString?.().includes("AbortException") ||
+      error?.toString?.().includes("Invalid page request") ||
       (error?.error &&
         (error.error.message?.includes("TextLayer task cancelled") ||
+          error.error.message?.includes("Invalid page request") ||
           error.error.name === "AbortException"))
     ) {
       return;
@@ -130,6 +168,9 @@ export const useDocumentState = () => {
       error: "",
       pdfBackgroundColor: "white",
       detectedPageBackgrounds: new Map(),
+      pages: [], // Clear pages when loading new document
+      deletedPages: new Set(), // Clear deleted pages when loading new document
+      isTransforming: false, // Reset transforming state
     }));
 
     setTimeout(() => {
@@ -220,6 +261,97 @@ export const useDocumentState = () => {
     }));
   }, []);
 
+  // Page management functions
+  const addPage = useCallback((pageData: PageData) => {
+    setDocumentState((prev) => ({
+      ...prev,
+      pages: [...prev.pages, pageData],
+      numPages: prev.numPages + 1,
+    }));
+  }, []);
+
+  const appendPages = useCallback((newPages: PageData[]) => {
+    setDocumentState((prev) => ({
+      ...prev,
+      pages: [...prev.pages, ...newPages],
+      numPages: prev.numPages + newPages.length,
+    }));
+  }, []);
+
+  const updatePage = useCallback(
+    (pageNumber: number, updates: Partial<PageData>) => {
+      setDocumentState((prev) => ({
+        ...prev,
+        pages: prev.pages.map((page) =>
+          page.pageNumber === pageNumber ? { ...page, ...updates } : page
+        ),
+      }));
+    },
+    []
+  );
+
+  const deletePage = useCallback((pageNumber: number) => {
+    setDocumentState((prev) => {
+      const remainingPages = prev.numPages - prev.deletedPages.size;
+
+      if (remainingPages <= 1) {
+        toast.error("Cannot delete the last remaining page");
+        return prev;
+      }
+
+      return {
+        ...prev,
+        deletedPages: new Set([...prev.deletedPages, pageNumber]),
+      };
+    });
+
+    toast.success(`Page ${pageNumber} deleted`);
+  }, []);
+
+  const getCurrentPage = useCallback(() => {
+    return (
+      documentState.pages.find(
+        (page) => page.pageNumber === documentState.currentPage
+      ) || null
+    );
+  }, [documentState.pages, documentState.currentPage]);
+
+  const getNonDeletedPages = useCallback(() => {
+    return documentState.pages.filter(
+      (page) => !documentState.deletedPages.has(page.pageNumber)
+    );
+  }, [documentState.pages, documentState.deletedPages]);
+
+  const setPageTranslated = useCallback(
+    (pageNumber: number, isTranslated: boolean) => {
+      updatePage(pageNumber, { isTranslated });
+    },
+    [updatePage]
+  );
+
+  const setIsTransforming = useCallback((isTransforming: boolean) => {
+    setDocumentState((prev) => ({
+      ...prev,
+      isTransforming,
+    }));
+  }, []);
+
+  // Handle document appending - used when appending additional pages from new documents
+  const handleDocumentAppend = useCallback(
+    (additionalPages: number) => {
+      const newPages: PageData[] = Array.from(
+        { length: additionalPages },
+        (_, index) => ({
+          pageNumber: documentState.numPages + index + 1,
+          isTranslated: false,
+        })
+      );
+
+      appendPages(newPages);
+    },
+    [documentState.numPages, appendPages]
+  );
+
   return {
     documentState,
     setDocumentState,
@@ -238,6 +370,17 @@ export const useDocumentState = () => {
       capturePdfBackgroundColor,
       updatePdfBackgroundColor,
       resetScaleChanging,
+    },
+    pageActions: {
+      addPage,
+      appendPages,
+      updatePage,
+      deletePage,
+      getCurrentPage,
+      getNonDeletedPages,
+      setPageTranslated,
+      setIsTransforming,
+      handleDocumentAppend,
     },
   };
 };

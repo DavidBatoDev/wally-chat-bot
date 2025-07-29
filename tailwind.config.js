@@ -25,7 +25,7 @@ module.exports = {
 				background: 'hsl(var(--background))',
 				foreground: 'hsl(var(--foreground))',
 				wally: {
-					DEFAULT: '#ea384c',
+					DEFAULT: '#111827',
 					light: '#ff5a6e',
 					dark: '#d01e31',
 					50: '#fef2f2',
@@ -42,6 +42,10 @@ module.exports = {
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
 					foreground: 'hsl(var(--primary-foreground))'
+				},
+				primaryLight: {
+					DEFAULT: 'hsl(var(--primary-light))',
+					foreground: 'hsl(var(--primary-light-foreground))'
 				},
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',

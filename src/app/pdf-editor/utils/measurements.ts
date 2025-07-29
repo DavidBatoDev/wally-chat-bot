@@ -14,7 +14,7 @@ export const measureText = (
   fontFamily: string,
   characterSpacing: number = 0,
   maxWidth?: number,
-  padding?: { top?: number; right?: number; bottom?: number; left?: number },
+  padding?: { top?: number; right?: number; bottom?: number; left?: number }
 ): { width: number; height: number } => {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
@@ -75,8 +75,14 @@ export const measureText = (
     return { width: maxWidth, height: Math.max(wrappedHeight, fontSize * 1.1) };
   }
 
-  const finalWidth = maxLineWidth;
-  const finalHeight = Math.max(totalHeight, fontSize); // Ensure minimum height is at least font size (not forcing 2 lines)
+  // Add padding to width and height when no maxWidth constraint is provided
+  const paddingLeft = padding?.left || 0;
+  const paddingRight = padding?.right || 0;
+  const paddingTop = padding?.top || 0;
+  const paddingBottom = padding?.bottom || 0;
+  const finalWidth = maxLineWidth + paddingLeft + paddingRight;
+  const finalHeight =
+    Math.max(totalHeight, fontSize) + paddingTop + paddingBottom; // Ensure minimum height is at least font size (not forcing 2 lines)
 
   return { width: finalWidth, height: finalHeight };
 };
@@ -157,6 +163,70 @@ export const isImageFile = (url: string): boolean => {
   return getFileType(url) === "image";
 };
 
+/**
+ * Calculates image dimensions and position for proper fitting on a page
+ * @param imageFile - The image file to calculate dimensions for
+ * @param pageWidth - The width of the page
+ * @param pageHeight - The height of the page
+ * @returns Promise with calculated x, y, width, and height values
+ */
+export const calculateImageFitAndPosition = (
+  imageFile: File,
+  pageWidth: number,
+  pageHeight: number
+): Promise<{
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}> => {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(imageFile);
+    const img = new window.Image();
+
+    img.onload = () => {
+      const aspectRatio = img.naturalWidth / img.naturalHeight;
+
+      // Calculate dimensions to fit full page height while maintaining aspect ratio
+      let height = pageHeight; // Use full page height
+      let width = height * aspectRatio;
+
+      // If width exceeds page width, scale down proportionally
+      if (width > pageWidth) {
+        width = pageWidth;
+        height = width / aspectRatio;
+      }
+
+      // Ensure height doesn't exceed page height
+      if (height > pageHeight) {
+        height = pageHeight;
+        width = height * aspectRatio;
+      }
+
+      // Position the image to fill the page - center horizontally, align to top
+      let x = (pageWidth - width) / 2;
+      let y = 0; // Start from the top of the page
+
+      // Ensure the image stays within page boundaries
+      x = Math.max(0, Math.min(x, pageWidth - width));
+      y = Math.max(0, Math.min(y, pageHeight - height));
+
+      // Final boundary check - ensure width and height don't exceed page dimensions
+      const finalWidth = Math.min(width, pageWidth - x);
+      const finalHeight = Math.min(height, pageHeight - y);
+
+      URL.revokeObjectURL(url); // Clean up
+      resolve({ x, y, width: finalWidth, height: finalHeight });
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url); // Clean up
+      reject(new Error("Failed to load image"));
+    };
+
+    img.src = url;
+  });
+};
 
 // // Deprecated functions
 // const measureText = (

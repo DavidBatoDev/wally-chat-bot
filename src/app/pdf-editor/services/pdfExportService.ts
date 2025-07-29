@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import domtoimage from "dom-to-image";
+import JSZip from "jszip";
 
 // Types for PDF operations
 export interface PdfExportOptions {
@@ -25,6 +26,41 @@ export interface PdfExportOptions {
     currentView: string;
   };
   templateCanvas?: HTMLCanvasElement | null;
+  setDocumentState: (updater: (prev: any) => any) => void;
+  setViewState: (updater: (prev: any) => any) => void;
+  setEditorState: (updater: (prev: any) => any) => void;
+}
+
+// Types for Image export operations
+export interface ImageExportOptions {
+  documentRef: React.RefObject<HTMLDivElement | null>;
+  documentState: {
+    scale: number;
+    numPages: number;
+    pageWidth: number;
+    pageHeight: number;
+    url: string;
+  };
+  pageState: {
+    deletedPages: Set<number>;
+  };
+  editorState: {
+    selectedFieldId: string | null;
+    selectedShapeId: string | null;
+    isEditMode: boolean;
+    isAddTextBoxMode: boolean;
+  };
+  viewState: {
+    currentView: string;
+  };
+  exportSettings: {
+    format: "png" | "jpg";
+    quality: number;
+    includeOriginal: boolean;
+    includeTranslated: boolean;
+    pageRange: "all" | "current" | "custom";
+    customRange: string;
+  };
   setDocumentState: (updater: (prev: any) => any) => void;
   setViewState: (updater: (prev: any) => any) => void;
   setEditorState: (updater: (prev: any) => any) => void;
@@ -172,6 +208,234 @@ export async function exportPdfDocument(
     console.error("Error exporting PDF:", error);
     toast.dismiss(loadingToast);
     toast.error("Failed to export PDF");
+
+    // Restore original state on error
+    restoreOriginalState(
+      setDocumentState,
+      setViewState,
+      setEditorState,
+      originalScale,
+      originalView,
+      originalSelectedField,
+      originalSelectedShape,
+      originalEditMode
+    );
+  }
+}
+
+/**
+ * Exports the document as PNG images using DOM-to-image
+ */
+export async function exportPngImages(
+  options: ImageExportOptions
+): Promise<void> {
+  const {
+    documentRef,
+    documentState,
+    pageState,
+    editorState,
+    viewState,
+    exportSettings,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  } = options;
+
+  if (!documentRef.current) {
+    toast.error("Document not loaded");
+    return;
+  }
+
+  // Save current state
+  const originalScale = documentState.scale;
+  const originalView = viewState.currentView;
+  const originalSelectedField = editorState.selectedFieldId;
+  const originalSelectedShape = editorState.selectedShapeId;
+  const originalEditMode = editorState.isEditMode;
+
+  const loadingToast = toast.loading("Generating PNG images...");
+
+  try {
+    // Set up for export - hide UI elements and set optimal scale
+    setEditorState((prev) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isTextSelectionMode: false,
+      isAddTextBoxMode: false,
+      isSelectionMode: false,
+    }));
+
+    // Set zoom to 300% for high quality
+    setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
+
+    // Wait for zoom to update
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Get pages to export based on settings
+    const pagesToExport = getPagesToExport(
+      documentState.numPages,
+      pageState.deletedPages,
+      exportSettings
+    );
+
+    if (pagesToExport.length === 0) {
+      toast.error("No pages available for export");
+      return;
+    }
+
+    // Capture and export each page
+    const exportedFiles = [];
+    for (const pageNumber of pagesToExport) {
+      const pageImages = await capturePageAsImages(
+        documentRef,
+        pageNumber,
+        exportSettings,
+        setViewState,
+        setDocumentState,
+        setEditorState,
+        editorState
+      );
+
+      exportedFiles.push(...pageImages);
+    }
+
+    // Download all images
+    await downloadImages(exportedFiles, "png");
+
+    // Restore original state
+    restoreOriginalState(
+      setDocumentState,
+      setViewState,
+      setEditorState,
+      originalScale,
+      originalView,
+      originalSelectedField,
+      originalSelectedShape,
+      originalEditMode
+    );
+
+    toast.dismiss(loadingToast);
+    toast.success(`${exportedFiles.length} PNG images exported successfully!`);
+  } catch (error) {
+    console.error("Error exporting PNG images:", error);
+    toast.dismiss(loadingToast);
+    toast.error("Failed to export PNG images");
+
+    // Restore original state on error
+    restoreOriginalState(
+      setDocumentState,
+      setViewState,
+      setEditorState,
+      originalScale,
+      originalView,
+      originalSelectedField,
+      originalSelectedShape,
+      originalEditMode
+    );
+  }
+}
+
+/**
+ * Exports the document as JPEG images using DOM-to-image
+ */
+export async function exportJpegImages(
+  options: ImageExportOptions
+): Promise<void> {
+  const {
+    documentRef,
+    documentState,
+    pageState,
+    editorState,
+    viewState,
+    exportSettings,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  } = options;
+
+  if (!documentRef.current) {
+    toast.error("Document not loaded");
+    return;
+  }
+
+  // Save current state
+  const originalScale = documentState.scale;
+  const originalView = viewState.currentView;
+  const originalSelectedField = editorState.selectedFieldId;
+  const originalSelectedShape = editorState.selectedShapeId;
+  const originalEditMode = editorState.isEditMode;
+
+  const loadingToast = toast.loading("Generating JPEG images...");
+
+  try {
+    // Set up for export - hide UI elements and set optimal scale
+    setEditorState((prev) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isTextSelectionMode: false,
+      isAddTextBoxMode: false,
+      isSelectionMode: false,
+    }));
+
+    // Set zoom to 300% for high quality
+    setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
+
+    // Wait for zoom to update
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Get pages to export based on settings
+    const pagesToExport = getPagesToExport(
+      documentState.numPages,
+      pageState.deletedPages,
+      exportSettings
+    );
+
+    if (pagesToExport.length === 0) {
+      toast.error("No pages available for export");
+      return;
+    }
+
+    // Capture and export each page
+    const exportedFiles = [];
+    for (const pageNumber of pagesToExport) {
+      const pageImages = await capturePageAsImages(
+        documentRef,
+        pageNumber,
+        exportSettings,
+        setViewState,
+        setDocumentState,
+        setEditorState,
+        editorState
+      );
+
+      exportedFiles.push(...pageImages);
+    }
+
+    // Download all images
+    await downloadImages(exportedFiles, "jpeg");
+
+    // Restore original state
+    restoreOriginalState(
+      setDocumentState,
+      setViewState,
+      setEditorState,
+      originalScale,
+      originalView,
+      originalSelectedField,
+      originalSelectedShape,
+      originalEditMode
+    );
+
+    toast.dismiss(loadingToast);
+    toast.success(`${exportedFiles.length} JPEG images exported successfully!`);
+  } catch (error) {
+    console.error("Error exporting JPEG images:", error);
+    toast.dismiss(loadingToast);
+    toast.error("Failed to export JPEG images");
 
     // Restore original state on error
     restoreOriginalState(
@@ -571,14 +835,14 @@ async function captureAllPagesWithDomToImage(
         width: documentContainer.offsetWidth,
         height: documentContainer.offsetHeight,
         style: {
-          transform: 'scale(1)',
-          transformOrigin: 'top left',
+          transform: "scale(1)",
+          transformOrigin: "top left",
         },
         filter: (node: Node): boolean => {
           // Filter out unwanted elements
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node as HTMLElement;
-            
+
             // Skip interactive UI elements
             if (
               element.classList.contains("drag-handle") ||
@@ -596,14 +860,14 @@ async function captureAllPagesWithDomToImage(
             }
           }
           return true;
-        }
+        },
       });
 
       // Convert data URL to canvas for consistency with the rest of the code
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
       const img = new Image();
-      
+
       return new Promise<HTMLCanvasElement>((resolve, reject) => {
         img.onload = () => {
           canvas.width = img.width;
@@ -611,25 +875,31 @@ async function captureAllPagesWithDomToImage(
           ctx?.drawImage(img, 0, 0);
           resolve(canvas);
         };
-        
+
         img.onerror = reject;
         img.src = dataUrl;
       });
-
     } catch (error) {
-      console.error(`Error capturing ${viewType} view for page ${pageNumber}:`, error);
+      console.error(
+        `Error capturing ${viewType} view for page ${pageNumber}:`,
+        error
+      );
       // Fallback: create an error canvas
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = 800;
       canvas.height = 600;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.fillStyle = '#f0f0f0';
+        ctx.fillStyle = "#f0f0f0";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#666';
-        ctx.font = '16px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('Error capturing page', canvas.width / 2, canvas.height / 2);
+        ctx.fillStyle = "#666";
+        ctx.font = "16px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          "Error capturing page",
+          canvas.width / 2,
+          canvas.height / 2
+        );
       }
       return canvas;
     } finally {
@@ -684,7 +954,10 @@ async function captureAllPagesWithDomToImage(
         });
       }
     } catch (error) {
-      console.error(`Error capturing pages ${page1}${hasPage2 ? ` and ${page2}` : ''}:`, error);
+      console.error(
+        `Error capturing pages ${page1}${hasPage2 ? ` and ${page2}` : ""}:`,
+        error
+      );
       // Continue with what we have
     }
 
@@ -886,4 +1159,763 @@ function restoreOriginalState(
     selectedShapeId: originalSelectedShape,
     isEditMode: originalEditMode,
   }));
+}
+
+// Helper functions for image export
+
+/**
+ * Gets the list of pages to export based on export settings
+ */
+function getPagesToExport(
+  totalPages: number,
+  deletedPages: Set<number>,
+  exportSettings: {
+    pageRange: "all" | "current" | "custom";
+    customRange: string;
+  }
+): number[] {
+  const pagesToExport: number[] = [];
+
+  if (exportSettings.pageRange === "all") {
+    // Export all non-deleted pages
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+      if (!deletedPages.has(pageNumber)) {
+        pagesToExport.push(pageNumber);
+      }
+    }
+  } else if (exportSettings.pageRange === "current") {
+    // Export current page only (assuming it's not deleted)
+    const currentPage = 1; // This should be passed from the component
+    if (!deletedPages.has(currentPage)) {
+      pagesToExport.push(currentPage);
+    }
+  } else if (exportSettings.pageRange === "custom") {
+    // Parse custom range (e.g., "1-3, 5, 7-9")
+    const customPages = parseCustomPageRange(exportSettings.customRange);
+    for (const pageNumber of customPages) {
+      if (
+        pageNumber >= 1 &&
+        pageNumber <= totalPages &&
+        !deletedPages.has(pageNumber)
+      ) {
+        pagesToExport.push(pageNumber);
+      }
+    }
+  }
+
+  return pagesToExport;
+}
+
+/**
+ * Parses custom page range string (e.g., "1-3, 5, 7-9")
+ */
+function parseCustomPageRange(rangeString: string): number[] {
+  const pages: number[] = [];
+  const parts = rangeString.split(",").map((part) => part.trim());
+
+  for (const part of parts) {
+    if (part.includes("-")) {
+      const [start, end] = part.split("-").map((num) => parseInt(num.trim()));
+      if (!isNaN(start) && !isNaN(end) && start <= end) {
+        for (let i = start; i <= end; i++) {
+          pages.push(i);
+        }
+      }
+    } else {
+      const pageNum = parseInt(part);
+      if (!isNaN(pageNum)) {
+        pages.push(pageNum);
+      }
+    }
+  }
+
+  return pages;
+}
+
+/**
+ * Captures a single page as images based on export settings
+ */
+async function capturePageAsImages(
+  documentRef: React.RefObject<HTMLDivElement | null>,
+  pageNumber: number,
+  exportSettings: {
+    includeOriginal: boolean;
+    includeTranslated: boolean;
+  },
+  setViewState: (updater: (prev: any) => any) => void,
+  setDocumentState: (updater: (prev: any) => any) => void,
+  setEditorState: (updater: (prev: any) => any) => void,
+  editorState: any
+): Promise<
+  Array<{ canvas: HTMLCanvasElement; filename: string; viewType: string }>
+> {
+  const images: Array<{
+    canvas: HTMLCanvasElement;
+    filename: string;
+    viewType: string;
+  }> = [];
+
+  // Function to capture view as image for a specific page using DOM-to-image
+  const captureViewAsImage = async (
+    viewType: "original" | "translated",
+    pageNumber: number
+  ): Promise<HTMLCanvasElement> => {
+    // Set view to the target type
+    setViewState((prev) => ({ ...prev, currentView: viewType }));
+
+    // Set page number
+    setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
+
+    // Temporarily disable text rendering for export
+    const originalAddTextBoxMode = editorState.isAddTextBoxMode;
+    setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
+
+    // Wait for view and page to update
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Use the entire document ref
+    const documentContainer = documentRef.current;
+
+    if (!documentContainer) {
+      throw new Error(
+        `Document container not found for ${viewType} view page ${pageNumber}`
+      );
+    }
+
+    try {
+      // Use DOM-to-image to capture the element
+      const dataUrl = await domtoimage.toPng(documentContainer, {
+        quality: 1.0,
+        bgcolor: "#ffffff",
+        width: documentContainer.offsetWidth,
+        height: documentContainer.offsetHeight,
+        style: {
+          transform: "scale(1)",
+          transformOrigin: "top left",
+        },
+        filter: (node: Node): boolean => {
+          // Filter out unwanted elements
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as HTMLElement;
+
+            // Skip interactive UI elements
+            if (
+              element.classList.contains("drag-handle") ||
+              element.tagName === "BUTTON" ||
+              element.classList.contains("settings-popup") ||
+              element.classList.contains("text-selection-popup") ||
+              element.classList.contains("shape-dropdown") ||
+              element.classList.contains("field-status-dropdown") ||
+              element.classList.contains("fixed") ||
+              element.closest(".fixed") !== null ||
+              element.classList.contains("react-resizable-handle") ||
+              element.classList.contains("resizable-handle")
+            ) {
+              return false;
+            }
+          }
+          return true;
+        },
+      });
+
+      // Convert data URL to canvas for consistency with the rest of the code
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const img = new Image();
+
+      return new Promise<HTMLCanvasElement>((resolve, reject) => {
+        img.onload = () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx?.drawImage(img, 0, 0);
+          resolve(canvas);
+        };
+
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+    } catch (error) {
+      console.error(
+        `Error capturing ${viewType} view for page ${pageNumber}:`,
+        error
+      );
+      // Fallback: create an error canvas
+      const canvas = document.createElement("canvas");
+      canvas.width = 800;
+      canvas.height = 600;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#f0f0f0";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#666";
+        ctx.font = "16px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          "Error capturing page",
+          canvas.width / 2,
+          canvas.height / 2
+        );
+      }
+      return canvas;
+    } finally {
+      // Restore original text rendering state
+      setEditorState((prev) => ({
+        ...prev,
+        isAddTextBoxMode: originalAddTextBoxMode,
+      }));
+    }
+  };
+
+  // Capture original view if requested
+  if (exportSettings.includeOriginal) {
+    try {
+      const canvas = await captureViewAsImage("original", pageNumber);
+      images.push({
+        canvas,
+        filename: `page-${pageNumber}-original`,
+        viewType: "original",
+      });
+    } catch (error) {
+      console.error(
+        `Error capturing original view for page ${pageNumber}:`,
+        error
+      );
+    }
+  }
+
+  // Capture translated view if requested
+  if (exportSettings.includeTranslated) {
+    try {
+      const canvas = await captureViewAsImage("translated", pageNumber);
+      images.push({
+        canvas,
+        filename: `page-${pageNumber}-translated`,
+        viewType: "translated",
+      });
+    } catch (error) {
+      console.error(
+        `Error capturing translated view for page ${pageNumber}:`,
+        error
+      );
+    }
+  }
+
+  return images;
+}
+
+/**
+ * Downloads multiple images as files
+ */
+async function downloadImages(
+  images: Array<{
+    canvas: HTMLCanvasElement;
+    filename: string;
+    viewType: string;
+  }>,
+  format: "png" | "jpeg"
+): Promise<void> {
+  const mimeType = format === "png" ? "image/png" : "image/jpeg";
+  const fileExtension = format === "png" ? "png" : "jpg";
+
+  for (const image of images) {
+    try {
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        image.canvas.toBlob(
+          (blob) => {
+            resolve(blob!);
+          },
+          mimeType,
+          0.9
+        ); // 0.9 quality for JPEG
+      });
+
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${image.filename}.${fileExtension}`;
+      link.click();
+
+      // Clean up
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(`Error downloading image ${image.filename}:`, error);
+    }
+  }
+}
+
+/**
+ * Downloads multiple images as a zip file
+ */
+export async function downloadImagesAsZip(
+  images: Array<{
+    canvas: HTMLCanvasElement;
+    filename: string;
+    viewType: string;
+  }>,
+  format: "png" | "jpeg",
+  zipFilename = "exported-images.zip"
+): Promise<void> {
+  const mimeType = format === "png" ? "image/png" : "image/jpeg";
+  const fileExtension = format === "png" ? "png" : "jpg";
+  const zip = new JSZip();
+
+  for (const image of images) {
+    try {
+      // Convert canvas to blob
+      const blob = await new Promise<Blob>((resolve) => {
+        image.canvas.toBlob(
+          (blob) => {
+            resolve(blob!);
+          },
+          mimeType,
+          0.9
+        );
+      });
+      zip.file(`${image.filename}.${fileExtension}`, blob);
+    } catch (error) {
+      console.error(`Error zipping image ${image.filename}:`, error);
+    }
+  }
+
+  // Generate the zip and trigger download
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(zipBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = zipFilename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// Service function for exporting to PDF
+export async function exportToPDFService({
+  documentRef,
+  documentState,
+  editorState,
+  viewState,
+  setDocumentState,
+  setViewState,
+  setEditorState,
+}: {
+  documentRef: React.RefObject<HTMLDivElement | null>;
+  documentState: any;
+  editorState: any;
+  viewState: any;
+  setDocumentState: (updater: (prev: any) => any) => void;
+  setViewState: (updater: (prev: any) => any) => void;
+  setEditorState: (updater: (prev: any) => any) => void;
+}) {
+  if (!documentRef.current) {
+    toast.error("Document not loaded");
+    return;
+  }
+  const originalScale = documentState.scale;
+  const originalView = viewState.currentView;
+  const originalSelectedField = editorState.selectedFieldId;
+  const originalSelectedShape = editorState.selectedShapeId;
+  const originalEditMode = editorState.isEditMode;
+  const loadingToast = toast.loading("Generating PDF...");
+  try {
+    setEditorState((prev: any) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isTextSelectionMode: false,
+      isAddTextBoxMode: false,
+      isSelectionMode: false,
+    }));
+    setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const pdfDoc = await PDFDocument.create();
+    const totalPages = documentState.numPages;
+    const deletedPages = documentState.deletedPages;
+    const nonDeletedPages = [];
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+      if (!deletedPages.has(pageNumber)) {
+        nonDeletedPages.push(pageNumber);
+      }
+    }
+    if (nonDeletedPages.length === 0) {
+      toast.error(
+        "No pages available for export. All pages have been deleted."
+      );
+      return;
+    }
+    setViewState((prev: any) => ({ ...prev, currentView: "original" }));
+    setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    for (const pageNumber of nonDeletedPages) {
+      setDocumentState((prev: any) => ({ ...prev, currentPage: pageNumber }));
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const documentContainer = documentRef.current;
+      if (!documentContainer) {
+        console.warn(`Document container not found for page ${pageNumber}`);
+        continue;
+      }
+      try {
+        const dataUrl = await domtoimage.toPng(documentContainer, {
+          quality: 1.0,
+          bgcolor: "#ffffff",
+          width: documentContainer.offsetWidth,
+          height: documentContainer.offsetHeight,
+          style: {
+            transform: "scale(1)",
+            transformOrigin: "top left",
+          },
+          filter: (node: Node): boolean => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as HTMLElement;
+              if (
+                element.classList.contains("drag-handle") ||
+                element.tagName === "BUTTON" ||
+                element.classList.contains("settings-popup") ||
+                element.classList.contains("text-selection-popup") ||
+                element.classList.contains("shape-dropdown") ||
+                element.classList.contains("field-status-dropdown") ||
+                element.classList.contains("fixed") ||
+                element.closest(".fixed") !== null ||
+                element.classList.contains("react-resizable-handle") ||
+                element.classList.contains("resizable-handle")
+              ) {
+                return false;
+              }
+            }
+            return true;
+          },
+        });
+        const imageBytes = await fetch(dataUrl).then((res) =>
+          res.arrayBuffer()
+        );
+        const embeddedImage = await pdfDoc.embedPng(imageBytes);
+        const page = pdfDoc.addPage([612, 792]);
+        const { width: pageWidth, height: pageHeight } = page.getSize();
+        const imageDims = embeddedImage.scale(1);
+        const scaleX = pageWidth / imageDims.width;
+        const scaleY = pageHeight / imageDims.height;
+        const imageScale = Math.min(scaleX, scaleY);
+        const scaledWidth = imageDims.width * imageScale;
+        const scaledHeight = imageDims.height * imageScale;
+        const x = (pageWidth - scaledWidth) / 2;
+        const y = (pageHeight - scaledHeight) / 2;
+        page.drawImage(embeddedImage, {
+          x: x,
+          y: y,
+          width: scaledWidth,
+          height: scaledHeight,
+        });
+      } catch (pageError) {
+        console.error(`Error capturing page ${pageNumber}:`, pageError);
+        continue;
+      }
+    }
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "exported-document.pdf";
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.dismiss(loadingToast);
+    toast.success("PDF exported successfully!");
+  } catch (error) {
+    console.error("Error exporting PDF:", error);
+    toast.dismiss(loadingToast);
+    toast.error("Failed to export PDF");
+  } finally {
+    setDocumentState((prev: any) => ({
+      ...prev,
+      scale: originalScale,
+      currentPage: documentState.currentPage,
+    }));
+    setViewState((prev: any) => ({ ...prev, currentView: originalView }));
+    setEditorState((prev: any) => ({
+      ...prev,
+      selectedFieldId: originalSelectedField,
+      selectedShapeId: originalSelectedShape,
+      isEditMode: originalEditMode,
+      isAddTextBoxMode: editorState.isAddTextBoxMode,
+    }));
+  }
+}
+
+// Service function for exporting to PNG
+export async function exportToPNGService({
+  documentRef,
+  documentState,
+  editorState,
+  viewState,
+  setDocumentState,
+  setViewState,
+  setEditorState,
+}: {
+  documentRef: React.RefObject<HTMLDivElement | null>;
+  documentState: any;
+  editorState: any;
+  viewState: any;
+  setDocumentState: (updater: (prev: any) => any) => void;
+  setViewState: (updater: (prev: any) => any) => void;
+  setEditorState: (updater: (prev: any) => any) => void;
+}) {
+  if (!documentRef.current) {
+    toast.error("Document not loaded");
+    return;
+  }
+  const originalScale = documentState.scale;
+  const originalView = viewState.currentView;
+  const originalSelectedField = editorState.selectedFieldId;
+  const originalSelectedShape = editorState.selectedShapeId;
+  const originalEditMode = editorState.isEditMode;
+  const loadingToast = toast.loading("Generating PNG images...");
+  try {
+    setEditorState((prev: any) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isTextSelectionMode: false,
+      isAddTextBoxMode: false,
+      isSelectionMode: false,
+    }));
+    setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const totalPages = documentState.numPages;
+    const deletedPages = documentState.deletedPages;
+    const nonDeletedPages = [];
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+      if (!deletedPages.has(pageNumber)) {
+        nonDeletedPages.push(pageNumber);
+      }
+    }
+    if (nonDeletedPages.length === 0) {
+      toast.error("No pages available for export");
+      return;
+    }
+    setViewState((prev: any) => ({ ...prev, currentView: "original" }));
+    setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const images = [];
+    for (const pageNumber of nonDeletedPages) {
+      setDocumentState((prev: any) => ({ ...prev, currentPage: pageNumber }));
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const documentContainer = documentRef.current;
+      if (!documentContainer) {
+        console.warn(`Document container not found for page ${pageNumber}`);
+        continue;
+      }
+      try {
+        const dataUrl = await domtoimage.toPng(documentContainer, {
+          quality: 1.0,
+          bgcolor: "#ffffff",
+          width: documentContainer.offsetWidth,
+          height: documentContainer.offsetHeight,
+          style: {
+            transform: "scale(1)",
+            transformOrigin: "top left",
+          },
+          filter: (node: Node): boolean => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as HTMLElement;
+              if (
+                element.classList.contains("drag-handle") ||
+                element.tagName === "BUTTON" ||
+                element.classList.contains("settings-popup") ||
+                element.classList.contains("text-selection-popup") ||
+                element.classList.contains("shape-dropdown") ||
+                element.classList.contains("field-status-dropdown") ||
+                element.classList.contains("fixed") ||
+                element.closest(".fixed") !== null ||
+                element.classList.contains("react-resizable-handle") ||
+                element.classList.contains("resizable-handle")
+              ) {
+                return false;
+              }
+            }
+            return true;
+          },
+        });
+        const img = new window.Image();
+        img.src = dataUrl;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0);
+        images.push({
+          canvas,
+          filename: `page-${pageNumber}`,
+          viewType: "original",
+        });
+      } catch (pageError) {
+        console.error(`Error capturing page ${pageNumber}:`, pageError);
+        continue;
+      }
+    }
+    await downloadImagesAsZip(images, "png", "exported-pages.zip");
+    toast.dismiss(loadingToast);
+    toast.success(`${images.length} PNG images exported as ZIP!`);
+  } catch (error) {
+    console.error("Error exporting PNG images:", error);
+    toast.dismiss(loadingToast);
+    toast.error("Failed to export PNG images");
+  } finally {
+    setDocumentState((prev: any) => ({
+      ...prev,
+      scale: originalScale,
+      currentPage: documentState.currentPage,
+    }));
+    setViewState((prev: any) => ({ ...prev, currentView: originalView }));
+    setEditorState((prev: any) => ({
+      ...prev,
+      selectedFieldId: originalSelectedField,
+      selectedShapeId: originalSelectedShape,
+      isEditMode: originalEditMode,
+      isAddTextBoxMode: editorState.isAddTextBoxMode,
+    }));
+  }
+}
+
+// Service function for exporting to JPEG
+export async function exportToJPEGService({
+  documentRef,
+  documentState,
+  editorState,
+  viewState,
+  setDocumentState,
+  setViewState,
+  setEditorState,
+}: {
+  documentRef: React.RefObject<HTMLDivElement | null>;
+  documentState: any;
+  editorState: any;
+  viewState: any;
+  setDocumentState: (updater: (prev: any) => any) => void;
+  setViewState: (updater: (prev: any) => any) => void;
+  setEditorState: (updater: (prev: any) => any) => void;
+}) {
+  if (!documentRef.current) {
+    toast.error("Document not loaded");
+    return;
+  }
+  const originalScale = documentState.scale;
+  const originalView = viewState.currentView;
+  const originalSelectedField = editorState.selectedFieldId;
+  const originalSelectedShape = editorState.selectedShapeId;
+  const originalEditMode = editorState.isEditMode;
+  const loadingToast = toast.loading("Generating JPEG images...");
+  try {
+    setEditorState((prev: any) => ({
+      ...prev,
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isTextSelectionMode: false,
+      isAddTextBoxMode: false,
+      isSelectionMode: false,
+    }));
+    setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const totalPages = documentState.numPages;
+    const deletedPages = documentState.deletedPages;
+    const nonDeletedPages = [];
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
+      if (!deletedPages.has(pageNumber)) {
+        nonDeletedPages.push(pageNumber);
+      }
+    }
+    if (nonDeletedPages.length === 0) {
+      toast.error("No pages available for export");
+      return;
+    }
+    setViewState((prev: any) => ({ ...prev, currentView: "original" }));
+    setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const images = [];
+    for (const pageNumber of nonDeletedPages) {
+      setDocumentState((prev: any) => ({ ...prev, currentPage: pageNumber }));
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const documentContainer = documentRef.current;
+      if (!documentContainer) {
+        console.warn(`Document container not found for page ${pageNumber}`);
+        continue;
+      }
+      try {
+        const dataUrl = await domtoimage.toJpeg(documentContainer, {
+          quality: 0.9,
+          bgcolor: "#ffffff",
+          width: documentContainer.offsetWidth,
+          height: documentContainer.offsetHeight,
+          style: {
+            transform: "scale(1)",
+            transformOrigin: "top left",
+          },
+          filter: (node: Node): boolean => {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as HTMLElement;
+              if (
+                element.classList.contains("drag-handle") ||
+                element.tagName === "BUTTON" ||
+                element.classList.contains("settings-popup") ||
+                element.classList.contains("text-selection-popup") ||
+                element.classList.contains("shape-dropdown") ||
+                element.classList.contains("field-status-dropdown") ||
+                element.classList.contains("fixed") ||
+                element.closest(".fixed") !== null ||
+                element.classList.contains("react-resizable-handle") ||
+                element.classList.contains("resizable-handle")
+              ) {
+                return false;
+              }
+            }
+            return true;
+          },
+        });
+        const img = new window.Image();
+        img.src = dataUrl;
+        await new Promise((resolve) => {
+          img.onload = resolve;
+        });
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(img, 0, 0);
+        images.push({
+          canvas,
+          filename: `page-${pageNumber}`,
+          viewType: "original",
+        });
+      } catch (pageError) {
+        console.error(`Error capturing page ${pageNumber}:`, pageError);
+        continue;
+      }
+    }
+    await downloadImagesAsZip(images, "jpeg", "exported-pages-jpeg.zip");
+    toast.dismiss(loadingToast);
+    toast.success(`${images.length} JPEG images exported as ZIP!`);
+  } catch (error) {
+    console.error("Error exporting JPEG images:", error);
+    toast.dismiss(loadingToast);
+    toast.error("Failed to export JPEG images");
+  } finally {
+    setDocumentState((prev: any) => ({
+      ...prev,
+      scale: originalScale,
+      currentPage: documentState.currentPage,
+    }));
+    setViewState((prev: any) => ({ ...prev, currentView: originalView }));
+    setEditorState((prev: any) => ({
+      ...prev,
+      selectedFieldId: originalSelectedField,
+      selectedShapeId: originalSelectedShape,
+      isEditMode: originalEditMode,
+      isAddTextBoxMode: editorState.isAddTextBoxMode,
+    }));
+  }
 }

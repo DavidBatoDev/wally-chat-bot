@@ -3,12 +3,15 @@ import { Rnd } from "react-rnd";
 import { Trash2, Move } from "lucide-react";
 import { Shape } from "../../types/pdf-editor.types";
 import { hexToRgba } from "../../utils/colors";
+import { MemoizedLine } from "./Line";
 
 interface ShapeProps {
   shape: Shape;
   isSelected: boolean;
   isEditMode: boolean;
   scale: number;
+  pageWidth: number;
+  pageHeight: number;
   onSelect: (id: string) => void;
   onUpdate: (
     id: string,
@@ -26,6 +29,8 @@ export const MemoizedShape = memo(
     isSelected,
     isEditMode,
     scale,
+    pageWidth,
+    pageHeight,
     onSelect,
     onUpdate,
     onDelete,
@@ -39,6 +44,24 @@ export const MemoizedShape = memo(
       },
       [shape.id, onSelect]
     );
+
+    // Render line shapes using the Line component
+    if (shape.type === "line") {
+      return (
+        <MemoizedLine
+          shape={shape}
+          isSelected={isSelected}
+          isEditMode={isEditMode}
+          scale={scale}
+          pageWidth={pageWidth}
+          pageHeight={pageHeight}
+          onSelect={onSelect}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          isInSelectionPreview={isInSelectionPreview}
+        />
+      );
+    }
 
     return (
       <Rnd

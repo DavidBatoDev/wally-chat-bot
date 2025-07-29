@@ -15,11 +15,14 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { performPageOcr, performBulkOcr } from "./services/ocrService";
 import {
   exportPdfDocument,
-  handleFileUpload as handleFileUploadService,
-  handleAppendDocument,
-  createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
-  appendImageAsNewPage as appendImageAsNewPageService,
-  appendPdfDocument as appendPdfDocumentService,
+  // handleFileUpload as handleFileUploadService,
+  // handleAppendDocument,
+  // createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
+  // appendImageAsNewPage as appendImageAsNewPageService,
+  // appendPdfDocument as appendPdfDocumentService,
+  exportToPDFService,
+  exportToPNGService,
+  exportToJPEGService,
 } from "./services/pdfExportService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
@@ -47,6 +50,7 @@ import { useTextSpanHandling } from "./hooks/states/useTextSpanHandling";
 import { useHistory } from "./hooks/states/useHistory";
 import {
   useHandleAddTextBoxWithUndo,
+  useHandleDuplicateTextBoxWithUndo,
   useHandleUpdateTextBoxWithUndo,
   useUpdateTextBoxWithUndo,
   useUpdateOriginalTextBoxWithUndo,
@@ -86,10 +90,18 @@ import { TemplateEditorPopup } from "./components/TemplateEditorPopup";
 import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
+import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
+import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
+import { LoadingModal } from "@/components/ui/loading-modal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
-import { useTranslationStore } from "@/lib/store/TranslationStore";
+import {
+  captureAllPageSnapshots,
+  createFinalLayoutPdf,
+  SnapshotData,
+} from "./services/snapshotService";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 // Import utilities
 import { isPdfFile, measureText } from "./utils/measurements";
@@ -104,6 +116,7 @@ import {
   createTextFieldFromSpan as createTextFieldFromSpanUtil,
   createDeletionRectangleForSpan,
 } from "./utils/textSpanUtils";
+import { calculateImageFitAndPosition } from "./utils/measurements";
 import {
   findElementsInSelection,
   calculateSelectionBounds,
@@ -116,8 +129,22 @@ import "./styles/pdf-editor.css";
 // Set up PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData }) => {
-  const { savePDFEditorState } = useTranslationStore();
+// Suppress specific PDF.js console warnings
+const originalConsoleWarn = console.warn;
+console.warn = (...args: any[]) => {
+  // Convert all arguments to strings to check for warning patterns
+  const message = args.join(" ");
+
+  // Suppress PDF.js "Invalid page request" warnings during final layout
+  if (message.includes("Invalid page request")) {
+    return;
+  }
+
+  // Call original console.warn for other warnings
+  originalConsoleWarn(...args);
+};
+
+export const PDFEditorContent: React.FC = () => {
   const {
     isDrawerOpen,
     setIsDrawerOpen,
@@ -135,7 +162,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   } = useTextFormat();
 
   // Use custom hooks
-  const { documentState, setDocumentState, handlers, actions } =
+  const { documentState, setDocumentState, handlers, actions, pageActions } =
     useDocumentState();
   const {
     elementCollections,
@@ -150,6 +177,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     getOriginalSortedElements,
     getTranslatedSortedElements,
     addTextBox,
+    duplicateTextBox,
     addShape,
     addImage,
     addDeletionRectangle,
@@ -201,54 +229,154 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     },
     isSelectionMode: false,
   });
+  // Template state
+  const [birthCertModalPage, setBirthCertModalPage] = useState<number>(1);
+
+  // Helper functions for birth certificate templates
+  const getPageBirthCertTemplate = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+      return page?.birthCertTemplate || null;
+    },
+    [documentState.pages]
+  );
+
+  const getPageBirthCertType = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+      return page?.birthCertType || null;
+    },
+    [documentState.pages]
+  );
+
+  // Helper function to get the translated document URL for a specific page
+  const getTranslatedDocumentUrl = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+      console.log(
+        "Getting translated document URL for page:",
+        pageNumber,
+        "page data:",
+        page
+      );
+      // If the page has a birth certificate template, use its URL for translated view
+      if (page?.translatedTemplateURL) {
+        console.log("Using template URL:", page.translatedTemplateURL);
+        return page.translatedTemplateURL;
+      }
+      // Otherwise, return empty string to show blank page
+      console.log("No template URL found, returning empty string");
+      return "";
+    },
+    [documentState.pages]
+  );
+
+  // Function to update template dimensions when template loads
+  const updateTemplateDimensions = useCallback(
+    (pageNumber: number, width: number, height: number) => {
+      setDocumentState((prev) => {
+        const updatedPages = [...prev.pages];
+        const pageIndex = pageNumber - 1;
+
+        if (pageIndex >= 0 && pageIndex < updatedPages.length) {
+          updatedPages[pageIndex] = {
+            ...updatedPages[pageIndex],
+            translatedTemplateWidth: width,
+            translatedTemplateHeight: height,
+          };
+        }
+
+        return {
+          ...prev,
+          pages: updatedPages,
+        };
+      });
+    },
+    []
+  );
+
+  // Helper function to get the translated template dimensions for a specific page
+  const getTranslatedTemplateDimensions = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+
+      // If the page has a template URL but no dimensions yet, return original dimensions
+      // The dimensions will be updated when the template actually loads
+      if (
+        page?.translatedTemplateURL &&
+        (!page?.translatedTemplateWidth || !page?.translatedTemplateHeight)
+      ) {
+        return {
+          width: documentState.pageWidth,
+          height: documentState.pageHeight,
+        };
+      }
+
+      // If the page has template dimensions, use them
+      if (page?.translatedTemplateWidth && page?.translatedTemplateHeight) {
+        return {
+          width: page.translatedTemplateWidth,
+          height: page.translatedTemplateHeight,
+        };
+      }
+
+      // If no template is applied, return original document dimensions
+      return {
+        width: documentState.pageWidth,
+        height: documentState.pageHeight,
+      };
+    },
+    [documentState.pages, documentState.pageWidth, documentState.pageHeight]
+  );
+
+  const setPageBirthCertTemplate = useCallback(
+    (pageNumber: number, template: any) => {
+      console.log(
+        "Setting birth certificate template for page:",
+        pageNumber,
+        "template:",
+        template
+      );
+
+      setDocumentState((prev) => {
+        console.log("Previous document state:", prev);
+        const updatedPages = [...prev.pages];
+        const pageIndex = pageNumber - 1;
+
+        if (pageIndex >= 0 && pageIndex < updatedPages.length) {
+          updatedPages[pageIndex] = {
+            ...updatedPages[pageIndex],
+            pageType: "birth_cert" as const,
+            birthCertTemplate: template,
+            birthCertType: template.variation,
+            translatedTemplateURL: template.file_url, // Store the template URL for translated view
+            // Template dimensions will be set when the template is actually loaded
+            translatedTemplateWidth: undefined, // Will be set when template loads
+            translatedTemplateHeight: undefined, // Will be set when template loads
+          };
+        }
+
+        const newState = {
+          ...prev,
+          pages: updatedPages,
+        };
+        console.log("New document state:", newState);
+        return newState;
+      });
+    },
+    []
+  );
+
   // View state
   const [viewState, setViewState] = useState<ViewState>({
-    currentView: "original",
+    currentView: "split",
     zoomMode: "page",
     containerWidth: 0,
     isCtrlPressed: false,
     transformOrigin: "center center",
-    isSidebarCollapsed: false,
+    isSidebarCollapsed: true, // Close sidebar initially
     activeSidebarTab: "pages",
     currentWorkflowStep: "translate",
-  });
-  // Tool state
-  const [toolState, setToolState] = useState<ToolState>({
-    shapeDrawingMode: null,
-    selectedShapeType: "rectangle",
-    isDrawingShape: false,
-    shapeDrawStart: null,
-    shapeDrawEnd: null,
-    isDrawingInProgress: false,
-    shapeDrawTargetView: null,
-  });
-  // Erasure state
-  const [erasureState, setErasureState] = useState<ErasureState>({
-    isErasureMode: false,
-    isDrawingErasure: false,
-    erasureDrawStart: null,
-    erasureDrawEnd: null,
-    erasureDrawTargetView: null,
-    erasureSettings: {
-      width: 20,
-      height: 20,
-      background: "#ffffff",
-      opacity: 1.0,
-    },
-  });
-  // Selection state
-  const [selectionState, setSelectionState] = useState<SelectionState>({
-    selectedTextBoxes: { textBoxIds: [] },
-    isDrawingSelection: false,
-    selectionStart: null,
-    selectionEnd: null,
-  });
-  // Page state
-  const [pageState, setPageState] = useState<PageState>({
-    deletedPages: new Set(),
-    isPageTranslated: new Map(),
-    isTransforming: false,
-    showTransformButton: true,
   });
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
@@ -258,48 +386,6 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       lastUpdate: number;
     };
   }>({});
-  
-  // Template editor state
-  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
-  // Load project data when provided
-  useEffect(() => {
-    if (projectData) {
-      // Set workflow step based on project status
-      if (projectData.status === 'in-progress') {
-        setViewState(prev => ({ ...prev, currentWorkflowStep: 'translate' }));
-      } else if (projectData.status === 'pm-review') {
-        setViewState(prev => ({ ...prev, currentWorkflowStep: 'final-layout' }));
-      }
-      
-      // Load project document if available
-      if (projectData.document && projectData.document.length > 0) {
-        // Create a mock PDF from project data
-        // This would need to be implemented based on your PDF generation logic
-        console.log('Loading project data:', projectData);
-      }
-    }
-  }, [projectData]);
-
-  // Save PDF editor state when project data changes - with debouncing to prevent infinite loops
-  useEffect(() => {
-    if (projectData?.id) {
-      const timeoutId = setTimeout(() => {
-        const pdfState = {
-          documentState,
-          elementCollections,
-          viewState,
-          editorState,
-          toolState,
-          erasureState,
-          pageState,
-        };
-        savePDFEditorState(projectData.id, pdfState);
-      }, 100); // Debounce for 100ms
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [projectData?.id, documentState, elementCollections, viewState, editorState, toolState, erasureState, pageState]);
-
   // Helper to get current text box state
   const getCurrentTextBoxState = useCallback(
     (id: string): Partial<TextField> | null => {
@@ -351,6 +437,37 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     setCurrentFormat,
     setIsDrawerOpen,
   ]);
+  // Tool state
+  const [toolState, setToolState] = useState<ToolState>({
+    shapeDrawingMode: null,
+    selectedShapeType: "rectangle",
+    isDrawingShape: false,
+    shapeDrawStart: null,
+    shapeDrawEnd: null,
+    isDrawingInProgress: false,
+    shapeDrawTargetView: null,
+  });
+  // Erasure state
+  const [erasureState, setErasureState] = useState<ErasureState>({
+    isErasureMode: false,
+    isDrawingErasure: false,
+    erasureDrawStart: null,
+    erasureDrawEnd: null,
+    erasureDrawTargetView: null,
+    erasureSettings: {
+      width: 20,
+      height: 20,
+      background: "#ffffff",
+      opacity: 1.0,
+    },
+  });
+  // Selection state
+  const [selectionState, setSelectionState] = useState<SelectionState>({
+    selectedTextBoxes: { textBoxIds: [] },
+    isDrawingSelection: false,
+    selectionStart: null,
+    selectionEnd: null,
+  });
   // Language state
   const [sourceLanguage, setSourceLanguage] = useState<string>("");
   const [desiredLanguage, setDesiredLanguage] = useState<string>("");
@@ -362,6 +479,38 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   const [highlightedUntranslatedTextId, setHighlightedUntranslatedTextId] =
     useState<string | null>(null);
 
+  // Backup state for final-layout workflow step
+  const [preLayoutBackup, setPreLayoutBackup] = useState<{
+    documentState: any;
+    elementCollections: any;
+    layerState: any;
+    editorState: any;
+    toolState: any;
+    erasureState: any;
+  } | null>(null);
+
+  // Snapshot capturing state for final layout
+  const [isCapturingSnapshots, setIsCapturingSnapshots] = useState(false);
+  const [isCancellingSnapshots, setIsCancellingSnapshots] = useState(false);
+  const [snapshotProgress, setSnapshotProgress] = useState({
+    current: 0,
+    total: 0,
+  });
+
+  const [capturedSnapshots, setCapturedSnapshots] = useState<SnapshotData[]>(
+    []
+  );
+  const snapshotCancelRef = useRef<{ cancelled: boolean }>({
+    cancelled: false,
+  });
+
+  const isCapturingSnapshotsRef = useRef(false);
+
+  // Update the ref whenever the state changes
+  useEffect(() => {
+    isCapturingSnapshotsRef.current = isCapturingSnapshots;
+  }, [isCapturingSnapshots]);
+
   ///////////////////////// HOOKS /////////////////////////
   // Debounce timer for batched updates
   const debounceTimersRef = useRef<{ [elementId: string]: NodeJS.Timeout }>({});
@@ -371,6 +520,11 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   ///////////////////////// UNDO/REDO HANDLERS /////////////////////////
   const handleAddTextBoxWithUndo = useHandleAddTextBoxWithUndo(
     addTextBox,
+    deleteTextBox,
+    history
+  );
+  const handleDuplicateTextBoxWithUndo = useHandleDuplicateTextBoxWithUndo(
+    duplicateTextBox,
     deleteTextBox,
     history
   );
@@ -559,13 +713,145 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     setAutoFocusTextBoxId(null);
   }, []);
 
-  // Workflow step change handler
-  const handleWorkflowStepChange = useCallback((step: WorkflowStep) => {
-    setViewState((prev) => ({
-      ...prev,
-      currentWorkflowStep: step,
-    }));
-  }, []);
+  // Handler for duplicating a textbox
+  const handleDuplicateTextBox = useCallback(
+    (textboxId: string) => {
+      const duplicatedId = handleDuplicateTextBoxWithUndo(
+        textboxId,
+        viewState.currentView,
+        documentState.currentPage
+      );
+
+      if (duplicatedId) {
+        // Select the newly duplicated textbox
+        setSelectedElementId(duplicatedId);
+        setSelectedElementType("textbox");
+        setIsDrawerOpen(true);
+        setAutoFocusTextBoxId(duplicatedId);
+
+        // Update editor state to select the duplicated textbox
+        setEditorState((prev) => ({
+          ...prev,
+          selectedFieldId: duplicatedId,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: [],
+            selectionBounds: null,
+          },
+        }));
+      }
+    },
+    [
+      handleDuplicateTextBoxWithUndo,
+      viewState.currentView,
+      documentState.currentPage,
+      setSelectedElementId,
+      setSelectedElementType,
+      setIsDrawerOpen,
+      setAutoFocusTextBoxId,
+      setEditorState,
+    ]
+  );
+
+  // Function to create a backup of current state before final layout
+  const createPreLayoutBackup = useCallback(() => {
+    console.log("Creating pre-layout backup...");
+    console.log("Current document state:", documentState);
+    console.log("Current element collections:", elementCollections);
+
+    const backup = {
+      documentState: { ...documentState },
+      elementCollections: {
+        originalTextBoxes: [...elementCollections.originalTextBoxes],
+        originalShapes: [...elementCollections.originalShapes],
+        originalDeletionRectangles: [
+          ...elementCollections.originalDeletionRectangles,
+        ],
+        originalImages: [...elementCollections.originalImages],
+        translatedTextBoxes: [...elementCollections.translatedTextBoxes],
+        translatedShapes: [...elementCollections.translatedShapes],
+        translatedDeletionRectangles: [
+          ...elementCollections.translatedDeletionRectangles,
+        ],
+        translatedImages: [...elementCollections.translatedImages],
+        untranslatedTexts: [...elementCollections.untranslatedTexts],
+      },
+      layerState: {
+        originalLayerOrder: [...layerState.originalLayerOrder],
+        translatedLayerOrder: [...layerState.translatedLayerOrder],
+      },
+      editorState: { ...editorState },
+      toolState: { ...toolState },
+      erasureState: { ...erasureState },
+    };
+    setPreLayoutBackup(backup);
+    console.log("Pre-layout backup created successfully");
+  }, [
+    documentState,
+    elementCollections,
+    layerState,
+    editorState,
+    toolState,
+    erasureState,
+  ]);
+
+  // Function to restore state from backup
+  const restoreFromPreLayoutBackup = useCallback(
+    (clearBackup = false) => {
+      if (!preLayoutBackup) {
+        console.log("No pre-layout backup available to restore");
+        return;
+      }
+
+      console.log("Restoring from pre-layout backup...");
+      console.log("Backup content:", preLayoutBackup);
+
+      try {
+        // Restore document state
+        console.log("Restoring document state from backup");
+        console.log("Current document state before restore:", documentState);
+        console.log("Backup document state:", preLayoutBackup.documentState);
+        setDocumentState(preLayoutBackup.documentState);
+
+        // Restore element collections
+        setElementCollections(preLayoutBackup.elementCollections);
+
+        // Restore layer state
+        setLayerState(preLayoutBackup.layerState);
+
+        // Restore editor state
+        setEditorState(preLayoutBackup.editorState);
+
+        // Restore tool state
+        setToolState(preLayoutBackup.toolState);
+
+        // Restore erasure state
+        setErasureState(preLayoutBackup.erasureState);
+
+        // Only clear the backup if explicitly requested (e.g., when completely exiting final layout workflow)
+        if (clearBackup) {
+          console.log("Clearing backup and snapshots");
+          setPreLayoutBackup(null);
+          setCapturedSnapshots([]); // Also clear captured snapshots
+        }
+
+        console.log("Pre-layout backup restored successfully");
+        toast.success("Restored previous document state");
+      } catch (error) {
+        console.error("Error restoring backup:", error);
+        toast.error("Failed to restore previous state");
+      }
+    },
+    [
+      preLayoutBackup,
+      setDocumentState,
+      setElementCollections,
+      setLayerState,
+      setEditorState,
+      setToolState,
+      setErasureState,
+    ]
+  );
 
   // Helper function to get element by ID and type
   const getElementById = useCallback(
@@ -777,6 +1063,597 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const appendFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Function to capture snapshots and create final layout pages with interactive elements
+  const createFinalLayoutWithSnapshots = useCallback(async () => {
+    // Prevent multiple simultaneous operations
+    if (isCapturingSnapshots) {
+      console.warn("Snapshot capture already in progress, skipping...");
+      return;
+    }
+
+    console.log("Starting createFinalLayoutWithSnapshots");
+    console.log(
+      "Initial cancellation status:",
+      snapshotCancelRef.current.cancelled
+    );
+    console.log("Document state:", documentState);
+    console.log("Element collections:", elementCollections);
+
+    // Safety check: ensure we have a valid document
+    if (documentState.numPages === 0) {
+      console.error("No valid document loaded, cannot capture snapshots");
+      toast.error("No document loaded. Please load a document first.");
+      return;
+    }
+
+    try {
+      // Reset cancellation flag at the very beginning
+      snapshotCancelRef.current.cancelled = false;
+      setIsCapturingSnapshots(true);
+      setIsCancellingSnapshots(false);
+      setSnapshotProgress({ current: 0, total: 0 });
+
+      console.log(
+        "Reset cancellation flag to:",
+        snapshotCancelRef.current.cancelled
+      );
+
+      // Capture all page snapshots with cancellation support
+      console.log("Starting snapshot capture...");
+      const snapshots = await captureAllPageSnapshots({
+        documentRef,
+        documentState,
+        pageState: {
+          deletedPages: documentState.deletedPages,
+        },
+        setViewState,
+        setDocumentState,
+        setEditorState,
+        editorState,
+        progressCallback: (current, total) => {
+          if (snapshotCancelRef.current.cancelled) {
+            console.log("Progress callback detected cancellation");
+            throw new Error("Snapshot capture cancelled");
+          }
+          setSnapshotProgress({ current, total });
+        },
+      });
+
+      // Check if cancelled during capture
+      if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        console.log("Snapshot capture was cancelled during capture phase");
+        console.log("Cancelled flag:", snapshotCancelRef.current.cancelled);
+        console.log("Is cancelling:", isCancellingSnapshots);
+        return;
+      }
+
+      console.log("Captured snapshots:", snapshots.length, "snapshots");
+      setCapturedSnapshots(snapshots);
+
+      // Create final layout PDF with template page and snapshots
+      console.log("Creating final layout PDF with template page...");
+      const finalLayoutFile = await createFinalLayoutPdf(snapshots);
+
+      // Check if cancelled after PDF creation
+      if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        console.log("Operation cancelled after PDF creation");
+        return;
+      }
+
+      console.log("Clearing existing elements and state...");
+      // Clear all existing elements and state first
+      setElementCollections({
+        originalTextBoxes: [],
+        originalShapes: [],
+        originalDeletionRectangles: [],
+        originalImages: [],
+        translatedTextBoxes: [],
+        translatedShapes: [],
+        translatedDeletionRectangles: [],
+        translatedImages: [],
+        untranslatedTexts: [],
+      });
+
+      // Clear layer order
+      setLayerState({
+        originalLayerOrder: [],
+        translatedLayerOrder: [],
+      });
+
+      // Clear editor state
+      setEditorState((prev) => ({
+        ...prev,
+        selectedFieldId: null,
+        selectedShapeId: null,
+        isEditMode: false,
+        isAddTextBoxMode: false,
+        isTextSelectionMode: false,
+        showDeletionRectangles: false,
+        isImageUploadMode: false,
+        selectedTextBoxes: { textBoxIds: [] },
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        selectionRect: null,
+        multiSelection: {
+          selectedElements: [],
+          selectionBounds: null,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+          isMovingSelection: false,
+          moveStart: null,
+          targetView: null,
+        },
+        isSelectionMode: false,
+      }));
+
+      // Clear tool state
+      setToolState((prev) => ({
+        ...prev,
+        shapeDrawingMode: null,
+        selectedShapeType: "rectangle",
+        isDrawingShape: false,
+        shapeDrawStart: null,
+        shapeDrawEnd: null,
+        isDrawingInProgress: false,
+        shapeDrawTargetView: null,
+      }));
+
+      // Clear erasure state
+      setErasureState((prev) => ({
+        ...prev,
+        isErasureMode: false,
+        isDrawingErasure: false,
+        erasureDrawStart: null,
+        erasureDrawEnd: null,
+        erasureDrawTargetView: null,
+      }));
+
+      // Load the final layout PDF as the document with error handling
+      try {
+        // Add a small delay to ensure previous operations are complete
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Check for cancellation before loading
+        if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+          console.log("Operation cancelled before loading document");
+          return;
+        }
+
+        console.log("Loading final layout document...");
+        await actions.loadDocument(finalLayoutFile);
+        console.log("Document loaded successfully");
+        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+
+        // Add another small delay before adding interactive elements
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        // Check for cancellation again
+        if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+          console.log("Operation cancelled before adding interactive elements");
+          return;
+        }
+
+        // Add interactive elements to the layout pages
+        console.log("Adding interactive elements to layout...");
+        await addInteractiveElementsToLayout(snapshots);
+        console.log("Interactive elements added successfully");
+
+        toast.success(
+          "Created final layout with template page and interactive snapshots"
+        );
+        // Set view to split and zoom to 100% after final layout creation
+        setViewState((prev) => ({ ...prev, currentView: "split" }));
+        actions.updateScale(1.0);
+      } catch (loadError) {
+        console.error("Error loading final layout document:", loadError);
+
+        // Handle specific PDF.js worker errors
+        if (loadError instanceof Error) {
+          if (
+            loadError.message.includes("sendWithPromise") ||
+            loadError.message.includes("worker")
+          ) {
+            toast.error(
+              "PDF worker error occurred. Please refresh the page and try again."
+            );
+          } else {
+            toast.error(
+              `Created layout but failed to load document: ${loadError.message}`
+            );
+          }
+        } else {
+          toast.error(
+            "Created layout but failed to load document. Please try refreshing."
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error creating final layout:", error);
+
+      // Handle different types of errors
+      if (!snapshotCancelRef.current.cancelled && !isCancellingSnapshots) {
+        if (error instanceof Error) {
+          if (error.message.includes("cancelled")) {
+            toast.info("Snapshot capture cancelled");
+          } else if (
+            error.message.includes("sendWithPromise") ||
+            error.message.includes("worker")
+          ) {
+            toast.error(
+              "PDF worker error occurred. Please refresh the page and try again."
+            );
+          } else {
+            toast.error(`Failed to create final layout: ${error.message}`);
+          }
+        } else {
+          toast.error("Failed to create final layout due to an unknown error");
+        }
+      } else {
+        toast.info("Snapshot capture cancelled");
+      }
+    } finally {
+      setIsCapturingSnapshots(false);
+      setIsCancellingSnapshots(false);
+      setSnapshotProgress({ current: 0, total: 0 });
+      snapshotCancelRef.current.cancelled = false;
+    }
+  }, [
+    isCapturingSnapshots,
+    isCancellingSnapshots,
+    documentState,
+    editorState,
+    actions,
+    setElementCollections,
+    setLayerState,
+    setEditorState,
+    setToolState,
+    setErasureState,
+    setViewState,
+  ]);
+
+  // Helper function to calculate image dimensions that fit within quadrant while maintaining aspect ratio
+  const calculateFittedImageDimensions = useCallback(
+    (
+      originalWidth: number,
+      originalHeight: number,
+      maxWidth: number,
+      maxHeight: number
+    ) => {
+      // Calculate aspect ratios
+      const imageAspectRatio = originalWidth / originalHeight;
+      const quadrantAspectRatio = maxWidth / maxHeight;
+
+      let fitWidth: number;
+      let fitHeight: number;
+
+      if (imageAspectRatio > quadrantAspectRatio) {
+        // Image is wider relative to quadrant - fit by width
+        fitWidth = maxWidth;
+        fitHeight = maxWidth / imageAspectRatio;
+      } else {
+        // Image is taller relative to quadrant - fit by height
+        fitHeight = maxHeight;
+        fitWidth = maxHeight * imageAspectRatio;
+      }
+
+      return { width: fitWidth, height: fitHeight };
+    },
+    []
+  );
+
+  // Function to add interactive elements (images and lines) to the final layout
+  const addInteractiveElementsToLayout = useCallback(
+    async (snapshots: SnapshotData[]) => {
+      const pagesNeeded = Math.ceil(snapshots.length / 2);
+
+      for (let pdfPageIndex = 0; pdfPageIndex < pagesNeeded; pdfPageIndex++) {
+        // Start from page 2 since page 1 is the template page (export_first_page.pdf)
+        const pageNumber = pdfPageIndex + 2;
+        const snapshot1 = snapshots[pdfPageIndex * 2];
+        const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
+
+        // Calculate layout dimensions (matching the PDF creation logic)
+        const pageWidth = 612; // Letter size in points
+        const pageHeight = 792;
+        const gridMargin = 10;
+        const gridSpacing = 8;
+        const labelSpace = 15;
+        const availableWidth = pageWidth - gridMargin * 2;
+        const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
+        const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
+        const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
+
+        // Add first snapshot's images (bottom row) - corrected positioning
+        if (snapshot1) {
+          // Calculate fitted dimensions for original image
+          const originalDimensions = calculateFittedImageDimensions(
+            snapshot1.originalWidth,
+            snapshot1.originalHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate fitted dimensions for translated image
+          const translatedDimensions = calculateFittedImageDimensions(
+            snapshot1.translatedWidth,
+            snapshot1.translatedHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate centering offsets for original image
+          const originalOffsetX =
+            (quadrantWidth - originalDimensions.width) / 2;
+          const originalOffsetY =
+            (quadrantHeight - originalDimensions.height) / 2;
+
+          // Calculate centering offsets for translated image
+          const translatedOffsetX =
+            (quadrantWidth - translatedDimensions.width) / 2;
+          const translatedOffsetY =
+            (quadrantHeight - translatedDimensions.height) / 2;
+
+          // Original image (bottom-left, centered in quadrant) - swapped position
+          const originalImageId = handleAddImageWithUndo(
+            snapshot1.originalImage,
+            gridMargin + originalOffsetX,
+            pageHeight -
+              labelSpace -
+              quadrantHeight * 2 -
+              gridSpacing +
+              originalOffsetY,
+            originalDimensions.width,
+            originalDimensions.height,
+            pageNumber,
+            "original"
+          );
+
+          // Translated image (bottom-right, centered in quadrant) - swapped position
+          const translatedImageId = handleAddImageWithUndo(
+            snapshot1.translatedImage,
+            gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
+            pageHeight -
+              labelSpace -
+              quadrantHeight * 2 -
+              gridSpacing +
+              translatedOffsetY,
+            translatedDimensions.width,
+            translatedDimensions.height,
+            pageNumber,
+            "original"
+          );
+
+          // Add dividing line between original and translated (vertical)
+          const verticalLineId = handleAddShapeWithUndo(
+            "line",
+            gridMargin + quadrantWidth + gridSpacing / 2,
+            gridMargin,
+            2, // width
+            pageHeight - labelSpace, // height
+            pageNumber,
+            "original",
+            "original",
+            gridMargin + quadrantWidth + gridSpacing / 2, // x1
+            gridMargin, // y1
+            gridMargin + quadrantWidth + gridSpacing / 2, // x2
+            pageHeight - labelSpace // y2
+          );
+        }
+
+        // Add second snapshot's images (top row) - corrected positioning
+        if (snapshot2) {
+          // Calculate fitted dimensions for original image
+          const originalDimensions2 = calculateFittedImageDimensions(
+            snapshot2.originalWidth,
+            snapshot2.originalHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate fitted dimensions for translated image
+          const translatedDimensions2 = calculateFittedImageDimensions(
+            snapshot2.translatedWidth,
+            snapshot2.translatedHeight,
+            quadrantWidth,
+            quadrantHeight
+          );
+
+          // Calculate centering offsets for original image
+          const originalOffsetX2 =
+            (quadrantWidth - originalDimensions2.width) / 2;
+          const originalOffsetY2 =
+            (quadrantHeight - originalDimensions2.height) / 2;
+
+          // Calculate centering offsets for translated image
+          const translatedOffsetX2 =
+            (quadrantWidth - translatedDimensions2.width) / 2;
+          const translatedOffsetY2 =
+            (quadrantHeight - translatedDimensions2.height) / 2;
+
+          // Original image (top-left, centered in quadrant) - swapped position
+          const originalImageId2 = handleAddImageWithUndo(
+            snapshot2.originalImage,
+            gridMargin + originalOffsetX2,
+            pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
+            originalDimensions2.width,
+            originalDimensions2.height,
+            pageNumber,
+            "original"
+          );
+
+          // Translated image (top-right, centered in quadrant) - swapped position
+          const translatedImageId2 = handleAddImageWithUndo(
+            snapshot2.translatedImage,
+            gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
+            pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
+            translatedDimensions2.width,
+            translatedDimensions2.height,
+            pageNumber,
+            "original"
+          );
+
+          // Add dividing line between original and translated (vertical, top row)
+          const verticalLineId2 = handleAddShapeWithUndo(
+            "line",
+            gridMargin + quadrantWidth + gridSpacing / 2,
+            pageHeight - labelSpace - quadrantHeight,
+            2, // width
+            quadrantHeight, // height
+            pageNumber,
+            "original",
+            "original",
+            gridMargin + quadrantWidth + gridSpacing / 2, // x1
+            pageHeight - labelSpace - quadrantHeight, // y1
+            gridMargin + quadrantWidth + gridSpacing / 2, // x2
+            pageHeight - labelSpace // y2 - corrected to go to top
+          );
+        }
+
+        // Add horizontal dividing line between top and bottom rows (if there's a second snapshot)
+        if (snapshot2) {
+          const horizontalLineId = handleAddShapeWithUndo(
+            "line",
+            gridMargin,
+            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2,
+            availableWidth, // width
+            2, // height
+            pageNumber,
+            "original",
+            "original",
+            gridMargin, // x1
+            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2, // y1
+            gridMargin + availableWidth, // x2
+            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2 // y2
+          );
+        }
+      }
+    },
+    [
+      handleAddImageWithUndo,
+      handleAddShapeWithUndo,
+      calculateFittedImageDimensions,
+    ]
+  );
+
+  // Workflow step change handler
+  const handleWorkflowStepChange = useCallback(
+    (step: WorkflowStep, previousStep?: WorkflowStep) => {
+      // Only intercept when switching to 'layout' from a different step
+      const prevStep = previousStep || viewState.currentWorkflowStep;
+      if (step === "layout" && prevStep !== "layout") {
+        // Check untranslated texts
+        const untranslated = elementCollections.untranslatedTexts || [];
+        const needsCheck = untranslated.filter(
+          (t) =>
+            (t.status === "isEmpty" || t.status === "needsChecking") &&
+            !t.isCustomTextbox
+        );
+        if (needsCheck.length > 0) {
+          // Prepare list for modal
+          setUntranslatedCheckList(
+            needsCheck.map((t) => ({
+              id: t.id,
+              page: t.page,
+              status: t.status,
+              originalText: t.originalText,
+            }))
+          );
+          setShowUntranslatedCheckModal(true);
+          setPendingWorkflowStep(step);
+          return; // Block workflow change for now
+        }
+      }
+      // Get the previous step from current state if not provided
+      const prev = previousStep || viewState.currentWorkflowStep;
+
+      // Handle leaving final-layout step - restore backup if available
+      if (
+        prev === "final-layout" &&
+        step !== "final-layout" &&
+        preLayoutBackup
+      ) {
+        // Don't clear backup yet - keep it for potential return to final layout
+        console.log("Leaving final-layout, restoring backup");
+        console.log(
+          "Cancellation state before restore:",
+          snapshotCancelRef.current.cancelled
+        );
+        restoreFromPreLayoutBackup(false);
+      }
+
+      // Handle entering final-layout step
+      if (step === "final-layout" && prev !== "final-layout") {
+        // Set view to split and zoom to 100%
+        setViewState((prev) => ({
+          ...prev,
+          currentView: "split",
+        }));
+        actions.updateScale(1.0);
+        // Reset cancellation state to ensure clean entry
+        console.log("Entering final-layout, resetting cancellation state");
+        snapshotCancelRef.current.cancelled = false;
+        setIsCancellingSnapshots(false);
+
+        // Always create a new backup from the current state before capturing snapshots
+        // Add a small delay to ensure any previous restoration is complete
+        setTimeout(() => {
+          createPreLayoutBackup();
+
+          // Always capture fresh snapshots when entering final layout
+          // Only start snapshot capture if not already in progress
+          if (!isCapturingSnapshots) {
+            console.log("Capturing fresh snapshots for final layout");
+            // Add another small delay to ensure backup is complete
+            setTimeout(() => {
+              // Double-check cancellation state before starting
+              console.log(
+                "About to start snapshot capture, cancellation state:",
+                snapshotCancelRef.current.cancelled
+              );
+              createFinalLayoutWithSnapshots();
+            }, 100);
+          } else {
+            console.warn(
+              "Snapshot capture already in progress, not starting new capture"
+            );
+          }
+        }, 200);
+      }
+
+      // Handle completely exiting final layout workflow (e.g., going to a different major step)
+      // This clears the backup to free memory when we're definitely done with final layout
+      if (
+        prev === "final-layout" &&
+        step !== "final-layout" &&
+        !["edit-translate", "review", "final-layout"].includes(step) &&
+        preLayoutBackup
+      ) {
+        // Clear backup when moving to completely different workflow areas
+        setTimeout(() => {
+          setPreLayoutBackup(null);
+          setCapturedSnapshots([]);
+        }, 1000); // Small delay to ensure restore is complete
+      }
+
+      setViewState((prev) => ({
+        ...prev,
+        currentWorkflowStep: step,
+      }));
+    },
+    [
+      viewState.currentWorkflowStep,
+      isCapturingSnapshots,
+      preLayoutBackup,
+      capturedSnapshots,
+      restoreFromPreLayoutBackup,
+      createPreLayoutBackup,
+      createFinalLayoutWithSnapshots,
+      elementCollections.untranslatedTexts,
+    ]
+  );
+
   // Text span handling hook
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
     isAddTextBoxMode: editorState.isAddTextBoxMode,
@@ -785,8 +1662,6 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     pdfBackgroundColor: documentState.pdfBackgroundColor,
     erasureSettings: erasureState.erasureSettings,
     createDeletionRectangleForSpan: (span: HTMLElement) => {
-      const targetView =
-        viewState.currentView === "split" ? "original" : viewState.currentView;
       const pdfPageEl = documentRef.current?.querySelector(
         ".react-pdf__Page"
       ) as HTMLElement;
@@ -794,8 +1669,9 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         span,
         pdfPageEl,
         documentState.currentPage,
-        targetView,
+        viewState.currentView,
         documentState.scale,
+        documentState.pageWidth,
         (x, y, width, height, page, view, background, opacity) => {
           const result = handleAddDeletionRectangleWithUndo(
             x,
@@ -814,8 +1690,6 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       );
     },
     createTextFieldFromSpan: (span: HTMLElement) => {
-      const targetView =
-        viewState.currentView === "split" ? "original" : viewState.currentView;
       const pdfPageEl = documentRef.current?.querySelector(
         ".react-pdf__Page"
       ) as HTMLElement;
@@ -823,8 +1697,9 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         span,
         pdfPageEl,
         documentState.currentPage,
-        targetView,
+        viewState.currentView,
         documentState.scale,
+        documentState.pageWidth,
         (x, y, page, view, targetView, initialProperties) => {
           const result = handleAddTextBoxWithUndo(
             x,
@@ -854,15 +1729,13 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       );
     },
     addDeletionRectangle: (x, y, width, height, page, background, opacity) => {
-      const targetView =
-        viewState.currentView === "split" ? "original" : viewState.currentView;
       const result = handleAddDeletionRectangleWithUndo(
         x,
         y,
         width,
         height,
         page,
-        targetView,
+        viewState.currentView,
         background || "",
         opacity || 1.0
       );
@@ -903,6 +1776,14 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
     const timeoutId = setTimeout(() => {
+      // Close drawer if not in edit mode
+      if (!editorState.isEditMode) {
+        setIsDrawerOpen(false);
+        setSelectedElementId(null);
+        setCurrentFormat(null);
+        return;
+      }
+
       const { selectedElements } = editorState.multiSelection;
 
       // Handle multi-selection format drawer
@@ -1267,6 +2148,8 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     selectedElementId,
     selectedElementType,
     editorState.multiSelection.selectedElements,
+    editorState.isEditMode,
+    viewState.currentView,
     elementCollections,
     setIsDrawerOpen,
     setSelectedElementId,
@@ -1289,6 +2172,26 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   useEffect(() => {
     preloadHtml2Canvas();
   }, []);
+
+  // Cleanup backup on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      setPreLayoutBackup(null);
+    };
+  }, []);
+
+  // Cleanup snapshot capture on unmount to prevent worker issues
+  useEffect(() => {
+    return () => {
+      // Only cancel if we're actually capturing when component unmounts
+      if (isCapturingSnapshotsRef.current) {
+        console.log(
+          "Component unmounting during snapshot capture, cancelling..."
+        );
+        snapshotCancelRef.current.cancelled = true;
+      }
+    };
+  }, []); // Empty dependency array to only run on actual mount/unmount
 
   // Memoized values
   const currentPageTextBoxes = useMemo(
@@ -2292,16 +3195,23 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         actions.loadDocument(pdfFile);
         setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
 
+        // Calculate proper image dimensions and position
+        const { x, y, width, height } = await calculateImageFitAndPosition(
+          imageFile,
+          documentState.pageWidth,
+          documentState.pageHeight
+        );
+
         // Create image URL and add as interactive element
         const imageUrl = URL.createObjectURL(imageFile);
 
-        // Create a new image element
+        // Create a new image element with proper positioning
         const imageId = handleAddImageWithUndo(
           imageUrl,
-          50, // Center the image on the page
-          50,
-          300, // Default size
-          200,
+          x,
+          y,
+          width,
+          height,
           1, // Page 1
           "original" // Add to original view
         );
@@ -2317,7 +3227,13 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         toast.error("Failed to create blank PDF");
       }
     },
-    [actions, handleAddImageWithUndo, handleImageSelect]
+    [
+      actions,
+      handleAddImageWithUndo,
+      handleImageSelect,
+      documentState.pageWidth,
+      documentState.pageHeight,
+    ]
   );
 
   // Helper function to append an image as a new page
@@ -2331,6 +3247,10 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         const currentResponse = await fetch(documentState.url);
         const currentArrayBuffer = await currentResponse.arrayBuffer();
         const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+        // Store current state before appending
+        const currentDeletedPages = new Set(documentState.deletedPages);
+        const currentPages = [...documentState.pages];
 
         // Add a new blank page (A4 size: 595.28 x 841.89 points)
         const newPage = currentPdfDoc.addPage([595.28, 841.89]);
@@ -2346,28 +3266,55 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           type: "application/pdf",
         });
 
-        // Load the updated PDF
-        actions.loadDocument(updatedFile);
+        // Update document URL without using loadDocument to preserve deletedPages
+        const newUrl = URL.createObjectURL(updatedFile);
+        const newPageNumber = currentPdfDoc.getPageCount();
+
+        setDocumentState((prev) => ({
+          ...prev,
+          url: newUrl,
+          numPages: newPageNumber,
+          pages: [
+            ...currentPages,
+            {
+              pageNumber: newPageNumber,
+              isTranslated: false,
+              pageType: "dynamic_content" as const,
+            },
+          ],
+          deletedPages: currentDeletedPages, // Preserve deleted pages
+          isDocumentLoaded: true,
+          error: "",
+        }));
+
+        // Calculate proper image dimensions and position
+        const { x, y, width, height } = await calculateImageFitAndPosition(
+          imageFile,
+          documentState.pageWidth,
+          documentState.pageHeight
+        );
 
         // Create image URL and add as interactive element on the new page
         const imageUrl = URL.createObjectURL(imageFile);
-        const newPageNumber = currentPdfDoc.getPageCount(); // The page we just added
 
-        // Create a new image element
-        const imageId = handleAddImageWithUndo(
-          imageUrl,
-          50, // Center the image on the page
-          50,
-          300, // Default size
-          200,
-          newPageNumber,
-          "original" // Add to original view
-        );
+        // Use setTimeout to ensure the document state is updated before adding the image
+        setTimeout(() => {
+          // Create a new image element with proper positioning
+          const imageId = handleAddImageWithUndo(
+            imageUrl,
+            x,
+            y,
+            width,
+            height,
+            newPageNumber,
+            "original" // Add to original view
+          );
 
-        // Select the image and open format drawer
-        if (imageId) {
-          handleImageSelect(imageId);
-        }
+          // Select the image and open format drawer
+          if (imageId) {
+            handleImageSelect(imageId);
+          }
+        }, 100);
 
         toast.success("Image appended as new page successfully!");
       } catch (error) {
@@ -2375,7 +3322,16 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         toast.error("Failed to append image");
       }
     },
-    [documentState.url, actions, handleAddImageWithUndo, handleImageSelect]
+    [
+      documentState.url,
+      documentState.deletedPages,
+      documentState.pages,
+      documentState.pageWidth,
+      documentState.pageHeight,
+      setDocumentState,
+      handleAddImageWithUndo,
+      handleImageSelect,
+    ]
   );
 
   // Helper function to append a PDF document
@@ -2389,6 +3345,11 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         const currentResponse = await fetch(documentState.url);
         const currentArrayBuffer = await currentResponse.arrayBuffer();
         const currentPdfDoc = await PDFDocument.load(currentArrayBuffer);
+
+        // Store current state before appending
+        const currentDeletedPages = new Set(documentState.deletedPages);
+        const currentPages = [...documentState.pages];
+        const currentNumPages = documentState.numPages;
 
         // Load the new document to append
         const newArrayBuffer = await pdfFile.arrayBuffer();
@@ -2412,8 +3373,30 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           type: "application/pdf",
         });
 
-        // Load the merged PDF
-        actions.loadDocument(mergedFile);
+        // Update document URL without using loadDocument to preserve deletedPages
+        const newUrl = URL.createObjectURL(mergedFile);
+        const totalPages = currentPdfDoc.getPageCount();
+        const addedPagesCount = newPages.length;
+
+        // Create new page entries for the appended pages
+        const newPageEntries = Array.from(
+          { length: addedPagesCount },
+          (_, index) => ({
+            pageNumber: currentNumPages + index + 1,
+            isTranslated: false,
+            pageType: "dynamic_content" as const,
+          })
+        );
+
+        setDocumentState((prev) => ({
+          ...prev,
+          url: newUrl,
+          numPages: totalPages,
+          pages: [...currentPages, ...newPageEntries],
+          deletedPages: currentDeletedPages, // Preserve deleted pages
+          isDocumentLoaded: true,
+          error: "",
+        }));
 
         toast.success("PDF document appended successfully!");
       } catch (error) {
@@ -2421,7 +3404,13 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         toast.error("Failed to append PDF document");
       }
     },
-    [documentState.url, actions]
+    [
+      documentState.url,
+      documentState.deletedPages,
+      documentState.pages,
+      documentState.numPages,
+      setDocumentState,
+    ]
   );
 
   // File handlers
@@ -2437,14 +3426,10 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         if (fileType === "image") {
           // For images, create a blank PDF and add the image as an interactive element
           createBlankPdfAndAddImage(file);
-          // Reset deletedPages after upload
-          setPageState((prev) => ({ ...prev, deletedPages: new Set() }));
         } else {
           // For PDFs, load normally
           actions.loadDocument(file);
           setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
-          // Reset deletedPages after upload
-          setPageState((prev) => ({ ...prev, deletedPages: new Set() }));
         }
       }
     },
@@ -2471,7 +3456,11 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           // Center the image on the page
           const x = (pageWidth - width) / 2;
           const y = (pageHeight - height) / 2;
-          // Always add to 'original' view and layer order
+          // Add to current view - only allow in 'original' or 'translated', not 'split'
+          const targetView =
+            viewState.currentView === "split"
+              ? "original"
+              : viewState.currentView;
           const imageId = handleAddImageWithUndo(
             url,
             x,
@@ -2479,7 +3468,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
             width,
             height,
             documentState.currentPage,
-            "original"
+            targetView
           );
           if (imageId) {
             handleImageSelect(imageId);
@@ -2551,28 +3540,31 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
 
   const handlePageDelete = useCallback(
     (pageNumber: number) => {
-      const remainingPages =
-        documentState.numPages - pageState.deletedPages.size;
-
-      if (remainingPages <= 1) {
-        toast.error("Cannot delete the last remaining page");
-        return;
-      }
-
-      setPageState((prev) => ({
-        ...prev,
-        deletedPages: new Set([...prev.deletedPages, pageNumber]),
-      }));
-
-      toast.success(`Page ${pageNumber} deleted`);
+      pageActions.deletePage(pageNumber);
     },
-    [documentState.numPages, pageState.deletedPages]
+    [pageActions]
   );
 
   // Transform page to textbox functionality
   const handleTransformPageToTextbox = useCallback(
     async (pageNumber: number) => {
       try {
+        // Create a compatibility wrapper for setPageState
+        const setPageStateCompat = (updater: (prev: any) => any) => {
+          const prev = {
+            isTransforming: documentState.isTransforming,
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
+            ),
+          };
+          const newState = updater(prev);
+
+          if (newState.isTransforming !== undefined) {
+            pageActions.setIsTransforming(newState.isTransforming);
+          }
+        };
+
         await performPageOcr({
           pageNumber,
           documentRef,
@@ -2580,7 +3572,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           documentState,
           viewState,
           editorState,
-          setPageState,
+          setPageState: setPageStateCompat,
           setViewState,
           setEditorState,
           actions,
@@ -2601,7 +3593,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       documentState,
       viewState,
       editorState,
-      setPageState,
+      pageActions,
       setViewState,
       setEditorState,
       actions,
@@ -2638,10 +3630,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       });
 
       // Reset page translation state
-      setPageState((prev) => ({
-        ...prev,
-        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, false)),
-      }));
+      pageActions.setPageTranslated(pageNumber, false);
 
       toast.success(`Translation cleared for page ${pageNumber}`);
     },
@@ -2652,6 +3641,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       deleteTextBox,
       deleteShape,
       deleteImage,
+      pageActions,
     ]
   );
 
@@ -2674,6 +3664,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   const [pendingExport, setPendingExport] = useState<(() => void) | null>(null);
 
   // State for template editor
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateCanvas, setTemplateCanvas] =
     useState<HTMLCanvasElement | null>(null);
 
@@ -2683,10 +3674,19 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   // Actual export function
   const performExport = useCallback(async () => {
     try {
+      // Create compatibility pageState object
+      const pageStateCompat = {
+        deletedPages: documentState.deletedPages,
+        isPageTranslated: new Map(
+          documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
+        ),
+        isTransforming: documentState.isTransforming,
+      };
+
       await exportPdfDocument({
         documentRef,
         documentState,
-        pageState,
+        pageState: pageStateCompat,
         editorState,
         viewState,
         templateCanvas,
@@ -2701,7 +3701,6 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   }, [
     documentRef,
     documentState,
-    pageState,
     editorState,
     viewState,
     templateCanvas,
@@ -2725,97 +3724,95 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     []
   );
 
-  // Export function with confirmation logic
-  const exportToPDF = useCallback(() => {
-    // First show the template editor
-    setShowTemplateEditor(true);
-  }, []);
-
-  // Simple test export function to verify template page
-  const testTemplateExport = useCallback(async () => {
-    if (!templateCanvas) {
-      toast.error("No template canvas available");
-      return;
-    }
-
+  // Export function that directly exports original view pages without template popup
+  const exportToPDF = useCallback(async () => {
+    setIsExportingPDF(true);
     try {
-      const loadingToast = toast.loading("Testing template export...");
-
-      // Create PDF document
-      const pdfDoc = await PDFDocument.create();
-
-      // Add template page as the first page
-      console.log("Adding template page to test PDF");
-      const templateDataUrl = templateCanvas.toDataURL("image/png", 1.0);
-      const templateImageBytes = await fetch(templateDataUrl).then((res) =>
-        res.arrayBuffer()
-      );
-      const templateImage = await pdfDoc.embedPng(templateImageBytes);
-
-      // Create first page with template
-      const templatePage = pdfDoc.addPage([612, 792]); // Letter size
-      const { width: pageWidth, height: pageHeight } = templatePage.getSize();
-
-      // Scale template to fit page while maintaining aspect ratio
-      const templateDims = templateImage.scale(1);
-      const scaleX = pageWidth / templateDims.width;
-      const scaleY = pageHeight / templateDims.height;
-      const templateScale = Math.min(scaleX, scaleY);
-
-      const scaledWidth = templateDims.width * templateScale;
-      const scaledHeight = templateDims.height * templateScale;
-
-      // Center the template on the page
-      const x = (pageWidth - scaledWidth) / 2;
-      const y = (pageHeight - scaledHeight) / 2;
-
-      templatePage.drawImage(templateImage, {
-        x: x,
-        y: y,
-        width: scaledWidth,
-        height: scaledHeight,
+      await exportToPDFService({
+        documentRef,
+        documentState,
+        editorState,
+        viewState,
+        setDocumentState,
+        setViewState,
+        setEditorState,
       });
-
-      // Add a title to the template page
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      templatePage.drawText("TEMPLATE TEST PAGE", {
-        x: pageWidth / 2 - 80,
-        y: pageHeight - 30,
-        size: 16,
-        font: font,
-        color: rgb(0, 0, 0),
-      });
-
-      // Add page number
-      templatePage.drawText("Page 1 (Template Only)", {
-        x: pageWidth / 2 - 60,
-        y: 30,
-        size: 12,
-        font: font,
-        color: rgb(0.5, 0.5, 0.5),
-      });
-
-      console.log("Template test PDF page count:", pdfDoc.getPageCount());
-
-      // Save the PDF
-      const pdfBytes = await pdfDoc.save();
-      const blob = new Blob([pdfBytes], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `template-test.pdf`;
-      link.click();
-
-      URL.revokeObjectURL(url);
-
-      toast.dismiss(loadingToast);
-      toast.success("Template test PDF exported!");
+      toast.success("PDF exported successfully!");
     } catch (error) {
-      console.error("Error in template test export:", error);
-      toast.error("Template test export failed");
+      console.error("Error exporting PDF:", error);
+      toast.error("Failed to export PDF");
+    } finally {
+      setIsExportingPDF(false);
     }
-  }, [templateCanvas]);
+  }, [
+    documentRef,
+    documentState,
+    editorState,
+    viewState,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  ]);
+
+  // Export to PNG function
+  const exportToPNG = useCallback(async () => {
+    setIsExportingPNG(true);
+    try {
+      await exportToPNGService({
+        documentRef,
+        documentState,
+        editorState,
+        viewState,
+        setDocumentState,
+        setViewState,
+        setEditorState,
+      });
+      toast.success("PNG exported successfully!");
+    } catch (error) {
+      console.error("Error exporting PNG:", error);
+      toast.error("Failed to export PNG");
+    } finally {
+      setIsExportingPNG(false);
+    }
+  }, [
+    documentRef,
+    documentState,
+    editorState,
+    viewState,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  ]);
+
+  // Export to JPEG function
+  const exportToJPEG = useCallback(async () => {
+    setIsExportingJPEG(true);
+    try {
+      await exportToJPEGService({
+        documentRef,
+        documentState,
+        editorState,
+        viewState,
+        setDocumentState,
+        setViewState,
+        setEditorState,
+      });
+      toast.success("JPEG exported successfully!");
+    } catch (error) {
+      console.error("Error exporting JPEG:", error);
+      toast.error("Failed to export JPEG");
+    } finally {
+      setIsExportingJPEG(false);
+    }
+  }, [
+    documentRef,
+    documentState,
+    editorState,
+    viewState,
+    setDocumentState,
+    setViewState,
+    setEditorState,
+  ]);
 
   // Export confirmation handlers
   const handleConfirmExport = useCallback(() => {
@@ -2899,9 +3896,43 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
 
   // Add effect to monitor page translation state for debugging
   useEffect(() => {}, [
-    pageState.isPageTranslated,
-    pageState.isTransforming,
+    documentState.pages,
+    documentState.isTransforming,
     documentState.currentPage,
+  ]);
+
+  // Check for languages after document is loaded
+  useEffect(() => {
+    if (documentState.isDocumentLoaded && documentState.url) {
+      // Open sidebar when document is loaded
+      setViewState((prev) => ({
+        ...prev,
+        isSidebarCollapsed: false,
+      }));
+
+      // Don't show language modal if we're in final-layout workflow step
+      if (viewState.currentWorkflowStep === "final-layout") {
+        return;
+      }
+
+      // Check if source and desired languages are set
+      if (
+        !sourceLanguage ||
+        !desiredLanguage ||
+        sourceLanguage === desiredLanguage
+      ) {
+        // Open language selection modal
+        setShowLanguageModal(true);
+        setPendingOcrAction({ type: "bulk" });
+      }
+    }
+  }, [
+    documentState.isDocumentLoaded,
+    documentState.url,
+    sourceLanguage,
+    desiredLanguage,
+    viewState.currentWorkflowStep,
+    setViewState,
   ]);
 
   // Cleanup effect to clear any remaining debounce timers
@@ -2951,6 +3982,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           onSelect={handleTextBoxSelect}
           onUpdate={updateFunction}
           onDelete={(id) => handleDeleteTextBoxWithUndo(id, actualTargetView)}
+          onDuplicate={handleDuplicateTextBox}
           isTextSelectionMode={editorState.isTextSelectionMode}
           isSelectedInTextMode={selectionState.selectedTextBoxes.textBoxIds.includes(
             textBox.id
@@ -2978,6 +4010,8 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           isSelected={editorState.selectedShapeId === shape.id}
           isEditMode={editorState.isEditMode}
           scale={documentState.scale}
+          pageWidth={documentState.pageWidth}
+          pageHeight={documentState.pageHeight}
           onSelect={handleShapeSelect}
           onUpdate={updateShapeWithUndo}
           onDelete={(id) =>
@@ -2998,6 +4032,8 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           isSelected={selectedElementId === image.id}
           isEditMode={editorState.isEditMode}
           scale={documentState.scale}
+          pageWidth={documentState.pageWidth}
+          pageHeight={documentState.pageHeight}
           onSelect={handleImageSelect}
           onUpdate={updateImage}
           onDelete={(id) =>
@@ -3067,13 +4103,27 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         actions,
         setEditorState,
         setViewState,
-        setPageState,
+        setPageState: (updater: (prev: any) => any) => {
+          // Compatibility wrapper for bulk OCR
+          const prev = {
+            isTransforming: documentState.isTransforming,
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
+            ),
+          };
+          const newState = updater(prev);
+
+          if (newState.isTransforming !== undefined) {
+            pageActions.setIsTransforming(newState.isTransforming);
+          }
+        },
         sourceLanguage,
         desiredLanguage,
         handleAddTextBoxWithUndo,
         setIsTranslating,
         totalPages: documentState.numPages,
-        deletedPages: pageState.deletedPages,
+        deletedPages: documentState.deletedPages,
         currentPage: documentState.currentPage,
         onProgress: (current, total) => {
           setBulkOcrProgress({ current, total });
@@ -3107,11 +4157,10 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     documentState,
     editorState,
     viewState,
-    pageState.deletedPages,
+    pageActions,
     actions,
     setEditorState,
     setViewState,
-    setPageState,
     sourceLanguage,
     desiredLanguage,
     handleAddTextBoxWithUndo,
@@ -3171,6 +4220,9 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
   const [tempSourceLanguage, setTempSourceLanguage] = useState<string>("");
   const [tempDesiredLanguage, setTempDesiredLanguage] = useState<string>("");
 
+  // Add state for birth certificate modal
+  const [showBirthCertModal, setShowBirthCertModal] = useState(false);
+
   // Intercept file upload to show confirmation if a document is loaded
   const handleFileUploadIntercept = useCallback(() => {
     if (documentState.url) {
@@ -3198,22 +4250,48 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     setPendingFileUpload(null);
   }, []);
 
+  // Page type change handler
+  const handlePageTypeChange = useCallback(
+    (
+      pageNumber: number,
+      pageType: "social_media" | "birth_cert" | "dynamic_content"
+    ) => {
+      setDocumentState((prev) => ({
+        ...prev,
+        pages: prev.pages.map((page) =>
+          page.pageNumber === pageNumber ? { ...page, pageType } : page
+        ),
+      }));
+    },
+    []
+  );
+
+  // Birth certificate modal handler
+  const handleBirthCertModalOpen = useCallback(
+    (pageNumber?: number) => {
+      setBirthCertModalPage(pageNumber || documentState.currentPage);
+      setShowBirthCertModal(true);
+    },
+    [documentState.currentPage]
+  );
+
   // Language modal handlers
   const handleLanguageConfirm = useCallback(() => {
     setShowLanguageModal(false);
+    // Always run bulk OCR when Translate Document is clicked
+    handleRunOcrAllPages();
     if (pendingOcrAction) {
-      if (pendingOcrAction.type === "single" && pendingOcrAction.pageNumber) {
-        handleTransformPageToTextbox(pendingOcrAction.pageNumber);
-      } else if (pendingOcrAction.type === "bulk") {
-        handleRunOcrAllPages();
-      }
       setPendingOcrAction(null);
     }
-  }, [pendingOcrAction, handleTransformPageToTextbox, handleRunOcrAllPages]);
+  }, [pendingOcrAction, handleRunOcrAllPages]);
 
+  // Deprecated
   const handleLanguageCancel = useCallback(() => {
     setShowLanguageModal(false);
     setPendingOcrAction(null);
+    // Save the current language selections when "Set without Translating" is clicked
+    // The languages are already saved through the onSourceLanguageChange and onDesiredLanguageChange props
+    toast.success("Language settings saved successfully");
   }, []);
 
   // Settings modal handlers
@@ -3227,15 +4305,17 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
     setSourceLanguage(tempSourceLanguage);
     setDesiredLanguage(tempDesiredLanguage);
     setShowSettingsModal(false);
-    toast.success("Language settings saved successfully");
-  }, [tempSourceLanguage, tempDesiredLanguage]);
+    // Always run bulk OCR when Translate Document is clicked from settings
+    handleRunOcrAllPages();
+  }, [tempSourceLanguage, tempDesiredLanguage, handleRunOcrAllPages]);
 
   const handleSettingsBack = useCallback(() => {
     setShowSettingsModal(false);
-    // Reset temp values to current values
-    setTempSourceLanguage(sourceLanguage);
-    setTempDesiredLanguage(desiredLanguage);
-  }, [sourceLanguage, desiredLanguage]);
+    // Save the temporary language values to the actual state
+    setSourceLanguage(tempSourceLanguage);
+    setDesiredLanguage(tempDesiredLanguage);
+    toast.success("Language settings saved successfully");
+  }, [tempSourceLanguage, tempDesiredLanguage]);
 
   useEffect(() => {
     if (pendingExport && templateCanvas) {
@@ -3250,6 +4330,37 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
       setPendingTemplateExport(false);
     }
   }, [pendingTemplateExport, templateCanvas, performExport]);
+
+  // Add state for untranslated check modal
+  const [showUntranslatedCheckModal, setShowUntranslatedCheckModal] =
+    useState(false);
+  const [untranslatedCheckList, setUntranslatedCheckList] = useState<
+    { id: string; page: number; status: string; originalText: string }[]
+  >([]);
+  const [pendingWorkflowStep, setPendingWorkflowStep] =
+    useState<WorkflowStep | null>(null);
+
+  // Add state for export loading modals
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingPNG, setIsExportingPNG] = useState(false);
+  const [isExportingJPEG, setIsExportingJPEG] = useState(false);
+
+  // Handler for modal continue/cancel
+  const handleUntranslatedCheckContinue = useCallback(() => {
+    setShowUntranslatedCheckModal(false);
+    if (pendingWorkflowStep) {
+      // Actually proceed to layout
+      setViewState((prev) => ({
+        ...prev,
+        currentWorkflowStep: pendingWorkflowStep,
+      }));
+      setPendingWorkflowStep(null);
+    }
+  }, [pendingWorkflowStep]);
+  const handleUntranslatedCheckCancel = useCallback(() => {
+    setShowUntranslatedCheckModal(false);
+    setPendingWorkflowStep(null);
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-white">
@@ -3312,7 +4423,9 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           handleClearPageTranslation(documentState.currentPage)
         }
         isCurrentPageTranslated={
-          pageState.isPageTranslated.get(documentState.currentPage) || false
+          documentState.pages.find(
+            (p) => p.pageNumber === documentState.currentPage
+          )?.isTranslated || false
         }
         currentWorkflowStep={viewState.currentWorkflowStep}
         onWorkflowStepChange={handleWorkflowStepChange}
@@ -3347,7 +4460,13 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         <PDFEditorSidebar
           viewState={viewState}
           documentState={documentState}
-          pageState={pageState}
+          pageState={{
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
+            ),
+            isTransforming: documentState.isTransforming,
+          }}
           elementCollections={elementCollections}
           onPageChange={handlePageChange}
           onPageDelete={handlePageDelete}
@@ -3362,808 +4481,460 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
           onTabChange={(tab) =>
             setViewState((prev) => ({ ...prev, activeSidebarTab: tab }))
           }
+          onPageTypeChange={handlePageTypeChange}
+          onBirthCertModalOpen={handleBirthCertModalOpen}
+          documentRef={documentRef}
+          sourceLanguage={sourceLanguage}
+          desiredLanguage={desiredLanguage}
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
-          {/* ElementFormatDrawer */}
-          <div className="relative z-40 transition-all duration-300">
-            <ElementFormatDrawer />
-          </div>
-
-          {/* Floating Toolbars - Only show when PDF is loaded */}
-          {documentState.url && !documentState.error && (
-            <FloatingToolbar
-              editorState={editorState}
-              toolState={toolState}
-              erasureState={erasureState}
-              currentView={viewState.currentView}
-              showDeletionRectangles={editorState.showDeletionRectangles}
-              isSidebarCollapsed={viewState.isSidebarCollapsed}
-              onToolChange={handleToolChange}
-              onViewChange={(view) =>
-                setViewState((prev) => ({ ...prev, currentView: view }))
-              }
-              onEditModeToggle={() =>
-                setEditorState((prev) => ({
-                  ...prev,
-                  isEditMode: !prev.isEditMode,
-                }))
-              }
-              onDeletionToggle={() =>
-                setEditorState((prev) => ({
-                  ...prev,
-                  showDeletionRectangles: !prev.showDeletionRectangles,
-                }))
-              }
-              onImageUpload={() => imageInputRef.current?.click()}
-            />
-          )}
-
-          {/* Erasure Settings Popup - Only show when PDF is loaded */}
-          {erasureState.isErasureMode &&
-            documentState.url &&
-            !documentState.error && (
-              <div
-                className="absolute z-50 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-4 rounded-lg transition-all duration-300"
-                style={{
-                  top: "340px", // Below the floating toolbar (80px + ~200px for toolbar height)
-                  left: "16px", // Same left position as floating toolbar
-                  minWidth: "280px",
-                }}
-              >
-                <div className="space-y-3">
-                  {/* Opacity */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-600 w-20">
-                      Opacity:
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={erasureState.erasureSettings.opacity}
-                      onChange={(e) =>
-                        setErasureState((prev) => ({
-                          ...prev,
-                          erasureSettings: {
-                            ...prev.erasureSettings,
-                            opacity: parseFloat(e.target.value),
-                          },
-                        }))
-                      }
-                      className="flex-1 w-5"
-                    />
-                    <span className="text-xs text-gray-500 w-10">
-                      {Math.round(erasureState.erasureSettings.opacity * 100)}%
-                    </span>
-                  </div>
-                  {/* Page Background Color Picker */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-600 w-20">
-                      Page BG:
-                    </label>
-                    <input
-                      type="color"
-                      value={
-                        documentState.pdfBackgroundColor.startsWith("#")
-                          ? documentState.pdfBackgroundColor
-                          : rgbStringToHex(documentState.pdfBackgroundColor)
-                      }
-                      onChange={(e) => {
-                        const newColor = e.target.value;
-                        actions.updatePdfBackgroundColor(newColor);
-                      }}
-                      className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
-                    />
-                    <span className="text-xs text-gray-500">
-                      {documentState.pdfBackgroundColor}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-          {/* Document Viewer */}
-          <div
-            className="flex-1 document-viewer document-container"
-            ref={containerRef}
-            style={{
-              scrollBehavior: "smooth",
-              overflow: "auto",
-              paddingTop: "64px",
-            }}
+        <PanelGroup direction="horizontal" className="flex-1">
+          {/* Left side - Document Content */}
+          <Panel
+            defaultSize={100}
+            minSize={20}
+            className={`flex flex-col overflow-hidden relative bg-white ${
+              viewState.currentView === "split" &&
+              (viewState.currentWorkflowStep === "translate" ||
+                viewState.currentWorkflowStep === "final-layout")
+                ? "flex-1"
+                : "flex-1"
+            }`}
           >
-            {documentState.error && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="text-red-500 text-lg mb-2">Error</div>
-                  <div className="text-gray-600">{documentState.error}</div>
-                </div>
+            {/* ElementFormatDrawer - only show in edit mode */}
+            {editorState.isEditMode && (
+              <div className="relative z-40 transition-all duration-300">
+                <ElementFormatDrawer />
               </div>
             )}
 
-            {!documentState.url && !documentState.error && (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <div className="text-gray-500 text-lg mb-2">
-                    No document loaded
-                  </div>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                    Upload Document
-                  </button>
-                </div>
-              </div>
-            )}
-
+            {/* Floating Toolbars - Only show when PDF is loaded */}
             {documentState.url && !documentState.error && (
-              <div
-                className="document-wrapper"
-                style={{
-                  minHeight: `${Math.max(
-                    100,
-                    documentState.pageHeight * documentState.scale + 80
-                  )}px`,
-                  height: `${Math.max(
-                    100,
-                    documentState.pageHeight * documentState.scale + 80
-                  )}px`,
-                  width: `${Math.max(
-                    100,
-                    viewState.currentView === "split"
-                      ? documentState.pageWidth * documentState.scale * 2 + 100 // Double width for split view plus gap and padding
-                      : documentState.pageWidth * documentState.scale + 80
-                  )}px`,
-                  minWidth: `${Math.max(
-                    100,
-                    viewState.currentView === "split"
-                      ? documentState.pageWidth * documentState.scale * 2 + 100
-                      : documentState.pageWidth * documentState.scale + 80
-                  )}px`,
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  paddingTop: "64px",
-                  paddingBottom: "40px",
-                  paddingLeft: "40px",
-                  paddingRight: "40px",
-                  margin: "0 auto",
+              <FloatingToolbar
+                editorState={editorState}
+                toolState={toolState}
+                erasureState={erasureState}
+                currentView={viewState.currentView}
+                showDeletionRectangles={editorState.showDeletionRectangles}
+                isSidebarCollapsed={viewState.isSidebarCollapsed}
+                currentWorkflowStep={viewState.currentWorkflowStep}
+                onToolChange={handleToolChange}
+                onViewChange={(view) => {
+                  // Clear selection when changing views to close ElementFormatDrawer
+                  clearSelectionState();
+                  console.log(
+                    `View changing from ${viewState.currentView} to ${view}`
+                  );
+                  console.log(
+                    "Current deleted pages before view change:",
+                    documentState.deletedPages
+                  );
+                  setViewState((prev) => ({ ...prev, currentView: view }));
                 }}
-              >
+                onEditModeToggle={() =>
+                  setEditorState((prev) => ({
+                    ...prev,
+                    isEditMode: !prev.isEditMode,
+                  }))
+                }
+                onDeletionToggle={() =>
+                  setEditorState((prev) => ({
+                    ...prev,
+                    showDeletionRectangles: !prev.showDeletionRectangles,
+                  }))
+                }
+                onImageUpload={
+                  viewState.currentView !== "split"
+                    ? () => imageInputRef.current?.click()
+                    : undefined
+                }
+              />
+            )}
+
+            {/* Erasure Settings Popup - Only show when PDF is loaded */}
+            {erasureState.isErasureMode &&
+              documentState.url &&
+              !documentState.error && (
                 <div
-                  ref={documentRef}
-                  className={`relative bg-white document-page ${
-                    documentState.isScaleChanging ? "" : "zoom-transition"
-                  } ${
-                    editorState.isAddTextBoxMode ? "add-text-box-mode" : ""
-                  } ${
-                    editorState.isTextSelectionMode ? "text-selection-mode" : ""
-                  } ${editorState.isSelectionMode ? "selection-mode" : ""} ${
-                    editorState.isAddTextBoxMode ? "cursor-crosshair" : ""
-                  } ${toolState.shapeDrawingMode ? "cursor-crosshair" : ""} ${
-                    erasureState.isErasureMode ? "cursor-crosshair" : ""
-                  } ${viewState.isCtrlPressed ? "cursor-zoom-in" : ""}`}
-                  onClick={handleDocumentContainerClick}
-                  onMouseDown={(e) => {
-                    if (
-                      editorState.isTextSelectionMode ||
-                      erasureState.isErasureMode ||
-                      editorState.isSelectionMode ||
-                      editorState.multiSelection.isMovingSelection
-                    ) {
-                      if (editorState.multiSelection.isMovingSelection) {
-                        handleMoveSelectionMouseDown(e);
-                      } else if (editorState.isSelectionMode) {
-                        handleMultiSelectionMouseDown(e);
-                      } else {
-                        handleDocumentMouseDown(e);
-                      }
-                    }
-                  }}
-                  onMouseMove={(e) => {
-                    if (toolState.shapeDrawingMode) {
-                      handleShapeDrawMove(e);
-                    } else if (editorState.multiSelection.isMovingSelection) {
-                      handleMoveSelectionMouseMove(e);
-                    } else if (editorState.isTextSelectionMode) {
-                      handleDocumentMouseMove(e);
-                    } else if (editorState.isSelectionMode) {
-                      handleMultiSelectionMouseMove(e);
-                    } else if (erasureState.isErasureMode) {
-                      handleErasureDrawMove(e);
-                    }
-                  }}
-                  onMouseUp={(e) => {
-                    if (toolState.shapeDrawingMode) {
-                      handleShapeDrawEnd();
-                    } else if (editorState.multiSelection.isMovingSelection) {
-                      handleMoveSelectionMouseUp();
-                    } else if (editorState.isTextSelectionMode) {
-                      handleDocumentMouseUp(e);
-                    } else if (editorState.isSelectionMode) {
-                      handleMultiSelectionMouseUp(e);
-                    } else if (erasureState.isErasureMode) {
-                      handleErasureDrawEnd();
-                    }
-                  }}
+                  className="absolute z-50 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-4 rounded-lg transition-all duration-300"
                   style={{
-                    width:
-                      viewState.currentView === "split"
-                        ? documentState.pageWidth * documentState.scale * 2 + 20 // Double width plus gap for split view
-                        : documentState.pageWidth * documentState.scale,
-                    height: documentState.pageHeight * documentState.scale,
-                    minWidth:
-                      viewState.currentView === "split"
-                        ? documentState.pageWidth * documentState.scale * 2 + 20
-                        : documentState.pageWidth * documentState.scale,
-                    minHeight: documentState.pageHeight * documentState.scale,
-                    display: "block",
+                    top: "340px", // Below the floating toolbar (80px + ~200px for toolbar height)
+                    left: "16px", // Same left position as floating toolbar
+                    minWidth: "280px",
                   }}
                 >
-                  {/* Document Rendering - Show different content based on view */}
-                  {viewState.currentView === "original" && (
-                    <DocumentPanel
-                      viewType="original"
-                      documentUrl={documentState.url}
-                      currentPage={documentState.currentPage}
-                      pageWidth={documentState.pageWidth}
-                      pageHeight={documentState.pageHeight}
-                      scale={documentState.scale}
-                      numPages={documentState.numPages}
-                      isScaleChanging={documentState.isScaleChanging}
-                      isAddTextBoxMode={editorState.isAddTextBoxMode}
-                      isTextSpanZooming={isTextSpanZooming}
-                      isPdfFile={isPdfFile}
-                      handlers={handlers}
-                      actions={actions}
-                      setDocumentState={setDocumentState}
-                      deletionRectangles={
-                        elementCollections.originalDeletionRectangles
-                      }
-                      showDeletionRectangles={
-                        editorState.showDeletionRectangles
-                      }
-                      onDeleteDeletionRectangle={(id) =>
-                        handleDeleteDeletionRectangleWithUndo(id, "original")
-                      }
-                      colorToRgba={colorToRgba}
-                      sortedElements={getOriginalSortedElements(
-                        documentState.currentPage
-                      )}
-                      getElementsInSelectionPreview={
-                        getElementsInSelectionPreview
-                      }
-                      selectedFieldId={editorState.selectedFieldId}
-                      selectedShapeId={editorState.selectedShapeId}
-                      selectedElementId={selectedElementId}
-                      isEditMode={editorState.isEditMode}
-                      showPaddingIndicator={showPaddingPopup}
-                      onTextBoxSelect={handleTextBoxSelect}
-                      onShapeSelect={handleShapeSelect}
-                      onImageSelect={handleImageSelect}
-                      onUpdateTextBox={updateOriginalTextBoxWithUndo}
-                      onUpdateShape={updateShapeWithUndo}
-                      onUpdateImage={updateImage}
-                      onDeleteTextBox={(id) =>
-                        handleDeleteTextBoxWithUndo(id, "original")
-                      }
-                      onDeleteShape={(id) =>
-                        handleDeleteShapeWithUndo(id, viewState.currentView)
-                      }
-                      onDeleteImage={(id) =>
-                        handleDeleteImageWithUndo(id, viewState.currentView)
-                      }
-                      isTextSelectionMode={editorState.isTextSelectionMode}
-                      selectedTextBoxes={selectionState.selectedTextBoxes}
-                      autoFocusTextBoxId={autoFocusTextBoxId}
-                      onAutoFocusComplete={handleAutoFocusComplete}
-                      isSelectionMode={editorState.isSelectionMode}
-                      multiSelection={editorState.multiSelection}
-                      currentView={viewState.currentView}
-                      onMoveSelection={handleMoveSelection}
-                      onDeleteSelection={handleDeleteSelection}
-                      onDragSelection={(deltaX, deltaY) => {
-                        // Move all selected elements by delta (in real time)
-                        moveSelectedElements(
-                          editorState.multiSelection.selectedElements,
-                          deltaX,
-                          deltaY,
-                          updateTextBoxWithUndo,
-                          updateShape,
-                          updateImage,
-                          getElementById,
-                          documentState.pageWidth,
-                          documentState.pageHeight
-                        );
-                        // Update selection bounds in real time
-                        setEditorState((prev) => {
-                          const updatedElements =
-                            prev.multiSelection.selectedElements.map((el) => ({
-                              ...el,
-                              originalPosition: {
-                                x: el.originalPosition.x + deltaX,
-                                y: el.originalPosition.y + deltaY,
-                              },
-                            }));
-                          const newBounds = calculateSelectionBounds(
-                            updatedElements,
-                            getElementById
-                          );
-                          return {
+                  <div className="space-y-3">
+                    {/* Opacity */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600 w-20">
+                        Opacity:
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={erasureState.erasureSettings.opacity}
+                        onChange={(e) =>
+                          setErasureState((prev) => ({
                             ...prev,
-                            multiSelection: {
-                              ...prev.multiSelection,
-                              selectedElements: updatedElements,
-                              selectionBounds: newBounds,
+                            erasureSettings: {
+                              ...prev.erasureSettings,
+                              opacity: parseFloat(e.target.value),
                             },
-                          };
-                        });
-                      }}
-                      onDragStopSelection={handleDragStopSelection}
-                    />
-                  )}
+                          }))
+                        }
+                        className="flex-1 w-5"
+                      />
+                      <span className="text-xs text-gray-500 w-10">
+                        {Math.round(erasureState.erasureSettings.opacity * 100)}
+                        %
+                      </span>
+                    </div>
+                    {/* Page Background Color Picker */}
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600 w-20">
+                        Page BG:
+                      </label>
+                      <input
+                        type="color"
+                        value={
+                          documentState.pdfBackgroundColor.startsWith("#")
+                            ? documentState.pdfBackgroundColor
+                            : rgbStringToHex(documentState.pdfBackgroundColor)
+                        }
+                        onChange={(e) => {
+                          const newColor = e.target.value;
+                          actions.updatePdfBackgroundColor(newColor);
+                        }}
+                        className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
+                      />
+                      <span className="text-xs text-gray-500">
+                        {documentState.pdfBackgroundColor}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-                  {/* Translated Document View */}
-                  {viewState.currentView === "translated" && (
-                    <>
-                      {/* Show translation table view when in translate workflow step */}
-                      {viewState.currentWorkflowStep === "translate" ? (
-                        <TranslationTableView
-                          translatedTextBoxes={getCurrentTextBoxes(
-                            "translated"
-                          )}
-                          untranslatedTexts={
-                            elementCollections.untranslatedTexts
-                          }
-                          onUpdateTextBox={updateTranslatedTextBoxWithUndo}
-                          onUpdateUntranslatedText={updateUntranslatedText}
-                          onDeleteTextBox={
-                            handleDeleteTextBoxAndUntranslatedText
-                          }
-                          onRowClick={handleTranslationRowClick}
-                          onAddTextBox={handleAddCustomTextBox}
-                          onAddUntranslatedText={
-                            handleAddCustomUntranslatedText
-                          }
-                          pageWidth={documentState.pageWidth}
-                          pageHeight={documentState.pageHeight}
-                          scale={documentState.scale}
-                          currentPage={documentState.currentPage}
-                        />
-                      ) : (
-                        /* Show normal document layout when in layout workflow step */
-                        <DocumentPanel
-                          viewType="translated"
-                          documentUrl={documentState.url}
-                          currentPage={documentState.currentPage}
-                          pageWidth={documentState.pageWidth}
-                          pageHeight={documentState.pageHeight}
-                          scale={documentState.scale}
-                          numPages={documentState.numPages}
-                          isScaleChanging={documentState.isScaleChanging}
-                          isAddTextBoxMode={editorState.isAddTextBoxMode}
-                          isTextSpanZooming={isTextSpanZooming}
-                          isPdfFile={isPdfFile}
-                          handlers={handlers}
-                          actions={actions}
-                          setDocumentState={setDocumentState}
-                          isPageTranslated={
-                            pageState.isPageTranslated.get(
-                              documentState.currentPage
-                            ) || false
-                          }
-                          isTransforming={pageState.isTransforming}
-                          isTranslating={isTranslating}
-                          onRunOcr={() =>
-                            checkLanguageAndRunOcr(
-                              "single",
-                              documentState.currentPage
-                            )
-                          }
-                          deletionRectangles={
-                            elementCollections.translatedDeletionRectangles
-                          }
-                          showDeletionRectangles={
-                            editorState.showDeletionRectangles
-                          }
-                          onDeleteDeletionRectangle={(id) =>
-                            handleDeleteDeletionRectangleWithUndo(
-                              id,
-                              "translated"
-                            )
-                          }
-                          colorToRgba={colorToRgba}
-                          sortedElements={getTranslatedSortedElements(
-                            documentState.currentPage
-                          )}
-                          getElementsInSelectionPreview={
-                            getElementsInSelectionPreview
-                          }
-                          selectedFieldId={editorState.selectedFieldId}
-                          selectedShapeId={editorState.selectedShapeId}
-                          selectedElementId={selectedElementId}
-                          isEditMode={editorState.isEditMode}
-                          showPaddingIndicator={showPaddingPopup}
-                          onTextBoxSelect={handleTextBoxSelect}
-                          onShapeSelect={handleShapeSelect}
-                          onImageSelect={handleImageSelect}
-                          onUpdateTextBox={updateTranslatedTextBoxWithUndo}
-                          onUpdateShape={updateShapeWithUndo}
-                          onUpdateImage={updateImage}
-                          onDeleteTextBox={(id) =>
-                            handleDeleteTextBoxWithUndo(id, "translated")
-                          }
-                          onDeleteShape={(id) =>
-                            handleDeleteShapeWithUndo(id, viewState.currentView)
-                          }
-                          onDeleteImage={(id) =>
-                            handleDeleteImageWithUndo(id, viewState.currentView)
-                          }
-                          isTextSelectionMode={editorState.isTextSelectionMode}
-                          selectedTextBoxes={selectionState.selectedTextBoxes}
-                          autoFocusTextBoxId={autoFocusTextBoxId}
-                          onAutoFocusComplete={handleAutoFocusComplete}
-                          isSelectionMode={editorState.isSelectionMode}
-                          multiSelection={editorState.multiSelection}
-                          currentView={viewState.currentView}
-                          onMoveSelection={handleMoveSelection}
-                          onDeleteSelection={handleDeleteSelection}
-                          onDragSelection={(deltaX, deltaY) => {
-                            // Move all selected elements by delta (in real time)
-                            moveSelectedElements(
-                              editorState.multiSelection.selectedElements,
-                              deltaX,
-                              deltaY,
-                              updateTextBoxWithUndo,
-                              updateShape,
-                              updateImage,
-                              getElementById,
-                              documentState.pageWidth,
-                              documentState.pageHeight
-                            );
-                            // Update selection bounds in real time
-                            setEditorState((prev) => {
-                              const updatedElements =
-                                prev.multiSelection.selectedElements.map(
-                                  (el) => ({
-                                    ...el,
-                                    originalPosition: {
-                                      x: el.originalPosition.x + deltaX,
-                                      y: el.originalPosition.y + deltaY,
-                                    },
-                                  })
-                                );
-                              const newBounds = calculateSelectionBounds(
-                                updatedElements,
-                                getElementById
-                              );
-                              return {
-                                ...prev,
-                                multiSelection: {
-                                  ...prev.multiSelection,
-                                  selectedElements: updatedElements,
-                                  selectionBounds: newBounds,
-                                },
-                              };
-                            });
-                          }}
-                          onDragStopSelection={handleDragStopSelection}
-                        />
-                      )}
-                    </>
-                  )}
+            {/* Document Viewer */}
+            <div
+              className="flex-1 document-viewer document-container"
+              ref={containerRef}
+              style={{
+                scrollBehavior: "smooth",
+                overflow: "auto",
+                paddingTop: "64px",
+              }}
+            >
+              {/* Document Error */}
+              {documentState.error && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="text-red-500 text-lg mb-2">Error</div>
+                    <div className="text-gray-600">{documentState.error}</div>
+                  </div>
+                </div>
+              )}
 
-                  {/* Split Screen View */}
-                  {viewState.currentView === "split" && (
-                    <div
-                      className="flex relative"
-                      style={{
-                        width:
-                          documentState.pageWidth * documentState.scale * 2 +
-                          20, // Double width plus gap
-                        height: documentState.pageHeight * documentState.scale,
-                      }}
-                    >
-                      {/* Original Document Side */}
-                      <div style={{ position: "relative" }}>
-                        <DocumentPanel
-                          viewType="original"
-                          documentUrl={documentState.url}
-                          currentPage={documentState.currentPage}
-                          pageWidth={documentState.pageWidth}
-                          pageHeight={documentState.pageHeight}
-                          scale={documentState.scale}
-                          numPages={documentState.numPages}
-                          isScaleChanging={documentState.isScaleChanging}
-                          isAddTextBoxMode={editorState.isAddTextBoxMode}
-                          isTextSpanZooming={isTextSpanZooming}
-                          isPdfFile={isPdfFile}
-                          handlers={handlers}
-                          actions={actions}
-                          setDocumentState={setDocumentState}
-                          deletionRectangles={
-                            elementCollections.originalDeletionRectangles
-                          }
-                          showDeletionRectangles={
-                            editorState.showDeletionRectangles
-                          }
-                          onDeleteDeletionRectangle={(id) =>
-                            handleDeleteDeletionRectangleWithUndo(
-                              id,
-                              "original"
-                            )
-                          }
-                          colorToRgba={colorToRgba}
-                          sortedElements={getOriginalSortedElements(
-                            documentState.currentPage
-                          )}
-                          getElementsInSelectionPreview={
-                            getElementsInSelectionPreview
-                          }
-                          selectedFieldId={editorState.selectedFieldId}
-                          selectedShapeId={editorState.selectedShapeId}
-                          selectedElementId={selectedElementId}
-                          isEditMode={editorState.isEditMode}
-                          showPaddingIndicator={showPaddingPopup}
-                          onTextBoxSelect={handleTextBoxSelect}
-                          onShapeSelect={handleShapeSelect}
-                          onImageSelect={handleImageSelect}
-                          onUpdateTextBox={updateOriginalTextBoxWithUndo}
-                          onUpdateShape={updateShapeWithUndo}
-                          onUpdateImage={updateImage}
-                          onDeleteTextBox={(id) =>
-                            handleDeleteTextBoxWithUndo(id, "original")
-                          }
-                          onDeleteShape={(id) =>
-                            handleDeleteShapeWithUndo(id, viewState.currentView)
-                          }
-                          onDeleteImage={(id) =>
-                            handleDeleteImageWithUndo(id, viewState.currentView)
-                          }
-                          isTextSelectionMode={editorState.isTextSelectionMode}
-                          selectedTextBoxes={selectionState.selectedTextBoxes}
-                          autoFocusTextBoxId={autoFocusTextBoxId}
-                          onAutoFocusComplete={handleAutoFocusComplete}
-                          isSelectionMode={editorState.isSelectionMode}
-                          multiSelection={editorState.multiSelection}
-                          currentView={viewState.currentView}
-                          onMoveSelection={handleMoveSelection}
-                          onDeleteSelection={handleDeleteSelection}
-                          onDragSelection={(deltaX, deltaY) => {
-                            moveSelectedElements(
-                              editorState.multiSelection.selectedElements,
-                              deltaX,
-                              deltaY,
-                              updateTextBoxWithUndo,
-                              updateShape,
-                              updateImage,
-                              getElementById,
-                              documentState.pageWidth,
-                              documentState.pageHeight
-                            );
-                            setEditorState((prev) => {
-                              const updatedElements =
-                                prev.multiSelection.selectedElements.map(
-                                  (el) => ({
-                                    ...el,
-                                    originalPosition: {
-                                      x: el.originalPosition.x + deltaX,
-                                      y: el.originalPosition.y + deltaY,
-                                    },
-                                  })
-                                );
-                              const newBounds = calculateSelectionBounds(
-                                updatedElements,
-                                getElementById
-                              );
-                              return {
-                                ...prev,
-                                multiSelection: {
-                                  ...prev.multiSelection,
-                                  selectedElements: updatedElements,
-                                  selectionBounds: newBounds,
-                                },
-                              };
-                            });
-                          }}
-                          onDragStopSelection={handleDragStopSelection}
-                          header={
-                            <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                              <div className="bg-blue-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                                Original Document
-                              </div>
-                            </div>
-                          }
-                        />
-                        {/* Interactive elements overlay for Original in Split View */}
-                        <div
-                          className="absolute top-0 left-0 interactive-elements-wrapper"
-                          style={{
-                            width:
-                              documentState.pageWidth * documentState.scale,
-                            height:
-                              documentState.pageHeight * documentState.scale,
-                            pointerEvents: "auto",
-                            zIndex: 10000,
-                          }}
+              {/* No Document Loaded */}
+              {!documentState.url && !documentState.error && (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center max-w-md mx-auto p-8">
+                    {/* Icon */}
+                    <div className="mb-6">
+                      <div className="w-24 h-24 mx-auto bg-gradient-to-br from-primary/20 to-primary/30 rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-12 h-12 text-primary"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
                         >
-                          {/* Deletion Rectangles */}
-                          {getCurrentDeletionRectangles("original")
-                            .filter(
-                              (rect) => rect.page === documentState.currentPage
-                            )
-                            .map((rect) => (
-                              <div
-                                key={rect.id}
-                                className={`absolute ${
-                                  editorState.showDeletionRectangles
-                                    ? "border border-red-400"
-                                    : ""
-                                }`}
-                                style={{
-                                  left: rect.x * documentState.scale,
-                                  top: rect.y * documentState.scale,
-                                  width: rect.width * documentState.scale,
-                                  height: rect.height * documentState.scale,
-                                  zIndex: editorState.showDeletionRectangles
-                                    ? -10
-                                    : -20,
-                                  backgroundColor: rect.background
-                                    ? colorToRgba(
-                                        rect.background,
-                                        rect.opacity || 1.0
-                                      )
-                                    : "white",
-                                }}
-                              >
-                                {editorState.showDeletionRectangles && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteDeletionRectangleWithUndo(
-                                        rect.id,
-                                        "original"
-                                      );
-                                    }}
-                                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
-                                    title="Delete area"
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-
-                          {/* Untranslated text highlight overlay */}
-                          <UntranslatedTextHighlight
-                            untranslatedTexts={
-                              elementCollections.untranslatedTexts
-                            }
-                            highlightedId={highlightedUntranslatedTextId}
-                            currentPage={documentState.currentPage}
-                            scale={documentState.scale}
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                           />
-
-                          {/* Render all elements in layer order */}
-                          {getOriginalSortedElements(
-                            documentState.currentPage
-                          ).map((el) => renderElement(el, "original"))}
-                          {/* Selection overlays for original view */}
-                          {editorState.isSelectionMode &&
-                            editorState.multiSelection.isDrawingSelection &&
-                            editorState.multiSelection.selectionStart &&
-                            editorState.multiSelection.selectionEnd &&
-                            editorState.multiSelection.targetView ===
-                              "original" && (
-                              <SelectionPreview
-                                start={
-                                  editorState.multiSelection.selectionStart
-                                }
-                                end={editorState.multiSelection.selectionEnd}
-                                scale={documentState.scale}
-                              />
-                            )}
-                          {editorState.isSelectionMode &&
-                            editorState.multiSelection.selectionBounds &&
-                            editorState.multiSelection.selectedElements.length >
-                              0 &&
-                            editorState.multiSelection.targetView ===
-                              "original" && (
-                              <SelectionRectangle
-                                bounds={
-                                  editorState.multiSelection.selectionBounds
-                                }
-                                scale={documentState.scale}
-                                onMove={handleMoveSelection}
-                                onDelete={handleDeleteSelection}
-                                isMoving={
-                                  editorState.multiSelection.isMovingSelection
-                                }
-                                onDragSelection={(deltaX, deltaY) => {
-                                  moveSelectedElements(
-                                    editorState.multiSelection.selectedElements,
-                                    deltaX,
-                                    deltaY,
-                                    (id, updates) =>
-                                      updateTextBoxWithUndo(id, updates, true),
-                                    (id, updates) =>
-                                      updateShapeWithUndo(id, updates, true),
-                                    updateImage,
-                                    getElementById,
-                                    documentState.pageWidth,
-                                    documentState.pageHeight
-                                  );
-                                  setEditorState((prev) => {
-                                    const updatedElements =
-                                      prev.multiSelection.selectedElements.map(
-                                        (el) => ({
-                                          ...el,
-                                          originalPosition: {
-                                            x: el.originalPosition.x + deltaX,
-                                            y: el.originalPosition.y + deltaY,
-                                          },
-                                        })
-                                      );
-                                    const newBounds = calculateSelectionBounds(
-                                      updatedElements,
-                                      getElementById
-                                    );
-                                    return {
-                                      ...prev,
-                                      multiSelection: {
-                                        ...prev.multiSelection,
-                                        selectedElements: updatedElements,
-                                        selectionBounds: newBounds,
-                                      },
-                                    };
-                                  });
-                                }}
-                                onDragStopSelection={handleDragStopSelection}
-                              />
-                            )}
-                        </div>
+                        </svg>
                       </div>
+                    </div>
 
-                      {/* Gap between documents */}
-                      <div className="w-5 flex items-center justify-center">
-                        <div className="w-px h-full bg-gray-300"></div>
-                      </div>
+                    {/* Title */}
+                    <h2 className="text-2xl font-semibold text-gray-800 mb-3">
+                      Welcome to Wally Editor
+                    </h2>
 
-                      {/* Translated Document Side */}
-                      <div style={{ position: "relative" }}>
-                        {/* Show translation table view when in translate workflow step */}
-                        {viewState.currentWorkflowStep === "translate" ? (
-                          <TranslationTableView
-                            translatedTextBoxes={getCurrentTextBoxes(
-                              "translated"
-                            )}
-                            untranslatedTexts={
-                              elementCollections.untranslatedTexts
-                            }
-                            onUpdateTextBox={updateTranslatedTextBoxWithUndo}
-                            onUpdateUntranslatedText={updateUntranslatedText}
-                            onDeleteTextBox={
-                              handleDeleteTextBoxAndUntranslatedText
-                            }
-                            onRowClick={handleTranslationRowClick}
-                            onAddTextBox={handleAddCustomTextBox}
-                            onAddUntranslatedText={
-                              handleAddCustomUntranslatedText
-                            }
-                            pageWidth={documentState.pageWidth}
-                            pageHeight={documentState.pageHeight}
-                            scale={documentState.scale}
-                            currentPage={documentState.currentPage}
-                          />
-                        ) : (
+                    {/* Description */}
+                    <p className="text-gray-600 mb-8 leading-relaxed">
+                      Upload a PDF document to get started with editing,
+                      translation, and layout creation. Support for images and
+                      various file formats available.
+                    </p>
+
+                    {/* Upload Button */}
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primaryLight focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                    >
+                      <svg
+                        className="w-5 h-5 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        />
+                      </svg>
+                      Upload Document
+                    </button>
+
+                    {/* File type info */}
+                    <div className="mt-6 text-sm text-gray-500">
+                      <p>Supported formats: PDF, JPG, PNG, GIF, BMP, WebP</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {documentState.url && !documentState.error && (
+                <div
+                  className="document-wrapper"
+                  style={{
+                    minHeight: `${Math.max(
+                      100,
+                      documentState.pageHeight * documentState.scale + 80
+                    )}px`,
+                    height: `${Math.max(
+                      100,
+                      documentState.pageHeight * documentState.scale + 80
+                    )}px`,
+                    width: `${Math.max(
+                      100,
+                      viewState.currentView === "split" &&
+                        viewState.currentWorkflowStep == "layout"
+                        ? documentState.pageWidth * documentState.scale * 2 +
+                            100 // Double width for split view plus gap and padding
+                        : documentState.pageWidth * documentState.scale + 80
+                    )}px`,
+                    minWidth: `${Math.max(
+                      100,
+                      viewState.currentView === "split" &&
+                        viewState.currentWorkflowStep == "layout"
+                        ? documentState.pageWidth * documentState.scale * 2 +
+                            100
+                        : documentState.pageWidth * documentState.scale + 80
+                    )}px`,
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    paddingTop: "64px",
+                    paddingBottom: "40px",
+                    paddingLeft: "40px",
+                    paddingRight: "40px",
+                    margin: "0 auto",
+                  }}
+                >
+                  <div
+                    ref={documentRef}
+                    className={`relative bg-transparent document-page ${
+                      documentState.isScaleChanging ? "" : "zoom-transition"
+                    } ${
+                      editorState.isAddTextBoxMode ? "add-text-box-mode" : ""
+                    } ${
+                      editorState.isTextSelectionMode
+                        ? "text-selection-mode"
+                        : ""
+                    } ${editorState.isSelectionMode ? "selection-mode" : ""} ${
+                      editorState.isAddTextBoxMode ? "cursor-crosshair" : ""
+                    } ${toolState.shapeDrawingMode ? "cursor-crosshair" : ""} ${
+                      erasureState.isErasureMode ? "cursor-crosshair" : ""
+                    } ${viewState.isCtrlPressed ? "cursor-zoom-in" : ""}`}
+                    onClick={handleDocumentContainerClick}
+                    onMouseDown={(e) => {
+                      if (
+                        editorState.isTextSelectionMode ||
+                        erasureState.isErasureMode ||
+                        editorState.isSelectionMode ||
+                        editorState.multiSelection.isMovingSelection
+                      ) {
+                        if (editorState.multiSelection.isMovingSelection) {
+                          handleMoveSelectionMouseDown(e);
+                        } else if (editorState.isSelectionMode) {
+                          handleMultiSelectionMouseDown(e);
+                        } else {
+                          handleDocumentMouseDown(e);
+                        }
+                      }
+                    }}
+                    onMouseMove={(e) => {
+                      if (toolState.shapeDrawingMode) {
+                        handleShapeDrawMove(e);
+                      } else if (editorState.multiSelection.isMovingSelection) {
+                        handleMoveSelectionMouseMove(e);
+                      } else if (editorState.isTextSelectionMode) {
+                        handleDocumentMouseMove(e);
+                      } else if (editorState.isSelectionMode) {
+                        handleMultiSelectionMouseMove(e);
+                      } else if (erasureState.isErasureMode) {
+                        handleErasureDrawMove(e);
+                      }
+                    }}
+                    onMouseUp={(e) => {
+                      if (toolState.shapeDrawingMode) {
+                        handleShapeDrawEnd();
+                      } else if (editorState.multiSelection.isMovingSelection) {
+                        handleMoveSelectionMouseUp();
+                      } else if (editorState.isTextSelectionMode) {
+                        handleDocumentMouseUp(e);
+                      } else if (editorState.isSelectionMode) {
+                        handleMultiSelectionMouseUp(e);
+                      } else if (erasureState.isErasureMode) {
+                        handleErasureDrawEnd();
+                      }
+                    }}
+                    style={{
+                      width:
+                        viewState.currentView === "split" &&
+                        viewState.currentWorkflowStep !== "translate" &&
+                        viewState.currentWorkflowStep !== "final-layout"
+                          ? documentState.pageWidth * documentState.scale * 2 +
+                            20 // Double width plus gap for split view
+                          : documentState.pageWidth * documentState.scale,
+                      height: documentState.pageHeight * documentState.scale,
+                      minWidth:
+                        viewState.currentView === "split" &&
+                        viewState.currentWorkflowStep !== "translate" &&
+                        viewState.currentWorkflowStep !== "final-layout"
+                          ? documentState.pageWidth * documentState.scale * 2 +
+                            20
+                          : documentState.pageWidth * documentState.scale,
+                      minHeight: documentState.pageHeight * documentState.scale,
+                      display: "block",
+                    }}
+                  >
+                    {/* Document Rendering - Show different content based on view */}
+                    {viewState.currentView === "original" && (
+                      <DocumentPanel
+                        viewType="original"
+                        documentUrl={documentState.url}
+                        currentPage={documentState.currentPage}
+                        pageWidth={documentState.pageWidth}
+                        pageHeight={documentState.pageHeight}
+                        scale={documentState.scale}
+                        numPages={documentState.numPages}
+                        isScaleChanging={documentState.isScaleChanging}
+                        isAddTextBoxMode={editorState.isAddTextBoxMode}
+                        isTextSpanZooming={isTextSpanZooming}
+                        isPdfFile={isPdfFile}
+                        handlers={handlers}
+                        actions={actions}
+                        setDocumentState={setDocumentState}
+                        deletionRectangles={
+                          elementCollections.originalDeletionRectangles
+                        }
+                        showDeletionRectangles={
+                          editorState.showDeletionRectangles
+                        }
+                        onDeleteDeletionRectangle={(id) =>
+                          handleDeleteDeletionRectangleWithUndo(id, "original")
+                        }
+                        colorToRgba={colorToRgba}
+                        sortedElements={getOriginalSortedElements(
+                          documentState.currentPage
+                        )}
+                        getElementsInSelectionPreview={
+                          getElementsInSelectionPreview
+                        }
+                        selectedFieldId={editorState.selectedFieldId}
+                        selectedShapeId={editorState.selectedShapeId}
+                        selectedElementId={selectedElementId}
+                        isEditMode={editorState.isEditMode}
+                        showPaddingIndicator={showPaddingPopup}
+                        onTextBoxSelect={handleTextBoxSelect}
+                        onShapeSelect={handleShapeSelect}
+                        onImageSelect={handleImageSelect}
+                        onUpdateTextBox={updateOriginalTextBoxWithUndo}
+                        onUpdateShape={updateShapeWithUndo}
+                        onUpdateImage={updateImage}
+                        onDeleteTextBox={(id) =>
+                          handleDeleteTextBoxWithUndo(id, "original")
+                        }
+                        onDeleteShape={(id) =>
+                          handleDeleteShapeWithUndo(id, viewState.currentView)
+                        }
+                        onDeleteImage={(id) =>
+                          handleDeleteImageWithUndo(id, viewState.currentView)
+                        }
+                        isTextSelectionMode={editorState.isTextSelectionMode}
+                        selectedTextBoxes={selectionState.selectedTextBoxes}
+                        autoFocusTextBoxId={autoFocusTextBoxId}
+                        onAutoFocusComplete={handleAutoFocusComplete}
+                        isSelectionMode={editorState.isSelectionMode}
+                        multiSelection={editorState.multiSelection}
+                        currentView={viewState.currentView}
+                        onMoveSelection={handleMoveSelection}
+                        onDeleteSelection={handleDeleteSelection}
+                        onDragSelection={(deltaX, deltaY) => {
+                          // Move all selected elements by delta (in real time)
+                          moveSelectedElements(
+                            editorState.multiSelection.selectedElements,
+                            deltaX,
+                            deltaY,
+                            updateTextBoxWithUndo,
+                            updateShape,
+                            updateImage,
+                            getElementById,
+                            documentState.pageWidth,
+                            documentState.pageHeight
+                          );
+                          // Update selection bounds in real time
+                          setEditorState((prev) => {
+                            const updatedElements =
+                              prev.multiSelection.selectedElements.map(
+                                (el) => ({
+                                  ...el,
+                                  originalPosition: {
+                                    x: el.originalPosition.x + deltaX,
+                                    y: el.originalPosition.y + deltaY,
+                                  },
+                                })
+                              );
+                            const newBounds = calculateSelectionBounds(
+                              updatedElements,
+                              getElementById
+                            );
+                            return {
+                              ...prev,
+                              multiSelection: {
+                                ...prev.multiSelection,
+                                selectedElements: updatedElements,
+                                selectionBounds: newBounds,
+                              },
+                            };
+                          });
+                        }}
+                        onDragStopSelection={handleDragStopSelection}
+                      />
+                    )}
+
+                    {/* Translated Document View */}
+                    {viewState.currentView === "translated" && (
+                      <>
+                        {/* Show normal document layout when in layout or final-layout workflow step */}
+                        {(viewState.currentWorkflowStep === "layout" ||
+                          viewState.currentWorkflowStep === "final-layout") && (
                           /* Show normal document layout when in layout workflow step */
                           <DocumentPanel
                             viewType="translated"
-                            documentUrl={documentState.url}
+                            documentUrl={getTranslatedDocumentUrl(
+                              documentState.currentPage
+                            )}
                             currentPage={documentState.currentPage}
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
@@ -4177,12 +4948,24 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                             actions={actions}
                             setDocumentState={setDocumentState}
                             isPageTranslated={
-                              pageState.isPageTranslated.get(
-                                documentState.currentPage
-                              ) || false
+                              documentState.pages.find(
+                                (p) =>
+                                  p.pageNumber === documentState.currentPage
+                              )?.isTranslated || false
                             }
-                            isTransforming={pageState.isTransforming}
+                            isTransforming={documentState.isTransforming}
                             isTranslating={isTranslating}
+                            templateWidth={
+                              getTranslatedTemplateDimensions(
+                                documentState.currentPage
+                              ).width
+                            }
+                            templateHeight={
+                              getTranslatedTemplateDimensions(
+                                documentState.currentPage
+                              ).height
+                            }
+                            onTemplateLoadSuccess={updateTemplateDimensions}
                             onRunOcr={() =>
                               checkLanguageAndRunOcr(
                                 "single",
@@ -4246,6 +5029,136 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                             onMoveSelection={handleMoveSelection}
                             onDeleteSelection={handleDeleteSelection}
                             onDragSelection={(deltaX, deltaY) => {
+                              // Move all selected elements by delta (in real time)
+                              moveSelectedElements(
+                                editorState.multiSelection.selectedElements,
+                                deltaX,
+                                deltaY,
+                                updateTextBoxWithUndo,
+                                updateShape,
+                                updateImage,
+                                getElementById,
+                                documentState.pageWidth,
+                                documentState.pageHeight
+                              );
+                              // Update selection bounds in real time
+                              setEditorState((prev) => {
+                                const updatedElements =
+                                  prev.multiSelection.selectedElements.map(
+                                    (el) => ({
+                                      ...el,
+                                      originalPosition: {
+                                        x: el.originalPosition.x + deltaX,
+                                        y: el.originalPosition.y + deltaY,
+                                      },
+                                    })
+                                  );
+                                const newBounds = calculateSelectionBounds(
+                                  updatedElements,
+                                  getElementById
+                                );
+                                return {
+                                  ...prev,
+                                  multiSelection: {
+                                    ...prev.multiSelection,
+                                    selectedElements: updatedElements,
+                                    selectionBounds: newBounds,
+                                  },
+                                };
+                              });
+                            }}
+                            onDragStopSelection={handleDragStopSelection}
+                          />
+                        )}
+                      </>
+                    )}
+
+                    {/* Split Screen View */}
+                    {viewState.currentView === "split" && (
+                      <div
+                        className="flex relative"
+                        style={{
+                          width:
+                            documentState.pageWidth * documentState.scale * 2 +
+                            20, // Double width plus gap
+                          height:
+                            documentState.pageHeight * documentState.scale,
+                        }}
+                      >
+                        {/* Original Document Side */}
+                        <div style={{ position: "relative" }}>
+                          <DocumentPanel
+                            viewType="original"
+                            documentUrl={documentState.url}
+                            currentPage={documentState.currentPage}
+                            pageWidth={documentState.pageWidth}
+                            pageHeight={documentState.pageHeight}
+                            scale={documentState.scale}
+                            numPages={documentState.numPages}
+                            isScaleChanging={documentState.isScaleChanging}
+                            isAddTextBoxMode={editorState.isAddTextBoxMode}
+                            isTextSpanZooming={isTextSpanZooming}
+                            isPdfFile={isPdfFile}
+                            handlers={handlers}
+                            actions={actions}
+                            setDocumentState={setDocumentState}
+                            deletionRectangles={
+                              elementCollections.originalDeletionRectangles
+                            }
+                            showDeletionRectangles={
+                              editorState.showDeletionRectangles
+                            }
+                            onDeleteDeletionRectangle={(id) =>
+                              handleDeleteDeletionRectangleWithUndo(
+                                id,
+                                "original"
+                              )
+                            }
+                            colorToRgba={colorToRgba}
+                            sortedElements={getOriginalSortedElements(
+                              documentState.currentPage
+                            )}
+                            getElementsInSelectionPreview={
+                              getElementsInSelectionPreview
+                            }
+                            selectedFieldId={editorState.selectedFieldId}
+                            selectedShapeId={editorState.selectedShapeId}
+                            selectedElementId={selectedElementId}
+                            isEditMode={editorState.isEditMode}
+                            showPaddingIndicator={showPaddingPopup}
+                            onTextBoxSelect={handleTextBoxSelect}
+                            onShapeSelect={handleShapeSelect}
+                            onImageSelect={handleImageSelect}
+                            onUpdateTextBox={updateOriginalTextBoxWithUndo}
+                            onUpdateShape={updateShapeWithUndo}
+                            onUpdateImage={updateImage}
+                            onDeleteTextBox={(id) =>
+                              handleDeleteTextBoxWithUndo(id, "original")
+                            }
+                            onDeleteShape={(id) =>
+                              handleDeleteShapeWithUndo(
+                                id,
+                                viewState.currentView
+                              )
+                            }
+                            onDeleteImage={(id) =>
+                              handleDeleteImageWithUndo(
+                                id,
+                                viewState.currentView
+                              )
+                            }
+                            isTextSelectionMode={
+                              editorState.isTextSelectionMode
+                            }
+                            selectedTextBoxes={selectionState.selectedTextBoxes}
+                            autoFocusTextBoxId={autoFocusTextBoxId}
+                            onAutoFocusComplete={handleAutoFocusComplete}
+                            isSelectionMode={editorState.isSelectionMode}
+                            multiSelection={editorState.multiSelection}
+                            currentView={viewState.currentView}
+                            onMoveSelection={handleMoveSelection}
+                            onDeleteSelection={handleDeleteSelection}
+                            onDragSelection={(deltaX, deltaY) => {
                               moveSelectedElements(
                                 editorState.multiSelection.selectedElements,
                                 deltaX,
@@ -4283,17 +5196,8 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                               });
                             }}
                             onDragStopSelection={handleDragStopSelection}
-                            header={
-                              <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
-                                <div className="bg-green-500 text-white px-3 py-1 rounded-t-lg text-sm font-medium">
-                                  Translated Document
-                                </div>
-                              </div>
-                            }
                           />
-                        )}
-                        {/* Interactive elements overlay for Translated in Split View - only show in layout mode */}
-                        {viewState.currentWorkflowStep !== "translate" && (
+                          {/* Interactive elements overlay for Original in Split View */}
                           <div
                             className="absolute top-0 left-0 interactive-elements-wrapper"
                             style={{
@@ -4306,7 +5210,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                             }}
                           >
                             {/* Deletion Rectangles */}
-                            {getCurrentDeletionRectangles("translated")
+                            {getCurrentDeletionRectangles("original")
                               .filter(
                                 (rect) =>
                                   rect.page === documentState.currentPage
@@ -4341,7 +5245,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                                         e.stopPropagation();
                                         handleDeleteDeletionRectangleWithUndo(
                                           rect.id,
-                                          "translated"
+                                          "original"
                                         );
                                       }}
                                       className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
@@ -4352,17 +5256,28 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                                   )}
                                 </div>
                               ))}
+
+                            {/* Untranslated text highlight overlay */}
+                            <UntranslatedTextHighlight
+                              untranslatedTexts={
+                                elementCollections.untranslatedTexts
+                              }
+                              highlightedId={highlightedUntranslatedTextId}
+                              currentPage={documentState.currentPage}
+                              scale={documentState.scale}
+                            />
+
                             {/* Render all elements in layer order */}
-                            {getTranslatedSortedElements(
+                            {getOriginalSortedElements(
                               documentState.currentPage
-                            ).map((el) => renderElement(el, "translated"))}
-                            {/* Selection overlays for translated view */}
+                            ).map((el) => renderElement(el, "original"))}
+                            {/* Selection overlays for original view */}
                             {editorState.isSelectionMode &&
                               editorState.multiSelection.isDrawingSelection &&
                               editorState.multiSelection.selectionStart &&
                               editorState.multiSelection.selectionEnd &&
                               editorState.multiSelection.targetView ===
-                                "translated" && (
+                                "original" && (
                                 <SelectionPreview
                                   start={
                                     editorState.multiSelection.selectionStart
@@ -4376,7 +5291,7 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                               editorState.multiSelection.selectedElements
                                 .length > 0 &&
                               editorState.multiSelection.targetView ===
-                                "translated" && (
+                                "original" && (
                                 <SelectionRectangle
                                   bounds={
                                     editorState.multiSelection.selectionBounds
@@ -4436,260 +5351,799 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
                                 />
                               )}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                        </div>
 
-                  {/* Show interactive elements in both original and translated views */}
-                  {(viewState.currentView === "original" ||
-                    (viewState.currentView === "translated" &&
-                      viewState.currentWorkflowStep !== "translate")) && (
-                    <div
-                      className="absolute inset-0 interactive-elements-wrapper"
-                      style={{
-                        zIndex:
-                          editorState.isTextSelectionMode ||
-                          editorState.isAddTextBoxMode
-                            ? 100
-                            : 10000,
-                        pointerEvents:
-                          editorState.isTextSelectionMode ||
-                          editorState.isAddTextBoxMode
-                            ? "none"
-                            : "auto",
-                      }}
-                    >
-                      {/* Deletion Rectangles */}
-                      {currentPageDeletionRectangles.map((rect) => (
-                        <div
-                          key={rect.id}
-                          className={`absolute ${
-                            editorState.showDeletionRectangles
-                              ? "border border-red-400"
-                              : ""
-                          }`}
-                          style={{
-                            left: rect.x * documentState.scale,
-                            top: rect.y * documentState.scale,
-                            width: rect.width * documentState.scale,
-                            height: rect.height * documentState.scale,
-                            zIndex: editorState.showDeletionRectangles
-                              ? -10
-                              : -20,
-                            backgroundColor: rect.background
-                              ? colorToRgba(
-                                  rect.background,
-                                  rect.opacity || 1.0
+                        {/* Gap between documents */}
+                        <div className="w-5 flex items-center justify-center">
+                          <div className="w-px h-full bg-gray-300"></div>
+                        </div>
+
+                        {/* Translated Document Side */}
+                        <div style={{ position: "relative" }}>
+                          {/* Show normal document layout when in layout or final-layout workflow step */}
+                          {viewState.currentWorkflowStep === "layout" && (
+                            /* Show normal document layout when in layout workflow step */
+                            <DocumentPanel
+                              viewType="translated"
+                              documentUrl={getTranslatedDocumentUrl(
+                                documentState.currentPage
+                              )}
+                              currentPage={documentState.currentPage}
+                              pageWidth={documentState.pageWidth}
+                              pageHeight={documentState.pageHeight}
+                              scale={documentState.scale}
+                              numPages={documentState.numPages}
+                              isScaleChanging={documentState.isScaleChanging}
+                              isAddTextBoxMode={editorState.isAddTextBoxMode}
+                              isTextSpanZooming={isTextSpanZooming}
+                              isPdfFile={isPdfFile}
+                              handlers={handlers}
+                              actions={actions}
+                              setDocumentState={setDocumentState}
+                              isPageTranslated={
+                                documentState.pages.find(
+                                  (p) =>
+                                    p.pageNumber === documentState.currentPage
+                                )?.isTranslated || false
+                              }
+                              isTransforming={documentState.isTransforming}
+                              isTranslating={isTranslating}
+                              templateWidth={
+                                getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).width
+                              }
+                              templateHeight={
+                                getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).height
+                              }
+                              onTemplateLoadSuccess={updateTemplateDimensions}
+                              onRunOcr={() =>
+                                checkLanguageAndRunOcr(
+                                  "single",
+                                  documentState.currentPage
                                 )
-                              : "white",
-                          }}
-                        >
-                          {editorState.showDeletionRectangles && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
+                              }
+                              deletionRectangles={
+                                elementCollections.translatedDeletionRectangles
+                              }
+                              showDeletionRectangles={
+                                editorState.showDeletionRectangles
+                              }
+                              onDeleteDeletionRectangle={(id) =>
                                 handleDeleteDeletionRectangleWithUndo(
-                                  rect.id,
+                                  id,
+                                  "translated"
+                                )
+                              }
+                              colorToRgba={colorToRgba}
+                              sortedElements={getTranslatedSortedElements(
+                                documentState.currentPage
+                              )}
+                              getElementsInSelectionPreview={
+                                getElementsInSelectionPreview
+                              }
+                              selectedFieldId={editorState.selectedFieldId}
+                              selectedShapeId={editorState.selectedShapeId}
+                              selectedElementId={selectedElementId}
+                              isEditMode={editorState.isEditMode}
+                              showPaddingIndicator={showPaddingPopup}
+                              onTextBoxSelect={handleTextBoxSelect}
+                              onShapeSelect={handleShapeSelect}
+                              onImageSelect={handleImageSelect}
+                              onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                              onUpdateShape={updateShapeWithUndo}
+                              onUpdateImage={updateImage}
+                              onDeleteTextBox={(id) =>
+                                handleDeleteTextBoxWithUndo(id, "translated")
+                              }
+                              onDeleteShape={(id) =>
+                                handleDeleteShapeWithUndo(
+                                  id,
                                   viewState.currentView
+                                )
+                              }
+                              onDeleteImage={(id) =>
+                                handleDeleteImageWithUndo(
+                                  id,
+                                  viewState.currentView
+                                )
+                              }
+                              isTextSelectionMode={
+                                editorState.isTextSelectionMode
+                              }
+                              selectedTextBoxes={
+                                selectionState.selectedTextBoxes
+                              }
+                              autoFocusTextBoxId={autoFocusTextBoxId}
+                              onAutoFocusComplete={handleAutoFocusComplete}
+                              isSelectionMode={editorState.isSelectionMode}
+                              multiSelection={editorState.multiSelection}
+                              currentView={viewState.currentView}
+                              onMoveSelection={handleMoveSelection}
+                              onDeleteSelection={handleDeleteSelection}
+                              onDragSelection={(deltaX, deltaY) => {
+                                moveSelectedElements(
+                                  editorState.multiSelection.selectedElements,
+                                  deltaX,
+                                  deltaY,
+                                  updateTextBoxWithUndo,
+                                  updateShape,
+                                  updateImage,
+                                  getElementById,
+                                  documentState.pageWidth,
+                                  documentState.pageHeight
                                 );
+                                setEditorState((prev) => {
+                                  const updatedElements =
+                                    prev.multiSelection.selectedElements.map(
+                                      (el) => ({
+                                        ...el,
+                                        originalPosition: {
+                                          x: el.originalPosition.x + deltaX,
+                                          y: el.originalPosition.y + deltaY,
+                                        },
+                                      })
+                                    );
+                                  const newBounds = calculateSelectionBounds(
+                                    updatedElements,
+                                    getElementById
+                                  );
+                                  return {
+                                    ...prev,
+                                    multiSelection: {
+                                      ...prev.multiSelection,
+                                      selectedElements: updatedElements,
+                                      selectionBounds: newBounds,
+                                    },
+                                  };
+                                });
                               }}
-                              className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
-                              title="Delete area"
+                              onDragStopSelection={handleDragStopSelection}
+                              header={
+                                <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
+                                  <div className="bg-primary text-white px-3 py-1 rounded-t-lg text-sm font-medium">
+                                    Translated Document
+                                  </div>
+                                </div>
+                              }
+                            />
+                          )}
+                          {/* Interactive elements overlay for Translated in Split View - only show in layout mode */}
+                          {viewState.currentWorkflowStep === "layout" && (
+                            <div
+                              className="absolute top-0 left-0 interactive-elements-wrapper"
+                              style={{
+                                width:
+                                  getTranslatedTemplateDimensions(
+                                    documentState.currentPage
+                                  ).width * documentState.scale,
+                                height:
+                                  getTranslatedTemplateDimensions(
+                                    documentState.currentPage
+                                  ).height * documentState.scale,
+                                pointerEvents: "auto",
+                                zIndex: 10000,
+                              }}
                             >
-                              ×
-                            </button>
+                              {/* Deletion Rectangles */}
+                              {getCurrentDeletionRectangles("translated")
+                                .filter(
+                                  (rect) =>
+                                    rect.page === documentState.currentPage
+                                )
+                                .map((rect) => (
+                                  <div
+                                    key={rect.id}
+                                    className={`absolute ${
+                                      editorState.showDeletionRectangles
+                                        ? "border border-red-400"
+                                        : ""
+                                    }`}
+                                    style={{
+                                      left: rect.x * documentState.scale,
+                                      top: rect.y * documentState.scale,
+                                      width: rect.width * documentState.scale,
+                                      height: rect.height * documentState.scale,
+                                      zIndex: editorState.showDeletionRectangles
+                                        ? -10
+                                        : -20,
+                                      backgroundColor: rect.background
+                                        ? colorToRgba(
+                                            rect.background,
+                                            rect.opacity || 1.0
+                                          )
+                                        : "white",
+                                    }}
+                                  >
+                                    {editorState.showDeletionRectangles && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteDeletionRectangleWithUndo(
+                                            rect.id,
+                                            "translated"
+                                          );
+                                        }}
+                                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                        title="Delete area"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              {/* Render all elements in layer order */}
+                              {getTranslatedSortedElements(
+                                documentState.currentPage
+                              ).map((el) => renderElement(el, "translated"))}
+                              {/* Selection overlays for translated view */}
+                              {editorState.isSelectionMode &&
+                                editorState.multiSelection.isDrawingSelection &&
+                                editorState.multiSelection.selectionStart &&
+                                editorState.multiSelection.selectionEnd &&
+                                editorState.multiSelection.targetView ===
+                                  "translated" && (
+                                  <SelectionPreview
+                                    start={
+                                      editorState.multiSelection.selectionStart
+                                    }
+                                    end={
+                                      editorState.multiSelection.selectionEnd
+                                    }
+                                    scale={documentState.scale}
+                                  />
+                                )}
+                              {editorState.isSelectionMode &&
+                                editorState.multiSelection.selectionBounds &&
+                                editorState.multiSelection.selectedElements
+                                  .length > 0 &&
+                                editorState.multiSelection.targetView ===
+                                  "translated" && (
+                                  <SelectionRectangle
+                                    bounds={
+                                      editorState.multiSelection.selectionBounds
+                                    }
+                                    scale={documentState.scale}
+                                    onMove={handleMoveSelection}
+                                    onDelete={handleDeleteSelection}
+                                    isMoving={
+                                      editorState.multiSelection
+                                        .isMovingSelection
+                                    }
+                                    onDragSelection={(deltaX, deltaY) => {
+                                      moveSelectedElements(
+                                        editorState.multiSelection
+                                          .selectedElements,
+                                        deltaX,
+                                        deltaY,
+                                        (id, updates) =>
+                                          updateTextBoxWithUndo(
+                                            id,
+                                            updates,
+                                            true
+                                          ),
+                                        (id, updates) =>
+                                          updateShapeWithUndo(
+                                            id,
+                                            updates,
+                                            true
+                                          ),
+                                        updateImage,
+                                        getElementById,
+                                        documentState.pageWidth,
+                                        documentState.pageHeight
+                                      );
+                                      setEditorState((prev) => {
+                                        const updatedElements =
+                                          prev.multiSelection.selectedElements.map(
+                                            (el) => ({
+                                              ...el,
+                                              originalPosition: {
+                                                x:
+                                                  el.originalPosition.x +
+                                                  deltaX,
+                                                y:
+                                                  el.originalPosition.y +
+                                                  deltaY,
+                                              },
+                                            })
+                                          );
+                                        const newBounds =
+                                          calculateSelectionBounds(
+                                            updatedElements,
+                                            getElementById
+                                          );
+                                        return {
+                                          ...prev,
+                                          multiSelection: {
+                                            ...prev.multiSelection,
+                                            selectedElements: updatedElements,
+                                            selectionBounds: newBounds,
+                                          },
+                                        };
+                                      });
+                                    }}
+                                    onDragStopSelection={
+                                      handleDragStopSelection
+                                    }
+                                  />
+                                )}
+                            </div>
                           )}
                         </div>
-                      ))}
+                      </div>
+                    )}
 
-                      {/* Render all elements in layer order */}
-                      {currentPageSortedElements.map((el) =>
-                        renderElement(el, viewState.currentView)
-                      )}
-
-                      {/* Single View Selection Components */}
-                      {editorState.isSelectionMode && (
-                        <>
-                          {/* Selection Preview for Single Views */}
-                          {editorState.multiSelection.isDrawingSelection &&
-                            editorState.multiSelection.selectionStart &&
-                            editorState.multiSelection.selectionEnd &&
-                            ((viewState.currentView === "original" &&
-                              editorState.multiSelection.targetView ===
-                                "original") ||
-                              (viewState.currentView === "translated" &&
-                                editorState.multiSelection.targetView ===
-                                  "translated")) && (
-                              <SelectionPreview
-                                start={
-                                  editorState.multiSelection.selectionStart
-                                }
-                                end={editorState.multiSelection.selectionEnd}
-                                scale={documentState.scale}
-                              />
-                            )}
-
-                          {/* Selection Rectangle for Single Views */}
-                          {editorState.multiSelection.selectionBounds &&
-                            editorState.multiSelection.selectedElements.length >
-                              0 &&
-                            ((viewState.currentView === "original" &&
-                              editorState.multiSelection.targetView ===
-                                "original") ||
-                              (viewState.currentView === "translated" &&
-                                editorState.multiSelection.targetView ===
-                                  "translated")) && (
-                              <SelectionRectangle
-                                bounds={
-                                  editorState.multiSelection.selectionBounds
-                                }
-                                scale={documentState.scale}
-                                onMove={handleMoveSelection}
-                                onDelete={handleDeleteSelection}
-                                isMoving={
-                                  editorState.multiSelection.isMovingSelection
-                                }
-                                onDragSelection={(deltaX, deltaY) => {
-                                  // Move all selected elements by delta (in real time)
-                                  moveSelectedElements(
-                                    editorState.multiSelection.selectedElements,
-                                    deltaX,
-                                    deltaY,
-                                    (id, updates) =>
-                                      updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
-                                    (id, updates) =>
-                                      updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-                                    updateImage,
-                                    getElementById,
-                                    documentState.pageWidth,
-                                    documentState.pageHeight
+                    {/* Show interactive elements in both original and translated views */}
+                    {(viewState.currentView === "original" ||
+                      (viewState.currentView === "translated" &&
+                        viewState.currentWorkflowStep !== "translate")) && (
+                      <div
+                        className="absolute inset-0 interactive-elements-wrapper"
+                        style={{
+                          width:
+                            viewState.currentView === "translated"
+                              ? getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).width * documentState.scale
+                              : documentState.pageWidth * documentState.scale,
+                          height:
+                            viewState.currentView === "translated"
+                              ? getTranslatedTemplateDimensions(
+                                  documentState.currentPage
+                                ).height * documentState.scale
+                              : documentState.pageHeight * documentState.scale,
+                          zIndex:
+                            editorState.isTextSelectionMode ||
+                            editorState.isAddTextBoxMode
+                              ? 100
+                              : 10000,
+                          pointerEvents:
+                            editorState.isTextSelectionMode ||
+                            editorState.isAddTextBoxMode
+                              ? "none"
+                              : "auto",
+                        }}
+                      >
+                        {/* Deletion Rectangles */}
+                        {currentPageDeletionRectangles.map((rect) => (
+                          <div
+                            key={rect.id}
+                            className={`absolute ${
+                              editorState.showDeletionRectangles
+                                ? "border border-red-400"
+                                : ""
+                            }`}
+                            style={{
+                              left: rect.x * documentState.scale,
+                              top: rect.y * documentState.scale,
+                              width: rect.width * documentState.scale,
+                              height: rect.height * documentState.scale,
+                              zIndex: editorState.showDeletionRectangles
+                                ? -10
+                                : -20,
+                              backgroundColor: rect.background
+                                ? colorToRgba(
+                                    rect.background,
+                                    rect.opacity || 1.0
+                                  )
+                                : "white",
+                            }}
+                          >
+                            {editorState.showDeletionRectangles && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteDeletionRectangleWithUndo(
+                                    rect.id,
+                                    viewState.currentView
                                   );
-                                  // Update selection bounds in real time
-                                  setEditorState((prev) => {
-                                    const updatedElements =
-                                      prev.multiSelection.selectedElements.map(
-                                        (el) => ({
-                                          ...el,
-                                          originalPosition: {
-                                            x: el.originalPosition.x + deltaX,
-                                            y: el.originalPosition.y + deltaY,
-                                          },
-                                        })
-                                      );
-                                    const newBounds = calculateSelectionBounds(
-                                      updatedElements,
-                                      getElementById
-                                    );
-                                    return {
-                                      ...prev,
-                                      multiSelection: {
-                                        ...prev.multiSelection,
-                                        selectedElements: updatedElements,
-                                        selectionBounds: newBounds,
-                                      },
-                                    };
-                                  });
                                 }}
-                                onDragStopSelection={handleDragStopSelection}
-                              />
+                                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 text-xs shadow-md"
+                                title="Delete area"
+                              >
+                                ×
+                              </button>
                             )}
+                          </div>
+                        ))}
+
+                        {/* Render all elements in layer order */}
+                        {currentPageSortedElements.map((el) =>
+                          renderElement(el, viewState.currentView)
+                        )}
+
+                        {/* Single View Selection Components */}
+                        {editorState.isSelectionMode && (
+                          <>
+                            {/* Selection Preview for Single Views */}
+                            {editorState.multiSelection.isDrawingSelection &&
+                              editorState.multiSelection.selectionStart &&
+                              editorState.multiSelection.selectionEnd &&
+                              ((viewState.currentView === "original" &&
+                                editorState.multiSelection.targetView ===
+                                  "original") ||
+                                (viewState.currentView === "translated" &&
+                                  editorState.multiSelection.targetView ===
+                                    "translated")) && (
+                                <SelectionPreview
+                                  start={
+                                    editorState.multiSelection.selectionStart
+                                  }
+                                  end={editorState.multiSelection.selectionEnd}
+                                  scale={documentState.scale}
+                                />
+                              )}
+
+                            {/* Selection Rectangle for Single Views */}
+                            {editorState.multiSelection.selectionBounds &&
+                              editorState.multiSelection.selectedElements
+                                .length > 0 &&
+                              ((viewState.currentView === "original" &&
+                                editorState.multiSelection.targetView ===
+                                  "original") ||
+                                (viewState.currentView === "translated" &&
+                                  editorState.multiSelection.targetView ===
+                                    "translated")) && (
+                                <SelectionRectangle
+                                  bounds={
+                                    editorState.multiSelection.selectionBounds
+                                  }
+                                  scale={documentState.scale}
+                                  onMove={handleMoveSelection}
+                                  onDelete={handleDeleteSelection}
+                                  isMoving={
+                                    editorState.multiSelection.isMovingSelection
+                                  }
+                                  onDragSelection={(deltaX, deltaY) => {
+                                    // Move all selected elements by delta (in real time)
+                                    moveSelectedElements(
+                                      editorState.multiSelection
+                                        .selectedElements,
+                                      deltaX,
+                                      deltaY,
+                                      (id, updates) =>
+                                        updateTextBoxWithUndo(
+                                          id,
+                                          updates,
+                                          true
+                                        ), // Mark as ongoing operation
+                                      (id, updates) =>
+                                        updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
+                                      updateImage,
+                                      getElementById,
+                                      documentState.pageWidth,
+                                      documentState.pageHeight
+                                    );
+                                    // Update selection bounds in real time
+                                    setEditorState((prev) => {
+                                      const updatedElements =
+                                        prev.multiSelection.selectedElements.map(
+                                          (el) => ({
+                                            ...el,
+                                            originalPosition: {
+                                              x: el.originalPosition.x + deltaX,
+                                              y: el.originalPosition.y + deltaY,
+                                            },
+                                          })
+                                        );
+                                      const newBounds =
+                                        calculateSelectionBounds(
+                                          updatedElements,
+                                          getElementById
+                                        );
+                                      return {
+                                        ...prev,
+                                        multiSelection: {
+                                          ...prev.multiSelection,
+                                          selectedElements: updatedElements,
+                                          selectionBounds: newBounds,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  onDragStopSelection={handleDragStopSelection}
+                                />
+                              )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Shape Drawing Preview */}
+                    {toolState.isDrawingInProgress &&
+                      toolState.shapeDrawStart &&
+                      toolState.shapeDrawEnd && (
+                        <>
+                          {toolState.shapeDrawingMode === "line" ? (
+                            // Line preview using SVG
+                            <svg
+                              className="absolute pointer-events-none"
+                              style={{
+                                left: getPreviewLeft(
+                                  Math.min(
+                                    toolState.shapeDrawStart.x,
+                                    toolState.shapeDrawEnd.x
+                                  ) - 10,
+                                  viewState.currentView === "split"
+                                    ? toolState.shapeDrawTargetView ===
+                                        "translated"
+                                    : viewState.currentView === "translated",
+                                  viewState.currentView,
+                                  documentState.pageWidth,
+                                  documentState.scale
+                                ),
+                                top:
+                                  (Math.min(
+                                    toolState.shapeDrawStart.y,
+                                    toolState.shapeDrawEnd.y
+                                  ) -
+                                    10) *
+                                  documentState.scale,
+                                width:
+                                  (Math.abs(
+                                    toolState.shapeDrawEnd.x -
+                                      toolState.shapeDrawStart.x
+                                  ) +
+                                    20) *
+                                  documentState.scale,
+                                height:
+                                  (Math.abs(
+                                    toolState.shapeDrawEnd.y -
+                                      toolState.shapeDrawStart.y
+                                  ) +
+                                    20) *
+                                  documentState.scale,
+                                zIndex: 50,
+                              }}
+                            >
+                              <line
+                                x1={
+                                  (toolState.shapeDrawStart.x -
+                                    Math.min(
+                                      toolState.shapeDrawStart.x,
+                                      toolState.shapeDrawEnd.x
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                y1={
+                                  (toolState.shapeDrawStart.y -
+                                    Math.min(
+                                      toolState.shapeDrawStart.y,
+                                      toolState.shapeDrawEnd.y
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                x2={
+                                  (toolState.shapeDrawEnd.x -
+                                    Math.min(
+                                      toolState.shapeDrawStart.x,
+                                      toolState.shapeDrawEnd.x
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                y2={
+                                  (toolState.shapeDrawEnd.y -
+                                    Math.min(
+                                      toolState.shapeDrawStart.y,
+                                      toolState.shapeDrawEnd.y
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                stroke="#ef4444"
+                                strokeWidth="2"
+                                strokeDasharray="5,5"
+                                strokeLinecap="round"
+                              />
+                              {/* Preview anchor points */}
+                              <circle
+                                cx={
+                                  (toolState.shapeDrawStart.x -
+                                    Math.min(
+                                      toolState.shapeDrawStart.x,
+                                      toolState.shapeDrawEnd.x
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                cy={
+                                  (toolState.shapeDrawStart.y -
+                                    Math.min(
+                                      toolState.shapeDrawStart.y,
+                                      toolState.shapeDrawEnd.y
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                r="4"
+                                fill="#3b82f6"
+                                stroke="white"
+                                strokeWidth="1"
+                              />
+                              <circle
+                                cx={
+                                  (toolState.shapeDrawEnd.x -
+                                    Math.min(
+                                      toolState.shapeDrawStart.x,
+                                      toolState.shapeDrawEnd.x
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                cy={
+                                  (toolState.shapeDrawEnd.y -
+                                    Math.min(
+                                      toolState.shapeDrawStart.y,
+                                      toolState.shapeDrawEnd.y
+                                    ) +
+                                    10) *
+                                  documentState.scale
+                                }
+                                r="4"
+                                fill="#3b82f6"
+                                stroke="white"
+                                strokeWidth="1"
+                              />
+                            </svg>
+                          ) : (
+                            // Rectangle/Circle preview using bounding box
+                            <div
+                              className="absolute border-2 border-dashed border-red-500 bg-red-100 bg-opacity-30 pointer-events-none"
+                              style={{
+                                left: getPreviewLeft(
+                                  Math.min(
+                                    toolState.shapeDrawStart.x,
+                                    toolState.shapeDrawEnd.x
+                                  ),
+                                  viewState.currentView === "split"
+                                    ? toolState.shapeDrawTargetView ===
+                                        "translated"
+                                    : viewState.currentView === "translated",
+                                  viewState.currentView,
+                                  documentState.pageWidth,
+                                  documentState.scale
+                                ),
+                                top:
+                                  Math.min(
+                                    toolState.shapeDrawStart.y,
+                                    toolState.shapeDrawEnd.y
+                                  ) * documentState.scale,
+                                width:
+                                  Math.abs(
+                                    toolState.shapeDrawEnd.x -
+                                      toolState.shapeDrawStart.x
+                                  ) * documentState.scale,
+                                height:
+                                  Math.abs(
+                                    toolState.shapeDrawEnd.y -
+                                      toolState.shapeDrawStart.y
+                                  ) * documentState.scale,
+                                borderRadius:
+                                  toolState.shapeDrawingMode === "circle"
+                                    ? "50%"
+                                    : "0",
+                                zIndex: 50,
+                              }}
+                            />
+                          )}
                         </>
                       )}
-                    </div>
-                  )}
 
-                  {/* Shape Drawing Preview */}
-                  {toolState.isDrawingInProgress &&
-                    toolState.shapeDrawStart &&
-                    toolState.shapeDrawEnd && (
-                      <div
-                        className="absolute border-2 border-dashed border-red-500 bg-red-100 bg-opacity-30 pointer-events-none"
-                        style={{
-                          left: getPreviewLeft(
-                            Math.min(
-                              toolState.shapeDrawStart.x,
-                              toolState.shapeDrawEnd.x
+                    {/* Erasure Drawing Preview */}
+                    {erasureState.isDrawingErasure &&
+                      erasureState.erasureDrawStart &&
+                      erasureState.erasureDrawEnd && (
+                        <div
+                          className="absolute border-2 border-dashed pointer-events-none"
+                          style={{
+                            left: getPreviewLeft(
+                              Math.min(
+                                erasureState.erasureDrawStart.x,
+                                erasureState.erasureDrawEnd.x
+                              ),
+                              viewState.currentView === "split"
+                                ? erasureState.erasureDrawTargetView ===
+                                    "translated"
+                                : viewState.currentView === "translated",
+                              viewState.currentView,
+                              documentState.pageWidth,
+                              documentState.scale
                             ),
-                            viewState.currentView === "split"
-                              ? toolState.shapeDrawTargetView === "translated"
-                              : viewState.currentView === "translated",
-                            viewState.currentView,
-                            documentState.pageWidth,
-                            documentState.scale
-                          ),
-                          top:
-                            Math.min(
-                              toolState.shapeDrawStart.y,
-                              toolState.shapeDrawEnd.y
-                            ) * documentState.scale,
-                          width:
-                            Math.abs(
-                              toolState.shapeDrawEnd.x -
-                                toolState.shapeDrawStart.x
-                            ) * documentState.scale,
-                          height:
-                            Math.abs(
-                              toolState.shapeDrawEnd.y -
-                                toolState.shapeDrawStart.y
-                            ) * documentState.scale,
-                          borderRadius:
-                            toolState.shapeDrawingMode === "circle"
-                              ? "50%"
-                              : "0",
-                          zIndex: 50,
-                        }}
-                      />
-                    )}
-
-                  {/* Erasure Drawing Preview */}
-                  {erasureState.isDrawingErasure &&
-                    erasureState.erasureDrawStart &&
-                    erasureState.erasureDrawEnd && (
-                      <div
-                        className="absolute border-2 border-dashed pointer-events-none"
-                        style={{
-                          left: getPreviewLeft(
-                            Math.min(
-                              erasureState.erasureDrawStart.x,
-                              erasureState.erasureDrawEnd.x
+                            top:
+                              Math.min(
+                                erasureState.erasureDrawStart.y,
+                                erasureState.erasureDrawEnd.y
+                              ) * documentState.scale,
+                            width:
+                              Math.abs(
+                                erasureState.erasureDrawEnd.x -
+                                  erasureState.erasureDrawStart.x
+                              ) * documentState.scale,
+                            height:
+                              Math.abs(
+                                erasureState.erasureDrawEnd.y -
+                                  erasureState.erasureDrawStart.y
+                              ) * documentState.scale,
+                            backgroundColor: colorToRgba(
+                              documentState.pdfBackgroundColor,
+                              erasureState.erasureSettings.opacity
                             ),
-                            viewState.currentView === "split"
-                              ? erasureState.erasureDrawTargetView ===
-                                  "translated"
-                              : viewState.currentView === "translated",
-                            viewState.currentView,
-                            documentState.pageWidth,
-                            documentState.scale
-                          ),
-                          top:
-                            Math.min(
-                              erasureState.erasureDrawStart.y,
-                              erasureState.erasureDrawEnd.y
-                            ) * documentState.scale,
-                          width:
-                            Math.abs(
-                              erasureState.erasureDrawEnd.x -
-                                erasureState.erasureDrawStart.x
-                            ) * documentState.scale,
-                          height:
-                            Math.abs(
-                              erasureState.erasureDrawEnd.y -
-                                erasureState.erasureDrawStart.y
-                            ) * documentState.scale,
-                          backgroundColor: colorToRgba(
-                            documentState.pdfBackgroundColor,
-                            erasureState.erasureSettings.opacity
-                          ),
-                          zIndex: 50,
-                        }}
-                      />
-                    )}
+                            zIndex: 50,
+                          }}
+                        />
+                      )}
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+          </Panel>
+
+          {/* Resize Handle - Only show when sidebar is visible */}
+          {viewState.currentView === "split" &&
+            (viewState.currentWorkflowStep === "translate" ||
+              viewState.currentWorkflowStep === "final-layout") && (
+              <PanelResizeHandle className="w-1 bg-primary/40 hover:bg-primary/60 transition-colors duration-200" />
             )}
-          </div>
-        </div>
+
+          {/* Right Sidebar - Resizable */}
+          <Panel
+            defaultSize={
+              viewState.currentWorkflowStep === "translate" ? 60 : 35
+            }
+            minSize={20}
+            maxSize={80}
+            className={
+              viewState.currentView === "split" &&
+              (viewState.currentWorkflowStep === "translate" ||
+                viewState.currentWorkflowStep === "final-layout")
+                ? "bg-primary/10 border-l border-primary/20 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
+                : "hidden"
+            }
+          >
+            {viewState.currentView === "split" &&
+              viewState.currentWorkflowStep === "translate" && (
+                <div className="h-full transition-opacity duration-300 opacity-100">
+                  <TranslationTableView
+                    translatedTextBoxes={getCurrentTextBoxes("translated")}
+                    untranslatedTexts={elementCollections.untranslatedTexts}
+                    onUpdateTextBox={updateTranslatedTextBoxWithUndo}
+                    onUpdateUntranslatedText={updateUntranslatedText}
+                    onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
+                    onRowClick={handleTranslationRowClick}
+                    onAddTextBox={handleAddCustomTextBox}
+                    onAddUntranslatedText={handleAddCustomUntranslatedText}
+                    pageWidth={documentState.pageWidth}
+                    pageHeight={documentState.pageHeight}
+                    scale={1}
+                    currentPage={documentState.currentPage}
+                    sourceLanguage={sourceLanguage}
+                    desiredLanguage={desiredLanguage}
+                  />
+                </div>
+              )}
+            {viewState.currentView === "split" &&
+              viewState.currentWorkflowStep === "final-layout" && (
+                <div className="transition-opacity duration-300 opacity-100">
+                  <FinalLayoutSettings
+                    currentPage={documentState.currentPage}
+                    totalPages={documentState.numPages}
+                    capturedSnapshots={capturedSnapshots}
+                    isCapturingSnapshots={isCapturingSnapshots}
+                    onExportPDF={exportToPDF}
+                    onExportPNG={exportToPNG}
+                    onExportJPEG={exportToJPEG}
+                    onSaveProject={saveProject}
+                  />
+                </div>
+              )}
+          </Panel>
+        </PanelGroup>
       </div>
 
       {/* Status Bar */}
@@ -4697,7 +6151,13 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         documentState={documentState}
         viewState={viewState}
         elementCollections={elementCollections}
-        pageState={pageState}
+        pageState={{
+          deletedPages: documentState.deletedPages,
+          isPageTranslated: new Map(
+            documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
+          ),
+          isTransforming: documentState.isTransforming,
+        }}
         onZoomChange={(scale) => actions.updateScale(Math.max(1.0, scale))}
         onZoomIn={() =>
           actions.updateScale(Math.min(5.0, documentState.scale + 0.1))
@@ -4748,6 +6208,37 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         onCancel={handleLanguageCancel}
       />
 
+      {/* Birth Certificate Selection Modal */}
+      <BirthCertificateSelectionModal
+        isOpen={showBirthCertModal}
+        onClose={() => setShowBirthCertModal(false)}
+        documentUrl={documentState.url}
+        currentPage={documentState.currentPage}
+        pageWidth={documentState.pageWidth}
+        pageHeight={documentState.pageHeight}
+        sourceLanguage={sourceLanguage}
+        desiredLanguage={desiredLanguage}
+        pageNumber={birthCertModalPage}
+        currentTemplate={getPageBirthCertTemplate(birthCertModalPage)}
+        originalTextBoxes={elementCollections.originalTextBoxes}
+        originalShapes={elementCollections.originalShapes}
+        originalImages={elementCollections.originalImages}
+        pdfBackgroundColor={documentState.pdfBackgroundColor}
+        onTemplateSelect={(template, pageNumber) => {
+          console.log("Selected template:", template, "for page:", pageNumber);
+
+          // Update the specific page with the template information
+          setPageBirthCertTemplate(pageNumber, template);
+
+          // Show success message
+          toast.success(
+            `Template "${template.variation}" applied to page ${pageNumber}`
+          );
+
+          setShowBirthCertModal(false);
+        }}
+      />
+
       {/* Settings Modal */}
       <LanguageSelectionModal
         open={showSettingsModal}
@@ -4760,6 +6251,91 @@ export const PDFEditorContent: React.FC<{ projectData?: any }> = ({ projectData 
         isSettings={true}
         onSave={handleSettingsSave}
         onBack={handleSettingsBack}
+      />
+
+      {/* Bulk OCR Loading Modal */}
+      <LoadingModal
+        isOpen={isBulkOcrRunning}
+        title="Transforming Pages"
+        message="Please wait while we transform all pages. This may take a few moments..."
+        progress={bulkOcrProgress}
+        onCancel={handleCancelBulkOcr}
+        cancelText="Cancel Transformation"
+      />
+
+      {/* Snapshot Capturing Loading Modal */}
+      <LoadingModal
+        isOpen={isCapturingSnapshots}
+        title="Creating Final Layout"
+        message="Please wait while we capture page snapshots and create the final layout..."
+        progress={snapshotProgress}
+        onCancel={() => {
+          // Cancel snapshot capturing
+          snapshotCancelRef.current.cancelled = true;
+          setIsCancellingSnapshots(true);
+          toast.info("Cancelling snapshot capture...");
+          // Go back to layout step
+          handleWorkflowStepChange("layout", "final-layout");
+        }}
+        cancelText="Cancel"
+      />
+
+      {/* PDF Export Loading Modal */}
+      <LoadingModal
+        isOpen={isExportingPDF}
+        title="Exporting PDF"
+        message="Please wait while we generate your PDF file..."
+      />
+
+      {/* PNG Export Loading Modal */}
+      <LoadingModal
+        isOpen={isExportingPNG}
+        title="Exporting PNG"
+        message="Please wait while we generate your PNG file..."
+      />
+
+      {/* JPEG Export Loading Modal */}
+      <LoadingModal
+        isOpen={isExportingJPEG}
+        title="Exporting JPEG"
+        message="Please wait while we generate your JPEG file..."
+      />
+
+      {/* Untranslated Check Modal */}
+      <ConfirmationModal
+        open={showUntranslatedCheckModal}
+        title="Some pages require review before layout"
+        description={
+          untranslatedCheckList.length > 0 ? (
+            <div>
+              <div className="mb-2 text-gray-700">
+                Before proceeding to layout, please review the following page
+                {[...new Set(untranslatedCheckList.map((t) => t.page))].length >
+                1
+                  ? "s"
+                  : ""}
+                :
+              </div>
+              <ul className="mb-4 pl-5 list-disc text-base text-primary font-semibold">
+                {Array.from(
+                  new Set(untranslatedCheckList.map((t) => t.page))
+                ).map((page) => (
+                  <li key={page} className="mb-1">
+                    Page {page}
+                  </li>
+                ))}
+              </ul>
+              <div className="text-gray-500 text-sm">
+                These pages have textboxes that are empty or need checking. You
+                can continue anyway, or go back and review them.
+              </div>
+            </div>
+          ) : undefined
+        }
+        onConfirm={handleUntranslatedCheckContinue}
+        onCancel={handleUntranslatedCheckCancel}
+        confirmText="Continue Anyway"
+        cancelText="Cancel"
       />
     </div>
   );

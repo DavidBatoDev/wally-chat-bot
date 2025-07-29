@@ -1,5 +1,29 @@
 // Re-export TextField from components/types
 
+// Template interface for birth certificate templates
+export interface BirthCertTemplate {
+  id: string;
+  doc_type: string;
+  variation: string;
+  file_url: string;
+  info_json: any;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Page data interface for storing individual pages
+export interface PageData {
+  pageNumber: number;
+  isTranslated: boolean;
+  backgroundColor?: string;
+  pageType?: "social_media" | "birth_cert" | "dynamic_content";
+  // Birth certificate specific data
+  birthCertTemplate?: BirthCertTemplate | null;
+  birthCertType?: string; // e.g., "English_1993_template", "Spanish_1993_template"
+  translatedTemplateURL?: string; // URL of the birth certificate template for translated view
+  translatedTemplateWidth?: number; // Width of the template for translated view
+  translatedTemplateHeight?: number; // Height of the template for translated view
+}
 
 // Document and page related types
 export interface DocumentState {
@@ -18,6 +42,9 @@ export interface DocumentState {
   isScaleChanging: boolean;
   pdfBackgroundColor: string;
   detectedPageBackgrounds: Map<number, string>;
+  pages: PageData[];
+  deletedPages: Set<number>;
+  isTransforming: boolean;
 }
 
 export interface TextField {
@@ -62,7 +89,7 @@ export interface TextField {
 // Shape interface
 export interface Shape {
   id: string;
-  type: "circle" | "rectangle";
+  type: "circle" | "rectangle" | "line";
   x: number;
   y: number;
   width: number;
@@ -74,6 +101,11 @@ export interface Shape {
   fillOpacity: number;
   rotation?: number;
   borderRadius?: number;
+  // Line-specific properties
+  x1?: number; // Start point x coordinate (for lines)
+  y1?: number; // Start point y coordinate (for lines)
+  x2?: number; // End point x coordinate (for lines)
+  y2?: number; // End point y coordinate (for lines)
 }
 
 // Image interface
@@ -147,8 +179,8 @@ export interface EditorState {
 
 // Tool state types
 export interface ToolState {
-  shapeDrawingMode: "circle" | "rectangle" | null;
-  selectedShapeType: "circle" | "rectangle";
+  shapeDrawingMode: "circle" | "rectangle" | "line" | null;
+  selectedShapeType: "circle" | "rectangle" | "line";
   isDrawingShape: boolean;
   shapeDrawStart: { x: number; y: number } | null;
   shapeDrawEnd: { x: number; y: number } | null;
@@ -224,7 +256,7 @@ export interface ViewState {
   isCtrlPressed: boolean;
   transformOrigin: string;
   isSidebarCollapsed: boolean;
-  activeSidebarTab: "pages" | "tools";
+  activeSidebarTab: "pages" | "tools" | "chat";
   currentWorkflowStep: WorkflowStep;
 }
 
@@ -245,7 +277,15 @@ export interface SidebarProps {
   onFileUpload: () => void;
   onAppendDocument: () => void;
   onSidebarToggle: () => void;
-  onTabChange: (tab: "pages" | "tools") => void;
+  onTabChange: (tab: "pages" | "tools" | "chat") => void;
+  onPageTypeChange?: (
+    pageNumber: number,
+    pageType: "social_media" | "birth_cert" | "dynamic_content"
+  ) => void;
+  onBirthCertModalOpen?: (pageNumber?: number) => void;
+  documentRef?: React.RefObject<HTMLDivElement | null>;
+  sourceLanguage?: string;
+  desiredLanguage?: string;
 }
 
 export interface StatusBarProps {
@@ -277,7 +317,6 @@ export interface PageState {
   deletedPages: Set<number>;
   isPageTranslated: Map<number, boolean>;
   isTransforming: boolean;
-  showTransformButton: boolean;
 }
 
 // Event handler types
@@ -389,7 +428,7 @@ export interface SidebarProps {
   onFileUpload: () => void;
   onAppendDocument: () => void;
   onSidebarToggle: () => void;
-  onTabChange: (tab: "pages" | "tools") => void;
+  onTabChange: (tab: "pages" | "tools" | "chat") => void;
 }
 
 export interface StatusBarProps {

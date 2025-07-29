@@ -2,8 +2,8 @@ import { useCallback } from "react";
 import { TextField, ViewMode } from "../../types/pdf-editor.types";
 import { Shape as ShapeType } from "../../types/pdf-editor.types";
 import {
-AddTextBoxCommand,
-UpdateTextBoxCommand,
+  AddTextBoxCommand,
+  UpdateTextBoxCommand,
   AddDeletionRectangleCommand,
   DeleteDeletionRectangleCommand,
   AddImageCommand,
@@ -11,7 +11,7 @@ UpdateTextBoxCommand,
   DeleteTextBoxCommand,
   DeleteShapeCommand,
   AddShapeCommand,
-  UpdateShapeCommand
+  UpdateShapeCommand,
 } from "./commands";
 import {
   DeletionRectangle,
@@ -50,6 +50,35 @@ export function useHandleAddTextBoxWithUndo(
       return idRef.current;
     },
     [addTextBox, deleteTextBox, history]
+  );
+}
+
+// Refactored handler for duplicating a text box with undo support
+export function useHandleDuplicateTextBoxWithUndo(
+  duplicateTextBox: any,
+  deleteTextBox: any,
+  history: any
+) {
+  return useCallback(
+    (originalId: string, currentView: ViewMode, page: number) => {
+      let newId: string | null = null;
+      const idRef = { current: null as string | null };
+      const duplicate = () => {
+        newId = duplicateTextBox(originalId, currentView);
+        idRef.current = newId;
+        if (!newId)
+          throw new Error("Failed to duplicate text box: newId is null");
+        return newId;
+      };
+      const remove = (id: string) => {
+        deleteTextBox(id, currentView);
+      };
+      const cmd = new AddTextBoxCommand(duplicate, remove, idRef);
+      cmd.execute();
+      history.push(page, currentView, cmd);
+      return idRef.current;
+    },
+    [duplicateTextBox, deleteTextBox, history]
   );
 }
 
@@ -194,19 +223,47 @@ export function useHandleAddShapeWithUndo(
 ) {
   return useCallback(
     (
-      type: "circle" | "rectangle",
+      type: "circle" | "rectangle" | "line",
       x: number,
       y: number,
       width: number,
       height: number,
       page: number,
       view: ViewMode,
-      targetView?: "original" | "translated"
+      targetView?: "original" | "translated",
+      // Line-specific parameters
+      x1?: number,
+      y1?: number,
+      x2?: number,
+      y2?: number
     ) => {
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
-        newId = addShape(type, x, y, width, height, page, view, targetView);
+        if (
+          type === "line" &&
+          x1 !== undefined &&
+          y1 !== undefined &&
+          x2 !== undefined &&
+          y2 !== undefined
+        ) {
+          newId = addShape(
+            type,
+            x,
+            y,
+            width,
+            height,
+            page,
+            view,
+            targetView,
+            x1,
+            y1,
+            x2,
+            y2
+          );
+        } else {
+          newId = addShape(type, x, y, width, height, page, view, targetView);
+        }
         idRef.current = newId;
         if (!newId) throw new Error("Failed to add shape: newId is null");
         return newId;
@@ -396,15 +453,38 @@ export function useHandleDeleteShapeWithUndo(
         deleteShape(id, view);
       };
       const add = (shape: ShapeType) => {
-        addShape(
-          shape.type,
-          shape.x,
-          shape.y,
-          shape.width,
-          shape.height,
-          shape.page,
-          shapeView
-        );
+        if (
+          shape.type === "line" &&
+          shape.x1 !== undefined &&
+          shape.y1 !== undefined &&
+          shape.x2 !== undefined &&
+          shape.y2 !== undefined
+        ) {
+          addShape(
+            shape.type,
+            shape.x,
+            shape.y,
+            shape.width,
+            shape.height,
+            shape.page,
+            shapeView,
+            shapeView,
+            shape.x1,
+            shape.y1,
+            shape.x2,
+            shape.y2
+          );
+        } else {
+          addShape(
+            shape.type,
+            shape.x,
+            shape.y,
+            shape.width,
+            shape.height,
+            shape.page,
+            shapeView
+          );
+        }
       };
       const cmd = new DeleteShapeCommand(remove, add, shape);
       cmd.execute();

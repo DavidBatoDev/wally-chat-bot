@@ -326,31 +326,105 @@ export const useElementManagement = () => {
     [addToLayerOrder]
   );
 
+  const duplicateTextBox = useCallback(
+    (originalId: string, currentView: ViewMode) => {
+      // Find the original textbox from both collections
+      const allTextBoxes = [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+      ];
+
+      const originalTextBox = allTextBoxes.find((tb) => tb.id === originalId);
+      if (!originalTextBox) {
+        console.warn("Original textbox not found for duplication:", originalId);
+        return null;
+      }
+
+      // Generate new ID for the duplicate
+      const duplicateId = generateUUID();
+
+      // Create duplicate with offset position
+      const offset = 20; // 20px offset
+      const duplicateTextBox: TextField = {
+        ...originalTextBox,
+        id: duplicateId,
+        x: originalTextBox.x + offset,
+        y: originalTextBox.y + offset,
+      };
+
+      // Determine which view the original textbox belongs to and add duplicate to the same view
+      const isOriginalInOriginalView =
+        elementCollections.originalTextBoxes.some((tb) => tb.id === originalId);
+
+      const targetView = isOriginalInOriginalView ? "original" : "translated";
+
+      setElementCollections((prev) => {
+        if (targetView === "original") {
+          return {
+            ...prev,
+            originalTextBoxes: [...prev.originalTextBoxes, duplicateTextBox],
+          };
+        } else {
+          return {
+            ...prev,
+            translatedTextBoxes: [
+              ...prev.translatedTextBoxes,
+              duplicateTextBox,
+            ],
+          };
+        }
+      });
+
+      addToLayerOrder(duplicateId, targetView);
+
+      return duplicateId;
+    },
+    [elementCollections, addToLayerOrder]
+  );
+
   const addShape = useCallback(
     (
-      type: "circle" | "rectangle",
+      type: "circle" | "rectangle" | "line",
       x: number,
       y: number,
       width: number,
       height: number,
       currentPage: number,
       currentView: ViewMode,
-      targetView?: "original" | "translated"
+      targetView?: "original" | "translated",
+      // Line-specific parameters
+      x1?: number,
+      y1?: number,
+      x2?: number,
+      y2?: number
     ) => {
       const newShape: Shape = {
         id: generateUUID(),
         type,
-        x,
-        y,
-        width,
-        height,
+        x: type === "line" ? 0 : x, // For lines, bounding box position is calculated from coordinates
+        y: type === "line" ? 0 : y,
+        width: type === "line" ? 0 : width, // For lines, dimensions are calculated from coordinates
+        height: type === "line" ? 0 : height,
         page: currentPage,
         borderColor: "#000000",
-        borderWidth: 2,
+        borderWidth: 1, // Set to 1px for all shapes including lines
         fillColor: "#ffffff",
-        fillOpacity: 0.5,
+        fillOpacity: type === "line" ? 0 : 0.5, // Lines don't need fill
         rotation: 0,
         borderRadius: type === "rectangle" ? 0 : undefined,
+        // Line-specific coordinates
+        ...(type === "line" &&
+        x1 !== undefined &&
+        y1 !== undefined &&
+        x2 !== undefined &&
+        y2 !== undefined
+          ? {
+              x1,
+              y1,
+              x2,
+              y2,
+            }
+          : {}),
       };
 
       const shouldAddToTranslated =
@@ -809,7 +883,9 @@ export const useElementManagement = () => {
   const deleteUntranslatedText = useCallback((id: string) => {
     setElementCollections((prev) => ({
       ...prev,
-      untranslatedTexts: prev.untranslatedTexts.filter((text) => text.id !== id),
+      untranslatedTexts: prev.untranslatedTexts.filter(
+        (text) => text.id !== id
+      ),
     }));
   }, []);
 
@@ -847,6 +923,7 @@ export const useElementManagement = () => {
     isElementAtBack,
     // Element creation
     addTextBox,
+    duplicateTextBox,
     addShape,
     addImage,
     addDeletionRectangle,

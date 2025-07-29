@@ -61,14 +61,14 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onWorkflowStepChange,
 }) => {
   return (
-    <div className="bg-white border-b border-blue-100 shadow-sm">
+    <div className="bg-white border-b border-primary/20 shadow-sm">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center space-x-4">
           <Button
             onClick={onSidebarToggle}
             variant="ghost"
             size="sm"
-            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors w-10 h-10 p-0"
+            className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors w-10 h-10 p-0"
             title={isSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
           >
             {isSidebarCollapsed ? (
@@ -80,14 +80,14 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
 
           {/* Wally Logo and Title (added back) */}
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-md">
               <span className="text-white font-bold text-lg">W</span>
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 leading-tight">
                 Wally
               </h1>
-              <p className="text-sm text-blue-600 font-medium">
+              <p className="text-sm text-primary font-medium">
                 Multimodal Translation
               </p>
             </div>
@@ -100,7 +100,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 onClick={onUndo}
                 variant="outline"
                 size="sm"
-                className="border-blue-200 text-gray-900 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:scale-105 w-10 h-10 p-0"
+                className="border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/30 transition-all duration-200 hover:scale-105 w-10 h-10 p-0"
                 disabled={!canUndo}
                 title="Undo (Ctrl+Z)"
               >
@@ -110,7 +110,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 onClick={onRedo}
                 variant="outline"
                 size="sm"
-                className="border-blue-200 text-gray-900 hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:scale-105 w-10 h-10 p-0"
+                className="border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/30 transition-all duration-200 hover:scale-105 w-10 h-10 p-0"
                 disabled={!canRedo}
                 title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
               >
@@ -129,8 +129,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
                     currentWorkflowStep === "translate"
-                      ? "bg-blue-600 text-white"
-                      : "bg-blue-50 text-gray-900 hover:bg-blue-100"
+                      ? "bg-primary text-white"
+                      : "bg-primary/10 text-gray-900 hover:bg-primary/20"
                   }`}
                   onClick={() => onWorkflowStepChange("translate")}
                 >
@@ -143,8 +143,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 <span
                   className={`text-sm font-medium cursor-pointer transition-colors ${
                     currentWorkflowStep === "translate"
-                      ? "text-blue-600"
-                      : "text-gray-900 hover:text-blue-700"
+                      ? "text-primary"
+                      : "text-gray-900 hover:text-primaryLight"
                   }`}
                   onClick={() => onWorkflowStepChange("translate")}
                 >
@@ -153,15 +153,15 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               </div>
 
               {/* Connector Line */}
-              <div className="w-8 h-0.5 bg-blue-100"></div>
+              <div className="w-8 h-0.5 bg-primary/20"></div>
 
               {/* Step 2: Layout */}
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
                     currentWorkflowStep === "layout"
-                      ? "bg-blue-600 text-white"
-                      : "bg-blue-50 text-gray-900 hover:bg-blue-100"
+                      ? "bg-primary text-white"
+                      : "bg-primary/10 text-gray-900 hover:bg-primary/20"
                   }`}
                   onClick={() => onWorkflowStepChange("layout")}
                 >
@@ -174,8 +174,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 <span
                   className={`text-sm font-medium cursor-pointer transition-colors ${
                     currentWorkflowStep === "layout"
-                      ? "text-blue-600"
-                      : "text-gray-900 hover:text-blue-700"
+                      ? "text-primary"
+                      : "text-gray-900 hover:text-primaryLight"
                   }`}
                   onClick={() => onWorkflowStepChange("layout")}
                 >
@@ -184,15 +184,15 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               </div>
 
               {/* Connector Line */}
-              <div className="w-8 h-0.5 bg-blue-100"></div>
+              <div className="w-8 h-0.5 bg-primary/20"></div>
 
               {/* Step 3: Final Layout */}
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
                     currentWorkflowStep === "final-layout"
-                      ? "bg-blue-600 text-white"
-                      : "bg-blue-50 text-gray-900 hover:bg-blue-100"
+                      ? "bg-primary text-white"
+                      : "bg-primary/10 text-gray-900 hover:bg-primary/20"
                   }`}
                   onClick={() => onWorkflowStepChange("final-layout")}
                 >
@@ -205,8 +205,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 <span
                   className={`text-sm font-medium cursor-pointer transition-colors ${
                     currentWorkflowStep === "final-layout"
-                      ? "text-blue-600"
-                      : "text-gray-900 hover:text-blue-700"
+                      ? "text-primary"
+                      : "text-gray-900 hover:text-primaryLight"
                   }`}
                   onClick={() => onWorkflowStepChange("final-layout")}
                 >
@@ -224,13 +224,13 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               onClick={onOpenSettings}
               variant="ghost"
               size="sm"
-              className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 transition-colors"
+              className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
               title="Settings"
             >
               <Settings className="w-4 h-4" />
             </Button>
           )}
-          {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
+          {/* {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
             <Button
               onClick={onRunOcrAllPages}
               variant="outline"
@@ -240,8 +240,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             >
               <span className="font-semibold">Run OCR to All Page</span>
             </Button>
-          )}
-          {isBulkOcrRunning && (
+          )} */}
+          {/* {isBulkOcrRunning && (
             <div className="flex items-center space-x-2">
               <span className="text-green-700 font-medium text-sm">
                 Transforming: {bulkOcrProgress?.current ?? 0} /{" "}
@@ -256,16 +256,40 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 Cancel
               </Button>
             </div>
-          )}
+          )} */}
           {hasPages && (
-            <Button
-              onClick={onExportData}
-              className="bg-blue-600 hover:bg-blue-700 text-white border-blue-600 hover:border-blue-700 shadow-md transition-all duration-200 hover:shadow-lg"
-              size="sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export PDF
-            </Button>
+            <>
+              {currentWorkflowStep === "translate" && (
+                <Button
+                  onClick={() => onWorkflowStepChange("layout")}
+                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                  size="sm"
+                >
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                  Go to Layout
+                </Button>
+              )}
+              {currentWorkflowStep === "layout" && (
+                <Button
+                  onClick={() => onWorkflowStepChange("final-layout")}
+                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                  size="sm"
+                >
+                  <ChevronRight className="w-4 h-4 mr-2" />
+                  Go to Final Layout
+                </Button>
+              )}
+              {currentWorkflowStep === "final-layout" && (
+                <Button
+                  onClick={onExportData}
+                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                  size="sm"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export PDF
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>
