@@ -174,7 +174,9 @@ export const useDocumentMouseHandlers = ({
 
           // Check if we're drawing on the translated side
           if (erasureState.erasureDrawTargetView === "translated") {
-            x = (clickX - documentState.pageWidth * documentState.scale - 20) / documentState.scale;
+            x =
+              (clickX - documentState.pageWidth * documentState.scale - 20) /
+              documentState.scale;
           }
         }
 
@@ -224,12 +226,13 @@ export const useDocumentMouseHandlers = ({
             };
 
             // Find overlapping textboxes
-            const overlappingTextBoxes = currentPageTextBoxes.filter((textBox) =>
-              // Check if rectangles overlap
-              selectionInDoc.x < textBox.x + textBox.width &&
-              selectionInDoc.x + selectionInDoc.width > textBox.x &&
-              selectionInDoc.y < textBox.y + textBox.height &&
-              selectionInDoc.y + selectionInDoc.height > textBox.y
+            const overlappingTextBoxes = currentPageTextBoxes.filter(
+              (textBox) =>
+                // Check if rectangles overlap
+                selectionInDoc.x < textBox.x + textBox.width &&
+                selectionInDoc.x + selectionInDoc.width > textBox.x &&
+                selectionInDoc.y < textBox.y + textBox.height &&
+                selectionInDoc.y + selectionInDoc.height > textBox.y
             );
 
             if (overlappingTextBoxes.length > 0) {
