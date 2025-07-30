@@ -31,10 +31,16 @@ export const getPreviewLeft = (
   isTranslated: boolean,
   currentView: "original" | "translated" | "split",
   pageWidth: number,
-  scale: number
+  scale: number,
+  templateScaleFactor?: number
 ): number => {
   if (currentView === "split" && isTranslated) {
-    return x * scale + pageWidth * scale + 20;
+    // Apply template scaling factor to the preview position
+    const effectiveScale =
+      templateScaleFactor && templateScaleFactor !== 1
+        ? scale * templateScaleFactor
+        : scale;
+    return x * effectiveScale + pageWidth * scale + 20;
   }
   return x * scale;
 };
@@ -81,7 +87,8 @@ export const screenToDocumentCoordinates = (
   scale: number,
   targetView: "original" | "translated" | null,
   currentView: "original" | "translated" | "split",
-  pageWidth: number
+  pageWidth: number,
+  templateScaleFactor?: number
 ): CoordinateAdjustment => {
   let x = (clientX - rect.left) / scale;
   let y = (clientY - rect.top) / scale;
@@ -91,6 +98,12 @@ export const screenToDocumentCoordinates = (
     const singleDocWidth = pageWidth;
     const gap = 20 / scale;
     x = x - singleDocWidth - gap;
+
+    // Apply template scaling factor to coordinates when template is scaled in split view
+    if (templateScaleFactor && templateScaleFactor !== 1) {
+      x = x / templateScaleFactor;
+      y = y / templateScaleFactor;
+    }
   }
 
   return { x, y };

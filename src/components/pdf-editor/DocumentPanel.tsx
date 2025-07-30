@@ -48,6 +48,8 @@ interface DocumentPanelProps {
   // Template dimensions for translated view
   templateWidth?: number;
   templateHeight?: number;
+  // Template scale factor for split view (to scale template to match original document size)
+  templateScaleFactor?: number;
   // Template dimension update callback
   onTemplateLoadSuccess?: (
     pageNumber: number,
@@ -164,13 +166,24 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
   header,
   templateWidth,
   templateHeight,
+  templateScaleFactor,
   onTemplateLoadSuccess,
 }) => {
   // Use template dimensions for translated view if available, otherwise use original dimensions
+  // In split view, we want to scale the template to match original document size
+  const isSplitView = currentView === "split";
   const effectivePageWidth =
-    viewType === "translated" && templateWidth ? templateWidth : pageWidth;
+    viewType === "translated" && templateWidth
+      ? isSplitView && templateScaleFactor
+        ? templateWidth * templateScaleFactor
+        : templateWidth
+      : pageWidth;
   const effectivePageHeight =
-    viewType === "translated" && templateHeight ? templateHeight : pageHeight;
+    viewType === "translated" && templateHeight
+      ? isSplitView && templateScaleFactor
+        ? templateHeight * templateScaleFactor
+        : templateHeight
+      : pageHeight;
 
   return (
     <DocumentView
@@ -213,6 +226,7 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
         pageHeight={pageHeight}
         templateWidth={templateWidth}
         templateHeight={templateHeight}
+        templateScaleFactor={templateScaleFactor}
         deletionRectangles={deletionRectangles}
         showDeletionRectangles={showDeletionRectangles}
         onDeleteDeletionRectangle={onDeleteDeletionRectangle}

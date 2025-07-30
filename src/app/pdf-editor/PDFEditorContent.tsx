@@ -329,6 +329,32 @@ export const PDFEditorContent: React.FC = () => {
     [documentState.pages, documentState.pageWidth, documentState.pageHeight]
   );
 
+  // Helper function to calculate scale factor for translated template in split view
+  const getTranslatedTemplateScaleFactor = useCallback(
+    (pageNumber: number) => {
+      const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
+
+      // If no template or no dimensions, return 1 (no scaling)
+      if (
+        !page?.translatedTemplateURL ||
+        !page?.translatedTemplateWidth ||
+        !page?.translatedTemplateHeight
+      ) {
+        return 1;
+      }
+
+      // Calculate scale factors to fit within original document dimensions
+      const scaleX = documentState.pageWidth / page.translatedTemplateWidth;
+      const scaleY = documentState.pageHeight / page.translatedTemplateHeight;
+
+      // Use the smaller scale factor to ensure the template fits within the original dimensions
+      return Math.min(scaleX, scaleY);
+    },
+    [documentState.pages, documentState.pageWidth, documentState.pageHeight]
+  );
+
+
+
   const setPageBirthCertTemplate = useCallback(
     (pageNumber: number, template: any) => {
       console.log(
@@ -378,6 +404,25 @@ export const PDFEditorContent: React.FC = () => {
     activeSidebarTab: "pages",
     currentWorkflowStep: "translate",
   });
+
+  // Helper function to get effective scale for translated view in split mode
+  const getEffectiveScale = useCallback(
+    (targetView: "original" | "translated" | null) => {
+      if (targetView === "translated" && viewState.currentView === "split") {
+        return (
+          documentState.scale *
+          (getTranslatedTemplateScaleFactor(documentState.currentPage) || 1)
+        );
+      }
+      return documentState.scale;
+    },
+    [
+      documentState.scale,
+      viewState.currentView,
+      getTranslatedTemplateScaleFactor,
+      documentState.currentPage,
+    ]
+  );
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
     [elementId: string]: {
@@ -2269,6 +2314,7 @@ export const PDFEditorContent: React.FC = () => {
       viewState,
       documentRef,
       handleAddShapeWithUndo,
+      getTranslatedTemplateScaleFactor,
     });
 
   // Document mouse handlers for text selection and erasure
@@ -2288,6 +2334,7 @@ export const PDFEditorContent: React.FC = () => {
     documentRef,
     currentPageTextBoxes,
     handleAddDeletionRectangleWithUndo,
+    getTranslatedTemplateScaleFactor,
   });
 
   // Keyboard handlers for shortcuts, undo/redo, and multi-selection
@@ -2317,25 +2364,19 @@ export const PDFEditorContent: React.FC = () => {
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-
-      // Calculate base coordinates
-      let x = clickX / documentState.scale;
-      let y = clickY / documentState.scale;
-
-      // Adjust coordinates for split view
-      if (viewState.currentView === "split") {
-        const singleDocWidth = documentState.pageWidth;
-        const gap = 20 / documentState.scale;
-
-        // Check if we're drawing on the translated side
-        if (erasureState.erasureDrawTargetView === "translated") {
-          x =
-            (clickX - documentState.pageWidth * documentState.scale - 20) /
-            documentState.scale;
-        }
-      }
+      // Convert screen coordinates to document coordinates
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        erasureState.erasureDrawTargetView,
+        viewState.currentView,
+        documentState.pageWidth,
+        erasureState.erasureDrawTargetView === "translated"
+          ? getTranslatedTemplateScaleFactor(documentState.currentPage)
+          : undefined
+      );
 
       setErasureState((prev) => ({
         ...prev,
@@ -2478,7 +2519,10 @@ export const PDFEditorContent: React.FC = () => {
         documentState.scale,
         clickedView,
         viewState.currentView,
-        documentState.pageWidth
+        documentState.pageWidth,
+        clickedView === "translated"
+          ? getTranslatedTemplateScaleFactor(documentState.currentPage)
+          : undefined
       );
 
       setEditorState((prev) => ({
@@ -2544,7 +2588,10 @@ export const PDFEditorContent: React.FC = () => {
         documentState.scale,
         editorState.multiSelection.targetView,
         viewState.currentView,
-        documentState.pageWidth
+        documentState.pageWidth,
+        editorState.multiSelection.targetView === "translated"
+          ? getTranslatedTemplateScaleFactor(documentState.currentPage)
+          : undefined
       );
 
       setEditorState((prev) => ({
@@ -2835,7 +2882,10 @@ export const PDFEditorContent: React.FC = () => {
         documentState.scale,
         editorState.multiSelection.targetView,
         viewState.currentView,
-        documentState.pageWidth
+        documentState.pageWidth,
+        editorState.multiSelection.targetView === "translated"
+          ? getTranslatedTemplateScaleFactor(documentState.currentPage)
+          : undefined
       );
 
       setEditorState((prev) => ({
@@ -2876,7 +2926,10 @@ export const PDFEditorContent: React.FC = () => {
         documentState.scale,
         editorState.multiSelection.targetView,
         viewState.currentView,
-        documentState.pageWidth
+        documentState.pageWidth,
+        editorState.multiSelection.targetView === "translated"
+          ? getTranslatedTemplateScaleFactor(documentState.currentPage)
+          : undefined
       );
 
       const deltaX = x - editorState.multiSelection.moveStart.x;
@@ -2981,7 +3034,10 @@ export const PDFEditorContent: React.FC = () => {
         documentState.scale,
         targetView,
         viewState.currentView,
-        documentState.pageWidth
+        documentState.pageWidth,
+        targetView === "translated"
+          ? getTranslatedTemplateScaleFactor(documentState.currentPage)
+          : undefined
       );
 
       if (editorState.isAddTextBoxMode) {
@@ -3953,6 +4009,15 @@ export const PDFEditorContent: React.FC = () => {
     // This function is called from single view contexts, so we use the current view
     const actualTargetView = targetView === "split" ? "original" : targetView;
 
+    // Calculate effective scale for translated view in split screen
+    const effectiveScale =
+      targetView === "translated" &&
+      viewState.currentView === "split" &&
+      getTranslatedTemplateScaleFactor(documentState.currentPage)
+        ? documentState.scale *
+          getTranslatedTemplateScaleFactor(documentState.currentPage)
+        : documentState.scale;
+
     // Get elements that would be captured in the current selection preview
     const elementsInSelectionPreview = getElementsInSelectionPreview();
 
@@ -3977,7 +4042,7 @@ export const PDFEditorContent: React.FC = () => {
           textBox={textBox}
           isSelected={editorState.selectedFieldId === textBox.id}
           isEditMode={editorState.isEditMode}
-          scale={documentState.scale}
+          scale={effectiveScale}
           showPaddingIndicator={showPaddingPopup}
           onSelect={handleTextBoxSelect}
           onUpdate={updateFunction}
@@ -4009,7 +4074,7 @@ export const PDFEditorContent: React.FC = () => {
           shape={shape}
           isSelected={editorState.selectedShapeId === shape.id}
           isEditMode={editorState.isEditMode}
-          scale={documentState.scale}
+          scale={effectiveScale}
           pageWidth={documentState.pageWidth}
           pageHeight={documentState.pageHeight}
           onSelect={handleShapeSelect}
@@ -4031,7 +4096,7 @@ export const PDFEditorContent: React.FC = () => {
           image={image}
           isSelected={selectedElementId === image.id}
           isEditMode={editorState.isEditMode}
-          scale={documentState.scale}
+          scale={effectiveScale}
           pageWidth={documentState.pageWidth}
           pageHeight={documentState.pageHeight}
           onSelect={handleImageSelect}
@@ -4965,6 +5030,7 @@ export const PDFEditorContent: React.FC = () => {
                                 documentState.currentPage
                               ).height
                             }
+                            templateScaleFactor={1} // No scaling in translated view
                             onTemplateLoadSuccess={updateTemplateDimensions}
                             onRunOcr={() =>
                               checkLanguageAndRunOcr(
@@ -5398,6 +5464,9 @@ export const PDFEditorContent: React.FC = () => {
                                   documentState.currentPage
                                 ).height
                               }
+                              templateScaleFactor={getTranslatedTemplateScaleFactor(
+                                documentState.currentPage
+                              )}
                               onTemplateLoadSuccess={updateTemplateDimensions}
                               onRunOcr={() =>
                                 checkLanguageAndRunOcr(
@@ -5518,11 +5587,19 @@ export const PDFEditorContent: React.FC = () => {
                                 width:
                                   getTranslatedTemplateDimensions(
                                     documentState.currentPage
-                                  ).width * documentState.scale,
+                                  ).width *
+                                  documentState.scale *
+                                  getTranslatedTemplateScaleFactor(
+                                    documentState.currentPage
+                                  ),
                                 height:
                                   getTranslatedTemplateDimensions(
                                     documentState.currentPage
-                                  ).height * documentState.scale,
+                                  ).height *
+                                  documentState.scale *
+                                  getTranslatedTemplateScaleFactor(
+                                    documentState.currentPage
+                                  ),
                                 pointerEvents: "auto",
                                 zIndex: 10000,
                               }}
@@ -5542,10 +5619,30 @@ export const PDFEditorContent: React.FC = () => {
                                         : ""
                                     }`}
                                     style={{
-                                      left: rect.x * documentState.scale,
-                                      top: rect.y * documentState.scale,
-                                      width: rect.width * documentState.scale,
-                                      height: rect.height * documentState.scale,
+                                      left:
+                                        rect.x *
+                                        documentState.scale *
+                                        getTranslatedTemplateScaleFactor(
+                                          documentState.currentPage
+                                        ),
+                                      top:
+                                        rect.y *
+                                        documentState.scale *
+                                        getTranslatedTemplateScaleFactor(
+                                          documentState.currentPage
+                                        ),
+                                      width:
+                                        rect.width *
+                                        documentState.scale *
+                                        getTranslatedTemplateScaleFactor(
+                                          documentState.currentPage
+                                        ),
+                                      height:
+                                        rect.height *
+                                        documentState.scale *
+                                        getTranslatedTemplateScaleFactor(
+                                          documentState.currentPage
+                                        ),
                                       zIndex: editorState.showDeletionRectangles
                                         ? -10
                                         : -20,
@@ -5592,7 +5689,12 @@ export const PDFEditorContent: React.FC = () => {
                                     end={
                                       editorState.multiSelection.selectionEnd
                                     }
-                                    scale={documentState.scale}
+                                    scale={
+                                      documentState.scale *
+                                      getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      )
+                                    }
                                   />
                                 )}
                               {editorState.isSelectionMode &&
@@ -5605,7 +5707,12 @@ export const PDFEditorContent: React.FC = () => {
                                     bounds={
                                       editorState.multiSelection.selectionBounds
                                     }
-                                    scale={documentState.scale}
+                                    scale={
+                                      documentState.scale *
+                                      getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      )
+                                    }
                                     onMove={handleMoveSelection}
                                     onDelete={handleDeleteSelection}
                                     isMoving={
@@ -5873,7 +5980,12 @@ export const PDFEditorContent: React.FC = () => {
                                     : viewState.currentView === "translated",
                                   viewState.currentView,
                                   documentState.pageWidth,
-                                  documentState.scale
+                                  documentState.scale,
+                                  toolState.shapeDrawTargetView === "translated"
+                                    ? getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      )
+                                    : undefined
                                 ),
                                 top:
                                   (Math.min(
@@ -5881,21 +5993,42 @@ export const PDFEditorContent: React.FC = () => {
                                     toolState.shapeDrawEnd.y
                                   ) -
                                     10) *
-                                  documentState.scale,
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale),
                                 width:
                                   (Math.abs(
                                     toolState.shapeDrawEnd.x -
                                       toolState.shapeDrawStart.x
                                   ) +
                                     20) *
-                                  documentState.scale,
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale),
                                 height:
                                   (Math.abs(
                                     toolState.shapeDrawEnd.y -
                                       toolState.shapeDrawStart.y
                                   ) +
                                     20) *
-                                  documentState.scale,
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale),
                                 zIndex: 50,
                               }}
                             >
@@ -5907,7 +6040,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.x
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 y1={
                                   (toolState.shapeDrawStart.y -
@@ -5916,7 +6056,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.y
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 x2={
                                   (toolState.shapeDrawEnd.x -
@@ -5925,7 +6072,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.x
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 y2={
                                   (toolState.shapeDrawEnd.y -
@@ -5934,7 +6088,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.y
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 stroke="#ef4444"
                                 strokeWidth="2"
@@ -5950,7 +6111,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.x
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 cy={
                                   (toolState.shapeDrawStart.y -
@@ -5959,7 +6127,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.y
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 r="4"
                                 fill="#3b82f6"
@@ -5974,7 +6149,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.x
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 cy={
                                   (toolState.shapeDrawEnd.y -
@@ -5983,7 +6165,14 @@ export const PDFEditorContent: React.FC = () => {
                                       toolState.shapeDrawEnd.y
                                     ) +
                                     10) *
-                                  documentState.scale
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale)
                                 }
                                 r="4"
                                 fill="#3b82f6"
@@ -6007,23 +6196,52 @@ export const PDFEditorContent: React.FC = () => {
                                     : viewState.currentView === "translated",
                                   viewState.currentView,
                                   documentState.pageWidth,
-                                  documentState.scale
+                                  documentState.scale,
+                                  toolState.shapeDrawTargetView === "translated"
+                                    ? getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      )
+                                    : undefined
                                 ),
                                 top:
                                   Math.min(
                                     toolState.shapeDrawStart.y,
                                     toolState.shapeDrawEnd.y
-                                  ) * documentState.scale,
+                                  ) *
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale),
                                 width:
                                   Math.abs(
                                     toolState.shapeDrawEnd.x -
                                       toolState.shapeDrawStart.x
-                                  ) * documentState.scale,
+                                  ) *
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale),
                                 height:
                                   Math.abs(
                                     toolState.shapeDrawEnd.y -
                                       toolState.shapeDrawStart.y
-                                  ) * documentState.scale,
+                                  ) *
+                                  (toolState.shapeDrawTargetView ===
+                                    "translated" &&
+                                  viewState.currentView === "split"
+                                    ? documentState.scale *
+                                      (getTranslatedTemplateScaleFactor(
+                                        documentState.currentPage
+                                      ) || 1)
+                                    : documentState.scale),
                                 borderRadius:
                                   toolState.shapeDrawingMode === "circle"
                                     ? "50%"
@@ -6053,23 +6271,53 @@ export const PDFEditorContent: React.FC = () => {
                                 : viewState.currentView === "translated",
                               viewState.currentView,
                               documentState.pageWidth,
-                              documentState.scale
+                              documentState.scale,
+                              erasureState.erasureDrawTargetView ===
+                                "translated"
+                                ? getTranslatedTemplateScaleFactor(
+                                    documentState.currentPage
+                                  )
+                                : undefined
                             ),
                             top:
                               Math.min(
                                 erasureState.erasureDrawStart.y,
                                 erasureState.erasureDrawEnd.y
-                              ) * documentState.scale,
+                              ) *
+                              (erasureState.erasureDrawTargetView ===
+                                "translated" &&
+                              viewState.currentView === "split"
+                                ? documentState.scale *
+                                  (getTranslatedTemplateScaleFactor(
+                                    documentState.currentPage
+                                  ) || 1)
+                                : documentState.scale),
                             width:
                               Math.abs(
                                 erasureState.erasureDrawEnd.x -
                                   erasureState.erasureDrawStart.x
-                              ) * documentState.scale,
+                              ) *
+                              (erasureState.erasureDrawTargetView ===
+                                "translated" &&
+                              viewState.currentView === "split"
+                                ? documentState.scale *
+                                  (getTranslatedTemplateScaleFactor(
+                                    documentState.currentPage
+                                  ) || 1)
+                                : documentState.scale),
                             height:
                               Math.abs(
                                 erasureState.erasureDrawEnd.y -
                                   erasureState.erasureDrawStart.y
-                              ) * documentState.scale,
+                              ) *
+                              (erasureState.erasureDrawTargetView ===
+                                "translated" &&
+                              viewState.currentView === "split"
+                                ? documentState.scale *
+                                  (getTranslatedTemplateScaleFactor(
+                                    documentState.currentPage
+                                  ) || 1)
+                                : documentState.scale),
                             backgroundColor: colorToRgba(
                               documentState.pdfBackgroundColor,
                               erasureState.erasureSettings.opacity
