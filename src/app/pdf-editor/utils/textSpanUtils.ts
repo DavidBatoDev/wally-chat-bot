@@ -287,10 +287,11 @@ export const createTextFieldFromSpan = (
     opacity?: number
   ) => string,
   pdfBackgroundColor: string,
-  erasureOpacity: number
+  erasureOpacity: number,
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number
 ): { textFieldId: string; properties: any } | null => {
   // Determine which view the span belongs to based on its position
-  let targetView = currentView;
+  let targetView: "original" | "translated" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPageEl.getBoundingClientRect();
@@ -303,6 +304,8 @@ export const createTextFieldFromSpan = (
     } else {
       targetView = "original";
     }
+  } else {
+    targetView = currentView as "original" | "translated";
   }
   const textContent = span.textContent || "";
   console.log("Original text content:", textContent);
@@ -337,6 +340,15 @@ export const createTextFieldFromSpan = (
 
     // Adjust X coordinate to account for the translated document position
     pageX = (spanRect.left - pageRect.left - singleDocWidth - gap) / scale;
+
+    // Apply template scaling factor to coordinates when template is scaled in split view
+    if (getTranslatedTemplateScaleFactor) {
+      const templateScaleFactor = getTranslatedTemplateScaleFactor(currentPage);
+      if (templateScaleFactor && templateScaleFactor !== 1) {
+        pageX = pageX / templateScaleFactor;
+        pageY = pageY / templateScaleFactor;
+      }
+    }
   }
 
   // Enhanced text cleaning to handle newlines, whitespace, and special characters
@@ -518,7 +530,8 @@ export const createDeletionRectangleForSpan = (
     opacity?: number
   ) => string,
   pdfBackgroundColor: string,
-  erasureOpacity: number
+  erasureOpacity: number,
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number
 ): string => {
   if (!pdfPageEl) {
     console.log("PDF page element not provided");
@@ -526,7 +539,7 @@ export const createDeletionRectangleForSpan = (
   }
 
   // Determine which view the span belongs to based on its position
-  let targetView = currentView;
+  let targetView: "original" | "translated" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPageEl.getBoundingClientRect();
@@ -539,6 +552,8 @@ export const createDeletionRectangleForSpan = (
     } else {
       targetView = "original";
     }
+  } else {
+    targetView = currentView as "original" | "translated";
   }
 
   const spanRect = span.getBoundingClientRect();
@@ -559,6 +574,15 @@ export const createDeletionRectangleForSpan = (
 
     // Adjust X coordinate to account for the translated document position
     pageX = (spanRect.left - pageRect.left - singleDocWidth - gap) / scale;
+
+    // Apply template scaling factor to coordinates when template is scaled in split view
+    if (getTranslatedTemplateScaleFactor) {
+      const templateScaleFactor = getTranslatedTemplateScaleFactor(currentPage);
+      if (templateScaleFactor && templateScaleFactor !== 1) {
+        pageX = pageX / templateScaleFactor;
+        pageY = pageY / templateScaleFactor;
+      }
+    }
   }
 
   return addDeletionRectangle(

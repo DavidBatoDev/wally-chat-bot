@@ -353,8 +353,6 @@ export const PDFEditorContent: React.FC = () => {
     [documentState.pages, documentState.pageWidth, documentState.pageHeight]
   );
 
-
-
   const setPageBirthCertTemplate = useCallback(
     (pageNumber: number, template: any) => {
       console.log(
@@ -1731,7 +1729,8 @@ export const PDFEditorContent: React.FC = () => {
           return result || "";
         },
         documentState.pdfBackgroundColor,
-        erasureState.erasureSettings.opacity
+        erasureState.erasureSettings.opacity,
+        getTranslatedTemplateScaleFactor
       );
     },
     createTextFieldFromSpan: (span: HTMLElement) => {
@@ -1770,7 +1769,8 @@ export const PDFEditorContent: React.FC = () => {
           return result || "";
         },
         documentState.pdfBackgroundColor,
-        erasureState.erasureSettings.opacity
+        erasureState.erasureSettings.opacity,
+        getTranslatedTemplateScaleFactor
       );
     },
     addDeletionRectangle: (x, y, width, height, page, background, opacity) => {
@@ -2760,21 +2760,21 @@ export const PDFEditorContent: React.FC = () => {
 
   // Delete selected elements
   const handleDeleteSelection = useCallback(() => {
-    const { selectedElements } = editorState.multiSelection;
+    const { selectedElements, targetView } = editorState.multiSelection;
 
     selectedElements.forEach((selectedElement) => {
+      // Use targetView for split view, otherwise use currentView
+      const deleteView = targetView || viewState.currentView;
+
       switch (selectedElement.type) {
         case "textbox":
-          handleDeleteTextBoxWithUndo(
-            selectedElement.id,
-            viewState.currentView
-          );
+          handleDeleteTextBoxWithUndo(selectedElement.id, deleteView);
           break;
         case "shape":
-          handleDeleteShapeWithUndo(selectedElement.id, viewState.currentView);
+          handleDeleteShapeWithUndo(selectedElement.id, deleteView);
           break;
         case "image":
-          handleDeleteImageWithUndo(selectedElement.id, viewState.currentView);
+          handleDeleteImageWithUndo(selectedElement.id, deleteView);
           break;
       }
     });
@@ -2796,6 +2796,7 @@ export const PDFEditorContent: React.FC = () => {
     setIsDrawerOpen(false);
   }, [
     editorState.multiSelection.selectedElements,
+    editorState.multiSelection.targetView,
     handleDeleteTextBoxWithUndo,
     handleDeleteShapeWithUndo,
     handleDeleteImageWithUndo,
@@ -4079,9 +4080,7 @@ export const PDFEditorContent: React.FC = () => {
           pageHeight={documentState.pageHeight}
           onSelect={handleShapeSelect}
           onUpdate={updateShapeWithUndo}
-          onDelete={(id) =>
-            handleDeleteShapeWithUndo(id, viewState.currentView)
-          }
+          onDelete={(id) => handleDeleteShapeWithUndo(id, targetView)}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
         />
@@ -4101,9 +4100,7 @@ export const PDFEditorContent: React.FC = () => {
           pageHeight={documentState.pageHeight}
           onSelect={handleImageSelect}
           onUpdate={updateImage}
-          onDelete={(id) =>
-            handleDeleteImageWithUndo(id, viewState.currentView)
-          }
+          onDelete={(id) => handleDeleteImageWithUndo(id, targetView)}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
         />
@@ -4931,10 +4928,10 @@ export const PDFEditorContent: React.FC = () => {
                           handleDeleteTextBoxWithUndo(id, "original")
                         }
                         onDeleteShape={(id) =>
-                          handleDeleteShapeWithUndo(id, viewState.currentView)
+                          handleDeleteShapeWithUndo(id, "original")
                         }
                         onDeleteImage={(id) =>
-                          handleDeleteImageWithUndo(id, viewState.currentView)
+                          handleDeleteImageWithUndo(id, "original")
                         }
                         isTextSelectionMode={editorState.isTextSelectionMode}
                         selectedTextBoxes={selectionState.selectedTextBoxes}
@@ -5072,16 +5069,10 @@ export const PDFEditorContent: React.FC = () => {
                               handleDeleteTextBoxWithUndo(id, "translated")
                             }
                             onDeleteShape={(id) =>
-                              handleDeleteShapeWithUndo(
-                                id,
-                                viewState.currentView
-                              )
+                              handleDeleteShapeWithUndo(id, "translated")
                             }
                             onDeleteImage={(id) =>
-                              handleDeleteImageWithUndo(
-                                id,
-                                viewState.currentView
-                              )
+                              handleDeleteImageWithUndo(id, "translated")
                             }
                             isTextSelectionMode={
                               editorState.isTextSelectionMode
@@ -5202,16 +5193,10 @@ export const PDFEditorContent: React.FC = () => {
                               handleDeleteTextBoxWithUndo(id, "original")
                             }
                             onDeleteShape={(id) =>
-                              handleDeleteShapeWithUndo(
-                                id,
-                                viewState.currentView
-                              )
+                              handleDeleteShapeWithUndo(id, "original")
                             }
                             onDeleteImage={(id) =>
-                              handleDeleteImageWithUndo(
-                                id,
-                                viewState.currentView
-                              )
+                              handleDeleteImageWithUndo(id, "original")
                             }
                             isTextSelectionMode={
                               editorState.isTextSelectionMode
@@ -5508,16 +5493,10 @@ export const PDFEditorContent: React.FC = () => {
                                 handleDeleteTextBoxWithUndo(id, "translated")
                               }
                               onDeleteShape={(id) =>
-                                handleDeleteShapeWithUndo(
-                                  id,
-                                  viewState.currentView
-                                )
+                                handleDeleteShapeWithUndo(id, "translated")
                               }
                               onDeleteImage={(id) =>
-                                handleDeleteImageWithUndo(
-                                  id,
-                                  viewState.currentView
-                                )
+                                handleDeleteImageWithUndo(id, "translated")
                               }
                               isTextSelectionMode={
                                 editorState.isTextSelectionMode
