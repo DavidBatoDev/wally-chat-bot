@@ -18,6 +18,7 @@ import { useTranslationStore } from '@/lib/store/TranslationStore';
 import { Upload, FileText, Calendar, Languages, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProjectStatus } from '@/types/translation';
+import { useMessagingStore } from '@/lib/store/MessagingStore';
 
 interface ProjectUploadModalProps {
   open: boolean;
@@ -40,7 +41,8 @@ const languages = [
 ];
 
 export function ProjectUploadModal({ open, onOpenChange }: ProjectUploadModalProps) {
-  const { addProject } = useTranslationStore();
+  const { currentUser, addProject, teamMembers, userRoles } = useTranslationStore();
+  const { createProjectConversation } = useMessagingStore();
   const [isLoading, setIsLoading] = useState(false);
   
   const [formData, setFormData] = useState({
@@ -63,19 +65,48 @@ export function ProjectUploadModal({ open, onOpenChange }: ProjectUploadModalPro
       return;
     }
     
+    if (!currentUser) return;
+
     setIsLoading(true);
     
     try {
       // Simulate file upload delay
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      addProject({
-        ...formData,
+      // Create the project
+      const qCode = `Q${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+      
+      const newProject = {
+        clientName: formData.clientName,
         targetLanguages: selectedTargetLanguages,
-        fileSize: formData.fileSize || Math.floor(Math.random() * 5000000) + 500000, // Random file size if not provided
-        document: [],
+        deadline: formData.deadline,
+        deliveryDate: formData.deliveryDate,
+        document: [], // Will be populated by OCR
         status: 'ocr-processing' as ProjectStatus,
-      });
+        createdBy: currentUser.id,
+        fileName: formData.fileName,
+        fileSize: formData.fileSize,
+      };
+
+      addProject(newProject);
+
+      // Create project chat between creator and PM
+      const availablePMs = teamMembers.filter(member => 
+        userRoles.find(ur => ur.id === member.id)?.role === 'project-manager' && member.id !== currentUser.id
+      );
+
+      if (availablePMs.length > 0) {
+        const assignedPM = availablePMs[0];
+        // Use a simple project ID based on timestamp for the conversation
+        const projectId = `project_${Date.now()}`;
+        createProjectConversation(
+          projectId,
+          currentUser.id,
+          currentUser.name,
+          assignedPM.id,
+          assignedPM.name
+        );
+      }
       
       toast.success('Project uploaded successfully!');
       onOpenChange(false);

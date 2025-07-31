@@ -97,6 +97,7 @@ export function OCRConfirmationModal({
         sourceLanguage: detectedSourceLanguage, // Set the source language
         document: updatedDocument,
         actionType: undefined,
+        status: 'assigning-translator', // Trigger translator assignment
       });
 
       // Auto-assign translator

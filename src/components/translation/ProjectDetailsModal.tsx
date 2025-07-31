@@ -569,7 +569,27 @@ export function ProjectDetailsModal({
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {project.pmNotes ? (
+                    {project.pmNotesHistory && project.pmNotesHistory.length > 0 ? (
+                      <div className="space-y-4">
+                        {project.pmNotesHistory.map((note, idx) => (
+                          <div key={note.sentBackAt + note.revisionNumber} className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              <AlertCircle className="h-4 w-4 text-red-600" />
+                              <span className="text-sm font-medium text-red-800">
+                                PM Revision Notes (Revision {note.revisionNumber})
+                              </span>
+                            </div>
+                            <p className="text-sm text-red-700 whitespace-pre-wrap">{note.note}</p>
+                            <p className="text-xs text-red-600 mt-2">
+                              Sent back: {formatTimestamp(note.sentBackAt)}
+                            </p>
+                            <p className="text-xs text-red-600">
+                              Sent by: {note.sentBackBy}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : project.pmNotes ? (
                       <div className="space-y-4">
                         <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                           <div className="flex items-center gap-2 mb-2">
