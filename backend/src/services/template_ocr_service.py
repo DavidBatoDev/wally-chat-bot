@@ -462,9 +462,9 @@ DO NOT include explanations or notes outside the JSON object.
                 else:
                     extracted_value = str(field_data)
             
-            # If no value found, use placeholder text with the field key
+            # If no value found, use empty string for text, field key for placeholder
             if not extracted_value:
-                extracted_value = f"[{field_key}]"
+                extracted_value = ""
                 is_placeholder = True
             
             # Get position coordinates
@@ -564,9 +564,9 @@ DO NOT include explanations or notes outside the JSON object.
                 else:
                     extracted_value = str(field_data)
             
-            # If no value found, use placeholder text with the field key
+            # If no value found, use empty string for text, field key for placeholder
             if not extracted_value:
-                extracted_value = f"[{field_key}]"  # Use field key as placeholder
+                extracted_value = ""  # Empty string for non-detected fields
                 confidence = 0.0  # Set confidence to 0 for placeholder values
                 is_placeholder = True
             
