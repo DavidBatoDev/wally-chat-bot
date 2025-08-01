@@ -107,4 +107,27 @@ export const processFile = async (formData: FormData) => {
   }
 };
 
+// Helper method for processing files with template OCR
+export const processTemplateOcr = async (
+  formData: FormData,
+  templateId: string
+) => {
+  try {
+    const response = await api.post(
+      `/projects/template-ocr/${templateId}`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("Error processing template OCR:", error);
+    throw error;
+  }
+};
+
 export default api;

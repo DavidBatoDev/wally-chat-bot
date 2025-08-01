@@ -255,7 +255,21 @@ export const useElementManagement = () => {
         return fieldId; // Return existing ID to prevent adding duplicate
       }
 
-      const { width, height } = measureText(value, fontSize, fontFamily);
+      // Add buffer width to the textbox by including padding
+      const bufferWidth = 10; // 20px buffer on each side
+      const { width, height } = measureText(
+        value,
+        fontSize,
+        fontFamily,
+        0, // characterSpacing
+        undefined, // maxWidth
+        {
+          left: bufferWidth,
+          right: bufferWidth,
+          top: 4,
+          bottom: 4,
+        }
+      );
 
       const newTextBox: TextField = {
         id: fieldId,

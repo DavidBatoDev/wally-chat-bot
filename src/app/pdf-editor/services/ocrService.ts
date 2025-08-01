@@ -12,6 +12,7 @@ export interface OcrOptions {
     scale: number;
     pageWidth: number;
     pageHeight: number;
+    pages?: any[]; // Add pages array for bulk OCR
   };
   editorState: {
     isAddTextBoxMode: boolean;
@@ -37,6 +38,9 @@ export interface OcrOptions {
   ) => string | null;
   setIsTranslating: (isTranslating: boolean) => void;
   addUntranslatedText?: (untranslatedText: any) => void;
+  // Birth certificate specific options
+  pageType?: "social_media" | "birth_cert" | "dynamic_content";
+  birthCertTemplateId?: string; // Template ID for birth certificate pages
 }
 
 export interface OcrResult {
@@ -201,7 +205,8 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     formData.append("file", blob, `page-${pageNumber}.png`);
     formData.append("page_number", "1");
 
-    // Send frontend document dimensions to backend for accurate coordinate calculations
+    // Always send frontend document dimensions to backend for accurate coordinate calculations
+    // This is important because each page can have different dimensions
     formData.append("frontend_page_width", documentState.pageWidth.toString());
     formData.append(
       "frontend_page_height",
@@ -209,12 +214,23 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     );
     formData.append("frontend_scale", documentState.scale.toString());
 
-    // Call the OCR API using our centralized API
-    const { processFile } = await import("@/lib/api");
+    // Call the appropriate OCR API based on page type
+    const { processFile, processTemplateOcr } = await import("@/lib/api");
 
     let data;
     try {
-      data = await processFile(formData);
+      // Check if this is a birth certificate page and we have a template ID
+      if (options.pageType === "birth_cert" && options.birthCertTemplateId) {
+        console.log(
+          `Using template-ocr endpoint for birth certificate page ${pageNumber} with template ID: ${options.birthCertTemplateId}`
+        );
+        data = await processTemplateOcr(formData, options.birthCertTemplateId);
+      } else {
+        console.log(
+          `Using standard process-file endpoint for page ${pageNumber}`
+        );
+        data = await processFile(formData);
+      }
     } catch (error: any) {
       console.error("=== OCR API ERROR ===");
       console.error("Error object:", error);
@@ -445,9 +461,34 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
 
       // Run OCR for this page
       try {
+        // Get page information for birth certificate detection
+        const pageData = options.documentState?.pages?.find(
+          (p: any) => p.pageNumber === page
+        );
+        const pageType = pageData?.pageType;
+        const birthCertTemplateId = pageData?.birthCertTemplate?.id;
+
+        // Get page-specific dimensions for this page
+        const pageDimensions = {
+          pageWidth:
+            pageData?.translatedTemplateWidth ||
+            options.documentState.pageWidth,
+          pageHeight:
+            pageData?.translatedTemplateHeight ||
+            options.documentState.pageHeight,
+        };
+
         const result = await performPageOcr({
           ...ocrOptions,
           pageNumber: page,
+          pageType,
+          birthCertTemplateId,
+          // Override document state with page-specific dimensions
+          documentState: {
+            ...options.documentState,
+            pageWidth: pageDimensions.pageWidth,
+            pageHeight: pageDimensions.pageHeight,
+          },
         });
 
         if (result.success) {
@@ -507,14 +548,40 @@ export async function convertEntitiesToTextBoxes(
     // Use the styled entity dimensions if available, otherwise calculate from vertices
     let x, y, width, height;
 
-    x = entity.dimensions.box_x;
-    width = entity.dimensions.box_width;
-    height = entity.dimensions.box_height;
-    y = entity.dimensions.box_y;
+    // Handle both regular OCR and template-ocr formats
+    if (entity.dimensions) {
+      // Regular OCR format
+      x = entity.dimensions.box_x;
+      width = entity.dimensions.box_width;
+      height = entity.dimensions.box_height;
+      y = entity.dimensions.box_y;
+    } else if (entity.style) {
+      // Template-ocr format
+      x = entity.style.x;
+      y = pdfPageHeight - entity.style.y - entity.style.height; // Convert from top-left to bottom-left coordinate system
+      width = entity.style.width;
+      height = entity.style.height;
+    } else {
+      // Fallback: calculate from bounding_poly vertices
+      const vertices = entity.bounding_poly.vertices;
+
+      const minX = Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+      const maxX = Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+      const minY = Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+      const maxY = Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+
+      x = minX;
+      y = pdfPageHeight - maxY;
+      width = maxX - minX;
+      height = maxY - minY;
+    }
 
     // Extract styling information from styled entity
     const styling = entity.styling || entity.style || {};
     const colors = styling.colors || {};
+
+    // Handle template-ocr format where style properties are directly on entity.style
+    const templateStyle = entity.style || {};
 
     // Helper function to get style values
     const getStyleValue = (key: string, fallback: any = null) => {
@@ -580,10 +647,14 @@ export async function convertEntitiesToTextBoxes(
       borderWidth = 1;
     }
 
-    const textColor =
-      colors.fill_color || colors.text_color
-        ? rgbToHex(colors.fill_color || colors.text_color)
-        : "#000000";
+    // Handle template-ocr format for text color
+    let textColor = "#000000";
+    if (templateStyle.color) {
+      textColor = templateStyle.color;
+    } else if (colors.fill_color || colors.text_color) {
+      textColor = rgbToHex(colors.fill_color || colors.text_color);
+    }
+
     const borderRadius =
       styling.background?.border_radius || getStyleValue("border_radius", 0);
     const textPadding =
@@ -597,7 +668,8 @@ export async function convertEntitiesToTextBoxes(
     );
 
     // Calculate text dimensions if needed
-    const estimatedFontSize = getStyleValue("font_size", 12);
+    const estimatedFontSize =
+      templateStyle.font_size || getStyleValue("font_size", 12);
     const textLines = getStyleValue(
       "text_lines",
       (entity.text || "").split("\n")
@@ -653,10 +725,12 @@ export async function convertEntitiesToTextBoxes(
       width: width,
       height: height,
       value: entity.text || "",
-      fontSize: getStyleValue("font_size", 12),
-      fontFamily: getStyleValue("font_family", "Arial, sans-serif"),
+      fontSize: estimatedFontSize,
+      fontFamily:
+        templateStyle.font_family ||
+        getStyleValue("font_family", "Arial, sans-serif"),
       page: pageNumber,
-      color: textColor || "#000000",
+      color: textColor,
       bold: !!(getStyleValue("bold", false) || fontWeight),
       italic: !!getStyleValue("italic", false),
       underline: !!getStyleValue("underline", false),
@@ -664,7 +738,7 @@ export async function convertEntitiesToTextBoxes(
       listType: "none",
       letterSpacing: getStyleValue("letter_spacing", 0),
       lineHeight: getStyleValue("line_spacing", 1.2),
-      rotation: 0,
+      rotation: templateStyle.rotation || 0,
       backgroundColor: backgroundColor,
       backgroundOpacity: backgroundOpacity,
       borderColor: borderColor,
