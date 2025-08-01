@@ -480,7 +480,6 @@ DO NOT include explanations or notes outside the JSON object.
             # Get font information
             font_name = font_info.get("name", "Helvetica")
             font_size = font_info.get("size", 10)
-            font_color = font_info.get("color", "#cccccc" if is_placeholder else "#000000")  # Gray for placeholders
             
             # Map font names to ReportLab font names
             font_mapping = {
@@ -493,11 +492,8 @@ DO NOT include explanations or notes outside the JSON object.
             # Set font and color
             try:
                 c.setFont(reportlab_font, font_size)
-                if font_color.startswith("#"):
-                    color = HexColor(font_color)
-                    c.setFillColor(color)
-                else:
-                    c.setFillColor("black")  # Fallback to black
+                c.setFillColor("black")
+
             except:
                 # Fallback to default font and color
                 c.setFont("Helvetica", 10)
@@ -593,7 +589,7 @@ DO NOT include explanations or notes outside the JSON object.
                     "height": position.get("height", 12),
                     "font_family": field_info.get("font", {}).get("name", "Arial"),
                     "font_size": field_info.get("font", {}).get("size", 10),
-                    "color": field_info.get("font", {}).get("color", "#cccccc" if is_placeholder else "#000000"),  # Gray for placeholders
+                    "color": "#000000",  
                     "background_color": "transparent",
                     "border_color": "transparent",
                     "border_width": 0,
