@@ -48,6 +48,7 @@ import { useDocumentState } from "./hooks/states/useDocumentState";
 import { useElementManagement } from "./hooks/states/useElementManagement";
 import { useTextSpanHandling } from "./hooks/states/useTextSpanHandling";
 import { useHistory } from "./hooks/states/useHistory";
+import { useProjectState } from "./hooks/states/useProjectState";
 import {
   useHandleAddTextBoxWithUndo,
   useHandleDuplicateTextBoxWithUndo,
@@ -93,6 +94,7 @@ import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
 import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
 import { LoadingModal } from "@/components/ui/loading-modal";
+import { ProjectSelectionModal } from "./components/ProjectSelectionModal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
 import {
@@ -2140,7 +2142,7 @@ export const PDFEditorContent: React.FC = () => {
 
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
-          } 
+          }
         } else if (selectedElementType === "image") {
           // Find the selected image from all images
           const allImages = [
@@ -3687,19 +3689,37 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
-  // Project management
-  const saveProject = useCallback(() => {
-    localStorage.setItem(
-      "pdf-editor-project",
-      JSON.stringify({
-        elementCollections,
-        layerState,
-        documentUrl: documentState.url,
-        currentPage: documentState.currentPage,
-      })
-    );
-    toast.success("Project saved!");
-  }, [elementCollections, layerState, documentState]);
+  // Project management with enhanced save/load functionality
+  const {
+    saveProject: saveProjectToStorage,
+    loadProject,
+    exportToJson,
+    getSavedProjects,
+    deleteProject,
+  } = useProjectState({
+    documentState,
+    setDocumentState,
+    elementCollections,
+    setElementCollections,
+    layerState,
+    setLayerState,
+    viewState,
+    setViewState,
+    editorState,
+    setEditorState,
+    sourceLanguage,
+    setSourceLanguage,
+    desiredLanguage,
+    setDesiredLanguage,
+  });
+
+  // Keep backward compatibility for existing save project calls
+  const saveProject = useCallback(
+    (projectName?: string) => {
+      return saveProjectToStorage(projectName);
+    },
+    [saveProjectToStorage]
+  );
 
   // State for export confirmation modal
   const [showExportConfirm, setShowExportConfirm] = useState(false);
@@ -3749,9 +3769,6 @@ export const PDFEditorContent: React.FC = () => {
     setViewState,
     setEditorState,
   ]);
-
-
-
 
   // Export function that directly exports original view pages without template popup
   const exportToPDF = useCallback(async () => {
@@ -4379,6 +4396,9 @@ export const PDFEditorContent: React.FC = () => {
   const [isExportingPNG, setIsExportingPNG] = useState(false);
   const [isExportingJPEG, setIsExportingJPEG] = useState(false);
 
+  // Add state for project management modal
+  const [showProjectModal, setShowProjectModal] = useState(false);
+
   // Handler for modal continue/cancel
   const handleUntranslatedCheckContinue = useCallback(() => {
     setShowUntranslatedCheckModal(false);
@@ -4409,6 +4429,7 @@ export const PDFEditorContent: React.FC = () => {
         }
         onFileUpload={handleFileUploadIntercept}
         onSaveProject={saveProject}
+        onProjectManagement={() => setShowProjectModal(true)}
         onExportData={exportToPDF}
         onUndo={() => {
           const now = Date.now();
@@ -6528,6 +6549,17 @@ export const PDFEditorContent: React.FC = () => {
         onCancel={handleUntranslatedCheckCancel}
         confirmText="Continue Anyway"
         cancelText="Cancel"
+      />
+
+      {/* Project Management Modal */}
+      <ProjectSelectionModal
+        open={showProjectModal}
+        onOpenChange={setShowProjectModal}
+        onLoadProject={loadProject}
+        onSaveProject={saveProject}
+        onExportToJson={exportToJson}
+        onDeleteProject={deleteProject}
+        getSavedProjects={getSavedProjects}
       />
     </div>
   );
