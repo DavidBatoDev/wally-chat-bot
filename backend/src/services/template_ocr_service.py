@@ -205,13 +205,13 @@ class TemplateOCRService:
         # Create complete field listing with descriptions using the standard format
         field_listing = "\n**ALL DOCUMENT FIELDS (EXTREMELY IMPORTANT):**\n"
         for field, field_info in placeholder_json.items():
-            if isinstance(field_info, dict):
-                label = field_info.get('label', field)
-                description = field_info.get('description', '')
-            else:
-                label = field
-                description = str(field_info)
-            field_listing += f"  {field}: {label} - {description}\n"
+                    if isinstance(field_info, dict):
+                        label = field_info.get('label', field)
+                        description = field_info.get('description', '')
+                    else:
+                        label = field
+                        description = str(field_info)
+                    field_listing += f"  {field}: {label} - {description}\n"
         
         # Create generic extraction prompt that works with any template using the standard info_json format
         prompt = f"""You are an expert OCR engine. Extract ALL visible text from this document and match it to the specified fields.
@@ -522,7 +522,9 @@ DO NOT include explanations or notes outside the JSON object.
         return buffer.getvalue()
 
     def create_styled_json_from_extracted_data(self, template_data: Dict[str, Any], 
-                                             extracted_data: Dict[str, Any]) -> Dict[str, Any]:
+                                             extracted_data: Dict[str, Any],
+                                             page_width: float = 612.0,
+                                             page_height: float = 792.0) -> Dict[str, Any]:
         """Create a styled JSON response similar to the OCR service format."""
         
         fillable_text_info = template_data.get("fillable_text_info", [])
@@ -532,8 +534,8 @@ DO NOT include explanations or notes outside the JSON object.
             "document_info": {
                 "total_pages": 1,  # Assuming single page for now
                 "mime_type": "application/pdf",
-                "page_width": 612,
-                "page_height": 792
+                "page_width": page_width,
+                "page_height": page_height
             },
             "pages": []
         }
@@ -574,18 +576,19 @@ DO NOT include explanations or notes outside the JSON object.
                 "text": extracted_value,
                 "confidence": confidence,
                 "is_placeholder": is_placeholder,  # Flag to indicate this is a placeholder
+                "placeholder": field_key,  # Always include entity id for uniformity
                 "bounding_poly": {
                     "vertices": [
-                        {"x": position.get("x0", 0) / 612, "y": position.get("y0", 0) / 792},
-                        {"x": position.get("x1", 0) / 612, "y": position.get("y0", 0) / 792},
-                        {"x": position.get("x1", 0) / 612, "y": position.get("y1", 0) / 792},
-                        {"x": position.get("x0", 0) / 612, "y": position.get("y1", 0) / 792}
+                        {"x": position.get("x0", 0) / page_width, "y": position.get("y0", 0) / page_height},
+                        {"x": position.get("x1", 0) / page_width, "y": position.get("y0", 0) / page_height},
+                        {"x": position.get("x1", 0) / page_width, "y": position.get("y1", 0) / page_height},
+                        {"x": position.get("x0", 0) / page_width, "y": position.get("y1", 0) / page_height}
                     ]
                 },
                 "id": field_key,
                 "style": {
                     "x": position.get("x0", 0),
-                    "y": position.get("y0", 0),
+                    "y": position.get("y0", 0),  # Keep original Y for styling (PDF coordinates)
                     "width": position.get("width", 100),
                     "height": position.get("height", 12),
                     "font_family": field_info.get("font", {}).get("name", "Arial"),
@@ -865,10 +868,11 @@ DO NOT include explanations or notes outside the JSON object.
                     if extracted_value:
                         extracted[k] = {
                             "label": label,
-                            "value": str(extracted_value).strip()
+                            "value": str(extracted_value).strip(),
+                            "placeholder": ""  # Empty when value is found
                         }
                 
-                # Format missing fields with label and empty value
+                # Format missing fields with label, empty value, and placeholder
                 missing = {}
                 for k in placeholder_json.keys():
                     if k not in extracted:
@@ -880,7 +884,8 @@ DO NOT include explanations or notes outside the JSON object.
                         
                         missing[k] = {
                             "label": label,
-                            "value": ""
+                            "value": "",
+                            "placeholder": k  # Entity id when no value detected
                         }
                 
                 # Check if we need a second pass (50% or more fields missing)
@@ -933,7 +938,8 @@ DO NOT include explanations or notes outside the JSON object.
                                     field_info = missing[template_key]
                                     extracted[template_key] = {
                                         "label": field_info["label"],
-                                        "value": str(value).strip()
+                                        "value": str(value).strip(),
+                                        "placeholder": ""  # Clear placeholder when value is found
                                     }
                                     # Remove from missing
                                     del missing[template_key]
@@ -944,7 +950,7 @@ DO NOT include explanations or notes outside the JSON object.
                     except Exception as second_pass_err:
                         print(f"⚠️ Second pass error: {second_pass_err}, continuing with initial results")
                 
-
+                
                 # Apply radio button logic to clean up missing fields
                 extracted, missing = self.apply_radio_button_logic(extracted, missing, active_groups)
                 
@@ -993,8 +999,11 @@ DO NOT include explanations or notes outside the JSON object.
                     print("🎉 ALL FIELDS EXTRACTED SUCCESSFULLY!")
                 
                 # 7. Create styled outputs
+                # Get actual page dimensions from template
+                page_width, page_height = await self.get_template_page_dimensions(template_data)
+                
                 styled_pdf = self.create_styled_pdf_from_extracted_data(template_data["info_json"], extracted)
-                styled_json = self.create_styled_json_from_extracted_data(template_data["info_json"], extracted)
+                styled_json = self.create_styled_json_from_extracted_data(template_data["info_json"], extracted, page_width, page_height)
                 
                 return {
                     "template_id": template_id,
@@ -1004,6 +1013,10 @@ DO NOT include explanations or notes outside the JSON object.
                     "missing_value_keys": missing,
                     "styled_pdf": styled_pdf,
                     "styled_json": styled_json,
+                    "page_dimensions": {
+                        "width": page_width,
+                        "height": page_height
+                    },
                     "success": True
                 }
             
@@ -1085,6 +1098,39 @@ DO NOT include explanations or notes outside the JSON object.
         except Exception as e:
             extraction_result["pdf_template_error"] = str(e)
             return extraction_result
+
+    async def get_template_page_dimensions(self, template_data: Dict[str, Any]) -> Tuple[float, float]:
+        """Get actual page dimensions from the template PDF file."""
+        try:
+            file_url = template_data.get("file_url")
+            if not file_url:
+                print("No file_url found in template, using default dimensions")
+                return 612.0, 792.0  # Default letter size
+            
+            # Download the template PDF
+            pdf_bytes = await self.download_file_from_url(file_url)
+            
+            # Get page dimensions using PyMuPDF
+            if fitz:
+                pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+                if len(pdf_document) > 0:
+                    page = pdf_document.load_page(0)  # Get first page
+                    rect = page.rect
+                    width = rect.width
+                    height = rect.height
+                    pdf_document.close()
+                    print(f"Template page dimensions: {width} x {height}")
+                    return width, height
+                else:
+                    print("No pages found in template PDF, using default dimensions")
+                    return 612.0, 792.0
+            else:
+                print("PyMuPDF not available, using default dimensions")
+                return 612.0, 792.0
+                
+        except Exception as e:
+            print(f"Error getting template dimensions: {e}, using default dimensions")
+            return 612.0, 792.0  # Default letter size as fallback
 
 
 # Singleton instance
