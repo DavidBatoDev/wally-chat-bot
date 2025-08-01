@@ -558,22 +558,12 @@ export async function convertEntitiesToTextBoxes(
     } else if (entity.style) {
       // Template-ocr format
       x = entity.style.x;
-      y = pdfPageHeight - entity.style.y - entity.style.height; // Convert from top-left to bottom-left coordinate system
+      // x = 1;
+      // y = pdfPageHeight - entity.style.y - entity.style.height;
+      y = entity.style.y;
       width = entity.style.width;
       height = entity.style.height;
-    } else {
-      // Fallback: calculate from bounding_poly vertices
-      const vertices = entity.bounding_poly.vertices;
-
-      const minX = Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      const maxX = Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      const minY = Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
-      const maxY = Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
-
-      x = minX;
-      y = pdfPageHeight - maxY;
-      width = maxX - minX;
-      height = maxY - minY;
+      console.log("🫶🏻 Uaing template-ocr format");
     }
 
     // Extract styling information from styled entity
@@ -683,7 +673,8 @@ export async function convertEntitiesToTextBoxes(
       }
     }
 
-    // Calculate text dimensions using measureText function
+    // Calculate text dimensions using measureText function with buffer
+    const bufferWidth = 20; // Add 20px buffer on each side
     const { width: textWidth, height: textHeight } = measureText(
       longestLine,
       estimatedFontSize,
@@ -699,31 +690,32 @@ export async function convertEntitiesToTextBoxes(
     );
 
     // Use styled entity dimensions if available, otherwise calculate from vertices
-    if (!entity.dimensions) {
-      // Fallback: calculate from bounding_poly vertices
-      const vertices = entity.bounding_poly.vertices;
+    if (!entity.dimensions && entity.style) {
+      // // Fallback: calculate from bounding_poly vertices
+      // const vertices = entity.bounding_poly.vertices;
 
-      const minX = Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      const maxX = Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      const minY = Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
-      const maxY = Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+      // const minX = Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+      // const maxX = Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
+      // const minY = Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
+      // const maxY = Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
 
-      x = minX;
-      y = pdfPageHeight - maxY;
-      width = maxX - minX;
-      height = maxY - minY;
+      // x = minX;
+      // y = pdfPageHeight - maxY;
+      // width = maxX - minX;
+      // height = maxY - minY;
+      console.log("🫶🏻 Uaing template-ocr format");
     }
 
-    // Add text_padding if present
-    width += textPadding * 2;
-    height += textPadding * 2;
+    // Use measured text width with buffer instead of original width
+    const finalWidth = textWidth + bufferWidth * 2; // Add buffer on both sides
+    const finalHeight = Math.max(textHeight, height) + textPadding * 2; // Use the larger of measured height or original height
 
     const newTextBox: TextField = {
       id: generateUUID(),
       x: x,
       y: y,
-      width: width,
-      height: height,
+      width: finalWidth,
+      height: finalHeight,
       value: entity.text || "",
       fontSize: estimatedFontSize,
       fontFamily:
