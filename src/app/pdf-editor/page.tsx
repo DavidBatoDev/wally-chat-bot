@@ -104,7 +104,7 @@ const PDFEditor: React.FC = () => {
       {/* PDF Editor Content */}
       <div className="flex-1">
         <TextFormatProvider>
-          <PDFEditorContent projectData={project} />
+          <PDFEditorContent />
         </TextFormatProvider>
       </div>
     </div>
