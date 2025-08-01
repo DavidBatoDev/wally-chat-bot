@@ -54,6 +54,7 @@ export interface TextField {
   width: number;
   height: number;
   value: string;
+  placeholder?: string; // Placeholder text for the text field
   fontSize: number;
   fontFamily: string;
   page: number;

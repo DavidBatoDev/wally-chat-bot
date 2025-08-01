@@ -86,7 +86,6 @@ import { MemoizedImage } from "./components/elements/ImageElement";
 import DocumentPanel from "@/components/pdf-editor/DocumentPanel";
 import { SelectionPreview } from "./components/elements/SelectionPreview";
 import { SelectionRectangle } from "./components/elements/SelectionRectangle";
-import { TemplateEditorPopup } from "./components/TemplateEditorPopup";
 import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
@@ -2111,15 +2110,6 @@ export const PDFEditorContent: React.FC = () => {
             // Update the format drawer state
             setCurrentFormat(safeTextBox);
             setIsDrawerOpen(true);
-          } else {
-            // Don't clear selection if the textbox might be from TemplateEditorPopup
-            // Only clear if we're sure it should be in the main editor's collections
-            if (!showTemplateEditor) {
-              // Close drawer if selected text box is not found and we're not in template editor
-              setIsDrawerOpen(false);
-              setSelectedElementId(null);
-              setCurrentFormat(null);
-            }
           }
         } else if (selectedElementType === "shape") {
           // Find the selected shape from all shapes
@@ -2150,14 +2140,7 @@ export const PDFEditorContent: React.FC = () => {
 
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
-          } else {
-            // Don't clear selection if the shape might be from TemplateEditorPopup
-            if (!showTemplateEditor) {
-              setIsDrawerOpen(false);
-              setSelectedElementId(null);
-              setCurrentFormat(null);
-            }
-          }
+          } 
         } else if (selectedElementType === "image") {
           // Find the selected image from all images
           const allImages = [
@@ -2171,13 +2154,6 @@ export const PDFEditorContent: React.FC = () => {
           if (selectedImage) {
             setCurrentFormat(selectedImage);
             setIsDrawerOpen(true);
-          } else {
-            // Don't clear selection if the image might be from TemplateEditorPopup
-            if (!showTemplateEditor) {
-              setIsDrawerOpen(false);
-              setSelectedElementId(null);
-              setCurrentFormat(null);
-            }
           }
         }
       } else {
@@ -3730,7 +3706,6 @@ export const PDFEditorContent: React.FC = () => {
   const [pendingExport, setPendingExport] = useState<(() => void) | null>(null);
 
   // State for template editor
-  const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateCanvas, setTemplateCanvas] =
     useState<HTMLCanvasElement | null>(null);
 
@@ -3775,20 +3750,8 @@ export const PDFEditorContent: React.FC = () => {
     setEditorState,
   ]);
 
-  // Template editor handlers
-  const handleTemplateEditorClose = useCallback(() => {
-    setShowTemplateEditor(false);
-    setTemplateCanvas(null);
-  }, []);
 
-  const handleTemplateEditorContinue = useCallback(
-    (canvas: HTMLCanvasElement) => {
-      setTemplateCanvas(canvas);
-      setShowTemplateEditor(false);
-      setPendingTemplateExport(true); // trigger export after canvas is set
-    },
-    []
-  );
+
 
   // Export function that directly exports original view pages without template popup
   const exportToPDF = useCallback(async () => {
@@ -6424,13 +6387,6 @@ export const PDFEditorContent: React.FC = () => {
         onCancel={handleCancelExport}
         confirmText="Continue Export"
         cancelText="Cancel"
-      />
-
-      {/* Template Editor Popup */}
-      <TemplateEditorPopup
-        isOpen={showTemplateEditor}
-        onClose={handleTemplateEditorClose}
-        onContinue={handleTemplateEditorContinue}
       />
 
       {/* Language Selection Modal */}

@@ -227,17 +227,16 @@ export const useElementManagement = () => {
       targetView?: "original" | "translated",
       initialProperties?: Partial<TextField>
     ) => {
-      const value = initialProperties?.value || "New Text Field";
+      // For OCR-generated textboxes, empty string should remain empty to show placeholder
+      // For manually added textboxes, use "New Text Field" as default
+      const value =
+        initialProperties?.value !== undefined
+          ? initialProperties.value
+          : "New Text Field";
       const fontSize = initialProperties?.fontSize || 8;
       const fontFamily = initialProperties?.fontFamily || "Arial, sans-serif";
       // Use provided ID if available, otherwise generate new one
       const fieldId = initialProperties?.id || generateUUID();
-      console.log(
-        "Adding textbox with ID:",
-        fieldId,
-        "provided:",
-        !!initialProperties?.id
-      );
 
       // Check if ID already exists to prevent duplicates
       const existingTextBoxes = [
@@ -278,6 +277,9 @@ export const useElementManagement = () => {
         width: initialProperties?.width || width,
         height: initialProperties?.height || height,
         value,
+        placeholder:
+          initialProperties?.placeholder ||
+          (value.trim() === "" ? "Enter Text..." : ""),
         fontSize,
         fontFamily,
         page: currentPage,
@@ -846,6 +848,11 @@ export const useElementManagement = () => {
       elementMap.forEach((element) => {
         sortedElements.push(element);
       });
+
+      console.log(
+        `📝 Translated Elements for Page ${currentPage}:`,
+        sortedElements
+      );
 
       return sortedElements;
     },

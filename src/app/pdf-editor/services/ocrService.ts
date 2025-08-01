@@ -277,7 +277,15 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
       entities = data.layout.pages[0].entities || [];
     }
 
-    console.log("Returned entities from OCR API:", entities);
+    console.log("🔍 Backend Response Data:", {
+      fullResponse: data,
+      entities: entities,
+      entityCount: entities.length,
+      hasStyledLayout: !!data.styled_layout,
+      hasLayout: !!data.layout,
+      pageType: options.pageType,
+      birthCertTemplateId: options.birthCertTemplateId,
+    });
 
     if (entities.length > 0) {
       // Convert entities to textboxes
@@ -307,6 +315,10 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
         // Store original text before adding the textbox
         const originalText = entities[index]?.text || "";
 
+        // For OCR-generated textboxes, if the text is empty, set value to empty string
+        // so the placeholder will show instead of "New Text Field"
+        const ocrValue = textbox.value.trim() === "" ? "" : textbox.value;
+
         const textboxId = options.handleAddTextBoxWithUndo(
           textbox.x,
           textbox.y,
@@ -314,7 +326,8 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
           "translated",
           "translated",
           {
-            value: textbox.value,
+            value: ocrValue,
+            placeholder: textbox.placeholder,
             fontSize: textbox.fontSize,
             fontFamily: textbox.fontFamily,
             color: textbox.color,
@@ -563,7 +576,6 @@ export async function convertEntitiesToTextBoxes(
       y = entity.style.y;
       width = entity.style.width;
       height = entity.style.height;
-      console.log("🫶🏻 Uaing template-ocr format");
     }
 
     // Extract styling information from styled entity
@@ -689,26 +701,25 @@ export async function convertEntitiesToTextBoxes(
       }
     );
 
-    // Use styled entity dimensions if available, otherwise calculate from vertices
-    if (!entity.dimensions && entity.style) {
-      // // Fallback: calculate from bounding_poly vertices
-      // const vertices = entity.bounding_poly.vertices;
-
-      // const minX = Math.min(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      // const maxX = Math.max(...vertices.map((v: any) => v.x)) * pdfPageWidth;
-      // const minY = Math.min(...vertices.map((v: any) => v.y)) * pdfPageHeight;
-      // const maxY = Math.max(...vertices.map((v: any) => v.y)) * pdfPageHeight;
-
-      // x = minX;
-      // y = pdfPageHeight - maxY;
-      // width = maxX - minX;
-      // height = maxY - minY;
-      console.log("🫶🏻 Uaing template-ocr format");
-    }
-
     // Use measured text width with buffer instead of original width
     const finalWidth = textWidth + bufferWidth * 2; // Add buffer on both sides
     const finalHeight = Math.max(textHeight, height) + textPadding * 2; // Use the larger of measured height or original height
+
+    // Determine placeholder text
+    const textValue = entity.text || "";
+    const entityPlaceholder = entity.placeholder || "";
+
+    // Always show placeholder: entity placeholder if provided, otherwise "Enter Text..."
+    const placeholder = entityPlaceholder || "Enter Text...";
+
+    // Debug placeholder logic
+    console.log("🔍 Placeholder Debug:", {
+      textValue,
+      entityPlaceholder,
+      finalPlaceholder: placeholder,
+      isEmpty: textValue.trim() === "",
+      hasEntityPlaceholder: !!entityPlaceholder,
+    });
 
     const newTextBox: TextField = {
       id: generateUUID(),
@@ -716,7 +727,8 @@ export async function convertEntitiesToTextBoxes(
       y: y,
       width: finalWidth,
       height: finalHeight,
-      value: entity.text || "",
+      value: textValue,
+      placeholder: placeholder,
       fontSize: estimatedFontSize,
       fontFamily:
         templateStyle.font_family ||
