@@ -515,29 +515,6 @@ export const BirthCertificateSelectionModal: React.FC<
                           images: pageImages,
                         });
 
-                        console.log(
-                          "BirthCertModal - Original dimensions:",
-                          pageWidth,
-                          "x",
-                          pageHeight
-                        );
-                        console.log(
-                          "BirthCertModal - Target dimensions: 245 x 316"
-                        );
-                        console.log(
-                          "BirthCertModal - Calculated scale:",
-                          scale
-                        );
-                        console.log(
-                          "BirthCertModal - Elements on current page:",
-                          {
-                            textBoxes: pageTextBoxes.length,
-                            shapes: pageShapes.length,
-                            images: pageImages.length,
-                            sortedElements: sortedElements.length,
-                          }
-                        );
-
                         // Render elements in sorted order
                         return sortedElements.map((item) =>
                           renderElement(item, scale)

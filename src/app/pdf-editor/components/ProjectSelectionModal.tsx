@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, Download, FolderOpen, Plus } from "lucide-react";
+import { Trash2, Download, FolderOpen, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 interface SavedProject {
@@ -16,16 +16,18 @@ interface SavedProject {
   name: string;
   createdAt: string;
   storageKey: string;
+  source?: "database" | "localStorage";
 }
 
 interface ProjectSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onLoadProject: (projectId: string) => boolean;
-  onSaveProject: (projectName?: string) => any;
+  onLoadProject: (projectId?: string) => Promise<boolean>;
+  onSaveProject: (projectName?: string) => Promise<any>;
   onExportToJson: (projectName?: string) => any;
-  onDeleteProject: (projectId: string) => boolean;
-  getSavedProjects: () => SavedProject[];
+  onImportFromJson: (file: File) => Promise<boolean>;
+  onDeleteProject: (projectId: string) => Promise<boolean>;
+  getSavedProjects: () => Promise<SavedProject[]>;
 }
 
 export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
@@ -34,37 +36,57 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   onLoadProject,
   onSaveProject,
   onExportToJson,
+  onImportFromJson,
   onDeleteProject,
   getSavedProjects,
 }) => {
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
   const [exportProjectName, setExportProjectName] = useState("");
-  const [activeTab, setActiveTab] = useState<"load" | "save" | "export">(
-    "load"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "load" | "save" | "export" | "import"
+  >("load");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Refresh projects list when modal opens
   useEffect(() => {
     if (open) {
-      setSavedProjects(getSavedProjects());
+      const loadProjects = async () => {
+        try {
+          const projects = await getSavedProjects();
+          setSavedProjects(projects);
+        } catch (error) {
+          console.error("Failed to load projects:", error);
+          setSavedProjects([]);
+        }
+      };
+      loadProjects();
     }
   }, [open, getSavedProjects]);
 
-  const handleLoadProject = (projectId: string) => {
-    const success = onLoadProject(projectId);
-    if (success) {
-      onOpenChange(false);
+  const handleLoadProject = async (projectId: string) => {
+    try {
+      const success = await onLoadProject(projectId);
+      if (success) {
+        onOpenChange(false);
+      }
+    } catch (error) {
+      console.error("Failed to load project:", error);
     }
   };
 
-  const handleSaveProject = () => {
-    const projectName = newProjectName.trim() || undefined;
-    const result = onSaveProject(projectName);
-    if (result) {
-      setNewProjectName("");
-      setSavedProjects(getSavedProjects()); // Refresh list
-      toast.success("Project saved successfully!");
+  const handleSaveProject = async () => {
+    try {
+      const projectName = newProjectName.trim() || undefined;
+      const result = await onSaveProject(projectName);
+      if (result) {
+        setNewProjectName("");
+        // Refresh list
+        const projects = await getSavedProjects();
+        setSavedProjects(projects);
+      }
+    } catch (error) {
+      console.error("Failed to save project:", error);
     }
   };
 
@@ -77,15 +99,55 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
     }
   };
 
-  const handleDeleteProject = (projectId: string, projectName: string) => {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.type === "application/json" || file.name.endsWith(".json")) {
+        setSelectedFile(file);
+      } else {
+        toast.error("Please select a valid JSON file");
+        event.target.value = "";
+      }
+    }
+  };
+
+  const handleImportProject = async () => {
+    if (!selectedFile) {
+      toast.error("Please select a JSON file to import");
+      return;
+    }
+
+    try {
+      const success = await onImportFromJson(selectedFile);
+      if (success) {
+        setSelectedFile(null);
+        onOpenChange(false);
+        toast.success("Project imported successfully!");
+      }
+    } catch (error) {
+      console.error("Failed to import project:", error);
+      toast.error("Failed to import project");
+    }
+  };
+
+  const handleDeleteProject = async (
+    projectId: string,
+    projectName: string
+  ) => {
     if (
       window.confirm(
         `Are you sure you want to delete "${projectName}"? This action cannot be undone.`
       )
     ) {
-      const success = onDeleteProject(projectId);
-      if (success) {
-        setSavedProjects(getSavedProjects()); // Refresh list
+      try {
+        const success = await onDeleteProject(projectId);
+        if (success) {
+          // Refresh list
+          const projects = await getSavedProjects();
+          setSavedProjects(projects);
+        }
+      } catch (error) {
+        console.error("Failed to delete project:", error);
       }
     }
   };
@@ -135,6 +197,17 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
           >
             <Download className="w-4 h-4 inline mr-2" />
             Export JSON
+          </button>
+          <button
+            className={`px-4 py-2 font-medium ${
+              activeTab === "import"
+                ? "border-b-2 border-primary text-primary"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+            onClick={() => setActiveTab("import")}
+          >
+            <Upload className="w-4 h-4 inline mr-2" />
+            Import JSON
           </button>
         </div>
 
@@ -261,6 +334,65 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
                 <Button onClick={handleExportProject} className="w-full">
                   <Download className="w-4 h-4 mr-2" />
                   Export as JSON
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Import JSON Tab */}
+          {activeTab === "import" && (
+            <div>
+              <h3 className="text-lg font-semibold mb-4">
+                Import Project from JSON
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Select JSON File
+                  </label>
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleFileSelect}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  {selectedFile && (
+                    <div className="mt-2 p-2 bg-gray-50 rounded-md">
+                      <p className="text-sm text-gray-700">
+                        Selected:{" "}
+                        <span className="font-medium">{selectedFile.name}</span>
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Size: {(selectedFile.size / 1024).toFixed(2)} KB
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-orange-900 mb-2">
+                    Import will restore:
+                  </h4>
+                  <ul className="text-sm text-orange-800 space-y-1">
+                    <li>• All pages and document settings</li>
+                    <li>• Original and translated text boxes</li>
+                    <li>• Shapes, images, and deletion rectangles</li>
+                    <li>• Layer ordering and element positioning</li>
+                    <li>• Workflow step and view settings</li>
+                    <li>• Language settings (source and target)</li>
+                    <li>• Editor state and preferences</li>
+                  </ul>
+                  <div className="mt-2 p-2 bg-orange-100 rounded text-xs text-orange-700">
+                    <strong>Warning:</strong> This will replace your current
+                    project state.
+                  </div>
+                </div>
+                <Button
+                  onClick={handleImportProject}
+                  className="w-full"
+                  disabled={!selectedFile}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import Project
                 </Button>
               </div>
             </div>

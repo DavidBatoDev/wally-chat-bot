@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, projects, pages, templates
+from routers import auth, projects, pages, templates, project_state
 from services.db_service import db_service
 
 # This is for Swagger UI auth
@@ -26,6 +26,38 @@ app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 app.include_router(pages.router, prefix="/pages", tags=["Pages"])
 app.include_router(templates.router, prefix="/templates", tags=["Templates"])
+app.include_router(project_state.router, tags=["Project State"])
+
+# Test endpoint for database connection
+@app.get("/test/profiles")
+async def test_profiles():
+    """Test endpoint to fetch profiles and verify database connection."""
+    try:
+        result = db_service.test_profiles_connection()
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Database test failed: {str(e)}"
+        }
+
+@app.get("/test/projects")
+async def test_projects():
+    """Test endpoint to check if projects table exists."""
+    try:
+        result = db_service.client.table('projects').select('id').limit(1).execute()
+        return {
+            "success": True,
+            "message": "Projects table exists and is accessible",
+            "count": len(result.data) if result.data else 0
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Projects table test failed: {str(e)}"
+        }
 
 
 @app.get("/", tags=["Root"])

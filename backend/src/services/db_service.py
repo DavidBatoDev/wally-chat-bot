@@ -47,7 +47,60 @@ class SupabaseService:
             logger.error(f"Database health check failed: {e}")
             return False
     
+    def test_profiles_connection(self) -> Dict[str, Any]:
+        """Test connection by fetching profiles table."""
+        try:
+            result = self.client.table('profiles').select('*').limit(5).execute()
+            return {
+                "success": True,
+                "count": len(result.data) if result.data else 0,
+                "data": result.data,
+                "message": "Successfully connected to profiles table"
+            }
+        except Exception as e:
+            logger.error(f"Profiles connection test failed: {e}")
+            return {
+                "success": False,
+                "count": 0,
+                "data": [],
+                "error": str(e),
+                "message": f"Failed to connect to profiles table: {str(e)}"
+            }
+    
     # Generic CRUD operations
+    def create_record(self, table: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new record in the specified table."""
+        try:
+            result = self.client.table(table).insert(data).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            else:
+                raise Exception("No data returned from insert operation")
+        except Exception as e:
+            logger.error(f"Error creating record in {table}: {e}")
+            raise
+    
+    def update_record(self, table: str, record_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update a record in the specified table."""
+        try:
+            result = self.client.table(table).update(data).eq('id', record_id).execute()
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            else:
+                raise Exception("No data returned from update operation")
+        except Exception as e:
+            logger.error(f"Error updating record {record_id} in {table}: {e}")
+            raise
+    
+    def delete_record(self, table: str, record_id: str) -> bool:
+        """Delete a record from the specified table."""
+        try:
+            result = self.client.table(table).delete().eq('id', record_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting record {record_id} from {table}: {e}")
+            raise
+
     def get_records(self, table: str, filters: Optional[Dict[str, Any]] = None, 
                    limit: Optional[int] = None, order_by: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get multiple records with optional filtering."""

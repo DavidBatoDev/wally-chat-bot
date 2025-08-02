@@ -27,7 +27,7 @@ export interface PageData {
 
 // Document and page related types
 export interface DocumentState {
-  url: string;
+  url: string; // This now contains the actual URL (Supabase public URL or blob URL)
   currentPage: number;
   numPages: number;
   scale: number;
@@ -45,6 +45,9 @@ export interface DocumentState {
   pages: PageData[];
   deletedPages: Set<number>;
   isTransforming: boolean;
+  // Supabase storage fields
+  supabaseFilePath?: string; // The internal file path in Supabase storage (for deletion)
+  isSupabaseUrl?: boolean;
 }
 
 export interface TextField {

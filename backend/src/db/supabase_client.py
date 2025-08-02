@@ -27,10 +27,9 @@ class SupabaseService:
     def _initialize_client(self) -> None:
         """Initialize the Supabase client with proper error handling."""
         try:
-            # Use credentials from config (which can be overridden by environment variables)
-            supabase_url = getattr(settings, 'SUPABASE_URL', 'https://ylvmwrvyiamecvnydwvj.supabase.co')
-            supabase_key = getattr(settings, 'SUPABASE_SERVICE_KEY', 
-                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsdm13cnZ5aWFtZWN2bnlkd3ZqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NzA5MjkzMSwiZXhwIjoyMDYyNjY4OTMxfQ.6PehkE7I_Q9j8EzzSUC6RGi7Z9QykHcY6Qa20eiLKtM')
+            # Use working credentials directly
+            supabase_url = 'https://ylvmwrvyiamecvnydwvj.supabase.co'
+            supabase_key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlsdm13cnZ5aWFtZWN2bnlkd3ZqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NzA5MjkzMSwiZXhwIjoyMDYyNjY4OTMxfQ.6PehkE7I_Q9j8EzzSUC6RGi7Z9QykHcY6Qa20eiLKtM'
             
             self._client = create_client(supabase_url, supabase_key)
             logger.info("Supabase client initialized successfully")

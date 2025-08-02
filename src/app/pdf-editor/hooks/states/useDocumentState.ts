@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { DocumentState, PageData } from "../../types/pdf-editor.types";
 import { getFileType, isPdfFile } from "../../utils/measurements";
 import { toast } from "sonner";
+import { uploadFileWithFallback } from "../../services/fileUploadService";
 
 export const useDocumentState = () => {
   const [documentState, setDocumentState] = useState<DocumentState>({
@@ -155,14 +156,12 @@ export const useDocumentState = () => {
   }, []);
 
   // Load document from file
-  const loadDocument = useCallback((file: File) => {
+  const loadDocument = useCallback(async (file: File) => {
     const fileType = getFileType(file.name);
-    const url = URL.createObjectURL(file);
 
+    // Set initial loading state
     setDocumentState((prev) => ({
       ...prev,
-      url,
-      fileType,
       isLoading: true,
       currentPage: 1,
       error: "",
@@ -173,13 +172,76 @@ export const useDocumentState = () => {
       isTransforming: false, // Reset transforming state
     }));
 
-    setTimeout(() => {
+    try {
+      // Upload file to Supabase or use blob URL as fallback
+      const uploadResult = await uploadFileWithFallback(file);
+
       setDocumentState((prev) => ({
         ...prev,
+        url: uploadResult.url,
+        fileType,
         isLoading: false,
+        // Store additional metadata for cleanup later
+        supabaseFilePath: uploadResult.filePath,
+        isSupabaseUrl: uploadResult.isSupabaseUrl,
       }));
-    }, 500);
+
+      if (uploadResult.isSupabaseUrl) {
+        toast.success("Document uploaded to cloud storage successfully!");
+      }
+    } catch (error) {
+      console.error("Error loading document:", error);
+      setDocumentState((prev) => ({
+        ...prev,
+        error: "Failed to load document",
+        isLoading: false,
+        isDocumentLoaded: false,
+      }));
+      toast.error("Failed to load document");
+    }
   }, []);
+
+  // Load document from URL (for project loading)
+  const loadDocumentFromUrl = useCallback(
+    async (
+      url: string,
+      fileType: "pdf" | "image" | null,
+      supabaseFilePath?: string
+    ) => {
+      // Set loading state
+      setDocumentState((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: "",
+      }));
+
+      try {
+        setDocumentState((prev) => ({
+          ...prev,
+          url,
+          fileType,
+          isLoading: false,
+          isDocumentLoaded: true,
+          // Store Supabase metadata if available
+          supabaseFilePath,
+          isSupabaseUrl:
+            url.includes("supabase.co") && url.includes("/storage/"),
+        }));
+
+        toast.success("Project document loaded successfully!");
+      } catch (error) {
+        console.error("Error loading document from URL:", error);
+        setDocumentState((prev) => ({
+          ...prev,
+          error: "Failed to load document",
+          isLoading: false,
+          isDocumentLoaded: false,
+        }));
+        toast.error("Failed to load project document");
+      }
+    },
+    []
+  );
 
   // Update scale with debouncing
   const updateScale = useCallback((newScale: number) => {
@@ -365,6 +427,7 @@ export const useDocumentState = () => {
     },
     actions: {
       loadDocument,
+      loadDocumentFromUrl,
       updateScale,
       changePage,
       capturePdfBackgroundColor,

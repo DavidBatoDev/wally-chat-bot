@@ -49,6 +49,8 @@ import { useElementManagement } from "./hooks/states/useElementManagement";
 import { useTextSpanHandling } from "./hooks/states/useTextSpanHandling";
 import { useHistory } from "./hooks/states/useHistory";
 import { useProjectState } from "./hooks/states/useProjectState";
+import { useProjectCreation } from "./hooks/useProjectCreation";
+import { uploadFileWithFallback } from "./services/fileUploadService";
 import {
   useHandleAddTextBoxWithUndo,
   useHandleDuplicateTextBoxWithUndo,
@@ -3226,8 +3228,8 @@ export const PDFEditorContent: React.FC = () => {
           type: "application/pdf",
         });
 
-        // Load the blank PDF as the document
-        actions.loadDocument(pdfFile);
+        // Load the blank PDF as the document (this will upload to Supabase if authenticated)
+        await actions.loadDocument(pdfFile);
         setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
 
         // Calculate proper image dimensions and position
@@ -3237,12 +3239,12 @@ export const PDFEditorContent: React.FC = () => {
           documentState.pageHeight
         );
 
-        // Create image URL and add as interactive element
-        const imageUrl = URL.createObjectURL(imageFile);
+        // Upload image to Supabase or use blob URL as fallback
+        const imageUploadResult = await uploadFileWithFallback(imageFile);
 
         // Create a new image element with proper positioning
         const imageId = handleAddImageWithUndo(
-          imageUrl,
+          imageUploadResult.url,
           x,
           y,
           width,
@@ -3408,8 +3410,9 @@ export const PDFEditorContent: React.FC = () => {
           type: "application/pdf",
         });
 
-        // Update document URL without using loadDocument to preserve deletedPages
-        const newUrl = URL.createObjectURL(mergedFile);
+        // Upload merged PDF to Supabase or use blob URL as fallback
+        const uploadResult = await uploadFileWithFallback(mergedFile);
+        const newUrl = uploadResult.url;
         const totalPages = currentPdfDoc.getPageCount();
         const addedPagesCount = newPages.length;
 
@@ -3448,75 +3451,60 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
-  // File handlers
-  const handleFileUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file) {
-        const fileType = getFileType(file.name);
-
-        // Clear all elements and state when uploading a new document
-        clearAllElementsAndState();
-
-        if (fileType === "image") {
-          // For images, create a blank PDF and add the image as an interactive element
-          createBlankPdfAndAddImage(file);
-        } else {
-          // For PDFs, load normally
-          actions.loadDocument(file);
-          setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
-        }
-      }
-    },
-    [getFileType, createBlankPdfAndAddImage, actions, clearAllElementsAndState]
-  );
-
   const handleImageFileUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (file) {
-        const url = URL.createObjectURL(file);
-        // Load the image to get its natural dimensions
-        const img = new window.Image();
-        img.onload = () => {
-          const pageWidth = documentState.pageWidth;
-          const pageHeight = documentState.pageHeight;
-          const aspectRatio = img.naturalWidth / img.naturalHeight;
-          let width = pageWidth * 0.8;
-          let height = width / aspectRatio;
-          if (height > pageHeight * 0.8) {
-            height = pageHeight * 0.8;
-            width = height * aspectRatio;
-          }
-          // Center the image on the page
-          const x = (pageWidth - width) / 2;
-          const y = (pageHeight - height) / 2;
-          // Add to current view - only allow in 'original' or 'translated', not 'split'
-          const targetView =
-            viewState.currentView === "split"
-              ? "original"
-              : viewState.currentView;
-          const imageId = handleAddImageWithUndo(
-            url,
-            x,
-            y,
-            width,
-            height,
-            documentState.currentPage,
-            targetView
-          );
-          if (imageId) {
-            handleImageSelect(imageId);
-          }
-          if (imageInputRef.current) {
-            imageInputRef.current.value = "";
-          }
-          toast.success("Image added to document");
-        };
-        img.onerror = () => {
-          toast.error("Failed to load image");
-        };
-        img.src = url;
+        try {
+          // Upload image to Supabase or use blob URL as fallback
+          const uploadResult = await uploadFileWithFallback(file);
+          const url = uploadResult.url;
+
+          // Load the image to get its natural dimensions
+          const img = new window.Image();
+          img.onload = () => {
+            const pageWidth = documentState.pageWidth;
+            const pageHeight = documentState.pageHeight;
+            const aspectRatio = img.naturalWidth / img.naturalHeight;
+            let width = pageWidth * 0.8;
+            let height = width / aspectRatio;
+            if (height > pageHeight * 0.8) {
+              height = pageHeight * 0.8;
+              width = height * aspectRatio;
+            }
+            // Center the image on the page
+            const x = (pageWidth - width) / 2;
+            const y = (pageHeight - height) / 2;
+            // Add to current view - only allow in 'original' or 'translated', not 'split'
+            const targetView =
+              viewState.currentView === "split"
+                ? "original"
+                : viewState.currentView;
+            const imageId = handleAddImageWithUndo(
+              url,
+              x,
+              y,
+              width,
+              height,
+              documentState.currentPage,
+              targetView
+            );
+            if (imageId) {
+              handleImageSelect(imageId);
+            }
+            if (imageInputRef.current) {
+              imageInputRef.current.value = "";
+            }
+            toast.success("Image added to document");
+          };
+          img.onerror = () => {
+            toast.error("Failed to load image");
+          };
+          img.src = url;
+        } catch (error) {
+          console.error("Error uploading image:", error);
+          toast.error("Failed to upload image");
+        }
       }
     },
     [
@@ -3525,6 +3513,7 @@ export const PDFEditorContent: React.FC = () => {
       documentState.pageHeight,
       documentState.currentPage,
       handleImageSelect,
+      viewState.currentView,
     ]
   );
 
@@ -3689,13 +3678,34 @@ export const PDFEditorContent: React.FC = () => {
     ]
   );
 
+  // Automatic project creation on document upload
+  const {
+    projectId: currentProjectId,
+    isCreatingProject,
+    projectCreationError,
+    handleFileUploadWithProjectCreation,
+    shouldShowProjectStatus,
+    isAuthenticated: isUserAuthenticated,
+    createProjectOnUpload,
+  } = useProjectCreation({
+    documentState,
+    viewState,
+    elementCollections,
+    layerState,
+    editorState,
+    sourceLanguage,
+    desiredLanguage,
+  });
+
   // Project management with enhanced save/load functionality
   const {
     saveProject: saveProjectToStorage,
     loadProject,
     exportToJson,
+    importFromJson,
     getSavedProjects,
     deleteProject,
+    setCurrentProjectId,
   } = useProjectState({
     documentState,
     setDocumentState,
@@ -3719,6 +3729,58 @@ export const PDFEditorContent: React.FC = () => {
       return saveProjectToStorage(projectName);
     },
     [saveProjectToStorage]
+  );
+
+  // Enhanced file upload handler with automatic project creation
+  const handleFileUpload = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      // Store file reference for automatic project creation
+      lastUploadedFileRef.current = file;
+
+      const fileType = getFileType(file.name);
+
+      // Clear all elements and state when uploading a new document
+      clearAllElementsAndState();
+
+      // Process the file upload
+      if (fileType === "image") {
+        // For images, create a blank PDF and add the image as an interactive element
+        createBlankPdfAndAddImage(file);
+      } else {
+        // For PDFs, load normally
+        actions.loadDocument(file);
+        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+      }
+
+      // Note: Automatic project creation will happen when document is fully loaded
+      // See the useEffect hook that monitors documentState.isDocumentLoaded
+
+      if (!isUserAuthenticated) {
+        // Show a toast suggesting the user to sign in for project management
+        toast.info("Sign in to automatically save your projects!", {
+          description:
+            "You can still work on your document, but it won't be saved to your account. Click here to sign in.",
+          duration: 5000,
+          action: {
+            label: "Sign In",
+            onClick: () => {
+              // Redirect to login page
+              window.location.href = "/auth/login";
+            },
+          },
+        });
+      }
+    },
+    [
+      getFileType,
+      createBlankPdfAndAddImage,
+      actions,
+      clearAllElementsAndState,
+      isUserAuthenticated,
+    ]
   );
 
   // State for export confirmation modal
@@ -3947,6 +4009,8 @@ export const PDFEditorContent: React.FC = () => {
     documentState.currentPage,
   ]);
 
+  // Auto-loading disabled - users start with a clean slate
+
   // Check for languages after document is loaded
   useEffect(() => {
     if (documentState.isDocumentLoaded && documentState.url) {
@@ -3980,6 +4044,68 @@ export const PDFEditorContent: React.FC = () => {
     viewState.currentWorkflowStep,
     setViewState,
   ]);
+
+  // Automatic project creation when document is fully loaded
+  const lastUploadedFileRef = useRef<File | null>(null);
+  const hasCreatedProjectForCurrentDocumentRef = useRef(false);
+
+  useEffect(() => {
+    const createProjectAfterDocumentLoad = async () => {
+      // Only create project if:
+      // 1. User is authenticated
+      // 2. Document is loaded
+      // 3. We have a valid document URL
+      // 4. We haven't already created a project for this document
+      // 5. We have a reference to the uploaded file
+      if (
+        isUserAuthenticated &&
+        documentState.isDocumentLoaded &&
+        documentState.url &&
+        !hasCreatedProjectForCurrentDocumentRef.current &&
+        lastUploadedFileRef.current
+      ) {
+        hasCreatedProjectForCurrentDocumentRef.current = true;
+
+        try {
+          console.log("DEBUG: Creating project after document load", {
+            documentState,
+            file: lastUploadedFileRef.current,
+          });
+
+          const projectId = await createProjectOnUpload(
+            lastUploadedFileRef.current
+          );
+          if (projectId) {
+            // Set the current project ID so future saves will update this project
+            setCurrentProjectId(projectId);
+            console.log(
+              "DEBUG: Set current project ID after auto-creation:",
+              projectId
+            );
+          }
+          toast.success("Project created automatically!");
+        } catch (error) {
+          console.error("Failed to create project after document load:", error);
+          hasCreatedProjectForCurrentDocumentRef.current = false; // Allow retry
+        }
+      }
+    };
+
+    createProjectAfterDocumentLoad();
+  }, [
+    isUserAuthenticated,
+    documentState.isDocumentLoaded,
+    documentState.url,
+    documentState.numPages, // Include numPages to ensure document is fully processed
+    createProjectOnUpload,
+  ]);
+
+  // Reset project creation flag when a new document is uploaded
+  useEffect(() => {
+    if (!documentState.isDocumentLoaded) {
+      hasCreatedProjectForCurrentDocumentRef.current = false;
+    }
+  }, [documentState.isDocumentLoaded]);
 
   // Cleanup effect to clear any remaining debounce timers
   useEffect(() => {
@@ -4119,8 +4245,6 @@ export const PDFEditorContent: React.FC = () => {
     const handleClick = () => {
       const originalTextBox = elementCollections.originalTextBoxes;
       const translatedTextBoxes = elementCollections.translatedTextBoxes;
-      console.log("Current originalTextBoxes:", originalTextBox);
-      console.log("Current translatedTextBoxes:", translatedTextBoxes);
     };
     document.addEventListener("click", handleClick);
     return () => {
@@ -4731,27 +4855,149 @@ export const PDFEditorContent: React.FC = () => {
                     {/* Upload Button */}
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primaryLight focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                      disabled={isCreatingProject}
+                      className={`inline-flex items-center px-6 py-3 font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${
+                        isCreatingProject
+                          ? "bg-gray-400 text-gray-700 cursor-not-allowed"
+                          : "bg-primary text-white hover:bg-primaryLight"
+                      }`}
                     >
-                      <svg
-                        className="w-5 h-5 mr-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                        />
-                      </svg>
-                      Upload Document
+                      {isCreatingProject ? (
+                        <>
+                          <svg
+                            className="w-5 h-5 mr-2 animate-spin"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                          Creating Project...
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            className="w-5 h-5 mr-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                            />
+                          </svg>
+                          Upload Document
+                        </>
+                      )}
                     </button>
 
                     {/* File type info */}
                     <div className="mt-6 text-sm text-gray-500">
                       <p>Supported formats: PDF, JPG, PNG, GIF, BMP, WebP</p>
+
+                      {/* Project creation status */}
+                      {shouldShowProjectStatus() && (
+                        <div className="mt-4 p-3 rounded-lg border">
+                          {isCreatingProject && (
+                            <div className="flex items-center text-blue-600">
+                              <svg
+                                className="w-4 h-4 mr-2 animate-spin"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
+                              </svg>
+                              Creating your project...
+                            </div>
+                          )}
+
+                          {projectCreationError && (
+                            <div className="flex items-center text-red-600">
+                              <svg
+                                className="w-4 h-4 mr-2"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              Project creation failed
+                            </div>
+                          )}
+
+                          {currentProjectId && !isCreatingProject && (
+                            <div className="flex items-center text-green-600">
+                              <svg
+                                className="w-4 h-4 mr-2"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              Project created successfully!
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Authentication status */}
+                      {!isUserAuthenticated && (
+                        <div className="mt-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center text-amber-700">
+                              <svg
+                                className="w-4 h-4 mr-2"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                              <span className="text-sm">
+                                Sign in to automatically save projects
+                              </span>
+                            </div>
+                            <button
+                              onClick={() =>
+                                (window.location.href = "/auth/login")
+                              }
+                              className="ml-3 px-3 py-1 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors"
+                            >
+                              Sign In
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -6555,11 +6801,14 @@ export const PDFEditorContent: React.FC = () => {
       <ProjectSelectionModal
         open={showProjectModal}
         onOpenChange={setShowProjectModal}
-        onLoadProject={loadProject}
-        onSaveProject={saveProject}
+        onLoadProject={loadProject as (projectId?: string) => Promise<boolean>}
+        onSaveProject={saveProject as (projectName?: string) => Promise<any>}
         onExportToJson={exportToJson}
-        onDeleteProject={deleteProject}
-        getSavedProjects={getSavedProjects}
+        onImportFromJson={importFromJson}
+        onDeleteProject={
+          deleteProject as (projectId: string) => Promise<boolean>
+        }
+        getSavedProjects={getSavedProjects as () => Promise<any[]>}
       />
     </div>
   );
