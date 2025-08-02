@@ -126,6 +126,11 @@ export interface Image {
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;
+  // Supabase storage metadata
+  isSupabaseUrl?: boolean;
+  filePath?: string; // Supabase storage path for cleanup/management
+  fileName?: string; // Original filename for reference
+  fileObjectId?: string; // UUID from file_objects table
 }
 
 // Deletion rectangle interface

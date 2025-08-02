@@ -480,7 +480,13 @@ export const useElementManagement = () => {
       width: number,
       height: number,
       currentPage: number,
-      currentView: ViewMode
+      currentView: ViewMode,
+      supabaseMetadata?: {
+        isSupabaseUrl?: boolean;
+        filePath?: string;
+        fileName?: string;
+        fileObjectId?: string;
+      }
     ) => {
       const newImage: Image = {
         id: generateUUID(),
@@ -495,6 +501,11 @@ export const useElementManagement = () => {
         borderColor: "#000000",
         borderWidth: 0,
         borderRadius: 0,
+        // Add Supabase metadata if provided
+        isSupabaseUrl: supabaseMetadata?.isSupabaseUrl,
+        filePath: supabaseMetadata?.filePath,
+        fileName: supabaseMetadata?.fileName,
+        fileObjectId: supabaseMetadata?.fileObjectId,
       };
 
       setElementCollections((prev) => {

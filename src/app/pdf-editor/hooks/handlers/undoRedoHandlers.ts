@@ -615,12 +615,27 @@ export function useHandleAddImageWithUndo(
       width: number,
       height: number,
       page: number,
-      view: ViewMode
+      view: ViewMode,
+      supabaseMetadata?: {
+        isSupabaseUrl?: boolean;
+        filePath?: string;
+        fileName?: string;
+        fileObjectId?: string;
+      }
     ) => {
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
-        newId = addImage(src, x, y, width, height, page, view);
+        newId = addImage(
+          src,
+          x,
+          y,
+          width,
+          height,
+          page,
+          view,
+          supabaseMetadata
+        );
         idRef.current = newId;
         if (!newId) throw new Error("Failed to add image: newId is null");
         return newId;

@@ -1453,7 +1453,8 @@ export const PDFEditorContent: React.FC = () => {
             originalDimensions.width,
             originalDimensions.height,
             pageNumber,
-            "original"
+            "original",
+            undefined // No Supabase metadata for snapshot images
           );
 
           // Translated image (bottom-right, centered in quadrant) - swapped position
@@ -1468,7 +1469,8 @@ export const PDFEditorContent: React.FC = () => {
             translatedDimensions.width,
             translatedDimensions.height,
             pageNumber,
-            "original"
+            "original",
+            undefined // No Supabase metadata for snapshot images
           );
 
           // Add dividing line between original and translated (vertical)
@@ -1526,7 +1528,8 @@ export const PDFEditorContent: React.FC = () => {
             originalDimensions2.width,
             originalDimensions2.height,
             pageNumber,
-            "original"
+            "original",
+            undefined // No Supabase metadata for snapshot images
           );
 
           // Translated image (top-right, centered in quadrant) - swapped position
@@ -1537,7 +1540,8 @@ export const PDFEditorContent: React.FC = () => {
             translatedDimensions2.width,
             translatedDimensions2.height,
             pageNumber,
-            "original"
+            "original",
+            undefined // No Supabase metadata for snapshot images
           );
 
           // Add dividing line between original and translated (vertical, top row)
@@ -3250,7 +3254,13 @@ export const PDFEditorContent: React.FC = () => {
           width,
           height,
           1, // Page 1
-          "original" // Add to original view
+          "original", // Add to original view
+          {
+            isSupabaseUrl: imageUploadResult.isSupabaseUrl,
+            filePath: imageUploadResult.filePath,
+            fileName: imageFile.name,
+            fileObjectId: imageUploadResult.fileObjectId,
+          }
         );
 
         // Select the image and open format drawer
@@ -3331,20 +3341,26 @@ export const PDFEditorContent: React.FC = () => {
           documentState.pageHeight
         );
 
-        // Create image URL and add as interactive element on the new page
-        const imageUrl = URL.createObjectURL(imageFile);
+        // Upload image to Supabase or use blob URL as fallback
+        const imageUploadResult = await uploadFileWithFallback(imageFile);
 
         // Use setTimeout to ensure the document state is updated before adding the image
         setTimeout(() => {
           // Create a new image element with proper positioning
           const imageId = handleAddImageWithUndo(
-            imageUrl,
+            imageUploadResult.url,
             x,
             y,
             width,
             height,
             newPageNumber,
-            "original" // Add to original view
+            "original", // Add to original view
+            {
+              isSupabaseUrl: imageUploadResult.isSupabaseUrl,
+              filePath: imageUploadResult.filePath,
+              fileName: imageFile.name,
+              fileObjectId: imageUploadResult.fileObjectId,
+            }
           );
 
           // Select the image and open format drawer
@@ -3487,7 +3503,13 @@ export const PDFEditorContent: React.FC = () => {
               width,
               height,
               documentState.currentPage,
-              targetView
+              targetView,
+              {
+                isSupabaseUrl: uploadResult.isSupabaseUrl,
+                filePath: uploadResult.filePath,
+                fileName: file.name,
+                fileObjectId: uploadResult.fileObjectId,
+              }
             );
             if (imageId) {
               handleImageSelect(imageId);

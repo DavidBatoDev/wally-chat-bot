@@ -1010,11 +1010,12 @@ export const useProjectState = (props: UseProjectStateProps) => {
           // Clean up image files from element collections
           const cleanupImageFiles = (images: any[]) => {
             images?.forEach((image) => {
-              if (image.url && isSupabaseUrl(image.url)) {
-                const filePath = extractFilePathFromUrl(image.url);
+              if (image.src && isSupabaseUrl(image.src)) {
+                const filePath =
+                  image.filePath || extractFilePathFromUrl(image.src);
                 if (filePath) {
                   cleanupTasks.push(
-                    deleteFileFromSupabase(filePath)
+                    deleteFileFromSupabase(filePath, image.fileObjectId)
                       .then(() => {})
                       .catch((error) =>
                         console.warn(

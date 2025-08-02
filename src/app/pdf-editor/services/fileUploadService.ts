@@ -9,6 +9,7 @@ export interface FileUploadResult {
   publicUrl: string;
   filePath: string;
   fileName: string;
+  fileObjectId?: string; // UUID from file_objects table
 }
 
 export class FileUploadError extends Error {
@@ -16,6 +17,42 @@ export class FileUploadError extends Error {
     super(message);
     this.name = "FileUploadError";
   }
+}
+
+/**
+ * Create a record in the file_objects table
+ */
+async function createFileObjectRecord(
+  profileId: string,
+  bucket: string,
+  objectKey: string,
+  mimeType: string,
+  sizeBytes: number
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("file_objects")
+    .insert({
+      profile_id: profileId,
+      bucket: bucket,
+      object_key: objectKey,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    throw new FileUploadError(
+      `Failed to create file_objects record: ${error.message}`,
+      error
+    );
+  }
+
+  if (!data?.id) {
+    throw new FileUploadError("Failed to get file_objects record ID");
+  }
+
+  return data.id;
 }
 
 /**
@@ -66,10 +103,28 @@ export async function uploadFileToSupabase(
       throw new FileUploadError("Failed to get public URL for uploaded file");
     }
 
+    // Create record in file_objects table
+    let fileObjectId: string | undefined;
+    try {
+      fileObjectId = await createFileObjectRecord(
+        user.id,
+        "project-files",
+        filePath,
+        file.type || "application/octet-stream",
+        file.size
+      );
+    } catch (fileObjectError) {
+      // Log the error but don't fail the upload
+      console.warn("Failed to create file_objects record:", fileObjectError);
+      // Optionally, you could choose to fail the entire upload here
+      // by re-throwing the error if file tracking is critical
+    }
+
     return {
       publicUrl: publicUrlData.publicUrl,
       filePath: filePath,
       fileName: uniqueFileName,
+      fileObjectId: fileObjectId,
     };
   } catch (error) {
     if (error instanceof FileUploadError) {
@@ -83,19 +138,59 @@ export async function uploadFileToSupabase(
 }
 
 /**
- * Delete a file from Supabase storage
+ * Delete a record from the file_objects table
+ */
+async function deleteFileObjectRecord(fileObjectId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from("file_objects")
+      .delete()
+      .eq("id", fileObjectId);
+
+    if (error) {
+      console.error(
+        `Failed to delete file_objects record ${fileObjectId}:`,
+        error
+      );
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(
+      `Unexpected error deleting file_objects record ${fileObjectId}:`,
+      error
+    );
+    return false;
+  }
+}
+
+/**
+ * Delete a file from Supabase storage and its corresponding file_objects record
  */
 export async function deleteFileFromSupabase(
-  filePath: string
+  filePath: string,
+  fileObjectId?: string
 ): Promise<boolean> {
   try {
-    const { error } = await supabase.storage
+    // Delete from storage
+    const { error: storageError } = await supabase.storage
       .from("project-files")
       .remove([filePath]);
 
-    if (error) {
-      console.error(`Failed to delete file ${filePath}:`, error);
+    if (storageError) {
+      console.error(`Failed to delete file ${filePath}:`, storageError);
       return false;
+    }
+
+    // Delete from file_objects table if fileObjectId is provided
+    if (fileObjectId) {
+      const fileObjectDeleted = await deleteFileObjectRecord(fileObjectId);
+      if (!fileObjectDeleted) {
+        console.warn(
+          `File deleted from storage but failed to delete file_objects record ${fileObjectId}`
+        );
+      }
     }
 
     return true;
@@ -112,6 +207,7 @@ export async function uploadFileWithFallback(file: File): Promise<{
   url: string;
   isSupabaseUrl: boolean;
   filePath?: string;
+  fileObjectId?: string;
 }> {
   try {
     const { user } = useAuthStore.getState();
@@ -123,6 +219,7 @@ export async function uploadFileWithFallback(file: File): Promise<{
         url: result.publicUrl,
         isSupabaseUrl: true,
         filePath: result.filePath,
+        fileObjectId: result.fileObjectId,
       };
     } else {
       // User not authenticated, use blob URL as fallback
@@ -151,6 +248,33 @@ export async function uploadFileWithFallback(file: File): Promise<{
  */
 export function isSupabaseUrl(url: string): boolean {
   return url.includes("supabase.co") && url.includes("/storage/");
+}
+
+/**
+ * Get all file objects for a specific profile
+ */
+export async function getFileObjectsByProfile(
+  profileId: string
+): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from("file_objects")
+      .select("*")
+      .eq("profile_id", profileId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new FileUploadError(
+        `Failed to fetch file objects: ${error.message}`,
+        error
+      );
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error("Error fetching file objects:", error);
+    return [];
+  }
 }
 
 /**
