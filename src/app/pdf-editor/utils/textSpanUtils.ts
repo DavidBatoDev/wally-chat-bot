@@ -294,15 +294,25 @@ export const createTextFieldFromSpan = (
   let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
-    const pageRect = pdfPageEl.getBoundingClientRect();
-    const spanCenterX = spanRect.left + spanRect.width / 2;
-    const pageCenterX = pageRect.left + pageRect.width / 2;
+    const pdfViewer = document.querySelector('[data-pdf-viewer]');
+    
+    if (pdfViewer) {
+      const viewerRect = pdfViewer.getBoundingClientRect();
+      const spanCenterX = spanRect.left + spanRect.width / 2;
+      const clickX = spanCenterX - viewerRect.left;
+      
+      // Use the same logic as document mouse handlers
+      const singleDocWidth = pageWidth * scale;
+      const gap = 20;
 
-    // If span is in the right half of the page, it's in the translated view
-    if (spanCenterX > pageCenterX) {
-      targetView = "translated";
-    } else {
-      targetView = "original";
+      if (clickX > singleDocWidth + gap) {
+        targetView = "translated";
+      } else if (clickX <= singleDocWidth) {
+        targetView = "original";
+      } else {
+        // Span is in the gap - default to original
+        targetView = "original";
+      }
     }
   } else if (currentView === "final-layout") {
     targetView = "final-layout";
@@ -544,15 +554,25 @@ export const createDeletionRectangleForSpan = (
   let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
-    const pageRect = pdfPageEl.getBoundingClientRect();
-    const spanCenterX = spanRect.left + spanRect.width / 2;
-    const pageCenterX = pageRect.left + pageRect.width / 2;
+    const pdfViewer = document.querySelector('[data-pdf-viewer]');
+    
+    if (pdfViewer) {
+      const viewerRect = pdfViewer.getBoundingClientRect();
+      const spanCenterX = spanRect.left + spanRect.width / 2;
+      const clickX = spanCenterX - viewerRect.left;
+      
+      // Use the same logic as document mouse handlers
+      const singleDocWidth = pageWidth * scale;
+      const gap = 20;
 
-    // If span is in the right half of the page, it's in the translated view
-    if (spanCenterX > pageCenterX) {
-      targetView = "translated";
-    } else {
-      targetView = "original";
+      if (clickX > singleDocWidth + gap) {
+        targetView = "translated";
+      } else if (clickX <= singleDocWidth) {
+        targetView = "original";
+      } else {
+        // Span is in the gap - default to original
+        targetView = "original";
+      }
     }
   } else if (currentView === "final-layout") {
     targetView = "final-layout";

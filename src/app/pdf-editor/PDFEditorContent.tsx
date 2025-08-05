@@ -1922,23 +1922,11 @@ export const PDFEditorContent: React.FC = () => {
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
     const timeoutId = setTimeout(() => {
-      console.log("🔍 Element Selection Debug:", {
-        selectedElementId,
-        selectedElementType,
-        isEditMode: editorState.isEditMode,
-        currentWorkflowStep: viewState.currentWorkflowStep,
-        currentView: viewState.currentView,
-        multiSelectionCount: editorState.multiSelection.selectedElements.length,
-      });
-
       // Close drawer if not in edit mode, unless we're in final-layout workflow step
       if (
         !editorState.isEditMode &&
         viewState.currentWorkflowStep !== "final-layout"
       ) {
-        console.log(
-          "❌ Closing drawer - not in edit mode and not in final-layout"
-        );
         setIsDrawerOpen(false);
         setSelectedElementId(null);
         setCurrentFormat(null);
@@ -2278,10 +2266,12 @@ export const PDFEditorContent: React.FC = () => {
           }
         }
       } else {
-        // Close drawer when no element is selected
-        setIsDrawerOpen(false);
-        setSelectedElementId(null);
-        setCurrentFormat(null);
+        // Close drawer when no element is selected AND no multi-selection
+        if (selectedElements.length === 0) {
+          setIsDrawerOpen(false);
+          setSelectedElementId(null);
+          setCurrentFormat(null);
+        }
       }
     }, 0);
 
@@ -2320,9 +2310,6 @@ export const PDFEditorContent: React.FC = () => {
     return () => {
       // Only cancel if we're actually capturing when component unmounts
       if (isCapturingSnapshotsRef.current) {
-        console.log(
-          "Component unmounting during snapshot capture, cancelling..."
-        );
         snapshotCancelRef.current.cancelled = true;
       }
     };
@@ -3720,20 +3707,31 @@ export const PDFEditorContent: React.FC = () => {
   const handlePageChange = useCallback(
     (page: number) => {
       const isFinalLayout = viewState.currentView === "final-layout";
-      console.log("🔄 Page Change:", {
-        page,
-        isFinalLayout,
-        currentView: viewState.currentView,
-        beforeChange: {
-          currentPage: documentState.currentPage,
-          finalLayoutCurrentPage: documentState.finalLayoutCurrentPage,
-          numPages: documentState.numPages,
-          finalLayoutNumPages: documentState.finalLayoutNumPages,
+      
+      // Clear multi-selection when switching pages
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          selectedElements: [],
+          selectionBounds: null,
+          isDrawingSelection: false,
+          selectionStart: null,
+          selectionEnd: null,
+          isMovingSelection: false,
+          moveStart: null,
         },
-      });
+      }));
+      
+      // Also clear single element selection state
+      setSelectedElementId(null);
+      setSelectedElementType(null);
+      setCurrentFormat(null);
+      setIsDrawerOpen(false);
+      
       actions.changePage(page, isFinalLayout);
     },
-    [actions, viewState.currentView, documentState]
+    [actions, viewState.currentView, documentState, setSelectedElementId, setSelectedElementType, setCurrentFormat, setIsDrawerOpen]
   );
 
   const handlePageDelete = useCallback(
@@ -4881,13 +4879,6 @@ export const PDFEditorContent: React.FC = () => {
                 onViewChange={(view) => {
                   // Clear selection when changing views to close ElementFormatDrawer
                   clearSelectionState();
-                  console.log(
-                    `View changing from ${viewState.currentView} to ${view}`
-                  );
-                  console.log(
-                    "Current deleted pages before view change:",
-                    documentState.deletedPages
-                  );
                   setViewState((prev) => ({ ...prev, currentView: view }));
                 }}
                 onEditModeToggle={() =>
@@ -4909,17 +4900,7 @@ export const PDFEditorContent: React.FC = () => {
                 }
                 showFinalLayoutSettings={showFinalLayoutSettings}
                 onToggleFinalLayoutSettings={() => {
-                  console.log(
-                    "Toggle Final Layout Settings clicked. Current state:",
-                    showFinalLayoutSettings
-                  );
                   setShowFinalLayoutSettings((prev) => {
-                    console.log(
-                      "Setting showFinalLayoutSettings from",
-                      prev,
-                      "to",
-                      !prev
-                    );
                     return !prev;
                   });
                 }}
@@ -6903,13 +6884,6 @@ export const PDFEditorContent: React.FC = () => {
                 </div>
               )}
             {(() => {
-              console.log("FinalLayoutSettings render check:", {
-                currentWorkflowStep: viewState.currentWorkflowStep,
-                showFinalLayoutSettings: showFinalLayoutSettings,
-                shouldShow:
-                  viewState.currentWorkflowStep === "final-layout" &&
-                  showFinalLayoutSettings,
-              });
               return (
                 viewState.currentWorkflowStep === "final-layout" &&
                 showFinalLayoutSettings
@@ -7008,7 +6982,6 @@ export const PDFEditorContent: React.FC = () => {
         originalImages={elementCollections.originalImages}
         pdfBackgroundColor={documentState.pdfBackgroundColor}
         onTemplateSelect={(template, pageNumber) => {
-          console.log("Selected template:", template, "for page:", pageNumber);
 
           // Update the specific page with the template information
           setPageBirthCertTemplate(pageNumber, template);
