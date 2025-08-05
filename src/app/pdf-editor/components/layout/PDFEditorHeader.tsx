@@ -13,6 +13,7 @@ import {
   Settings,
   Check,
   FolderOpen,
+  RefreshCw,
 } from "lucide-react";
 import { WorkflowStep } from "../../types/pdf-editor.types";
 
@@ -38,6 +39,8 @@ interface PDFEditorHeaderProps {
   isCurrentPageTranslated?: boolean;
   currentWorkflowStep: WorkflowStep;
   onWorkflowStepChange: (step: WorkflowStep) => void;
+  onRecreateFinalLayout?: () => void;
+  isCapturingSnapshots?: boolean;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -62,6 +65,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   isCurrentPageTranslated,
   currentWorkflowStep,
   onWorkflowStepChange,
+  onRecreateFinalLayout,
+  isCapturingSnapshots,
 }) => {
   return (
     <div className="bg-white border-b border-primary/20 shadow-sm">
@@ -304,12 +309,22 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               )}
               {currentWorkflowStep === "final-layout" && (
                 <Button
-                  onClick={onExportData}
-                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                  onClick={onRecreateFinalLayout}
+                  disabled={isCapturingSnapshots}
+                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   size="sm"
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
+                  {isCapturingSnapshots ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Recreating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Recreate Final-Layout
+                    </>
+                  )}
                 </Button>
               )}
             </>

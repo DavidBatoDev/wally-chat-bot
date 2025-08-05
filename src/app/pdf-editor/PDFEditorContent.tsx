@@ -1546,7 +1546,14 @@ export const PDFEditorContent: React.FC = () => {
       // Get the previous step from current state if not provided
       const prev = previousStep || viewState.currentWorkflowStep;
 
-      // Handle leaving final-layout step - restore backup if available
+      // Handle leaving final-layout step - set view to split when going to translate or layout
+      if (prev === "final-layout" && (step === "translate" || step === "layout")) {
+        console.log(`Leaving final-layout step, setting view to split for ${step} step`);
+        setViewState((prevState) => ({
+          ...prevState,
+          currentView: "split",
+        }));
+      }
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
@@ -1569,15 +1576,21 @@ export const PDFEditorContent: React.FC = () => {
         snapshotCancelRef.current.cancelled = false;
         setIsCancellingSnapshots(false);
 
-        // Always capture fresh snapshots when entering final layout
-        // Only start snapshot capture if not already in progress
-        if (!isCapturingSnapshots) {
-          console.log("Capturing fresh snapshots for final layout");
+        // Check if final layout elements exist
+        const hasFinalLayoutElements = 
+          elementCollections.finalLayoutTextboxes.length > 0 ||
+          elementCollections.finalLayoutShapes.length > 0 ||
+          elementCollections.finalLayoutImages.length > 0 ||
+          elementCollections.finalLayoutDeletionRectangles.length > 0;
+
+        if (!hasFinalLayoutElements && !isCapturingSnapshots) {
+          // Only capture snapshots if no final layout elements exist and not already capturing
+          console.log("No final layout elements found, capturing fresh snapshots for final layout");
           createFinalLayoutWithSnapshots();
+        } else if (hasFinalLayoutElements) {
+          console.log("Final layout elements already exist, skipping snapshot capture");
         } else {
-          console.warn(
-            "Snapshot capture already in progress, not starting new capture"
-          );
+          console.log("Snapshot capture already in progress, skipping");
         }
       }
 
@@ -1592,6 +1605,13 @@ export const PDFEditorContent: React.FC = () => {
       capturedSnapshots,
       createFinalLayoutWithSnapshots,
       elementCollections.untranslatedTexts,
+      elementCollections.finalLayoutTextboxes,
+      elementCollections.finalLayoutShapes,
+      elementCollections.finalLayoutImages,
+      elementCollections.finalLayoutDeletionRectangles,
+      actions,
+      setEditorState,
+      setViewState,
     ]
   );
 
@@ -4579,6 +4599,8 @@ export const PDFEditorContent: React.FC = () => {
         }
         currentWorkflowStep={viewState.currentWorkflowStep}
         onWorkflowStepChange={handleWorkflowStepChange}
+        onRecreateFinalLayout={createFinalLayoutWithSnapshots}
+        isCapturingSnapshots={isCapturingSnapshots}
       />
 
       {/* Main Content */}
