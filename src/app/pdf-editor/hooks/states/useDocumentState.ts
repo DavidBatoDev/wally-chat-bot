@@ -24,6 +24,11 @@ export const useDocumentState = () => {
     pages: [],
     deletedPages: new Set(),
     isTransforming: false,
+    // Final layout fields
+    finalLayoutUrl: undefined,
+    finalLayoutCurrentPage: 1,
+    finalLayoutNumPages: 0,
+    finalLayoutDeletedPages: new Set(),
   });
 
   // Refs for scale changing
@@ -262,16 +267,64 @@ export const useDocumentState = () => {
 
   // Change current page
   const changePage = useCallback(
-    (page: number) => {
-      if (page >= 1 && page <= documentState.numPages) {
-        setDocumentState((prev) => ({
-          ...prev,
-          currentPage: page,
-          isPageLoading: true,
-        }));
+    (page: number, isFinalLayout = false) => {
+      console.log("📄 changePage called:", { page, isFinalLayout });
+
+      if (isFinalLayout) {
+        // Handle final layout page change
+        if (page >= 1 && page <= (documentState.finalLayoutNumPages || 0)) {
+          console.log("✅ Final layout page change valid:", {
+            page,
+            finalLayoutNumPages: documentState.finalLayoutNumPages,
+          });
+          setDocumentState((prev) => {
+            const newState = {
+              ...prev,
+              finalLayoutCurrentPage: page,
+              isPageLoading: true,
+            };
+            console.log("🔄 Final layout state updated:", {
+              from: prev.finalLayoutCurrentPage,
+              to: page,
+              newState: newState,
+            });
+            return newState;
+          });
+        } else {
+          console.log("❌ Final layout page change invalid:", {
+            page,
+            finalLayoutNumPages: documentState.finalLayoutNumPages,
+          });
+        }
+      } else {
+        // Handle regular document page change
+        if (page >= 1 && page <= documentState.numPages) {
+          console.log("✅ Regular page change valid:", {
+            page,
+            numPages: documentState.numPages,
+          });
+          setDocumentState((prev) => {
+            const newState = {
+              ...prev,
+              currentPage: page,
+              isPageLoading: true,
+            };
+            console.log("🔄 Regular state updated:", {
+              from: prev.currentPage,
+              to: page,
+              newState: newState,
+            });
+            return newState;
+          });
+        } else {
+          console.log("❌ Regular page change invalid:", {
+            page,
+            numPages: documentState.numPages,
+          });
+        }
       }
     },
-    [documentState.numPages]
+    [documentState.numPages, documentState.finalLayoutNumPages]
   );
 
   // Capture PDF background color
@@ -352,23 +405,48 @@ export const useDocumentState = () => {
     []
   );
 
-  const deletePage = useCallback((pageNumber: number) => {
-    setDocumentState((prev) => {
-      const remainingPages = prev.numPages - prev.deletedPages.size;
+  const deletePage = useCallback(
+    (pageNumber: number, isFinalLayout = false) => {
+      setDocumentState((prev) => {
+        if (isFinalLayout) {
+          // Handle final layout page deletion
+          const finalLayoutDeletedPages =
+            prev.finalLayoutDeletedPages || new Set();
+          const remainingPages =
+            (prev.finalLayoutNumPages || 0) - finalLayoutDeletedPages.size;
 
-      if (remainingPages <= 1) {
-        toast.error("Cannot delete the last remaining page");
-        return prev;
-      }
+          if (remainingPages <= 1) {
+            toast.error("Cannot delete the last remaining page");
+            return prev;
+          }
 
-      return {
-        ...prev,
-        deletedPages: new Set([...prev.deletedPages, pageNumber]),
-      };
-    });
+          return {
+            ...prev,
+            finalLayoutDeletedPages: new Set([
+              ...finalLayoutDeletedPages,
+              pageNumber,
+            ]),
+          };
+        } else {
+          // Handle regular document page deletion
+          const remainingPages = prev.numPages - prev.deletedPages.size;
 
-    toast.success(`Page ${pageNumber} deleted`);
-  }, []);
+          if (remainingPages <= 1) {
+            toast.error("Cannot delete the last remaining page");
+            return prev;
+          }
+
+          return {
+            ...prev,
+            deletedPages: new Set([...prev.deletedPages, pageNumber]),
+          };
+        }
+      });
+
+      toast.success(`Page ${pageNumber} deleted`);
+    },
+    []
+  );
 
   const getCurrentPage = useCallback(() => {
     return (

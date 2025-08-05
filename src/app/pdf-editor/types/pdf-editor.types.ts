@@ -48,6 +48,11 @@ export interface DocumentState {
   // Supabase storage fields
   supabaseFilePath?: string; // The internal file path in Supabase storage (for deletion)
   isSupabaseUrl?: boolean;
+  // Final layout fields
+  finalLayoutUrl?: string;
+  finalLayoutCurrentPage?: number;
+  finalLayoutNumPages?: number;
+  finalLayoutDeletedPages?: Set<number>;
 }
 
 export interface TextField {
@@ -203,7 +208,7 @@ export interface ErasureState {
   isDrawingErasure: boolean;
   erasureDrawStart: { x: number; y: number } | null;
   erasureDrawEnd: { x: number; y: number } | null;
-  erasureDrawTargetView: "original" | "translated" | null;
+  erasureDrawTargetView: "original" | "translated" | "final-layout" | null;
   erasureSettings: {
     width: number;
     height: number;
@@ -254,7 +259,7 @@ export interface MultiSelectionState {
 }
 
 // View state types
-export type ViewMode = "original" | "translated" | "split";
+export type ViewMode = "original" | "translated" | "split" | "final-layout";
 
 export type WorkflowStep = "translate" | "layout" | "final-layout";
 
@@ -319,6 +324,11 @@ export interface ElementCollections {
   translatedDeletionRectangles: DeletionRectangle[];
   translatedImages: Image[];
   untranslatedTexts: UntranslatedText[];
+  // Final layout elements
+  finalLayoutTextboxes: TextField[];
+  finalLayoutShapes: Shape[];
+  finalLayoutDeletionRectangles: DeletionRectangle[];
+  finalLayoutImages: Image[];
 }
 
 // Page management

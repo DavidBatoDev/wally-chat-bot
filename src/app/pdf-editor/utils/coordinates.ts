@@ -9,8 +9,8 @@ export interface CoordinateAdjustment {
 export const adjustSplitViewCoordinates = (
   x: number,
   y: number,
-  targetView: "original" | "translated" | null,
-  currentView: "original" | "translated" | "split",
+  targetView: "original" | "translated" | "final-layout" | null,
+  currentView: "original" | "translated" | "split" | "final-layout",
   pageWidth: number,
   scale: number
 ): CoordinateAdjustment => {
@@ -29,7 +29,7 @@ export const adjustSplitViewCoordinates = (
 export const getPreviewLeft = (
   x: number,
   isTranslated: boolean,
-  currentView: "original" | "translated" | "split",
+  currentView: "original" | "translated" | "split" | "final-layout",
   pageWidth: number,
   scale: number,
   templateScaleFactor?: number
@@ -85,8 +85,8 @@ export const screenToDocumentCoordinates = (
   clientY: number,
   rect: DOMRect,
   scale: number,
-  targetView: "original" | "translated" | null,
-  currentView: "original" | "translated" | "split",
+  targetView: "original" | "translated" | "final-layout" | null,
+  currentView: "original" | "translated" | "split" | "final-layout",
   pageWidth: number,
   templateScaleFactor?: number
 ): CoordinateAdjustment => {

@@ -30,7 +30,7 @@ export function useHandleAddTextBoxWithUndo(
       y: number,
       page: number,
       view: ViewMode,
-      targetView?: "original" | "translated",
+      targetView?: "original" | "translated" | "final-layout",
       initialProperties?: Partial<TextField>
     ) => {
       let newId: string | null = null;
@@ -215,6 +215,41 @@ export function useUpdateTranslatedTextBoxWithUndo(
   );
 }
 
+// View-specific: final-layout
+export function useUpdateFinalLayoutTextBoxWithUndo(
+  updateTextBox: any,
+  handleUpdateTextBoxWithUndo: any,
+  getCurrentTextBoxState: any,
+  documentState: any
+) {
+  return useCallback(
+    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
+      const currentState = getCurrentTextBoxState(id);
+      if (currentState) {
+        const before: Partial<TextField> = {};
+        const after: Partial<TextField> = {};
+        Object.keys(updates).forEach((key) => {
+          const k = key as keyof TextField;
+          if (currentState[k] !== updates[k]) {
+            before[k] = currentState[k] as any;
+            after[k] = updates[k] as any;
+          }
+        });
+        if (Object.keys(after).length > 0) {
+          handleUpdateTextBoxWithUndo(
+            id,
+            before,
+            after,
+            documentState.finalLayoutCurrentPage || 1,
+            "final-layout"
+          );
+        }
+      }
+    },
+    [getCurrentTextBoxState, handleUpdateTextBoxWithUndo, documentState]
+  );
+}
+
 // Refactored handler for adding a shape with undo support
 export function useHandleAddShapeWithUndo(
   addShape: any,
@@ -230,7 +265,7 @@ export function useHandleAddShapeWithUndo(
       height: number,
       page: number,
       view: ViewMode,
-      targetView?: "original" | "translated",
+      targetView?: "original" | "translated" | "final-layout",
       // Line-specific parameters
       x1?: number,
       y1?: number,
@@ -567,6 +602,7 @@ export function useHandleDeleteDeletionRectangleWithUndo(
       const allRects = [
         ...elementCollections.originalDeletionRectangles,
         ...elementCollections.translatedDeletionRectangles,
+        ...elementCollections.finalLayoutDeletionRectangles,
       ];
       const rect = allRects.find((r: any) => r.id === id);
       if (!rect) return;
@@ -576,6 +612,10 @@ export function useHandleDeleteDeletionRectangleWithUndo(
         (r: any) => r.id === id
       )
         ? "original"
+        : elementCollections.finalLayoutDeletionRectangles.some(
+            (r: any) => r.id === id
+          )
+        ? "final-layout"
         : "translated";
 
       const remove = (id: string) => {

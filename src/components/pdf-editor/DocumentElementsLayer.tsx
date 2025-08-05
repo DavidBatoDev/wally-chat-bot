@@ -12,7 +12,7 @@ import {
 } from "@/app/pdf-editor/types/pdf-editor.types";
 
 interface DocumentElementsLayerProps {
-  viewType: "original" | "translated";
+  viewType: "original" | "translated" | "final-layout";
   currentPage: number;
   scale: number;
   pageWidth: number;
@@ -66,12 +66,12 @@ interface DocumentElementsLayerProps {
     isDrawingSelection: boolean;
     selectionStart: { x: number; y: number } | null;
     selectionEnd: { x: number; y: number } | null;
-    targetView: "original" | "translated" | null;
+    targetView: "original" | "translated" | "final-layout" | null;
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
   };
-  currentView: "original" | "translated" | "split";
+  currentView: "original" | "translated" | "split" | "final-layout";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;
@@ -169,7 +169,9 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
       (currentView === "original" &&
         multiSelection.targetView === "original") ||
       (currentView === "translated" &&
-        multiSelection.targetView === "translated")
+        multiSelection.targetView === "translated") ||
+      (currentView === "final-layout" &&
+        multiSelection.targetView === "final-layout")
     );
   };
 

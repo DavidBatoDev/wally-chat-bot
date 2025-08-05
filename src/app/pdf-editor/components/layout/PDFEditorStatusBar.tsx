@@ -63,19 +63,27 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
       const textBoxes =
         viewState.currentView === "original"
           ? elementCollections.originalTextBoxes
-          : elementCollections.translatedTextBoxes;
+          : viewState.currentView === "translated"
+          ? elementCollections.translatedTextBoxes
+          : elementCollections.finalLayoutTextboxes;
       const shapes =
         viewState.currentView === "original"
           ? elementCollections.originalShapes
-          : elementCollections.translatedShapes;
+          : viewState.currentView === "translated"
+          ? elementCollections.translatedShapes
+          : elementCollections.finalLayoutShapes;
       const images =
         viewState.currentView === "original"
           ? elementCollections.originalImages
-          : elementCollections.translatedImages;
+          : viewState.currentView === "translated"
+          ? elementCollections.translatedImages
+          : elementCollections.finalLayoutImages;
       const deletions =
         viewState.currentView === "original"
           ? elementCollections.originalDeletionRectangles
-          : elementCollections.translatedDeletionRectangles;
+          : viewState.currentView === "translated"
+          ? elementCollections.translatedDeletionRectangles
+          : elementCollections.finalLayoutDeletionRectangles;
 
       return {
         textBoxes: textBoxes.filter((box) => box.page === currentPage).length,
@@ -87,6 +95,23 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
   };
 
   const counts = getCurrentPageCounts();
+
+  // Determine if we're in final layout mode
+  const isFinalLayout = viewState.currentView === "final-layout";
+
+  // Get current page and total pages based on view mode
+  const currentPage = isFinalLayout
+    ? documentState.finalLayoutCurrentPage
+    : documentState.currentPage;
+  const totalPages = isFinalLayout
+    ? documentState.finalLayoutNumPages
+    : documentState.numPages;
+  const deletedPages = isFinalLayout
+    ? documentState.finalLayoutDeletedPages
+    : pageState.deletedPages;
+  const documentUrl = isFinalLayout
+    ? documentState.finalLayoutUrl
+    : documentState.url;
 
   return (
     <div className="bg-white border-t border-gray-200 px-4 py-2">
@@ -129,16 +154,18 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
                 ? "Original"
                 : viewState.currentView === "translated"
                 ? "Translated"
+                : viewState.currentView === "final-layout"
+                ? "Final Layout"
                 : "Split Screen"}
             </span>
           </span>
         </div>
 
         <div className="flex items-center space-x-4">
-          {documentState.url && (
+          {documentUrl && (
             <span>
-              Page {documentState.currentPage} of {documentState.numPages} (
-              {documentState.numPages - pageState.deletedPages.size} available)
+              Page {currentPage} of {totalPages} (
+              {totalPages - (deletedPages?.size || 0)} available)
             </span>
           )}
 

@@ -54,7 +54,7 @@ export interface ProjectState {
     isSupabaseUrl?: boolean;
   };
   viewState: {
-    currentView: "original" | "translated" | "split";
+    currentView: "original" | "translated" | "split" | "final-layout";
     currentWorkflowStep: string;
     activeSidebarTab: string;
     isSidebarCollapsed: boolean;

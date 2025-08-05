@@ -10,7 +10,7 @@ import {
 } from "@/app/pdf-editor/types/pdf-editor.types";
 
 interface DocumentPanelProps {
-  viewType: "original" | "translated";
+  viewType: "original" | "translated" | "final-layout";
 
   // Document props
   documentUrl: string;
@@ -98,12 +98,12 @@ interface DocumentPanelProps {
     isDrawingSelection: boolean;
     selectionStart: { x: number; y: number } | null;
     selectionEnd: { x: number; y: number } | null;
-    targetView: "original" | "translated" | null;
+    targetView: "original" | "translated" | "final-layout" | null;
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
   };
-  currentView: "original" | "translated" | "split";
+  currentView: "original" | "translated" | "split" | "final-layout";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;

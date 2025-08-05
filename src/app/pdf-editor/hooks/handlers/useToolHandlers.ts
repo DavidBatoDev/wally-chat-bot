@@ -27,120 +27,123 @@ export const useToolHandlers = ({
   clearSelectionState,
 }: UseToolHandlersProps) => {
   // Tool change handler
-  const handleToolChange = useCallback((tool: string, enabled: boolean) => {
-    // Reset all tool states
-    setEditorState((prev) => ({
-      ...prev,
-      isTextSelectionMode: false,
-      isAddTextBoxMode: false,
-      isSelectionMode: false,
-    }));
-    setToolState((prev) => ({
-      ...prev,
-      shapeDrawingMode: null,
-      isDrawingInProgress: false,
-      shapeDrawStart: null,
-      shapeDrawEnd: null,
-      shapeDrawTargetView: null,
-    }));
-    setErasureState((prev) => ({
-      ...prev,
-      isErasureMode: false,
-    }));
+  const handleToolChange = useCallback(
+    (tool: string, enabled: boolean) => {
+      // Reset all tool states
+      setEditorState((prev) => ({
+        ...prev,
+        isTextSelectionMode: false,
+        isAddTextBoxMode: false,
+        isSelectionMode: false,
+      }));
+      setToolState((prev) => ({
+        ...prev,
+        shapeDrawingMode: null,
+        isDrawingInProgress: false,
+        shapeDrawStart: null,
+        shapeDrawEnd: null,
+        shapeDrawTargetView: null,
+      }));
+      setErasureState((prev) => ({
+        ...prev,
+        isErasureMode: false,
+      }));
 
-    // Enable the selected tool
-    switch (tool) {
-      case "selection":
-        if (enabled) {
-          setEditorState((prev) => ({
-            ...prev,
-            isSelectionMode: true,
-            isAddTextBoxMode: false,
-            isTextSelectionMode: false,
-          }));
-        }
-        break;
-      case "textSelection":
-        if (enabled) {
-          setEditorState((prev) => ({
-            ...prev,
-            isTextSelectionMode: true,
-            isAddTextBoxMode: false,
-            isSelectionMode: false,
-          }));
-        }
-        break;
-      case "addTextBox":
-        if (enabled) {
-          setEditorState((prev) => ({
-            ...prev,
-            isAddTextBoxMode: true,
-            isTextSelectionMode: false,
-            isSelectionMode: false,
-          }));
-        }
-        break;
-      case "rectangle":
-        if (enabled) {
-          setToolState((prev) => ({
-            ...prev,
-            shapeDrawingMode: "rectangle",
-            selectedShapeType: "rectangle",
-          }));
-          setEditorState((prev) => ({
-            ...prev,
-            isAddTextBoxMode: false,
-            isTextSelectionMode: false,
-            isSelectionMode: false,
-          }));
-        }
-        break;
-      case "circle":
-        if (enabled) {
-          setToolState((prev) => ({
-            ...prev,
-            shapeDrawingMode: "circle",
-            selectedShapeType: "circle",
-          }));
-          setEditorState((prev) => ({
-            ...prev,
-            isAddTextBoxMode: false,
-            isTextSelectionMode: false,
-            isSelectionMode: false,
-          }));
-        }
-        break;
-      case "line":
-        if (enabled) {
-          setToolState((prev) => ({
-            ...prev,
-            shapeDrawingMode: "line",
-            selectedShapeType: "line",
-          }));
-          setEditorState((prev) => ({
-            ...prev,
-            isAddTextBoxMode: false,
-            isTextSelectionMode: false,
-            isSelectionMode: false,
-          }));
-        }
-        break;
-      case "erasure":
-        if (enabled) {
-          setErasureState((prev) => ({
-            ...prev,
-            isErasureMode: true,
-          }));
-          setEditorState((prev) => ({
-            ...prev,
-            isAddTextBoxMode: false,
-            isTextSelectionMode: false,
-            isSelectionMode: false,
-          }));
-        }
-        break;
-    }
-  }, [setEditorState, setToolState, setErasureState]);
+      // Enable the selected tool
+      switch (tool) {
+        case "selection":
+          if (enabled) {
+            setEditorState((prev) => ({
+              ...prev,
+              isSelectionMode: true,
+              isAddTextBoxMode: false,
+              isTextSelectionMode: false,
+            }));
+          }
+          break;
+        case "textSelection":
+          if (enabled) {
+            setEditorState((prev) => ({
+              ...prev,
+              isTextSelectionMode: true,
+              isAddTextBoxMode: false,
+              isSelectionMode: false,
+            }));
+          }
+          break;
+        case "addTextBox":
+          if (enabled) {
+            setEditorState((prev) => ({
+              ...prev,
+              isAddTextBoxMode: true,
+              isTextSelectionMode: false,
+              isSelectionMode: false,
+            }));
+          }
+          break;
+        case "rectangle":
+          if (enabled) {
+            setToolState((prev) => ({
+              ...prev,
+              shapeDrawingMode: "rectangle",
+              selectedShapeType: "rectangle",
+            }));
+            setEditorState((prev) => ({
+              ...prev,
+              isAddTextBoxMode: false,
+              isTextSelectionMode: false,
+              isSelectionMode: false,
+            }));
+          }
+          break;
+        case "circle":
+          if (enabled) {
+            setToolState((prev) => ({
+              ...prev,
+              shapeDrawingMode: "circle",
+              selectedShapeType: "circle",
+            }));
+            setEditorState((prev) => ({
+              ...prev,
+              isAddTextBoxMode: false,
+              isTextSelectionMode: false,
+              isSelectionMode: false,
+            }));
+          }
+          break;
+        case "line":
+          if (enabled) {
+            setToolState((prev) => ({
+              ...prev,
+              shapeDrawingMode: "line",
+              selectedShapeType: "line",
+            }));
+            setEditorState((prev) => ({
+              ...prev,
+              isAddTextBoxMode: false,
+              isTextSelectionMode: false,
+              isSelectionMode: false,
+            }));
+          }
+          break;
+        case "erasure":
+          if (enabled) {
+            setErasureState((prev) => ({
+              ...prev,
+              isErasureMode: true,
+            }));
+            setEditorState((prev) => ({
+              ...prev,
+              isAddTextBoxMode: false,
+              isTextSelectionMode: false,
+              isSelectionMode: false,
+            }));
+          }
+          break;
+      }
+    },
+    [setEditorState, setToolState, setErasureState]
+  );
 
   // Element selection handlers
   const handleTextBoxSelect = useCallback(
@@ -150,6 +153,7 @@ export const useToolHandlers = ({
         ...prev,
         selectedFieldId: id,
         selectedShapeId: null,
+        isEditMode: true, // Enable edit mode when element is selected
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
         isSelectionMode: false, // Turn off multi-selection mode
@@ -184,7 +188,14 @@ export const useToolHandlers = ({
       // The format will be set by the effect that monitors selectedElementId
       setIsDrawerOpen(true);
     },
-    [setSelectedElementId, setSelectedElementType, setIsDrawerOpen, setEditorState, setToolState, setErasureState]
+    [
+      setSelectedElementId,
+      setSelectedElementType,
+      setIsDrawerOpen,
+      setEditorState,
+      setToolState,
+      setErasureState,
+    ]
   );
 
   const handleShapeSelect = useCallback(
@@ -194,6 +205,7 @@ export const useToolHandlers = ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: id,
+        isEditMode: true, // Enable edit mode when element is selected
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
         isSelectionMode: false, // Turn off multi-selection mode
@@ -228,7 +240,14 @@ export const useToolHandlers = ({
       // The format will be set by the effect that monitors selectedElementId
       setIsDrawerOpen(true);
     },
-    [setSelectedElementId, setSelectedElementType, setIsDrawerOpen, setEditorState, setToolState, setErasureState]
+    [
+      setSelectedElementId,
+      setSelectedElementType,
+      setIsDrawerOpen,
+      setEditorState,
+      setToolState,
+      setErasureState,
+    ]
   );
 
   const handleImageSelect = useCallback(
@@ -238,6 +257,7 @@ export const useToolHandlers = ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: null,
+        isEditMode: true, // Enable edit mode when element is selected
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
         isSelectionMode: false, // Turn off multi-selection mode
@@ -272,7 +292,14 @@ export const useToolHandlers = ({
       // The format will be set by the effect that monitors selectedElementId
       setIsDrawerOpen(true);
     },
-    [setSelectedElementId, setSelectedElementType, setIsDrawerOpen, setEditorState, setToolState, setErasureState]
+    [
+      setSelectedElementId,
+      setSelectedElementType,
+      setIsDrawerOpen,
+      setEditorState,
+      setToolState,
+      setErasureState,
+    ]
   );
 
   return {

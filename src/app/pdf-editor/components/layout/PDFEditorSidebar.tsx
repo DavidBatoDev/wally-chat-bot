@@ -46,13 +46,33 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   onPageTypeChange,
   onBirthCertModalOpen,
 }) => {
+  // Determine if we're in final layout mode
+  const isFinalLayout = viewState.currentView === "final-layout";
+
   const renderPagePreview = () => {
-    if (!documentState.url) {
+    const documentUrl = isFinalLayout
+      ? documentState.finalLayoutUrl
+      : documentState.url;
+    const currentPage = isFinalLayout
+      ? documentState.finalLayoutCurrentPage
+      : documentState.currentPage;
+    const numPages = isFinalLayout
+      ? documentState.finalLayoutNumPages
+      : documentState.numPages;
+    const deletedPages = isFinalLayout
+      ? documentState.finalLayoutDeletedPages
+      : pageState.deletedPages;
+
+    if (!documentUrl) {
       return (
         <div className="flex flex-col items-center justify-center h-32 text-center">
-          <div className="text-gray-400 mb-2">No document loaded</div>
+          <div className="text-gray-400 mb-2">
+            {isFinalLayout ? "No final layout loaded" : "No document loaded"}
+          </div>
           <div className="text-sm text-gray-500">
-            Upload a document to get started
+            {isFinalLayout
+              ? "Create a final layout to get started"
+              : "Upload a document to get started"}
           </div>
         </div>
       );
@@ -60,17 +80,17 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
     return (
       <div className="space-y-3">
-        {Array.from({ length: documentState.numPages }, (_, index) => {
+        {Array.from({ length: numPages || 0 }, (_, index) => {
           const pageNum = index + 1;
 
           // Skip deleted pages
-          if (pageState.deletedPages.has(pageNum)) {
+          if (deletedPages?.has(pageNum)) {
             return null;
           }
 
-          const pageData = documentState.pages.find(
-            (p) => p.pageNumber === pageNum
-          );
+          const pageData = isFinalLayout
+            ? null
+            : documentState.pages.find((p) => p.pageNumber === pageNum);
           const currentPageType = pageData?.pageType || "dynamic_content";
 
           const pageTextBoxes = [
@@ -103,14 +123,14 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
             <div
               key={pageNum}
               className={`border rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md group relative ${
-                documentState.currentPage === pageNum
+                currentPage === pageNum
                   ? "border-primary bg- shadow-sm ring-1 ring-primary/20"
                   : "border-gray-200 hover:border-primary/30 hover:bg-primary/5"
               }`}
               onClick={() => onPageChange(pageNum)}
             >
               {/* Delete Button */}
-              {documentState.numPages - pageState.deletedPages.size > 1 && (
+              {numPages - (deletedPages?.size || 0) > 1 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -129,22 +149,46 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   pageNum={pageNum}
                   pageWidth={documentState.pageWidth}
                   pageHeight={documentState.pageHeight}
-                  originalTextBoxes={elementCollections.originalTextBoxes}
-                  translatedTextBoxes={elementCollections.translatedTextBoxes}
-                  originalShapes={elementCollections.originalShapes}
-                  translatedShapes={elementCollections.translatedShapes}
-                  originalImages={elementCollections.originalImages}
-                  translatedImages={elementCollections.translatedImages}
+                  originalTextBoxes={
+                    isFinalLayout
+                      ? elementCollections.finalLayoutTextboxes
+                      : elementCollections.originalTextBoxes
+                  }
+                  translatedTextBoxes={
+                    isFinalLayout ? [] : elementCollections.translatedTextBoxes
+                  }
+                  originalShapes={
+                    isFinalLayout
+                      ? elementCollections.finalLayoutShapes
+                      : elementCollections.originalShapes
+                  }
+                  translatedShapes={
+                    isFinalLayout ? [] : elementCollections.translatedShapes
+                  }
+                  originalImages={
+                    isFinalLayout
+                      ? elementCollections.finalLayoutImages
+                      : elementCollections.originalImages
+                  }
+                  translatedImages={
+                    isFinalLayout ? [] : elementCollections.translatedImages
+                  }
                   pdfBackgroundColor={documentState.pdfBackgroundColor}
                   scale={0.5}
-                  pdfUrl={documentState.url}
-                  translatedPdfUrl={pageData?.translatedTemplateURL}
+                  pdfUrl={documentUrl}
+                  translatedPdfUrl={
+                    isFinalLayout ? undefined : pageData?.translatedTemplateURL
+                  }
                   currentWorkflowStep={viewState.currentWorkflowStep}
                   originalDeletionRectangles={
-                    elementCollections.originalDeletionRectangles
+                    isFinalLayout
+                      ? elementCollections.finalLayoutDeletionRectangles
+                      : elementCollections.originalDeletionRectangles
                   }
                   translatedDeletionRectangles={
-                    elementCollections.translatedDeletionRectangles
+                    isFinalLayout
+                      ? []
+                      : elementCollections.translatedDeletionRectangles
                   }
                   translatedTemplateWidth={pageData?.translatedTemplateWidth}
                   translatedTemplateHeight={pageData?.translatedTemplateHeight}
@@ -154,7 +198,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   {pageNum}
                 </div>
                 {/* Current page indicator */}
-                {documentState.currentPage === pageNum && (
+                {currentPage === pageNum && (
                   <div className="absolute inset-0 bg-primary/10 rounded" />
                 )}
               </div>
@@ -172,7 +216,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
 
                 {/* Page Type Selector */}
                 <div className="flex items-center space-x-2">
-                  {currentPageType === "birth_cert" && (
+                  {!isFinalLayout && currentPageType === "birth_cert" && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -185,79 +229,86 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                     </button>
                   )}
                   {/* Show current template name for birth certificate pages */}
-                  {currentPageType === "birth_cert" &&
+                  {!isFinalLayout &&
+                    currentPageType === "birth_cert" &&
                     pageData?.birthCertType && (
                       <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border">
                         {pageData.birthCertType}
                       </div>
                     )}
-                  <Select
-                    value={currentPageType}
-                    onValueChange={(value) => {
-                      if (onPageTypeChange) {
-                        onPageTypeChange(
-                          pageNum,
-                          value as
-                            | "social_media"
-                            | "birth_cert"
-                            | "dynamic_content"
-                        );
-                      }
-                    }}
-                    onOpenChange={(open) => {
-                      if (open) {
-                        // Prevent page selection when opening dropdown
-                        event?.stopPropagation();
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      className={`h-7 text-xs ${
-                        currentPageType === "social_media"
-                          ? "bg-primary/20 text-primary border-primary/30"
-                          : currentPageType === "birth_cert"
-                          ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                          : "bg-gray-100 text-gray-800 border-gray-200"
-                      }`}
+                  {!isFinalLayout ? (
+                    <Select
+                      value={currentPageType}
+                      onValueChange={(value) => {
+                        if (onPageTypeChange) {
+                          onPageTypeChange(
+                            pageNum,
+                            value as
+                              | "social_media"
+                              | "birth_cert"
+                              | "dynamic_content"
+                          );
+                        }
+                      }}
+                      onOpenChange={(open) => {
+                        if (open) {
+                          // Prevent page selection when opening dropdown
+                          event?.stopPropagation();
+                        }
+                      }}
                     >
-                      <div className="flex items-center space-x-1">
-                        {currentPageType === "social_media" ? (
-                          <Share className="w-3 h-3" />
-                        ) : currentPageType === "birth_cert" ? (
-                          <FileText className="w-3 h-3" />
-                        ) : (
-                          <Zap className="w-3 h-3" />
-                        )}
-                        <span>
-                          {currentPageType === "social_media"
-                            ? "Social Media"
+                      <SelectTrigger
+                        className={`h-7 text-xs ${
+                          currentPageType === "social_media"
+                            ? "bg-primary/20 text-primary border-primary/30"
                             : currentPageType === "birth_cert"
-                            ? "Birth Certificate"
-                            : "Dynamic Content"}
-                        </span>
-                      </div>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="social_media">
-                        <div className="flex items-center space-x-2">
-                          <Share className="w-3 h-3" />
-                          <span>Social Media</span>
+                            ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                            : "bg-gray-100 text-gray-800 border-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center space-x-1">
+                          {currentPageType === "social_media" ? (
+                            <Share className="w-3 h-3" />
+                          ) : currentPageType === "birth_cert" ? (
+                            <FileText className="w-3 h-3" />
+                          ) : (
+                            <Zap className="w-3 h-3" />
+                          )}
+                          <span>
+                            {currentPageType === "social_media"
+                              ? "Social Media"
+                              : currentPageType === "birth_cert"
+                              ? "Birth Certificate"
+                              : "Dynamic Content"}
+                          </span>
                         </div>
-                      </SelectItem>
-                      <SelectItem value="birth_cert">
-                        <div className="flex items-center space-x-2">
-                          <FileText className="w-3 h-3" />
-                          <span>Birth Certificate</span>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="dynamic_content">
-                        <div className="flex items-center space-x-2">
-                          <Zap className="w-3 h-3" />
-                          <span>Dynamic Content</span>
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="social_media">
+                          <div className="flex items-center space-x-2">
+                            <Share className="w-3 h-3" />
+                            <span>Social Media</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="birth_cert">
+                          <div className="flex items-center space-x-2">
+                            <FileText className="w-3 h-3" />
+                            <span>Birth Certificate</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="dynamic_content">
+                          <div className="flex items-center space-x-2">
+                            <Zap className="w-3 h-3" />
+                            <span>Dynamic Content</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border">
+                      Final Layout Page
+                    </div>
+                  )}
                 </div>
 
                 {/* {totalElements > 0 && (
@@ -359,7 +410,9 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           <button
             onClick={() => onTabChange("tools")}
             className={`${
-              documentState.url ? "flex-1" : "w-full"
+              documentState.url || documentState.finalLayoutUrl
+                ? "flex-1"
+                : "w-full"
             } px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
               viewState.activeSidebarTab === "tools"
                 ? "text-primary border-b-2 border-primary bg-primary/10"
@@ -371,7 +424,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               <span>Tools</span>
             </div>
           </button>
-          {documentState.url && (
+          {(documentState.url || documentState.finalLayoutUrl) && (
             <button
               onClick={() => onTabChange("pages")}
               className={`flex-1 px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
@@ -394,32 +447,40 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
             <div className="flex flex-col h-full">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">
-                  Pages
+                  {isFinalLayout ? "Final Layout Pages" : "Pages"}
                 </h3>
                 {renderPagePreview()}
               </div>
 
               {/* Upload Buttons at Bottom */}
               <div className="border-t border-primary/20 pt-4 mt-4 space-y-2">
-                <Button
-                  onClick={onFileUpload}
-                  className="w-full bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {documentState.url
-                    ? "Upload New Document"
-                    : "Upload Document"}
-                </Button>
+                {!isFinalLayout ? (
+                  <>
+                    <Button
+                      onClick={onFileUpload}
+                      className="w-full bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      {documentState.url
+                        ? "Upload New Document"
+                        : "Upload Document"}
+                    </Button>
 
-                {documentState.url && (
-                  <Button
-                    onClick={onAppendDocument}
-                    variant="outline"
-                    className="w-full border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Upload More Document/Image
-                  </Button>
+                    {documentState.url && (
+                      <Button
+                        onClick={onAppendDocument}
+                        variant="outline"
+                        className="w-full border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Upload More Document/Image
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center text-sm text-gray-500">
+                    Final layout mode - upload options disabled
+                  </div>
                 )}
               </div>
             </div>

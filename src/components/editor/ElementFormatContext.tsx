@@ -7,7 +7,7 @@ import React, {
   useRef,
   ReactNode,
 } from "react";
-import { TextField, Shape, Image } from "../types";
+import { TextField, Shape, Image } from "../../app/pdf-editor/types/pdf-editor.types";
 
 type ElementType = "textbox" | "shape" | "image";
 

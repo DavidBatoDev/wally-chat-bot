@@ -33,7 +33,7 @@ interface UseDocumentMouseHandlersProps {
     width: number,
     height: number,
     page: number,
-    view: ViewMode,
+    view: "original" | "translated" | "final-layout",
     background: string,
     opacity: number
   ) => string | null;
@@ -90,7 +90,8 @@ export const useDocumentMouseHandlers = ({
         if (!rect) return;
 
         // Determine target view
-        let targetView: "original" | "translated" | undefined = undefined;
+        let targetView: "original" | "translated" | "final-layout" | undefined =
+          undefined;
         if (viewState.currentView === "split") {
           const clickX = e.clientX - rect.left;
           const singleDocWidth = documentState.pageWidth * documentState.scale;

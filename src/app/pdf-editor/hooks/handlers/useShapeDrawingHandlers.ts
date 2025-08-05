@@ -16,6 +16,7 @@ interface UseShapeDrawingHandlersProps {
     scale: number;
     pageWidth: number;
     currentPage: number;
+    finalLayoutCurrentPage?: number;
   };
   getTranslatedTemplateScaleFactor?: (pageNumber: number) => number;
   viewState: {
@@ -50,6 +51,18 @@ export const useShapeDrawingHandlers = ({
   handleAddShapeWithUndo,
   getTranslatedTemplateScaleFactor,
 }: UseShapeDrawingHandlersProps) => {
+  // Helper function to get the correct current page based on view
+  const getCurrentPageForView = useCallback(() => {
+    if (viewState.currentView === "final-layout") {
+      return documentState.finalLayoutCurrentPage || 1;
+    }
+    return documentState.currentPage;
+  }, [
+    viewState.currentView,
+    documentState.currentPage,
+    documentState.finalLayoutCurrentPage,
+  ]);
+
   // Shape drawing handlers
   const handleShapeDrawStart = useCallback(
     (e: React.MouseEvent) => {
@@ -154,13 +167,14 @@ export const useShapeDrawingHandlers = ({
     if (toolState.shapeDrawingMode === "line") {
       // For lines, use direct coordinates without minimum size constraint
       const targetView = toolState.shapeDrawTargetView || viewState.currentView;
+
       handleAddShapeWithUndo(
         "line",
         0, // Not used for lines
         0, // Not used for lines
         0, // Not used for lines
         0, // Not used for lines
-        documentState.currentPage,
+        getCurrentPageForView(),
         viewState.currentView,
         toolState.shapeDrawTargetView || undefined,
         // Line coordinates
@@ -196,7 +210,7 @@ export const useShapeDrawingHandlers = ({
           y,
           width,
           height,
-          documentState.currentPage,
+          getCurrentPageForView(),
           viewState.currentView,
           toolState.shapeDrawTargetView || undefined
         );
@@ -224,6 +238,7 @@ export const useShapeDrawingHandlers = ({
     toolState,
     handleAddShapeWithUndo,
     documentState.currentPage,
+    documentState.finalLayoutCurrentPage,
     viewState.currentView,
     setToolState,
     setEditorState,

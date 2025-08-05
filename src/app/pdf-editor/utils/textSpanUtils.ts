@@ -265,15 +265,15 @@ export const createTextFieldFromSpan = (
   span: HTMLElement,
   pdfPageEl: HTMLElement,
   currentPage: number,
-  currentView: "original" | "translated" | "split",
+  currentView: "original" | "translated" | "split" | "final-layout",
   scale: number,
   pageWidth: number,
   addTextBox: (
     x: number,
     y: number,
     currentPage: number,
-    currentView: "original" | "translated",
-    targetView?: "original" | "translated",
+    currentView: "original" | "translated" | "final-layout",
+    targetView?: "original" | "translated" | "final-layout",
     initialProperties?: any
   ) => string,
   addDeletionRectangle: (
@@ -282,7 +282,7 @@ export const createTextFieldFromSpan = (
     width: number,
     height: number,
     currentPage: number,
-    currentView: "original" | "translated",
+    currentView: "original" | "translated" | "final-layout",
     background: string,
     opacity?: number
   ) => string,
@@ -291,7 +291,7 @@ export const createTextFieldFromSpan = (
   getTranslatedTemplateScaleFactor?: (pageNumber: number) => number
 ): { textFieldId: string; properties: any } | null => {
   // Determine which view the span belongs to based on its position
-  let targetView: "original" | "translated" = "original";
+  let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPageEl.getBoundingClientRect();
@@ -304,6 +304,8 @@ export const createTextFieldFromSpan = (
     } else {
       targetView = "original";
     }
+  } else if (currentView === "final-layout") {
+    targetView = "final-layout";
   } else {
     targetView = currentView as "original" | "translated";
   }
@@ -516,7 +518,7 @@ export const createDeletionRectangleForSpan = (
   span: HTMLElement,
   pdfPageEl: HTMLElement,
   currentPage: number,
-  currentView: "original" | "translated" | "split",
+  currentView: "original" | "translated" | "split" | "final-layout",
   scale: number,
   pageWidth: number,
   addDeletionRectangle: (
@@ -525,7 +527,7 @@ export const createDeletionRectangleForSpan = (
     width: number,
     height: number,
     currentPage: number,
-    currentView: "original" | "translated",
+    currentView: "original" | "translated" | "final-layout",
     background: string,
     opacity?: number
   ) => string,
@@ -539,7 +541,7 @@ export const createDeletionRectangleForSpan = (
   }
 
   // Determine which view the span belongs to based on its position
-  let targetView: "original" | "translated" = "original";
+  let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPageEl.getBoundingClientRect();
@@ -552,6 +554,8 @@ export const createDeletionRectangleForSpan = (
     } else {
       targetView = "original";
     }
+  } else if (currentView === "final-layout") {
+    targetView = "final-layout";
   } else {
     targetView = currentView as "original" | "translated";
   }

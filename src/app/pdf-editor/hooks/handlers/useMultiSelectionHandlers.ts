@@ -15,12 +15,15 @@ import {
 interface UseMultiSelectionHandlersProps {
   editorState: EditorState;
   setEditorState: React.Dispatch<React.SetStateAction<EditorState>>;
-  initialPositionsRef: React.MutableRefObject<Record<string, { x: number; y: number }>>;
+  initialPositionsRef: React.MutableRefObject<
+    Record<string, { x: number; y: number }>
+  >;
   documentState: {
     scale: number;
     pageWidth: number;
     pageHeight: number;
     currentPage: number;
+    finalLayoutCurrentPage?: number;
   };
   viewState: {
     currentView: ViewMode;
@@ -28,7 +31,11 @@ interface UseMultiSelectionHandlersProps {
   getCurrentTextBoxes: (view: ViewMode) => TextField[];
   getCurrentShapes: (view: ViewMode) => ShapeType[];
   getCurrentImages: (view: ViewMode) => ImageType[];
-  updateTextBoxWithUndo: (id: string, updates: any, isOngoing?: boolean) => void;
+  updateTextBoxWithUndo: (
+    id: string,
+    updates: any,
+    isOngoing?: boolean
+  ) => void;
   updateShapeWithUndo: (id: string, updates: any, isOngoing?: boolean) => void;
   updateImage: (id: string, updates: any) => void;
   getElementById: (id: string, type: "textbox" | "shape" | "image") => any;
@@ -83,25 +90,48 @@ export const useMultiSelectionHandlers = ({
     let shapes: ShapeType[] = [];
     let images: ImageType[] = [];
 
+    // Helper function to get the correct current page based on target view
+    const getCurrentPageForView = (view: string) => {
+      if (view === "final-layout") {
+        // For final-layout, use the final layout current page
+        return (
+          documentState.finalLayoutCurrentPage || documentState.currentPage
+        );
+      }
+      return documentState.currentPage;
+    };
+
+    const currentPage = getCurrentPageForView(targetView || "");
+
     if (targetView === "original") {
       textBoxes = getCurrentTextBoxes("original").filter(
-        (tb) => tb.page === documentState.currentPage
+        (tb) => tb.page === currentPage
       );
       shapes = getCurrentShapes("original").filter(
-        (s) => s.page === documentState.currentPage
+        (s) => s.page === currentPage
       );
       images = getCurrentImages("original").filter(
-        (img) => img.page === documentState.currentPage
+        (img) => img.page === currentPage
       );
     } else if (targetView === "translated") {
       textBoxes = getCurrentTextBoxes("translated").filter(
-        (tb) => tb.page === documentState.currentPage
+        (tb) => tb.page === currentPage
       );
       shapes = getCurrentShapes("translated").filter(
-        (s) => s.page === documentState.currentPage
+        (s) => s.page === currentPage
       );
       images = getCurrentImages("translated").filter(
-        (img) => img.page === documentState.currentPage
+        (img) => img.page === currentPage
+      );
+    } else if (targetView === "final-layout") {
+      textBoxes = getCurrentTextBoxes("final-layout").filter(
+        (tb) => tb.page === currentPage
+      );
+      shapes = getCurrentShapes("final-layout").filter(
+        (s) => s.page === currentPage
+      );
+      images = getCurrentImages("final-layout").filter(
+        (img) => img.page === currentPage
       );
     }
 
@@ -317,7 +347,7 @@ export const useMultiSelectionHandlers = ({
 
       let x = (e.clientX - rect.left) / documentState.scale;
       let y = (e.clientY - rect.top) / documentState.scale;
-      let targetView: "original" | "translated" | null = null;
+      let targetView: "original" | "translated" | "final-layout" | null = null;
 
       // Determine target view in split mode
       if (viewState.currentView === "split") {
@@ -380,7 +410,8 @@ export const useMultiSelectionHandlers = ({
       // Adjust coordinates for split view
       if (
         viewState.currentView === "split" &&
-        editorState.multiSelection.targetView === "translated"
+        (editorState.multiSelection.targetView === "translated" ||
+          editorState.multiSelection.targetView === "final-layout")
       ) {
         const clickX = e.clientX - rect.left;
         const singleDocWidth = documentState.pageWidth * documentState.scale;
@@ -454,6 +485,16 @@ export const useMultiSelectionHandlers = ({
             (s) => s.page === documentState.currentPage
           );
           images = getCurrentImages("translated").filter(
+            (img) => img.page === documentState.currentPage
+          );
+        } else if (targetView === "final-layout") {
+          textBoxes = getCurrentTextBoxes("final-layout").filter(
+            (tb) => tb.page === documentState.currentPage
+          );
+          shapes = getCurrentShapes("final-layout").filter(
+            (s) => s.page === documentState.currentPage
+          );
+          images = getCurrentImages("final-layout").filter(
             (img) => img.page === documentState.currentPage
           );
         }

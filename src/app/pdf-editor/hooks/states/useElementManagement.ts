@@ -27,6 +27,10 @@ export const useElementManagement = () => {
       translatedDeletionRectangles: [],
       translatedImages: [],
       untranslatedTexts: [],
+      finalLayoutTextboxes: [],
+      finalLayoutShapes: [],
+      finalLayoutDeletionRectangles: [],
+      finalLayoutImages: [],
     });
 
   // Layer order state
@@ -40,7 +44,9 @@ export const useElementManagement = () => {
     (currentView: ViewMode) => {
       return currentView === "original"
         ? elementCollections.originalTextBoxes
-        : elementCollections.translatedTextBoxes;
+        : currentView === "translated"
+        ? elementCollections.translatedTextBoxes
+        : elementCollections.finalLayoutTextboxes;
     },
     [elementCollections]
   );
@@ -49,7 +55,9 @@ export const useElementManagement = () => {
     (currentView: ViewMode) => {
       return currentView === "original"
         ? elementCollections.originalShapes
-        : elementCollections.translatedShapes;
+        : currentView === "translated"
+        ? elementCollections.translatedShapes
+        : elementCollections.finalLayoutShapes;
     },
     [elementCollections]
   );
@@ -58,7 +66,9 @@ export const useElementManagement = () => {
     (currentView: ViewMode) => {
       return currentView === "original"
         ? elementCollections.originalImages
-        : elementCollections.translatedImages;
+        : currentView === "translated"
+        ? elementCollections.translatedImages
+        : elementCollections.finalLayoutImages;
     },
     [elementCollections]
   );
@@ -67,7 +77,9 @@ export const useElementManagement = () => {
     (currentView: ViewMode) => {
       return currentView === "original"
         ? elementCollections.originalDeletionRectangles
-        : elementCollections.translatedDeletionRectangles;
+        : currentView === "translated"
+        ? elementCollections.translatedDeletionRectangles
+        : elementCollections.finalLayoutDeletionRectangles;
     },
     [elementCollections]
   );
@@ -76,7 +88,9 @@ export const useElementManagement = () => {
     (currentView: ViewMode) => {
       return currentView === "original"
         ? layerState.originalLayerOrder
-        : layerState.translatedLayerOrder;
+        : currentView === "translated"
+        ? layerState.translatedLayerOrder
+        : layerState.originalLayerOrder; // For final-layout, use original layer order for now
     },
     [layerState]
   );
@@ -90,10 +104,17 @@ export const useElementManagement = () => {
             ...prev,
             originalLayerOrder: [...prev.originalLayerOrder, elementId],
           };
-        } else {
+        } else if (currentView === "translated") {
           return {
             ...prev,
             translatedLayerOrder: [...prev.translatedLayerOrder, elementId],
+          };
+        } else {
+          // For final-layout, we'll use the original layer order for now
+          // TODO: Add final-layout layer order support
+          return {
+            ...prev,
+            originalLayerOrder: [...prev.originalLayerOrder, elementId],
           };
         }
       });
@@ -224,7 +245,7 @@ export const useElementManagement = () => {
       y: number,
       currentPage: number,
       currentView: ViewMode,
-      targetView?: "original" | "translated",
+      targetView?: "original" | "translated" | "final-layout",
       initialProperties?: Partial<TextField>
     ) => {
       // For OCR-generated textboxes, empty string should remain empty to show placeholder
@@ -318,8 +339,16 @@ export const useElementManagement = () => {
           ? targetView === "translated"
           : currentView === "translated";
 
+      const shouldAddToFinalLayout =
+        currentView === "final-layout" || targetView === "final-layout";
+
       setElementCollections((prev) => {
-        if (shouldAddToTranslated) {
+        if (shouldAddToFinalLayout) {
+          return {
+            ...prev,
+            finalLayoutTextboxes: [...prev.finalLayoutTextboxes, newTextBox],
+          };
+        } else if (shouldAddToTranslated) {
           return {
             ...prev,
             translatedTextBoxes: [...prev.translatedTextBoxes, newTextBox],
@@ -334,7 +363,11 @@ export const useElementManagement = () => {
 
       addToLayerOrder(
         fieldId,
-        shouldAddToTranslated ? "translated" : "original"
+        shouldAddToFinalLayout
+          ? "final-layout"
+          : shouldAddToTranslated
+          ? "translated"
+          : "original"
       );
 
       return fieldId;
@@ -407,7 +440,7 @@ export const useElementManagement = () => {
       height: number,
       currentPage: number,
       currentView: ViewMode,
-      targetView?: "original" | "translated",
+      targetView?: "original" | "translated" | "final-layout",
       // Line-specific parameters
       x1?: number,
       y1?: number,
@@ -448,8 +481,16 @@ export const useElementManagement = () => {
           ? targetView === "translated"
           : currentView === "translated";
 
+      const shouldAddToFinalLayout =
+        currentView === "final-layout" || targetView === "final-layout";
+
       setElementCollections((prev) => {
-        if (shouldAddToTranslated) {
+        if (shouldAddToFinalLayout) {
+          return {
+            ...prev,
+            finalLayoutShapes: [...prev.finalLayoutShapes, newShape],
+          };
+        } else if (shouldAddToTranslated) {
           return {
             ...prev,
             translatedShapes: [...prev.translatedShapes, newShape],
@@ -464,7 +505,11 @@ export const useElementManagement = () => {
 
       addToLayerOrder(
         newShape.id,
-        shouldAddToTranslated ? "translated" : "original"
+        shouldAddToFinalLayout
+          ? "final-layout"
+          : shouldAddToTranslated
+          ? "translated"
+          : "original"
       );
 
       return newShape.id;
@@ -514,6 +559,11 @@ export const useElementManagement = () => {
             ...prev,
             translatedImages: [...prev.translatedImages, newImage],
           };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutImages: [...prev.finalLayoutImages, newImage],
+          };
         } else {
           return {
             ...prev,
@@ -522,10 +572,7 @@ export const useElementManagement = () => {
         }
       });
 
-      addToLayerOrder(
-        newImage.id,
-        currentView === "translated" ? "translated" : "original"
-      );
+      addToLayerOrder(newImage.id, currentView);
 
       return newImage.id;
     },
@@ -560,6 +607,14 @@ export const useElementManagement = () => {
             ...prev,
             translatedDeletionRectangles: [
               ...prev.translatedDeletionRectangles,
+              newRectangle,
+            ],
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutDeletionRectangles: [
+              ...prev.finalLayoutDeletionRectangles,
               newRectangle,
             ],
           };
@@ -870,6 +925,68 @@ export const useElementManagement = () => {
     [layerState.translatedLayerOrder, elementCollections]
   );
 
+  // Get sorted elements for final layout
+  const getFinalLayoutSortedElements = useCallback(
+    (currentPage: number): SortedElement[] => {
+      const layerOrder = layerState.originalLayerOrder; // Use original layer order for final layout
+      const textBoxes = elementCollections.finalLayoutTextboxes.filter(
+        (box) => box.page === currentPage
+      );
+      const shapes = elementCollections.finalLayoutShapes.filter(
+        (shape) => shape.page === currentPage
+      );
+      const images = elementCollections.finalLayoutImages.filter(
+        (image) => image.page === currentPage
+      );
+
+      console.log("getFinalLayoutSortedElements debug:", {
+        currentPage,
+        totalTextboxes: elementCollections.finalLayoutTextboxes.length,
+        totalShapes: elementCollections.finalLayoutShapes.length,
+        totalImages: elementCollections.finalLayoutImages.length,
+        filteredTextboxes: textBoxes.length,
+        filteredShapes: shapes.length,
+        filteredImages: images.length,
+      });
+
+      // Create a map of all elements
+      const elementMap = new Map<string, SortedElement>();
+      textBoxes.forEach((box) =>
+        elementMap.set(box.id, { type: "textbox", element: box })
+      );
+      shapes.forEach((shape) =>
+        elementMap.set(shape.id, { type: "shape", element: shape })
+      );
+      images.forEach((image) =>
+        elementMap.set(image.id, { type: "image", element: image })
+      );
+
+      // Sort elements based on layer order
+      const sortedElements: SortedElement[] = [];
+
+      // Add elements in layer order
+      layerOrder.forEach((id) => {
+        const element = elementMap.get(id);
+        if (element) {
+          sortedElements.push(element);
+          elementMap.delete(id);
+        }
+      });
+
+      // Add any remaining elements (newly created ones not in layer order yet)
+      elementMap.forEach((element) => {
+        sortedElements.push(element);
+      });
+
+      console.log(
+        "Final sorted elements for final-layout:",
+        sortedElements.length
+      );
+      return sortedElements;
+    },
+    [layerState.originalLayerOrder, elementCollections]
+  );
+
   // Helper functions for layer position checks
   const isElementAtFront = useCallback(
     (elementId: string, currentView: ViewMode) => {
@@ -944,6 +1061,7 @@ export const useElementManagement = () => {
     getSortedElements,
     getOriginalSortedElements,
     getTranslatedSortedElements,
+    getFinalLayoutSortedElements,
     // Layer management
     addToLayerOrder,
     removeFromLayerOrder,
