@@ -96,21 +96,25 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
           const pageTextBoxes = [
             ...elementCollections.originalTextBoxes,
             ...elementCollections.translatedTextBoxes,
+            ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
           ].filter((box) => box.page === pageNum);
 
           const pageShapes = [
             ...elementCollections.originalShapes,
             ...elementCollections.translatedShapes,
+            ...elementCollections.finalLayoutShapes, // Add final layout shapes
           ].filter((shape) => shape.page === pageNum);
 
           const pageDeletions = [
             ...elementCollections.originalDeletionRectangles,
             ...elementCollections.translatedDeletionRectangles,
+            ...elementCollections.finalLayoutDeletionRectangles, // Add final layout deletion rectangles
           ].filter((rect) => rect.page === pageNum);
 
           const pageImages = [
             ...elementCollections.originalImages,
             ...elementCollections.translatedImages,
+            ...elementCollections.finalLayoutImages, // Add final layout images
           ].filter((image) => image.page === pageNum);
 
           const totalElements =
@@ -130,7 +134,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               onClick={() => onPageChange(pageNum)}
             >
               {/* Delete Button */}
-              {numPages - (deletedPages?.size || 0) > 1 && (
+              {(numPages || 0) - (deletedPages?.size || 0) > 1 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

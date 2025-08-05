@@ -255,7 +255,7 @@ export interface MultiSelectionState {
   selectionEnd: { x: number; y: number } | null;
   isMovingSelection: boolean;
   moveStart: { x: number; y: number } | null;
-  targetView: "original" | "translated" | null;
+  targetView: "original" | "translated" | "final-layout" | null;
 }
 
 // View state types

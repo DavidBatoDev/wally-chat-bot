@@ -114,6 +114,7 @@ export function useUpdateTextBoxWithUndo(
   return useCallback(
     (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
       const currentState = getCurrentTextBoxState(id);
+      
       if (currentState) {
         const before: Partial<TextField> = {};
         const after: Partial<TextField> = {};
@@ -359,6 +360,7 @@ export function useUpdateShapeWithUndo(
           const allShapes = [
             ...elementCollections.originalShapes,
             ...elementCollections.translatedShapes,
+            ...elementCollections.finalLayoutShapes, // Add final layout shapes
           ];
           const shape = allShapes.find((s: any) => s.id === id);
           if (shape) {
@@ -366,7 +368,11 @@ export function useUpdateShapeWithUndo(
               (s: any) => s.id === id
             )
               ? "original"
-              : "translated";
+              : elementCollections.translatedShapes.some(
+                (s: any) => s.id === id
+              )
+              ? "translated"
+              : "final-layout";
             handleUpdateShapeWithUndo(id, before, after, shape.page, view);
           }
         }
@@ -394,10 +400,11 @@ export function useHandleDeleteTextBoxWithUndo(
 ) {
   return useCallback(
     (id: string, view: ViewMode) => {
-      // Find the textbox to delete
+      // Find the textbox to delete from all collections
       const allTextBoxes = [
         ...elementCollections.originalTextBoxes,
         ...elementCollections.translatedTextBoxes,
+        ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
       ];
       const textBox = allTextBoxes.find((tb: any) => tb.id === id);
       if (!textBox) return;
@@ -407,7 +414,11 @@ export function useHandleDeleteTextBoxWithUndo(
         (tb: any) => tb.id === id
       )
         ? "original"
-        : "translated";
+        : elementCollections.translatedTextBoxes.some(
+          (tb: any) => tb.id === id
+        )
+        ? "translated"
+        : "final-layout";
 
       const remove = (id: string) => {
         deleteTextBox(id, view);
@@ -469,10 +480,11 @@ export function useHandleDeleteShapeWithUndo(
 ) {
   return useCallback(
     (id: string, view: ViewMode) => {
-      // Find the shape to delete
+      // Find the shape to delete from all collections
       const allShapes = [
         ...elementCollections.originalShapes,
         ...elementCollections.translatedShapes,
+        ...elementCollections.finalLayoutShapes, // Add final layout shapes
       ];
       const shape = allShapes.find((s: any) => s.id === id);
       if (!shape) return;
@@ -482,7 +494,11 @@ export function useHandleDeleteShapeWithUndo(
         (s: any) => s.id === id
       )
         ? "original"
-        : "translated";
+        : elementCollections.translatedShapes.some(
+          (s: any) => s.id === id
+        )
+        ? "translated"
+        : "final-layout";
 
       const remove = (id: string) => {
         deleteShape(id, view);
@@ -703,10 +719,11 @@ export function useHandleDeleteImageWithUndo(
 ) {
   return useCallback(
     (id: string, view: ViewMode) => {
-      // Find the image to delete
+      // Find the image to delete from all collections
       const allImages = [
         ...elementCollections.originalImages,
         ...elementCollections.translatedImages,
+        ...elementCollections.finalLayoutImages, // Add final layout images
       ];
       const image = allImages.find((img: any) => img.id === id);
       if (!image) return;
@@ -716,7 +733,11 @@ export function useHandleDeleteImageWithUndo(
         (img: any) => img.id === id
       )
         ? "original"
-        : "translated";
+        : elementCollections.translatedImages.some(
+          (img: any) => img.id === id
+        )
+        ? "translated"
+        : "final-layout";
 
       const remove = (id: string) => {
         deleteImage(id, view);

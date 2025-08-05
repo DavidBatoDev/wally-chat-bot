@@ -263,6 +263,7 @@ export const useElementManagement = () => {
       const existingTextBoxes = [
         ...elementCollections.originalTextBoxes,
         ...elementCollections.translatedTextBoxes,
+        ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
       ];
       const existingTextBox = existingTextBoxes.find((tb) => tb.id === fieldId);
       if (existingTextBox) {
@@ -377,10 +378,11 @@ export const useElementManagement = () => {
 
   const duplicateTextBox = useCallback(
     (originalId: string, currentView: ViewMode) => {
-      // Find the original textbox from both collections
+      // Find the original textbox from all collections
       const allTextBoxes = [
         ...elementCollections.originalTextBoxes,
         ...elementCollections.translatedTextBoxes,
+        ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
       ];
 
       const originalTextBox = allTextBoxes.find((tb) => tb.id === originalId);
@@ -645,6 +647,9 @@ export const useElementManagement = () => {
         translatedTextBoxes: prev.translatedTextBoxes.map((box) =>
           box.id === id ? { ...box, ...updates } : box
         ),
+        finalLayoutTextboxes: prev.finalLayoutTextboxes.map((box) =>
+          box.id === id ? { ...box, ...updates } : box
+        ),
       }));
     },
     []
@@ -659,6 +664,9 @@ export const useElementManagement = () => {
       translatedShapes: prev.translatedShapes.map((shape) =>
         shape.id === id ? { ...shape, ...updates } : shape
       ),
+      finalLayoutShapes: prev.finalLayoutShapes.map((shape) =>
+        shape.id === id ? { ...shape, ...updates } : shape
+      ),
     }));
   }, []);
 
@@ -669,6 +677,9 @@ export const useElementManagement = () => {
         image.id === id ? { ...image, ...updates } : image
       ),
       translatedImages: prev.translatedImages.map((image) =>
+        image.id === id ? { ...image, ...updates } : image
+      ),
+      finalLayoutImages: prev.finalLayoutImages.map((image) =>
         image.id === id ? { ...image, ...updates } : image
       ),
     }));
@@ -682,6 +693,13 @@ export const useElementManagement = () => {
           return {
             ...prev,
             translatedTextBoxes: prev.translatedTextBoxes.filter(
+              (box) => box.id !== id
+            ),
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutTextboxes: prev.finalLayoutTextboxes.filter(
               (box) => box.id !== id
             ),
           };
@@ -709,6 +727,13 @@ export const useElementManagement = () => {
               (shape) => shape.id !== id
             ),
           };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutShapes: prev.finalLayoutShapes.filter(
+              (shape) => shape.id !== id
+            ),
+          };
         } else {
           return {
             ...prev,
@@ -730,6 +755,13 @@ export const useElementManagement = () => {
           return {
             ...prev,
             translatedImages: prev.translatedImages.filter(
+              (image) => image.id !== id
+            ),
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutImages: prev.finalLayoutImages.filter(
               (image) => image.id !== id
             ),
           };
@@ -755,6 +787,14 @@ export const useElementManagement = () => {
             ...prev,
             translatedDeletionRectangles:
               prev.translatedDeletionRectangles.filter(
+                (rect) => rect.id !== id
+              ),
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutDeletionRectangles:
+              prev.finalLayoutDeletionRectangles.filter(
                 (rect) => rect.id !== id
               ),
           };
@@ -939,16 +979,6 @@ export const useElementManagement = () => {
         (image) => image.page === currentPage
       );
 
-      console.log("getFinalLayoutSortedElements debug:", {
-        currentPage,
-        totalTextboxes: elementCollections.finalLayoutTextboxes.length,
-        totalShapes: elementCollections.finalLayoutShapes.length,
-        totalImages: elementCollections.finalLayoutImages.length,
-        filteredTextboxes: textBoxes.length,
-        filteredShapes: shapes.length,
-        filteredImages: images.length,
-      });
-
       // Create a map of all elements
       const elementMap = new Map<string, SortedElement>();
       textBoxes.forEach((box) =>
@@ -978,10 +1008,6 @@ export const useElementManagement = () => {
         sortedElements.push(element);
       });
 
-      console.log(
-        "Final sorted elements for final-layout:",
-        sortedElements.length
-      );
       return sortedElements;
     },
     [layerState.originalLayerOrder, elementCollections]

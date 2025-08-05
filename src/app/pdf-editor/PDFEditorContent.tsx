@@ -440,6 +440,7 @@ export const PDFEditorContent: React.FC = () => {
       const allTextBoxes = [
         ...elementCollections.originalTextBoxes,
         ...elementCollections.translatedTextBoxes,
+        ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
       ];
       const textBox = allTextBoxes.find((tb) => tb.id === id);
       return textBox ? { ...textBox } : null;
@@ -452,6 +453,7 @@ export const PDFEditorContent: React.FC = () => {
       const allShapes = [
         ...elementCollections.originalShapes,
         ...elementCollections.translatedShapes,
+        ...elementCollections.finalLayoutShapes, // Add final layout shapes
       ];
       const shape = allShapes.find((s) => s.id === id);
       return shape ? { ...shape } : null;
@@ -801,31 +803,37 @@ export const PDFEditorContent: React.FC = () => {
   // Helper function to get element by ID and type
   const getElementById = useCallback(
     (id: string, type: "textbox" | "shape" | "image") => {
-      // Search in both views
+      // Search in all views including final layout
       const originalTextBoxes = getCurrentTextBoxes("original");
       const originalShapes = getCurrentShapes("original");
       const originalImages = getCurrentImages("original");
       const translatedTextBoxes = getCurrentTextBoxes("translated");
       const translatedShapes = getCurrentShapes("translated");
       const translatedImages = getCurrentImages("translated");
+      const finalLayoutTextBoxes = getCurrentTextBoxes("final-layout");
+      const finalLayoutShapes = getCurrentShapes("final-layout");
+      const finalLayoutImages = getCurrentImages("final-layout");
 
       switch (type) {
         case "textbox":
           return (
             originalTextBoxes.find((tb) => tb.id === id) ||
             translatedTextBoxes.find((tb) => tb.id === id) ||
+            finalLayoutTextBoxes.find((tb) => tb.id === id) ||
             null
           );
         case "shape":
           return (
             originalShapes.find((s) => s.id === id) ||
             translatedShapes.find((s) => s.id === id) ||
+            finalLayoutShapes.find((s) => s.id === id) ||
             null
           );
         case "image":
           return (
             originalImages.find((img) => img.id === id) ||
             translatedImages.find((img) => img.id === id) ||
+            finalLayoutImages.find((img) => img.id === id) ||
             null
           );
         default:
@@ -886,6 +894,16 @@ export const PDFEditorContent: React.FC = () => {
         (s) => s.page === documentState.currentPage
       );
       images = getCurrentImages("translated").filter(
+        (img) => img.page === documentState.currentPage
+      );
+    } else if (targetView === "final-layout") {
+      textBoxes = getCurrentTextBoxes("final-layout").filter(
+        (tb) => tb.page === documentState.currentPage
+      );
+      shapes = getCurrentShapes("final-layout").filter(
+        (s) => s.page === documentState.currentPage
+      );
+      images = getCurrentImages("final-layout").filter(
         (img) => img.page === documentState.currentPage
       );
     }
@@ -1104,12 +1122,12 @@ export const PDFEditorContent: React.FC = () => {
       // Clear only final-layout elements, preserve original and translated elements
       clearFinalLayoutElementsOnly();
 
-      // Clear editor state
+      // Clear editor state (but preserve isEditMode for final layout)
       setEditorState((prev) => ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: null,
-        isEditMode: false,
+        isEditMode: true, // Keep edit mode enabled for final layout
         isAddTextBoxMode: false,
         isTextSelectionMode: false,
         showDeletionRectangles: false,
@@ -1532,11 +1550,19 @@ export const PDFEditorContent: React.FC = () => {
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
+        
+        // Enable edit mode for final layout to allow element editing
+        setEditorState((prev) => ({
+          ...prev,
+          isEditMode: true,
+        }));
+        
         // Set view to final-layout and zoom to 100%
         setViewState((prev) => ({
           ...prev,
           currentView: "final-layout",
         }));
+        
         actions.updateScale(1.0);
         // Reset cancellation state to ensure clean entry
         console.log("Entering final-layout, resetting cancellation state");
@@ -1693,8 +1719,18 @@ export const PDFEditorContent: React.FC = () => {
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
     const timeoutId = setTimeout(() => {
-      // Close drawer if not in edit mode
-      if (!editorState.isEditMode) {
+      console.log("🔍 Element Selection Debug:", {
+        selectedElementId,
+        selectedElementType,
+        isEditMode: editorState.isEditMode,
+        currentWorkflowStep: viewState.currentWorkflowStep,
+        currentView: viewState.currentView,
+        multiSelectionCount: editorState.multiSelection.selectedElements.length,
+      });
+
+      // Close drawer if not in edit mode, unless we're in final-layout workflow step
+      if (!editorState.isEditMode && viewState.currentWorkflowStep !== "final-layout") {
+        console.log("❌ Closing drawer - not in edit mode and not in final-layout");
         setIsDrawerOpen(false);
         setSelectedElementId(null);
         setCurrentFormat(null);
@@ -1716,6 +1752,7 @@ export const PDFEditorContent: React.FC = () => {
             const allTextBoxes = [
               ...elementCollections.originalTextBoxes,
               ...elementCollections.translatedTextBoxes,
+              ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
             ];
 
             const selectedTextBoxes = selectedElements
@@ -1879,6 +1916,7 @@ export const PDFEditorContent: React.FC = () => {
             const allShapes = [
               ...elementCollections.originalShapes,
               ...elementCollections.translatedShapes,
+              ...elementCollections.finalLayoutShapes, // Add final layout shapes
             ];
 
             const selectedShapes = selectedElements
@@ -1918,12 +1956,16 @@ export const PDFEditorContent: React.FC = () => {
         selectedElementType &&
         selectedElements.length === 0
       ) {
+
         if (selectedElementType === "textbox") {
-          // Find the selected text box from all text boxes
+          // Find the selected text box from all text boxes (including final layout)
           const allTextBoxes = [
             ...elementCollections.originalTextBoxes,
             ...elementCollections.translatedTextBoxes,
+            ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
           ];
+
+
           const selectedTextBox = allTextBoxes.find(
             (box) => box.id === selectedElementId
           );
@@ -1983,12 +2025,13 @@ export const PDFEditorContent: React.FC = () => {
             // Update the format drawer state
             setCurrentFormat(safeTextBox);
             setIsDrawerOpen(true);
-          }
+          } 
         } else if (selectedElementType === "shape") {
-          // Find the selected shape from all shapes
+
           const allShapes = [
             ...elementCollections.originalShapes,
             ...elementCollections.translatedShapes,
+            ...elementCollections.finalLayoutShapes, // Add final layout shapes
           ];
           const selectedShape = allShapes.find(
             (shape) => shape.id === selectedElementId
@@ -2013,21 +2056,22 @@ export const PDFEditorContent: React.FC = () => {
 
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
-          }
+          } 
         } else if (selectedElementType === "image") {
-          // Find the selected image from all images
           const allImages = [
             ...elementCollections.originalImages,
             ...elementCollections.translatedImages,
+            ...elementCollections.finalLayoutImages, // Add final layout images
           ];
           const selectedImage = allImages.find(
             (image) => image.id === selectedElementId
           );
 
           if (selectedImage) {
+
             setCurrentFormat(selectedImage);
             setIsDrawerOpen(true);
-          }
+          } 
         }
       } else {
         // Close drawer when no element is selected
@@ -2335,7 +2379,7 @@ export const PDFEditorContent: React.FC = () => {
       if (!rect) return;
 
       // Determine which view was clicked in split mode
-      let clickedView: "original" | "translated" = "original";
+      let clickedView: "original" | "translated" | "final-layout" = "original";
       if (viewState.currentView === "split") {
         const clickX = e.clientX - rect.left;
         const singleDocWidth = documentState.pageWidth * documentState.scale;
@@ -2350,7 +2394,11 @@ export const PDFEditorContent: React.FC = () => {
         }
       } else {
         clickedView =
-          viewState.currentView === "translated" ? "translated" : "original";
+          viewState.currentView === "translated" 
+            ? "translated" 
+            : viewState.currentView === "final-layout"
+            ? "final-layout"
+            : "original";
       }
 
       // Convert screen coordinates to document coordinates
@@ -2504,6 +2552,16 @@ export const PDFEditorContent: React.FC = () => {
             (s) => s.page === documentState.currentPage
           );
           images = getCurrentImages("translated").filter(
+            (img) => img.page === documentState.currentPage
+          );
+        } else if (targetView === "final-layout") {
+          textBoxes = getCurrentTextBoxes("final-layout").filter(
+            (tb) => tb.page === documentState.currentPage
+          );
+          shapes = getCurrentShapes("final-layout").filter(
+            (s) => s.page === documentState.currentPage
+          );
+          images = getCurrentImages("final-layout").filter(
             (img) => img.page === documentState.currentPage
           );
         }
