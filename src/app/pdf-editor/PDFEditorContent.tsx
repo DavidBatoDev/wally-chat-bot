@@ -549,6 +549,20 @@ export const PDFEditorContent: React.FC = () => {
   // Final layout settings panel state
   const [showFinalLayoutSettings, setShowFinalLayoutSettings] = useState(false);
 
+  // Final layout settings state
+  const [finalLayoutSettings, setFinalLayoutSettings] = useState({
+    exportSettings: {
+      format: "pdf" as "pdf" | "png" | "jpg",
+      quality: 100,
+      includeOriginal: true,
+      includeTranslated: true,
+      pageRange: "all" as "all" | "current" | "custom",
+      customRange: "",
+    },
+    activeTab: "export" as "export" | "preview" | "settings",
+    isPreviewMode: false,
+  });
+
   // Update the ref whenever the state changes
   useEffect(() => {
     isCapturingSnapshotsRef.current = isCapturingSnapshots;
@@ -1113,7 +1127,7 @@ export const PDFEditorContent: React.FC = () => {
 
       // Create final layout PDF with template page and snapshots
       console.log("Creating final layout PDF with template page...");
-      const finalLayoutFile = await createFinalLayoutPdf(snapshots);
+      const finalLayoutResult = await createFinalLayoutPdf(snapshots);
 
       // Check if cancelled after PDF creation
       if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
@@ -1187,7 +1201,10 @@ export const PDFEditorContent: React.FC = () => {
         }
 
         // Create URL for the final layout file and store it
-        const finalLayoutUrl = URL.createObjectURL(finalLayoutFile);
+        // Handle both Blob/File objects and result objects with metadata
+        const finalLayoutUrl = typeof finalLayoutResult === 'object' && 'url' in finalLayoutResult 
+          ? finalLayoutResult.url 
+          : URL.createObjectURL(finalLayoutResult as Blob);
 
         console.log("Storing final layout URL...");
 
@@ -1320,6 +1337,19 @@ export const PDFEditorContent: React.FC = () => {
     []
   );
 
+  // Helper function to convert data URL to File object
+  const dataUrlToFile = useCallback((dataUrl: string, fileName: string): File => {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], fileName, { type: mime });
+  }, []);
+
   // Function to add interactive elements (images and lines) to the final layout
   const addInteractiveElementsToLayout = useCallback(
     async (snapshots: SnapshotData[]) => {
@@ -1344,65 +1374,130 @@ export const PDFEditorContent: React.FC = () => {
 
         // Add first snapshot's images (bottom row) - corrected positioning
         if (snapshot1) {
-          // Calculate fitted dimensions for original image
-          const originalDimensions = calculateFittedImageDimensions(
-            snapshot1.originalWidth,
-            snapshot1.originalHeight,
-            quadrantWidth,
-            quadrantHeight
-          );
+          try {
+            // Calculate fitted dimensions for original image
+            const originalDimensions = calculateFittedImageDimensions(
+              snapshot1.originalWidth,
+              snapshot1.originalHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
 
-          // Calculate fitted dimensions for translated image
-          const translatedDimensions = calculateFittedImageDimensions(
-            snapshot1.translatedWidth,
-            snapshot1.translatedHeight,
-            quadrantWidth,
-            quadrantHeight
-          );
+            // Calculate fitted dimensions for translated image
+            const translatedDimensions = calculateFittedImageDimensions(
+              snapshot1.translatedWidth,
+              snapshot1.translatedHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
 
-          // Calculate centering offsets for original image
-          const originalOffsetX =
-            (quadrantWidth - originalDimensions.width) / 2;
-          const originalOffsetY =
-            (quadrantHeight - originalDimensions.height) / 2;
+            // Calculate centering offsets for original image
+            const originalOffsetX =
+              (quadrantWidth - originalDimensions.width) / 2;
+            const originalOffsetY =
+              (quadrantHeight - originalDimensions.height) / 2;
 
-          // Calculate centering offsets for translated image
-          const translatedOffsetX =
-            (quadrantWidth - translatedDimensions.width) / 2;
-          const translatedOffsetY =
-            (quadrantHeight - translatedDimensions.height) / 2;
+            // Calculate centering offsets for translated image
+            const translatedOffsetX =
+              (quadrantWidth - translatedDimensions.width) / 2;
+            const translatedOffsetY =
+              (quadrantHeight - translatedDimensions.height) / 2;
 
-          // Original image (bottom-left, centered in quadrant) - swapped position
-          const originalImageId = handleAddImageWithUndo(
-            snapshot1.originalImage,
-            gridMargin + originalOffsetX,
-            pageHeight -
-              labelSpace -
-              quadrantHeight * 2 -
-              gridSpacing +
-              originalOffsetY,
-            originalDimensions.width,
-            originalDimensions.height,
-            pageNumber,
-            "final-layout",
-            undefined // No Supabase metadata for snapshot images
-          );
+            // Upload original image to Supabase
+            const originalFileName = `final-layout-original-page-${snapshot1.pageNumber}-${Date.now()}.png`;
+            const originalFile = dataUrlToFile(snapshot1.originalImage, originalFileName);
+            const originalUploadResult = await uploadFileWithFallback(originalFile);
+            
+            // Upload translated image to Supabase
+            const translatedFileName = `final-layout-translated-page-${snapshot1.pageNumber}-${Date.now()}.png`;
+            const translatedFile = dataUrlToFile(snapshot1.translatedImage, translatedFileName);
+            const translatedUploadResult = await uploadFileWithFallback(translatedFile);
 
-          // Translated image (bottom-right, centered in quadrant) - swapped position
-          const translatedImageId = handleAddImageWithUndo(
-            snapshot1.translatedImage,
-            gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
-            pageHeight -
-              labelSpace -
-              quadrantHeight * 2 -
-              gridSpacing +
-              translatedOffsetY,
-            translatedDimensions.width,
-            translatedDimensions.height,
-            pageNumber,
-            "final-layout",
-            undefined // No Supabase metadata for snapshot images
-          );
+            // Original image (bottom-left, centered in quadrant) - swapped position
+            const originalImageId = handleAddImageWithUndo(
+              originalUploadResult.url,
+              gridMargin + originalOffsetX,
+              pageHeight -
+                labelSpace -
+                quadrantHeight * 2 -
+                gridSpacing +
+                originalOffsetY,
+              originalDimensions.width,
+              originalDimensions.height,
+              pageNumber,
+              "final-layout",
+              {
+                isSupabaseUrl: true,
+                filePath: originalUploadResult.filePath,
+                fileName: originalFileName,
+                fileObjectId: originalUploadResult.fileObjectId,
+              }
+            );
+
+            // Translated image (bottom-right, centered in quadrant) - swapped position
+            const translatedImageId = handleAddImageWithUndo(
+              translatedUploadResult.url,
+              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
+              pageHeight -
+                labelSpace -
+                quadrantHeight * 2 -
+                gridSpacing +
+                translatedOffsetY,
+              translatedDimensions.width,
+              translatedDimensions.height,
+              pageNumber,
+              "final-layout",
+              {
+                isSupabaseUrl: true,
+                filePath: translatedUploadResult.filePath,
+                fileName: translatedFileName,
+                fileObjectId: translatedUploadResult.fileObjectId,
+              }
+            );
+          } catch (error) {
+            console.error(`Error uploading images for snapshot ${snapshot1.pageNumber}:`, error);
+            toast.error(`Failed to upload images for page ${snapshot1.pageNumber}`);
+            
+            // Fallback to using data URLs directly if upload fails
+            const originalDimensions = calculateFittedImageDimensions(
+              snapshot1.originalWidth,
+              snapshot1.originalHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
+            const translatedDimensions = calculateFittedImageDimensions(
+              snapshot1.translatedWidth,
+              snapshot1.translatedHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
+            const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
+            const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
+            const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
+            const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
+
+            // Add images with data URLs as fallback
+            handleAddImageWithUndo(
+              snapshot1.originalImage,
+              gridMargin + originalOffsetX,
+              pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY,
+              originalDimensions.width,
+              originalDimensions.height,
+              pageNumber,
+              "final-layout",
+              undefined
+            );
+            handleAddImageWithUndo(
+              snapshot1.translatedImage,
+              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
+              pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY,
+              translatedDimensions.width,
+              translatedDimensions.height,
+              pageNumber,
+              "final-layout",
+              undefined
+            );
+          }
 
           // Add dividing line between original and translated (vertical)
           const verticalLineId = handleAddShapeWithUndo(
@@ -1423,57 +1518,122 @@ export const PDFEditorContent: React.FC = () => {
 
         // Add second snapshot's images (top row) - corrected positioning
         if (snapshot2) {
-          // Calculate fitted dimensions for original image
-          const originalDimensions2 = calculateFittedImageDimensions(
-            snapshot2.originalWidth,
-            snapshot2.originalHeight,
-            quadrantWidth,
-            quadrantHeight
-          );
+          try {
+            // Calculate fitted dimensions for original image
+            const originalDimensions2 = calculateFittedImageDimensions(
+              snapshot2.originalWidth,
+              snapshot2.originalHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
 
-          // Calculate fitted dimensions for translated image
-          const translatedDimensions2 = calculateFittedImageDimensions(
-            snapshot2.translatedWidth,
-            snapshot2.translatedHeight,
-            quadrantWidth,
-            quadrantHeight
-          );
+            // Calculate fitted dimensions for translated image
+            const translatedDimensions2 = calculateFittedImageDimensions(
+              snapshot2.translatedWidth,
+              snapshot2.translatedHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
 
-          // Calculate centering offsets for original image
-          const originalOffsetX2 =
-            (quadrantWidth - originalDimensions2.width) / 2;
-          const originalOffsetY2 =
-            (quadrantHeight - originalDimensions2.height) / 2;
+            // Calculate centering offsets for original image
+            const originalOffsetX2 =
+              (quadrantWidth - originalDimensions2.width) / 2;
+            const originalOffsetY2 =
+              (quadrantHeight - originalDimensions2.height) / 2;
 
-          // Calculate centering offsets for translated image
-          const translatedOffsetX2 =
-            (quadrantWidth - translatedDimensions2.width) / 2;
-          const translatedOffsetY2 =
-            (quadrantHeight - translatedDimensions2.height) / 2;
+            // Calculate centering offsets for translated image
+            const translatedOffsetX2 =
+              (quadrantWidth - translatedDimensions2.width) / 2;
+            const translatedOffsetY2 =
+              (quadrantHeight - translatedDimensions2.height) / 2;
 
-          // Original image (top-left, centered in quadrant) - swapped position
-          const originalImageId2 = handleAddImageWithUndo(
-            snapshot2.originalImage,
-            gridMargin + originalOffsetX2,
-            pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
-            originalDimensions2.width,
-            originalDimensions2.height,
-            pageNumber,
-            "final-layout",
-            undefined // No Supabase metadata for snapshot images
-          );
+            // Upload original image to Supabase
+            const originalFileName2 = `final-layout-original-page-${snapshot2.pageNumber}-${Date.now()}.png`;
+            const originalFile2 = dataUrlToFile(snapshot2.originalImage, originalFileName2);
+            const originalUploadResult2 = await uploadFileWithFallback(originalFile2);
+            
+            // Upload translated image to Supabase
+            const translatedFileName2 = `final-layout-translated-page-${snapshot2.pageNumber}-${Date.now()}.png`;
+            const translatedFile2 = dataUrlToFile(snapshot2.translatedImage, translatedFileName2);
+            const translatedUploadResult2 = await uploadFileWithFallback(translatedFile2);
 
-          // Translated image (top-right, centered in quadrant) - swapped position
-          const translatedImageId2 = handleAddImageWithUndo(
-            snapshot2.translatedImage,
-            gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
-            pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
-            translatedDimensions2.width,
-            translatedDimensions2.height,
-            pageNumber,
-            "final-layout",
-            undefined // No Supabase metadata for snapshot images
-          );
+            // Original image (top-left, centered in quadrant) - swapped position
+            const originalImageId2 = handleAddImageWithUndo(
+              originalUploadResult2.url,
+              gridMargin + originalOffsetX2,
+              pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
+              originalDimensions2.width,
+              originalDimensions2.height,
+              pageNumber,
+              "final-layout",
+              {
+                isSupabaseUrl: true,
+                filePath: originalUploadResult2.filePath,
+                fileName: originalFileName2,
+                fileObjectId: originalUploadResult2.fileObjectId,
+              }
+            );
+
+            // Translated image (top-right, centered in quadrant) - swapped position
+            const translatedImageId2 = handleAddImageWithUndo(
+              translatedUploadResult2.url,
+              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
+              pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
+              translatedDimensions2.width,
+              translatedDimensions2.height,
+              pageNumber,
+              "final-layout",
+              {
+                isSupabaseUrl: true,
+                filePath: translatedUploadResult2.filePath,
+                fileName: translatedFileName2,
+                fileObjectId: translatedUploadResult2.fileObjectId,
+              }
+            );
+          } catch (error) {
+            console.error(`Error uploading images for snapshot ${snapshot2.pageNumber}:`, error);
+            toast.error(`Failed to upload images for page ${snapshot2.pageNumber}`);
+            
+            // Fallback to using data URLs directly if upload fails
+            const originalDimensions2 = calculateFittedImageDimensions(
+              snapshot2.originalWidth,
+              snapshot2.originalHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
+            const translatedDimensions2 = calculateFittedImageDimensions(
+              snapshot2.translatedWidth,
+              snapshot2.translatedHeight,
+              quadrantWidth,
+              quadrantHeight
+            );
+            const originalOffsetX2 = (quadrantWidth - originalDimensions2.width) / 2;
+            const originalOffsetY2 = (quadrantHeight - originalDimensions2.height) / 2;
+            const translatedOffsetX2 = (quadrantWidth - translatedDimensions2.width) / 2;
+            const translatedOffsetY2 = (quadrantHeight - translatedDimensions2.height) / 2;
+
+            // Add images with data URLs as fallback
+            handleAddImageWithUndo(
+              snapshot2.originalImage,
+              gridMargin + originalOffsetX2,
+              pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
+              originalDimensions2.width,
+              originalDimensions2.height,
+              pageNumber,
+              "final-layout",
+              undefined
+            );
+            handleAddImageWithUndo(
+              snapshot2.translatedImage,
+              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
+              pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
+              translatedDimensions2.width,
+              translatedDimensions2.height,
+              pageNumber,
+              "final-layout",
+              undefined
+            );
+          }
 
           // Add dividing line between original and translated (vertical, top row)
           const verticalLineId2 = handleAddShapeWithUndo(
@@ -1550,32 +1710,38 @@ export const PDFEditorContent: React.FC = () => {
       const prev = previousStep || viewState.currentWorkflowStep;
 
       // Handle leaving final-layout step - set view to split when going to translate or layout
-      if (prev === "final-layout" && (step === "translate" || step === "layout")) {
-        console.log(`Leaving final-layout step, setting view to split for ${step} step`);
+      if (
+        prev === "final-layout" &&
+        (step === "translate" || step === "layout")
+      ) {
+        console.log(
+          `Leaving final-layout step, setting view to split for ${step} step`
+        );
         setViewState((prevState) => ({
           ...prevState,
           currentView: "split",
         }));
         // Hide final layout settings when leaving final layout step
-        console.log("Leaving final-layout step, setting showFinalLayoutSettings to false");
+        console.log(
+          "Leaving final-layout step, setting showFinalLayoutSettings to false"
+        );
         setShowFinalLayoutSettings(false);
       }
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
-        
         // Enable edit mode for final layout to allow element editing
         setEditorState((prev) => ({
           ...prev,
           isEditMode: true,
         }));
-        
+
         // Set view to final-layout and zoom to 100%
         setViewState((prev) => ({
           ...prev,
           currentView: "final-layout",
         }));
-        
+
         actions.updateScale(1.0);
         // Reset cancellation state to ensure clean entry
         console.log("Entering final-layout, resetting cancellation state");
@@ -1583,11 +1749,13 @@ export const PDFEditorContent: React.FC = () => {
         setIsCancellingSnapshots(false);
 
         // Show final layout settings when entering final layout step
-        console.log("Entering final-layout step, setting showFinalLayoutSettings to true");
+        console.log(
+          "Entering final-layout step, setting showFinalLayoutSettings to true"
+        );
         setShowFinalLayoutSettings(true);
 
         // Check if final layout elements exist
-        const hasFinalLayoutElements = 
+        const hasFinalLayoutElements =
           elementCollections.finalLayoutTextboxes.length > 0 ||
           elementCollections.finalLayoutShapes.length > 0 ||
           elementCollections.finalLayoutImages.length > 0 ||
@@ -1595,10 +1763,14 @@ export const PDFEditorContent: React.FC = () => {
 
         if (!hasFinalLayoutElements && !isCapturingSnapshots) {
           // Only capture snapshots if no final layout elements exist and not already capturing
-          console.log("No final layout elements found, capturing fresh snapshots for final layout");
+          console.log(
+            "No final layout elements found, capturing fresh snapshots for final layout"
+          );
           createFinalLayoutWithSnapshots();
         } else if (hasFinalLayoutElements) {
-          console.log("Final layout elements already exist, skipping snapshot capture");
+          console.log(
+            "Final layout elements already exist, skipping snapshot capture"
+          );
         } else {
           console.log("Snapshot capture already in progress, skipping");
         }
@@ -1745,6 +1917,7 @@ export const PDFEditorContent: React.FC = () => {
       updateImage,
     });
 
+
   // Effect to handle element selection and ElementFormatDrawer updates
   useEffect(() => {
     // Use setTimeout to ensure state updates happen after render
@@ -1759,8 +1932,13 @@ export const PDFEditorContent: React.FC = () => {
       });
 
       // Close drawer if not in edit mode, unless we're in final-layout workflow step
-      if (!editorState.isEditMode && viewState.currentWorkflowStep !== "final-layout") {
-        console.log("❌ Closing drawer - not in edit mode and not in final-layout");
+      if (
+        !editorState.isEditMode &&
+        viewState.currentWorkflowStep !== "final-layout"
+      ) {
+        console.log(
+          "❌ Closing drawer - not in edit mode and not in final-layout"
+        );
         setIsDrawerOpen(false);
         setSelectedElementId(null);
         setCurrentFormat(null);
@@ -1986,7 +2164,6 @@ export const PDFEditorContent: React.FC = () => {
         selectedElementType &&
         selectedElements.length === 0
       ) {
-
         if (selectedElementType === "textbox") {
           // Find the selected text box from all text boxes (including final layout)
           const allTextBoxes = [
@@ -1994,7 +2171,6 @@ export const PDFEditorContent: React.FC = () => {
             ...elementCollections.translatedTextBoxes,
             ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
           ];
-
 
           const selectedTextBox = allTextBoxes.find(
             (box) => box.id === selectedElementId
@@ -2055,9 +2231,8 @@ export const PDFEditorContent: React.FC = () => {
             // Update the format drawer state
             setCurrentFormat(safeTextBox);
             setIsDrawerOpen(true);
-          } 
+          }
         } else if (selectedElementType === "shape") {
-
           const allShapes = [
             ...elementCollections.originalShapes,
             ...elementCollections.translatedShapes,
@@ -2086,7 +2261,7 @@ export const PDFEditorContent: React.FC = () => {
 
             setCurrentFormat(shapeFormat);
             setIsDrawerOpen(true);
-          } 
+          }
         } else if (selectedElementType === "image") {
           const allImages = [
             ...elementCollections.originalImages,
@@ -2098,10 +2273,9 @@ export const PDFEditorContent: React.FC = () => {
           );
 
           if (selectedImage) {
-
             setCurrentFormat(selectedImage);
             setIsDrawerOpen(true);
-          } 
+          }
         }
       } else {
         // Close drawer when no element is selected
@@ -2424,8 +2598,8 @@ export const PDFEditorContent: React.FC = () => {
         }
       } else {
         clickedView =
-          viewState.currentView === "translated" 
-            ? "translated" 
+          viewState.currentView === "translated"
+            ? "translated"
             : viewState.currentView === "final-layout"
             ? "final-layout"
             : "original";
@@ -3722,6 +3896,8 @@ export const PDFEditorContent: React.FC = () => {
     setSourceLanguage,
     desiredLanguage,
     setDesiredLanguage,
+    finalLayoutSettings,
+    setFinalLayoutSettings,
   });
 
   // Keep backward compatibility for existing save project calls
@@ -4733,9 +4909,17 @@ export const PDFEditorContent: React.FC = () => {
                 }
                 showFinalLayoutSettings={showFinalLayoutSettings}
                 onToggleFinalLayoutSettings={() => {
-                  console.log("Toggle Final Layout Settings clicked. Current state:", showFinalLayoutSettings);
+                  console.log(
+                    "Toggle Final Layout Settings clicked. Current state:",
+                    showFinalLayoutSettings
+                  );
                   setShowFinalLayoutSettings((prev) => {
-                    console.log("Setting showFinalLayoutSettings from", prev, "to", !prev);
+                    console.log(
+                      "Setting showFinalLayoutSettings from",
+                      prev,
+                      "to",
+                      !prev
+                    );
                     return !prev;
                   });
                 }}
@@ -6675,9 +6859,10 @@ export const PDFEditorContent: React.FC = () => {
           {((viewState.currentView === "split" &&
             (viewState.currentWorkflowStep === "translate" ||
               viewState.currentWorkflowStep === "final-layout")) ||
-            (viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings)) && (
-              <PanelResizeHandle className="w-1 bg-primary/40 hover:bg-primary/60 transition-colors duration-200" />
-            )}
+            (viewState.currentWorkflowStep === "final-layout" &&
+              showFinalLayoutSettings)) && (
+            <PanelResizeHandle className="w-1 bg-primary/40 hover:bg-primary/60 transition-colors duration-200" />
+          )}
 
           {/* Right Sidebar - Resizable */}
           <Panel
@@ -6690,7 +6875,8 @@ export const PDFEditorContent: React.FC = () => {
               (viewState.currentView === "split" &&
                 (viewState.currentWorkflowStep === "translate" ||
                   viewState.currentWorkflowStep === "final-layout")) ||
-              (viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings)
+              (viewState.currentWorkflowStep === "final-layout" &&
+                showFinalLayoutSettings)
                 ? "bg-primary/10 border-l border-primary/20 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
                 : "hidden"
             }
@@ -6720,23 +6906,32 @@ export const PDFEditorContent: React.FC = () => {
               console.log("FinalLayoutSettings render check:", {
                 currentWorkflowStep: viewState.currentWorkflowStep,
                 showFinalLayoutSettings: showFinalLayoutSettings,
-                shouldShow: viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings
+                shouldShow:
+                  viewState.currentWorkflowStep === "final-layout" &&
+                  showFinalLayoutSettings,
               });
-              return viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings;
+              return (
+                viewState.currentWorkflowStep === "final-layout" &&
+                showFinalLayoutSettings
+              );
             })() && (
-                <div className="transition-opacity duration-300 opacity-100">
-                  <FinalLayoutSettings
-                    currentPage={documentState.currentPage}
-                    totalPages={documentState.numPages}
-                    capturedSnapshots={capturedSnapshots}
-                    isCapturingSnapshots={isCapturingSnapshots}
-                    onExportPDF={exportToPDF}
-                    onExportPNG={exportToPNG}
-                    onExportJPEG={exportToJPEG}
-                    onSaveProject={saveProject}
-                  />
-                </div>
-              )}
+              <div className="transition-opacity duration-300 opacity-100">
+                <FinalLayoutSettings
+                  currentPage={documentState.currentPage}
+                  totalPages={documentState.numPages}
+                  capturedSnapshots={capturedSnapshots}
+                  isCapturingSnapshots={isCapturingSnapshots}
+                  onExportPDF={exportToPDF}
+                  onExportPNG={exportToPNG}
+                  onExportJPEG={exportToJPEG}
+                  onSaveProject={saveProject}
+                  savedExportSettings={finalLayoutSettings.exportSettings}
+                  savedActiveTab={finalLayoutSettings.activeTab}
+                  savedIsPreviewMode={finalLayoutSettings.isPreviewMode}
+                  onSettingsChange={setFinalLayoutSettings}
+                />
+              </div>
+            )}
           </Panel>
         </PanelGroup>
       </div>

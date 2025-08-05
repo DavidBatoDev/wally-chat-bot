@@ -268,7 +268,8 @@ export const useDocumentState = () => {
   // Change current page
   const changePage = useCallback(
     (page: number, isFinalLayout = false) => {
-      console.log("📄 changePage called:", { page, isFinalLayout });
+      console.log("document state final layout URL:", documentState.finalLayoutUrl);
+
 
       if (isFinalLayout) {
         // Handle final layout page change
@@ -492,6 +493,27 @@ export const useDocumentState = () => {
     [documentState.numPages, appendPages]
   );
 
+  // Load final layout from URL (for project loading with final layout)
+  const loadFinalLayoutFromUrl = useCallback(
+    async (finalLayoutUrl: string, finalLayoutNumPages: number = 0) => {
+      console.log("Loading final layout from URL:", {
+        finalLayoutUrl,
+        finalLayoutNumPages,
+      });
+
+      setDocumentState((prev) => ({
+        ...prev,
+        finalLayoutUrl,
+        finalLayoutCurrentPage: 1,
+        finalLayoutNumPages,
+        finalLayoutDeletedPages: new Set<number>(),
+      }));
+
+      console.log("Final layout URL loaded successfully");
+    },
+    []
+  );
+
   return {
     documentState,
     setDocumentState,
@@ -511,6 +533,7 @@ export const useDocumentState = () => {
       capturePdfBackgroundColor,
       updatePdfBackgroundColor,
       resetScaleChanging,
+      loadFinalLayoutFromUrl,
     },
     pageActions: {
       addPage,

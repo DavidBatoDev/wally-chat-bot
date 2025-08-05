@@ -52,6 +52,11 @@ export interface ProjectState {
     // Supabase storage fields
     supabaseFilePath?: string;
     isSupabaseUrl?: boolean;
+    // Final layout fields
+    finalLayoutUrl?: string;
+    finalLayoutCurrentPage?: number;
+    finalLayoutNumPages?: number;
+    finalLayoutDeletedPages?: number[]; // Convert Set to Array for serialization
   };
   viewState: {
     currentView: "original" | "translated" | "split" | "final-layout";
@@ -81,6 +86,19 @@ export interface ProjectState {
   };
   sourceLanguage: string;
   desiredLanguage: string;
+  // Final layout settings
+  finalLayoutSettings?: {
+    exportSettings: {
+      format: "pdf" | "png" | "jpg";
+      quality: number;
+      includeOriginal: boolean;
+      includeTranslated: boolean;
+      pageRange: "all" | "current" | "custom";
+      customRange: string;
+    };
+    activeTab: "export" | "preview" | "settings";
+    isPreviewMode: boolean;
+  };
 }
 
 interface UseProjectStateProps {
@@ -108,6 +126,31 @@ interface UseProjectStateProps {
   setSourceLanguage: (lang: string) => void;
   desiredLanguage: string;
   setDesiredLanguage: (lang: string) => void;
+  // Final layout settings
+  finalLayoutSettings?: {
+    exportSettings: {
+      format: "pdf" | "png" | "jpg";
+      quality: number;
+      includeOriginal: boolean;
+      includeTranslated: boolean;
+      pageRange: "all" | "current" | "custom";
+      customRange: string;
+    };
+    activeTab: "export" | "preview" | "settings";
+    isPreviewMode: boolean;
+  };
+  setFinalLayoutSettings?: (settings: {
+    exportSettings: {
+      format: "pdf" | "png" | "jpg";
+      quality: number;
+      includeOriginal: boolean;
+      includeTranslated: boolean;
+      pageRange: "all" | "current" | "custom";
+      customRange: string;
+    };
+    activeTab: "export" | "preview" | "settings";
+    isPreviewMode: boolean;
+  }) => void;
 }
 
 export const useProjectState = (props: UseProjectStateProps) => {
@@ -179,6 +222,11 @@ export const useProjectState = (props: UseProjectStateProps) => {
       isTransforming: docState.isTransforming,
       supabaseFilePath: docState.supabaseFilePath,
       isSupabaseUrl: docState.isSupabaseUrl,
+      // Final layout fields
+      finalLayoutUrl: docState.finalLayoutUrl,
+      finalLayoutCurrentPage: docState.finalLayoutCurrentPage,
+      finalLayoutNumPages: docState.finalLayoutNumPages,
+      finalLayoutDeletedPages: Array.from(docState.finalLayoutDeletedPages || []),
     };
 
     return cleanDocState;
@@ -400,6 +448,11 @@ export const useProjectState = (props: UseProjectStateProps) => {
           },
           sourceLanguage,
           desiredLanguage,
+          // Include final layout settings if we're in final-layout mode
+          ...(viewState.currentWorkflowStep === "final-layout" &&
+            props.finalLayoutSettings && {
+              finalLayoutSettings: props.finalLayoutSettings,
+            }),
         };
 
         // Apply safe serialization to prevent circular references
@@ -676,6 +729,10 @@ export const useProjectState = (props: UseProjectStateProps) => {
               projectState.documentState.detectedPageBackgrounds || {}
             ).map(([key, value]) => [parseInt(key), value])
           ),
+          // Convert final layout deleted pages back to Set if it exists
+          finalLayoutDeletedPages: projectState.documentState.finalLayoutDeletedPages 
+            ? new Set(projectState.documentState.finalLayoutDeletedPages) 
+            : new Set<number>(),
           // Ensure fileType is properly typed
           fileType:
             (projectState.documentState.fileType as "pdf" | "image" | null) ||
@@ -742,6 +799,30 @@ export const useProjectState = (props: UseProjectStateProps) => {
         // Restore language settings
         setSourceLanguage(projectState.sourceLanguage);
         setDesiredLanguage(projectState.desiredLanguage);
+
+        // Restore final layout settings if they exist
+        if (projectState.finalLayoutSettings && props.setFinalLayoutSettings) {
+          console.log(
+            "DEBUG: Restoring final layout settings:",
+            projectState.finalLayoutSettings
+          );
+          props.setFinalLayoutSettings(projectState.finalLayoutSettings);
+        }
+
+        // Log final layout URL restoration
+        if (projectState.documentState.finalLayoutUrl) {
+          console.log(
+            "DEBUG: Final layout URL restored:",
+            {
+              finalLayoutUrl: projectState.documentState.finalLayoutUrl,
+              finalLayoutCurrentPage: projectState.documentState.finalLayoutCurrentPage,
+              finalLayoutNumPages: projectState.documentState.finalLayoutNumPages,
+              finalLayoutDeletedPages: projectState.documentState.finalLayoutDeletedPages,
+            }
+          );
+        } else {
+          console.log("DEBUG: No final layout URL found in project data");
+        }
 
         // Update current project info - use the actual project ID we loaded, not projectState.id
         if (isUserAuthenticated && (projectId || projectState.id)) {
@@ -832,6 +913,11 @@ export const useProjectState = (props: UseProjectStateProps) => {
           },
           sourceLanguage,
           desiredLanguage,
+          // Include final layout settings if we're in final-layout mode
+          ...(viewState.currentWorkflowStep === "final-layout" &&
+            props.finalLayoutSettings && {
+              finalLayoutSettings: props.finalLayoutSettings,
+            }),
         };
 
         // Create and download JSON file
@@ -1143,6 +1229,10 @@ export const useProjectState = (props: UseProjectStateProps) => {
               projectData.documentState.detectedPageBackgrounds || {}
             ).map(([key, value]) => [parseInt(key), value])
           ),
+          // Convert final layout deleted pages back to Set if it exists
+          finalLayoutDeletedPages: projectData.documentState.finalLayoutDeletedPages 
+            ? new Set(projectData.documentState.finalLayoutDeletedPages) 
+            : new Set<number>(),
           // Ensure fileType is properly typed
           fileType:
             (projectData.documentState.fileType as "pdf" | "image" | null) ||
@@ -1200,6 +1290,21 @@ export const useProjectState = (props: UseProjectStateProps) => {
         // Restore languages
         setSourceLanguage(projectData.sourceLanguage);
         setDesiredLanguage(projectData.desiredLanguage);
+
+        // Log final layout URL restoration for import
+        if (projectData.documentState.finalLayoutUrl) {
+          console.log(
+            "DEBUG: Final layout URL imported:",
+            {
+              finalLayoutUrl: projectData.documentState.finalLayoutUrl,
+              finalLayoutCurrentPage: projectData.documentState.finalLayoutCurrentPage,
+              finalLayoutNumPages: projectData.documentState.finalLayoutNumPages,
+              finalLayoutDeletedPages: projectData.documentState.finalLayoutDeletedPages,
+            }
+          );
+        } else {
+          console.log("DEBUG: No final layout URL found in imported project data");
+        }
 
         // Update current project info
         setCurrentProjectId(projectData.id);
