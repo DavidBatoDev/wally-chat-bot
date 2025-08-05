@@ -153,7 +153,6 @@ export const useToolHandlers = ({
         ...prev,
         selectedFieldId: id,
         selectedShapeId: null,
-        isEditMode: true, // Enable edit mode when element is selected
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
         isSelectionMode: false, // Turn off multi-selection mode
@@ -205,7 +204,6 @@ export const useToolHandlers = ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: id,
-        isEditMode: true, // Enable edit mode when element is selected
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
         isSelectionMode: false, // Turn off multi-selection mode
@@ -257,7 +255,6 @@ export const useToolHandlers = ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: null,
-        isEditMode: true, // Enable edit mode when element is selected
         isTextSelectionMode: false,
         isAddTextBoxMode: false,
         isSelectionMode: false, // Turn off multi-selection mode
