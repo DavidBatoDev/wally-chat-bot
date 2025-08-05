@@ -546,6 +546,9 @@ export const PDFEditorContent: React.FC = () => {
 
   const isCapturingSnapshotsRef = useRef(false);
 
+  // Final layout settings panel state
+  const [showFinalLayoutSettings, setShowFinalLayoutSettings] = useState(false);
+
   // Update the ref whenever the state changes
   useEffect(() => {
     isCapturingSnapshotsRef.current = isCapturingSnapshots;
@@ -1553,6 +1556,9 @@ export const PDFEditorContent: React.FC = () => {
           ...prevState,
           currentView: "split",
         }));
+        // Hide final layout settings when leaving final layout step
+        console.log("Leaving final-layout step, setting showFinalLayoutSettings to false");
+        setShowFinalLayoutSettings(false);
       }
 
       // Handle entering final-layout step
@@ -1575,6 +1581,10 @@ export const PDFEditorContent: React.FC = () => {
         console.log("Entering final-layout, resetting cancellation state");
         snapshotCancelRef.current.cancelled = false;
         setIsCancellingSnapshots(false);
+
+        // Show final layout settings when entering final layout step
+        console.log("Entering final-layout step, setting showFinalLayoutSettings to true");
+        setShowFinalLayoutSettings(true);
 
         // Check if final layout elements exist
         const hasFinalLayoutElements = 
@@ -4721,6 +4731,14 @@ export const PDFEditorContent: React.FC = () => {
                     ? () => imageInputRef.current?.click()
                     : undefined
                 }
+                showFinalLayoutSettings={showFinalLayoutSettings}
+                onToggleFinalLayoutSettings={() => {
+                  console.log("Toggle Final Layout Settings clicked. Current state:", showFinalLayoutSettings);
+                  setShowFinalLayoutSettings((prev) => {
+                    console.log("Setting showFinalLayoutSettings from", prev, "to", !prev);
+                    return !prev;
+                  });
+                }}
               />
             )}
 
@@ -6654,9 +6672,10 @@ export const PDFEditorContent: React.FC = () => {
           </Panel>
 
           {/* Resize Handle - Only show when sidebar is visible */}
-          {viewState.currentView === "split" &&
+          {((viewState.currentView === "split" &&
             (viewState.currentWorkflowStep === "translate" ||
-              viewState.currentWorkflowStep === "final-layout") && (
+              viewState.currentWorkflowStep === "final-layout")) ||
+            (viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings)) && (
               <PanelResizeHandle className="w-1 bg-primary/40 hover:bg-primary/60 transition-colors duration-200" />
             )}
 
@@ -6668,9 +6687,10 @@ export const PDFEditorContent: React.FC = () => {
             minSize={20}
             maxSize={80}
             className={
-              viewState.currentView === "split" &&
-              (viewState.currentWorkflowStep === "translate" ||
-                viewState.currentWorkflowStep === "final-layout")
+              (viewState.currentView === "split" &&
+                (viewState.currentWorkflowStep === "translate" ||
+                  viewState.currentWorkflowStep === "final-layout")) ||
+              (viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings)
                 ? "bg-primary/10 border-l border-primary/20 overflow-auto flex-shrink-0 transition-all duration-500 ease-in-out"
                 : "hidden"
             }
@@ -6696,8 +6716,14 @@ export const PDFEditorContent: React.FC = () => {
                   />
                 </div>
               )}
-            {viewState.currentView === "split" &&
-              viewState.currentWorkflowStep === "final-layout" && (
+            {(() => {
+              console.log("FinalLayoutSettings render check:", {
+                currentWorkflowStep: viewState.currentWorkflowStep,
+                showFinalLayoutSettings: showFinalLayoutSettings,
+                shouldShow: viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings
+              });
+              return viewState.currentWorkflowStep === "final-layout" && showFinalLayoutSettings;
+            })() && (
                 <div className="transition-opacity duration-300 opacity-100">
                   <FinalLayoutSettings
                     currentPage={documentState.currentPage}

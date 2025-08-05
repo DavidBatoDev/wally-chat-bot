@@ -13,6 +13,7 @@ import {
   Trash2,
   Eye,
   ChevronDown,
+  Settings,
 } from "lucide-react";
 import {
   EditorState,
@@ -34,6 +35,8 @@ interface FloatingToolbarProps {
   onEditModeToggle: () => void;
   onDeletionToggle: () => void;
   onImageUpload?: () => void;
+  showFinalLayoutSettings?: boolean;
+  onToggleFinalLayoutSettings?: () => void;
 }
 
 export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
@@ -49,6 +52,8 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onEditModeToggle,
   onDeletionToggle,
   onImageUpload,
+  showFinalLayoutSettings,
+  onToggleFinalLayoutSettings,
 }) => {
   const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
   const shapeMenuRef = useRef<HTMLDivElement>(null);
@@ -385,6 +390,19 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               >
                 <Eye className="w-5 h-5" />
               </button>
+              {onToggleFinalLayoutSettings && (
+                <button
+                  onClick={onToggleFinalLayoutSettings}
+                  className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
+                    showFinalLayoutSettings
+                      ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                      : "text-gray-700 hover:text-primary"
+                  }`}
+                  title="Toggle Final Layout Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              )}
               <button
                 onClick={onEditModeToggle}
                 className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${

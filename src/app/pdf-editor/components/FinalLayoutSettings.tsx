@@ -56,6 +56,13 @@ export const FinalLayoutSettings: React.FC<FinalLayoutSettingsProps> = ({
     }));
   }, []);
 
+  // Debug logging
+  console.log("FinalLayoutSettings render:", {
+    capturedSnapshots: capturedSnapshots.length,
+    isCapturingSnapshots,
+    showLoadingState: capturedSnapshots.length === 0 && !isCapturingSnapshots
+  });
+
   if (capturedSnapshots.length === 0 && !isCapturingSnapshots) {
     return (
       <div className="bg-white h-full flex flex-col">
