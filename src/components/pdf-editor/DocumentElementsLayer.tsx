@@ -12,7 +12,7 @@ import {
 } from "@/app/pdf-editor/types/pdf-editor.types";
 
 interface DocumentElementsLayerProps {
-  viewType: "original" | "translated";
+  viewType: "original" | "translated" | "final-layout";
   currentPage: number;
   scale: number;
   pageWidth: number;
@@ -20,6 +20,8 @@ interface DocumentElementsLayerProps {
   // Template dimensions for translated view
   templateWidth?: number;
   templateHeight?: number;
+  // Template scale factor for split view (to scale template to match original document size)
+  templateScaleFactor?: number;
 
   // Deletion rectangles
   deletionRectangles: DeletionRectangle[];
@@ -64,12 +66,12 @@ interface DocumentElementsLayerProps {
     isDrawingSelection: boolean;
     selectionStart: { x: number; y: number } | null;
     selectionEnd: { x: number; y: number } | null;
-    targetView: "original" | "translated" | null;
+    targetView: "original" | "translated" | "final-layout" | null;
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
   };
-  currentView: "original" | "translated" | "split";
+  currentView: "original" | "translated" | "split" | "final-layout";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;
@@ -84,6 +86,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   pageHeight,
   templateWidth,
   templateHeight,
+  templateScaleFactor,
   deletionRectangles,
   showDeletionRectangles,
   onDeleteDeletionRectangle,
@@ -117,11 +120,45 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   onDragStopSelection,
 }) => {
   // Use template dimensions for translated view if available, otherwise use original dimensions
+  // In split view, we want to scale the template to match original document size
+  const isSplitView = currentView === "split";
   const effectivePageWidth =
-    viewType === "translated" && templateWidth ? templateWidth : pageWidth;
+    viewType === "translated" && templateWidth
+      ? isSplitView && templateScaleFactor
+        ? templateWidth * templateScaleFactor
+        : templateWidth
+      : pageWidth;
   const effectivePageHeight =
-    viewType === "translated" && templateHeight ? templateHeight : pageHeight;
+    viewType === "translated" && templateHeight
+      ? isSplitView && templateScaleFactor
+        ? templateHeight * templateScaleFactor
+        : templateHeight
+      : pageHeight;
+
+  // For interactive elements in split view, we scale them proportionally with the template
+  // This ensures elements appear at the same relative size as the scaled template
+  const elementPositioningWidth = effectivePageWidth;
+  const elementPositioningHeight = effectivePageHeight;
+
   const elementsInSelectionPreview = getElementsInSelectionPreview();
+
+  // Calculate the effective scale for components in split view
+  // In split view, we need to scale elements by the same factor as the template
+  // This ensures elements appear at the same relative size as the scaled template
+  const effectiveScale =
+    isSplitView && viewType === "translated" && templateScaleFactor
+      ? scale * templateScaleFactor
+      : scale;
+
+  // Helper function to scale element coordinates and dimensions for split view
+  const getScaledElementStyle = (element: any) => {
+    return {
+      left: element.x * effectiveScale,
+      top: element.y * effectiveScale,
+      width: element.width * effectiveScale,
+      height: element.height * effectiveScale,
+    };
+  };
 
   const shouldShowSelectionComponents = () => {
     if (!multiSelection.targetView) return false;
@@ -132,7 +169,9 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
       (currentView === "original" &&
         multiSelection.targetView === "original") ||
       (currentView === "translated" &&
-        multiSelection.targetView === "translated")
+        multiSelection.targetView === "translated") ||
+      (currentView === "final-layout" &&
+        multiSelection.targetView === "final-layout")
     );
   };
 
@@ -148,10 +187,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               showDeletionRectangles ? "border border-red-400" : ""
             }`}
             style={{
-              left: rect.x * scale,
-              top: rect.y * scale,
-              width: rect.width * scale,
-              height: rect.height * scale,
+              ...getScaledElementStyle(rect),
               zIndex: showDeletionRectangles ? -10 : -20,
               backgroundColor: rect.background
                 ? colorToRgba(rect.background, rect.opacity || 1.0)
@@ -186,7 +222,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               textBox={textBox}
               isSelected={selectedFieldId === textBox.id}
               isEditMode={isEditMode}
-              scale={scale}
+              scale={effectiveScale}
               showPaddingIndicator={showPaddingIndicator}
               onSelect={onTextBoxSelect}
               onUpdate={onUpdateTextBox}
@@ -209,9 +245,9 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               shape={shape}
               isSelected={selectedShapeId === shape.id}
               isEditMode={isEditMode}
-              scale={scale}
-              pageWidth={effectivePageWidth}
-              pageHeight={effectivePageHeight}
+              scale={effectiveScale}
+              pageWidth={elementPositioningWidth}
+              pageHeight={elementPositioningHeight}
               onSelect={onShapeSelect}
               onUpdate={onUpdateShape}
               onDelete={onDeleteShape}
@@ -227,9 +263,9 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               image={image}
               isSelected={selectedElementId === image.id}
               isEditMode={isEditMode}
-              scale={scale}
-              pageWidth={effectivePageWidth}
-              pageHeight={effectivePageHeight}
+              scale={effectiveScale}
+              pageWidth={elementPositioningWidth}
+              pageHeight={elementPositioningHeight}
               onSelect={onImageSelect}
               onUpdate={onUpdateImage}
               onDelete={onDeleteImage}
@@ -250,7 +286,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               <SelectionPreview
                 start={multiSelection.selectionStart}
                 end={multiSelection.selectionEnd}
-                scale={scale}
+                scale={effectiveScale}
               />
             )}
 
@@ -259,7 +295,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
             multiSelection.selectedElements.length > 0 && (
               <SelectionRectangle
                 bounds={multiSelection.selectionBounds}
-                scale={scale}
+                scale={effectiveScale}
                 onMove={onMoveSelection}
                 onDelete={onDeleteSelection}
                 isMoving={multiSelection.isMovingSelection}

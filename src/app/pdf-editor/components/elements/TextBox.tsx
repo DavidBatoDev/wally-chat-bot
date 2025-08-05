@@ -188,7 +188,17 @@ export const MemoizedTextBox = memo(
       if (textBox.value === "New Text Field") {
         onUpdate(textBox.id, { value: "" }, false);
       }
-    }, [textBox.id, onSelect, textBox.value, onUpdate, textBox.x, textBox.y, textBox.width, textBox.height, textBox.page]);
+    }, [
+      textBox.id,
+      onSelect,
+      textBox.value,
+      onUpdate,
+      textBox.x,
+      textBox.y,
+      textBox.width,
+      textBox.height,
+      textBox.page,
+    ]);
 
     // Multi-selection drag handlers
     const handleDragStart = useCallback(
@@ -369,9 +379,7 @@ export const MemoizedTextBox = memo(
         }}
         className={`${isSelected ? "ring-2 ring-gray-500 selected" : ""} ${
           isEditMode ? "edit-mode" : ""
-        } ${
-          isEditMode && !isSelected ? "edit-mode-unselected" : ""
-        } ${
+        } ${isEditMode && !isSelected ? "edit-mode-unselected" : ""} ${
           isSelectedInTextMode
             ? "ring-2 ring-blue-500 text-selection-highlight"
             : ""
@@ -526,7 +534,7 @@ export const MemoizedTextBox = memo(
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
-              placeholder="Enter text..."
+              placeholder={textBox.placeholder || "Enter Text..."}
               data-textbox-id={textBox.id}
               className="absolute top-0 left-0 w-full h-full bg-transparent overflow-hidden border-none outline-none cursor-text resize-none"
               style={{

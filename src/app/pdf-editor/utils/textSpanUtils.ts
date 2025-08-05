@@ -265,15 +265,15 @@ export const createTextFieldFromSpan = (
   span: HTMLElement,
   pdfPageEl: HTMLElement,
   currentPage: number,
-  currentView: "original" | "translated" | "split",
+  currentView: "original" | "translated" | "split" | "final-layout",
   scale: number,
   pageWidth: number,
   addTextBox: (
     x: number,
     y: number,
     currentPage: number,
-    currentView: "original" | "translated",
-    targetView?: "original" | "translated",
+    currentView: "original" | "translated" | "final-layout",
+    targetView?: "original" | "translated" | "final-layout",
     initialProperties?: any
   ) => string,
   addDeletionRectangle: (
@@ -282,15 +282,16 @@ export const createTextFieldFromSpan = (
     width: number,
     height: number,
     currentPage: number,
-    currentView: "original" | "translated",
+    currentView: "original" | "translated" | "final-layout",
     background: string,
     opacity?: number
   ) => string,
   pdfBackgroundColor: string,
-  erasureOpacity: number
+  erasureOpacity: number,
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number
 ): { textFieldId: string; properties: any } | null => {
   // Determine which view the span belongs to based on its position
-  let targetView = currentView;
+  let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPageEl.getBoundingClientRect();
@@ -303,6 +304,10 @@ export const createTextFieldFromSpan = (
     } else {
       targetView = "original";
     }
+  } else if (currentView === "final-layout") {
+    targetView = "final-layout";
+  } else {
+    targetView = currentView as "original" | "translated";
   }
   const textContent = span.textContent || "";
   console.log("Original text content:", textContent);
@@ -337,6 +342,15 @@ export const createTextFieldFromSpan = (
 
     // Adjust X coordinate to account for the translated document position
     pageX = (spanRect.left - pageRect.left - singleDocWidth - gap) / scale;
+
+    // Apply template scaling factor to coordinates when template is scaled in split view
+    if (getTranslatedTemplateScaleFactor) {
+      const templateScaleFactor = getTranslatedTemplateScaleFactor(currentPage);
+      if (templateScaleFactor && templateScaleFactor !== 1) {
+        pageX = pageX / templateScaleFactor;
+        pageY = pageY / templateScaleFactor;
+      }
+    }
   }
 
   // Enhanced text cleaning to handle newlines, whitespace, and special characters
@@ -504,7 +518,7 @@ export const createDeletionRectangleForSpan = (
   span: HTMLElement,
   pdfPageEl: HTMLElement,
   currentPage: number,
-  currentView: "original" | "translated" | "split",
+  currentView: "original" | "translated" | "split" | "final-layout",
   scale: number,
   pageWidth: number,
   addDeletionRectangle: (
@@ -513,12 +527,13 @@ export const createDeletionRectangleForSpan = (
     width: number,
     height: number,
     currentPage: number,
-    currentView: "original" | "translated",
+    currentView: "original" | "translated" | "final-layout",
     background: string,
     opacity?: number
   ) => string,
   pdfBackgroundColor: string,
-  erasureOpacity: number
+  erasureOpacity: number,
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number
 ): string => {
   if (!pdfPageEl) {
     console.log("PDF page element not provided");
@@ -526,7 +541,7 @@ export const createDeletionRectangleForSpan = (
   }
 
   // Determine which view the span belongs to based on its position
-  let targetView = currentView;
+  let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
     const pageRect = pdfPageEl.getBoundingClientRect();
@@ -539,6 +554,10 @@ export const createDeletionRectangleForSpan = (
     } else {
       targetView = "original";
     }
+  } else if (currentView === "final-layout") {
+    targetView = "final-layout";
+  } else {
+    targetView = currentView as "original" | "translated";
   }
 
   const spanRect = span.getBoundingClientRect();
@@ -559,6 +578,15 @@ export const createDeletionRectangleForSpan = (
 
     // Adjust X coordinate to account for the translated document position
     pageX = (spanRect.left - pageRect.left - singleDocWidth - gap) / scale;
+
+    // Apply template scaling factor to coordinates when template is scaled in split view
+    if (getTranslatedTemplateScaleFactor) {
+      const templateScaleFactor = getTranslatedTemplateScaleFactor(currentPage);
+      if (templateScaleFactor && templateScaleFactor !== 1) {
+        pageX = pageX / templateScaleFactor;
+        pageY = pageY / templateScaleFactor;
+      }
+    }
   }
 
   return addDeletionRectangle(

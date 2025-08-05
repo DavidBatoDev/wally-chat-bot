@@ -75,6 +75,16 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     [untranslatedTexts]
   );
 
+  // Helper function to find corresponding translated textbox
+  const findTranslatedTextBox = useCallback(
+    (untranslatedText: UntranslatedText): TextField | undefined => {
+      return translatedTextBoxes.find(
+        (textbox) => textbox.id === untranslatedText.translatedTextboxId
+      );
+    },
+    [translatedTextBoxes]
+  );
+
   const handleTextChange = useCallback(
     (id: string, newValue: string) => {
       onUpdateTextBox(id, { value: newValue });
@@ -218,39 +228,47 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     }
   }, []);
 
-  const handleRowClick = useCallback((textboxId: string) => {
-    setSelectedRowId(textboxId);
-    onRowClick?.(textboxId);
-  }, [onRowClick]);
+  const handleRowClick = useCallback(
+    (textboxId: string) => {
+      setSelectedRowId(textboxId);
+      onRowClick?.(textboxId);
+    },
+    [onRowClick]
+  );
 
   // Handle column resizing
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-    
-    const startX = e.clientX;
-    const startWidth = originalColumnWidth;
-    const tableRect = resizeRef.current?.closest('table')?.getBoundingClientRect();
-    
-    if (!tableRect) return;
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      const deltaX = e.clientX - startX;
-      const tableWidth = tableRect.width - 40; // Account for row number column
-      const deltaPercent = (deltaX / tableWidth) * 100;
-      const newWidth = Math.min(75, Math.max(25, startWidth + deltaPercent));
-      setOriginalColumnWidth(newWidth);
-    };
-    
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [originalColumnWidth]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsResizing(true);
+
+      const startX = e.clientX;
+      const startWidth = originalColumnWidth;
+      const tableRect = resizeRef.current
+        ?.closest("table")
+        ?.getBoundingClientRect();
+
+      if (!tableRect) return;
+
+      const handleMouseMove = (e: MouseEvent) => {
+        const deltaX = e.clientX - startX;
+        const tableWidth = tableRect.width - 40; // Account for row number column
+        const deltaPercent = (deltaX / tableWidth) * 100;
+        const newWidth = Math.min(75, Math.max(25, startWidth + deltaPercent));
+        setOriginalColumnWidth(newWidth);
+      };
+
+      const handleMouseUp = () => {
+        setIsResizing(false);
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+    },
+    [originalColumnWidth]
+  );
 
   // Auto-resize textarea
   const autoResizeTextarea = useCallback((textarea: HTMLTextAreaElement) => {
@@ -343,7 +361,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 <th className="px-1 py-0 text-center text-xs font-semibold text-gray-700 border-r border-b border-gray-300 w-8 bg-gray-100">
                   #
                 </th>
-                <th 
+                <th
                   className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-r border-b border-gray-300 bg-gray-50 relative"
                   style={{ width: `${originalColumnWidth}%` }}
                 >
@@ -353,12 +371,12 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     ref={resizeRef}
                     onMouseDown={handleMouseDown}
                     className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors ${
-                      isResizing ? 'bg-blue-500' : 'bg-transparent'
+                      isResizing ? "bg-blue-500" : "bg-transparent"
                     }`}
                     title="Resize column"
                   />
                 </th>
-                <th 
+                <th
                   className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-300 bg-gray-50"
                   style={{ width: `${100 - originalColumnWidth}%` }}
                 >
@@ -395,33 +413,53 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     </td>
 
                     {/* Original Text Column */}
-                    <td 
+                    <td
                       className="px-0 py-0 align-top border-r border-gray-200 relative"
                       style={{ width: `${originalColumnWidth}%` }}
                     >
                       <div className="p-2">
-                        {untranslatedText?.isCustomTextbox &&
-                        untranslatedText &&
-                        onUpdateUntranslatedText ? (
+                        {onUpdateUntranslatedText ? (
                           <textarea
                             ref={(el) => {
                               if (el) {
                                 originalTextareaRefs.current[
-                                  untranslatedText.id
+                                  untranslatedText?.id || textbox.id
                                 ] = el;
                                 autoResizeTextarea(el);
                               }
                             }}
                             value={originalText || ""}
-                            onChange={(e) =>
-                              handleOriginalTextChange(
-                                untranslatedText.id,
-                                e.target.value
-                              )
-                            }
-                            onFocus={() =>
-                              handleOriginalTextareaFocus(untranslatedText.id)
-                            }
+                            onChange={(e) => {
+                              if (untranslatedText) {
+                                handleOriginalTextChange(
+                                  untranslatedText.id,
+                                  e.target.value
+                                );
+                              } else if (onAddUntranslatedText) {
+                                // Create a new untranslated text entry if it doesn't exist
+                                onAddUntranslatedText({
+                                  translatedTextboxId: textbox.id,
+                                  originalText: e.target.value,
+                                  page: currentPage,
+                                  x: textbox.x,
+                                  y: textbox.y,
+                                  width: textbox.width,
+                                  height: textbox.height,
+                                  isCustomTextbox: false,
+                                  status:
+                                    e.target.value.trim() === ""
+                                      ? "isEmpty"
+                                      : "needsChecking",
+                                });
+                              }
+                            }}
+                            onFocus={() => {
+                              if (untranslatedText) {
+                                handleOriginalTextareaFocus(
+                                  untranslatedText.id
+                                );
+                              }
+                            }}
                             onBlur={handleOriginalTextareaBlur}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && e.ctrlKey) {
@@ -437,16 +475,20 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             }
                             onClick={(e) => e.stopPropagation()}
                             className={`w-full p-2 text-sm border-0 resize-none bg-transparent focus:outline-none ${
-                              editingOriginalId === untranslatedText.id
+                              editingOriginalId ===
+                              (untranslatedText?.id || textbox.id)
                                 ? ""
                                 : ""
                             }`}
                             style={{
                               minHeight: "32px",
-                              fontFamily: "system-ui, -apple-system, sans-serif",
+                              fontFamily:
+                                "system-ui, -apple-system, sans-serif",
                               lineHeight: "1.3",
                             }}
-                            placeholder="Enter original text..."
+                            placeholder={
+                              textbox.placeholder || "Enter original text..."
+                            }
                             spellCheck={false}
                           />
                         ) : originalText ? (
@@ -462,7 +504,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     </td>
 
                     {/* Translation Column */}
-                    <td 
+                    <td
                       className="px-0 py-0 align-top relative group"
                       style={{ width: `${100 - originalColumnWidth}%` }}
                     >
@@ -485,9 +527,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             e.stopPropagation();
                           }}
                           onInput={(e) =>
-                            autoResizeTextarea(
-                              e.target as HTMLTextAreaElement
-                            )
+                            autoResizeTextarea(e.target as HTMLTextAreaElement)
                           }
                           onClick={(e) => e.stopPropagation()}
                           className={`w-full p-2 pr-12 text-sm border-0 resize-none bg-transparent focus:outline-none ${
@@ -507,7 +547,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                           placeholder="Enter translation..."
                           spellCheck={false}
                         />
-                        
+
                         {/* Action buttons - positioned in top right corner */}
                         <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                           {/* Toggle Check/X Button */}
@@ -559,7 +599,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               : "bg-gray-400"
                           }`}
                         ></div>
-                        
+
                         {/* Status bar */}
                         <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-60">
                           <div
@@ -572,7 +612,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             }`}
                           ></div>
                         </div>
-                        
+
                         {/* Custom textbox indicator */}
                         {untranslatedText?.isCustomTextbox && (
                           <div className="absolute top-1 left-1 px-1 py-0.5 bg-gray-200 text-gray-600 rounded text-xs font-medium opacity-70">
@@ -619,7 +659,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       <div className="px-4 py-1 border-t border-gray-300 bg-gray-100 flex-shrink-0">
         <div className="flex items-center justify-between text-xs text-gray-600">
           <span>
-            Use Ctrl+Enter to finish editing • Click rows to highlight text location
+            Use Ctrl+Enter to finish editing • Click rows to highlight text
+            location
           </span>
           <span>Ready</span>
         </div>

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { DocumentState, PageData } from "../../types/pdf-editor.types";
 import { getFileType, isPdfFile } from "../../utils/measurements";
 import { toast } from "sonner";
+import { uploadFileWithFallback } from "../../services/fileUploadService";
 
 export const useDocumentState = () => {
   const [documentState, setDocumentState] = useState<DocumentState>({
@@ -23,6 +24,11 @@ export const useDocumentState = () => {
     pages: [],
     deletedPages: new Set(),
     isTransforming: false,
+    // Final layout fields
+    finalLayoutUrl: undefined,
+    finalLayoutCurrentPage: 1,
+    finalLayoutNumPages: 0,
+    finalLayoutDeletedPages: new Set(),
   });
 
   // Refs for scale changing
@@ -155,14 +161,12 @@ export const useDocumentState = () => {
   }, []);
 
   // Load document from file
-  const loadDocument = useCallback((file: File) => {
+  const loadDocument = useCallback(async (file: File) => {
     const fileType = getFileType(file.name);
-    const url = URL.createObjectURL(file);
 
+    // Set initial loading state
     setDocumentState((prev) => ({
       ...prev,
-      url,
-      fileType,
       isLoading: true,
       currentPage: 1,
       error: "",
@@ -173,13 +177,76 @@ export const useDocumentState = () => {
       isTransforming: false, // Reset transforming state
     }));
 
-    setTimeout(() => {
+    try {
+      // Upload file to Supabase or use blob URL as fallback
+      const uploadResult = await uploadFileWithFallback(file);
+
       setDocumentState((prev) => ({
         ...prev,
+        url: uploadResult.url,
+        fileType,
         isLoading: false,
+        // Store additional metadata for cleanup later
+        supabaseFilePath: uploadResult.filePath,
+        isSupabaseUrl: uploadResult.isSupabaseUrl,
       }));
-    }, 500);
+
+      if (uploadResult.isSupabaseUrl) {
+        toast.success("Document uploaded to cloud storage successfully!");
+      }
+    } catch (error) {
+      console.error("Error loading document:", error);
+      setDocumentState((prev) => ({
+        ...prev,
+        error: "Failed to load document",
+        isLoading: false,
+        isDocumentLoaded: false,
+      }));
+      toast.error("Failed to load document");
+    }
   }, []);
+
+  // Load document from URL (for project loading)
+  const loadDocumentFromUrl = useCallback(
+    async (
+      url: string,
+      fileType: "pdf" | "image" | null,
+      supabaseFilePath?: string
+    ) => {
+      // Set loading state
+      setDocumentState((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: "",
+      }));
+
+      try {
+        setDocumentState((prev) => ({
+          ...prev,
+          url,
+          fileType,
+          isLoading: false,
+          isDocumentLoaded: true,
+          // Store Supabase metadata if available
+          supabaseFilePath,
+          isSupabaseUrl:
+            url.includes("supabase.co") && url.includes("/storage/"),
+        }));
+
+        toast.success("Project document loaded successfully!");
+      } catch (error) {
+        console.error("Error loading document from URL:", error);
+        setDocumentState((prev) => ({
+          ...prev,
+          error: "Failed to load document",
+          isLoading: false,
+          isDocumentLoaded: false,
+        }));
+        toast.error("Failed to load project document");
+      }
+    },
+    []
+  );
 
   // Update scale with debouncing
   const updateScale = useCallback((newScale: number) => {
@@ -200,16 +267,65 @@ export const useDocumentState = () => {
 
   // Change current page
   const changePage = useCallback(
-    (page: number) => {
-      if (page >= 1 && page <= documentState.numPages) {
-        setDocumentState((prev) => ({
-          ...prev,
-          currentPage: page,
-          isPageLoading: true,
-        }));
+    (page: number, isFinalLayout = false) => {
+      console.log("document state final layout URL:", documentState.finalLayoutUrl);
+
+
+      if (isFinalLayout) {
+        // Handle final layout page change
+        if (page >= 1 && page <= (documentState.finalLayoutNumPages || 0)) {
+          console.log("✅ Final layout page change valid:", {
+            page,
+            finalLayoutNumPages: documentState.finalLayoutNumPages,
+          });
+          setDocumentState((prev) => {
+            const newState = {
+              ...prev,
+              finalLayoutCurrentPage: page,
+              isPageLoading: true,
+            };
+            console.log("🔄 Final layout state updated:", {
+              from: prev.finalLayoutCurrentPage,
+              to: page,
+              newState: newState,
+            });
+            return newState;
+          });
+        } else {
+          console.log("❌ Final layout page change invalid:", {
+            page,
+            finalLayoutNumPages: documentState.finalLayoutNumPages,
+          });
+        }
+      } else {
+        // Handle regular document page change
+        if (page >= 1 && page <= documentState.numPages) {
+          console.log("✅ Regular page change valid:", {
+            page,
+            numPages: documentState.numPages,
+          });
+          setDocumentState((prev) => {
+            const newState = {
+              ...prev,
+              currentPage: page,
+              isPageLoading: true,
+            };
+            console.log("🔄 Regular state updated:", {
+              from: prev.currentPage,
+              to: page,
+              newState: newState,
+            });
+            return newState;
+          });
+        } else {
+          console.log("❌ Regular page change invalid:", {
+            page,
+            numPages: documentState.numPages,
+          });
+        }
       }
     },
-    [documentState.numPages]
+    [documentState.numPages, documentState.finalLayoutNumPages]
   );
 
   // Capture PDF background color
@@ -290,23 +406,48 @@ export const useDocumentState = () => {
     []
   );
 
-  const deletePage = useCallback((pageNumber: number) => {
-    setDocumentState((prev) => {
-      const remainingPages = prev.numPages - prev.deletedPages.size;
+  const deletePage = useCallback(
+    (pageNumber: number, isFinalLayout = false) => {
+      setDocumentState((prev) => {
+        if (isFinalLayout) {
+          // Handle final layout page deletion
+          const finalLayoutDeletedPages =
+            prev.finalLayoutDeletedPages || new Set();
+          const remainingPages =
+            (prev.finalLayoutNumPages || 0) - finalLayoutDeletedPages.size;
 
-      if (remainingPages <= 1) {
-        toast.error("Cannot delete the last remaining page");
-        return prev;
-      }
+          if (remainingPages <= 1) {
+            toast.error("Cannot delete the last remaining page");
+            return prev;
+          }
 
-      return {
-        ...prev,
-        deletedPages: new Set([...prev.deletedPages, pageNumber]),
-      };
-    });
+          return {
+            ...prev,
+            finalLayoutDeletedPages: new Set([
+              ...finalLayoutDeletedPages,
+              pageNumber,
+            ]),
+          };
+        } else {
+          // Handle regular document page deletion
+          const remainingPages = prev.numPages - prev.deletedPages.size;
 
-    toast.success(`Page ${pageNumber} deleted`);
-  }, []);
+          if (remainingPages <= 1) {
+            toast.error("Cannot delete the last remaining page");
+            return prev;
+          }
+
+          return {
+            ...prev,
+            deletedPages: new Set([...prev.deletedPages, pageNumber]),
+          };
+        }
+      });
+
+      toast.success(`Page ${pageNumber} deleted`);
+    },
+    []
+  );
 
   const getCurrentPage = useCallback(() => {
     return (
@@ -352,6 +493,27 @@ export const useDocumentState = () => {
     [documentState.numPages, appendPages]
   );
 
+  // Load final layout from URL (for project loading with final layout)
+  const loadFinalLayoutFromUrl = useCallback(
+    async (finalLayoutUrl: string, finalLayoutNumPages: number = 0) => {
+      console.log("Loading final layout from URL:", {
+        finalLayoutUrl,
+        finalLayoutNumPages,
+      });
+
+      setDocumentState((prev) => ({
+        ...prev,
+        finalLayoutUrl,
+        finalLayoutCurrentPage: 1,
+        finalLayoutNumPages,
+        finalLayoutDeletedPages: new Set<number>(),
+      }));
+
+      console.log("Final layout URL loaded successfully");
+    },
+    []
+  );
+
   return {
     documentState,
     setDocumentState,
@@ -365,11 +527,13 @@ export const useDocumentState = () => {
     },
     actions: {
       loadDocument,
+      loadDocumentFromUrl,
       updateScale,
       changePage,
       capturePdfBackgroundColor,
       updatePdfBackgroundColor,
       resetScaleChanging,
+      loadFinalLayoutFromUrl,
     },
     pageActions: {
       addPage,

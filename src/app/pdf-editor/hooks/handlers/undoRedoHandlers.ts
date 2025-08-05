@@ -30,7 +30,7 @@ export function useHandleAddTextBoxWithUndo(
       y: number,
       page: number,
       view: ViewMode,
-      targetView?: "original" | "translated",
+      targetView?: "original" | "translated" | "final-layout",
       initialProperties?: Partial<TextField>
     ) => {
       let newId: string | null = null;
@@ -114,6 +114,7 @@ export function useUpdateTextBoxWithUndo(
   return useCallback(
     (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
       const currentState = getCurrentTextBoxState(id);
+      
       if (currentState) {
         const before: Partial<TextField> = {};
         const after: Partial<TextField> = {};
@@ -215,6 +216,41 @@ export function useUpdateTranslatedTextBoxWithUndo(
   );
 }
 
+// View-specific: final-layout
+export function useUpdateFinalLayoutTextBoxWithUndo(
+  updateTextBox: any,
+  handleUpdateTextBoxWithUndo: any,
+  getCurrentTextBoxState: any,
+  documentState: any
+) {
+  return useCallback(
+    (id: string, updates: Partial<TextField>, isOngoingOperation = false) => {
+      const currentState = getCurrentTextBoxState(id);
+      if (currentState) {
+        const before: Partial<TextField> = {};
+        const after: Partial<TextField> = {};
+        Object.keys(updates).forEach((key) => {
+          const k = key as keyof TextField;
+          if (currentState[k] !== updates[k]) {
+            before[k] = currentState[k] as any;
+            after[k] = updates[k] as any;
+          }
+        });
+        if (Object.keys(after).length > 0) {
+          handleUpdateTextBoxWithUndo(
+            id,
+            before,
+            after,
+            documentState.finalLayoutCurrentPage || 1,
+            "final-layout"
+          );
+        }
+      }
+    },
+    [getCurrentTextBoxState, handleUpdateTextBoxWithUndo, documentState]
+  );
+}
+
 // Refactored handler for adding a shape with undo support
 export function useHandleAddShapeWithUndo(
   addShape: any,
@@ -230,7 +266,7 @@ export function useHandleAddShapeWithUndo(
       height: number,
       page: number,
       view: ViewMode,
-      targetView?: "original" | "translated",
+      targetView?: "original" | "translated" | "final-layout",
       // Line-specific parameters
       x1?: number,
       y1?: number,
@@ -324,6 +360,7 @@ export function useUpdateShapeWithUndo(
           const allShapes = [
             ...elementCollections.originalShapes,
             ...elementCollections.translatedShapes,
+            ...elementCollections.finalLayoutShapes, // Add final layout shapes
           ];
           const shape = allShapes.find((s: any) => s.id === id);
           if (shape) {
@@ -331,7 +368,11 @@ export function useUpdateShapeWithUndo(
               (s: any) => s.id === id
             )
               ? "original"
-              : "translated";
+              : elementCollections.translatedShapes.some(
+                (s: any) => s.id === id
+              )
+              ? "translated"
+              : "final-layout";
             handleUpdateShapeWithUndo(id, before, after, shape.page, view);
           }
         }
@@ -359,10 +400,11 @@ export function useHandleDeleteTextBoxWithUndo(
 ) {
   return useCallback(
     (id: string, view: ViewMode) => {
-      // Find the textbox to delete
+      // Find the textbox to delete from all collections
       const allTextBoxes = [
         ...elementCollections.originalTextBoxes,
         ...elementCollections.translatedTextBoxes,
+        ...elementCollections.finalLayoutTextboxes, // Add final layout textboxes
       ];
       const textBox = allTextBoxes.find((tb: any) => tb.id === id);
       if (!textBox) return;
@@ -372,7 +414,11 @@ export function useHandleDeleteTextBoxWithUndo(
         (tb: any) => tb.id === id
       )
         ? "original"
-        : "translated";
+        : elementCollections.translatedTextBoxes.some(
+          (tb: any) => tb.id === id
+        )
+        ? "translated"
+        : "final-layout";
 
       const remove = (id: string) => {
         deleteTextBox(id, view);
@@ -434,10 +480,11 @@ export function useHandleDeleteShapeWithUndo(
 ) {
   return useCallback(
     (id: string, view: ViewMode) => {
-      // Find the shape to delete
+      // Find the shape to delete from all collections
       const allShapes = [
         ...elementCollections.originalShapes,
         ...elementCollections.translatedShapes,
+        ...elementCollections.finalLayoutShapes, // Add final layout shapes
       ];
       const shape = allShapes.find((s: any) => s.id === id);
       if (!shape) return;
@@ -447,7 +494,11 @@ export function useHandleDeleteShapeWithUndo(
         (s: any) => s.id === id
       )
         ? "original"
-        : "translated";
+        : elementCollections.translatedShapes.some(
+          (s: any) => s.id === id
+        )
+        ? "translated"
+        : "final-layout";
 
       const remove = (id: string) => {
         deleteShape(id, view);
@@ -567,6 +618,7 @@ export function useHandleDeleteDeletionRectangleWithUndo(
       const allRects = [
         ...elementCollections.originalDeletionRectangles,
         ...elementCollections.translatedDeletionRectangles,
+        ...elementCollections.finalLayoutDeletionRectangles,
       ];
       const rect = allRects.find((r: any) => r.id === id);
       if (!rect) return;
@@ -576,6 +628,10 @@ export function useHandleDeleteDeletionRectangleWithUndo(
         (r: any) => r.id === id
       )
         ? "original"
+        : elementCollections.finalLayoutDeletionRectangles.some(
+            (r: any) => r.id === id
+          )
+        ? "final-layout"
         : "translated";
 
       const remove = (id: string) => {
@@ -615,12 +671,27 @@ export function useHandleAddImageWithUndo(
       width: number,
       height: number,
       page: number,
-      view: ViewMode
+      view: ViewMode,
+      supabaseMetadata?: {
+        isSupabaseUrl?: boolean;
+        filePath?: string;
+        fileName?: string;
+        fileObjectId?: string;
+      }
     ) => {
       let newId: string | null = null;
       const idRef = { current: null as string | null };
       const add = () => {
-        newId = addImage(src, x, y, width, height, page, view);
+        newId = addImage(
+          src,
+          x,
+          y,
+          width,
+          height,
+          page,
+          view,
+          supabaseMetadata
+        );
         idRef.current = newId;
         if (!newId) throw new Error("Failed to add image: newId is null");
         return newId;
@@ -648,10 +719,11 @@ export function useHandleDeleteImageWithUndo(
 ) {
   return useCallback(
     (id: string, view: ViewMode) => {
-      // Find the image to delete
+      // Find the image to delete from all collections
       const allImages = [
         ...elementCollections.originalImages,
         ...elementCollections.translatedImages,
+        ...elementCollections.finalLayoutImages, // Add final layout images
       ];
       const image = allImages.find((img: any) => img.id === id);
       if (!image) return;
@@ -661,7 +733,11 @@ export function useHandleDeleteImageWithUndo(
         (img: any) => img.id === id
       )
         ? "original"
-        : "translated";
+        : elementCollections.translatedImages.some(
+          (img: any) => img.id === id
+        )
+        ? "translated"
+        : "final-layout";
 
       const remove = (id: string) => {
         deleteImage(id, view);

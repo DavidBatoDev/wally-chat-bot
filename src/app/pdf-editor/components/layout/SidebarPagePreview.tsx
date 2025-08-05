@@ -205,8 +205,10 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   // Use isPdfFile to check for PDF
   const isPdf = pdfUrl && isPdfFile(pdfUrl);
 
-  // In final-layout mode, only show original view
-  const showOnlyOriginal = currentWorkflowStep === "final-layout";
+  // In final-layout or translate mode, only show original view
+  const showOnlyOriginal =
+    currentWorkflowStep === "final-layout" ||
+    currentWorkflowStep === "translate";
 
   // Helper function to create sorted elements array
   const createSortedElements = (elements: {
@@ -436,14 +438,15 @@ const arePropsEqual = (
   prevProps: SidebarPagePreviewProps,
   nextProps: SidebarPagePreviewProps
 ) => {
-  // Always re-render if page number, dimensions, or scale changes
+  // Always re-render if page number, dimensions, scale, or workflow step changes
   if (
     prevProps.pageNum !== nextProps.pageNum ||
     prevProps.pageWidth !== nextProps.pageWidth ||
     prevProps.pageHeight !== nextProps.pageHeight ||
     prevProps.scale !== nextProps.scale ||
     prevProps.pdfUrl !== nextProps.pdfUrl ||
-    prevProps.pdfBackgroundColor !== nextProps.pdfBackgroundColor
+    prevProps.pdfBackgroundColor !== nextProps.pdfBackgroundColor ||
+    prevProps.currentWorkflowStep !== nextProps.currentWorkflowStep
   ) {
     return false;
   }

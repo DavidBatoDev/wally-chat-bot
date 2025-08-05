@@ -2,7 +2,7 @@ import React from "react";
 import { Document, Page } from "react-pdf";
 
 interface DocumentViewProps {
-  viewType: "original" | "translated";
+  viewType: "original" | "translated" | "final-layout";
   documentUrl: string;
   currentPage: number;
   pageWidth: number;
@@ -61,19 +61,19 @@ const DocumentView: React.FC<DocumentViewProps> = ({
           <Document
             file={documentUrl}
             onLoadSuccess={
-              viewType === "original"
+              viewType === "original" || viewType === "final-layout"
                 ? handlers.handleDocumentLoadSuccess
                 : () => {}
             }
             onLoadError={
-              viewType === "original"
+              viewType === "original" || viewType === "final-layout"
                 ? handlers.handleDocumentLoadError
                 : () => {}
             }
             loading={null}
           >
             <Page
-              pageNumber={viewType === "original" ? currentPage : 1}
+              pageNumber={currentPage}
               onLoadSuccess={(page) => {
                 if (viewType === "original") {
                   handlers.handlePageLoadSuccess(page);
@@ -85,15 +85,18 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                     viewport.width,
                     viewport.height
                   );
+                } else if (viewType === "final-layout") {
+                  // For final-layout view, handle page load success
+                  handlers.handlePageLoadSuccess(page);
                 }
               }}
               onLoadError={
-                viewType === "original"
+                viewType === "original" || viewType === "final-layout"
                   ? handlers.handlePageLoadError
                   : () => {}
               }
               onRenderSuccess={() => {
-                if (viewType === "original") {
+                if (viewType === "original" || viewType === "final-layout") {
                   setDocumentState((prev: any) => ({
                     ...prev,
                     isPageLoading: false,
@@ -102,7 +105,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                 }
               }}
               onRenderError={
-                viewType === "original"
+                viewType === "original" || viewType === "final-layout"
                   ? handlers.handlePageLoadError
                   : () => {}
               }
@@ -180,6 +183,18 @@ const DocumentView: React.FC<DocumentViewProps> = ({
       {/* Document Content */}
       {viewType === "original" ? (
         renderDocumentContent()
+      ) : viewType === "final-layout" ? (
+        <div className="w-full h-full bg-white">
+          {/* For final-layout, render document content and children (interactive elements) */}
+          {documentUrl && documentUrl !== "" ? (
+            <>
+              {renderDocumentContent()}
+              {children}
+            </>
+          ) : (
+            children
+          )}
+        </div>
       ) : (
         <div className="w-full h-full bg-white">
           {/* Render template document in translated view if available, otherwise show children (blank view) */}

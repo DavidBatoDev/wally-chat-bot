@@ -1,10 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, projects, pages, templates
+from routers import auth, projects, pages, templates, project_state
+from services.db_service import db_service
 
 # This is for Swagger UI auth
 from fastapi.openapi.utils import get_openapi
 import uvicorn
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -22,11 +26,99 @@ app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(projects.router, prefix="/projects", tags=["Projects"])
 app.include_router(pages.router, prefix="/pages", tags=["Pages"])
 app.include_router(templates.router, prefix="/templates", tags=["Templates"])
+app.include_router(project_state.router, tags=["Project State"])
+
+# Test endpoint for database connection
+@app.get("/test/profiles")
+async def test_profiles():
+    """Test endpoint to fetch profiles and verify database connection."""
+    try:
+        result = db_service.test_profiles_connection()
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Database test failed: {str(e)}"
+        }
+
+@app.get("/test/projects")
+async def test_projects():
+    """Test endpoint to check if projects table exists."""
+    try:
+        result = db_service.client.table('projects').select('id').limit(1).execute()
+        return {
+            "success": True,
+            "message": "Projects table exists and is accessible",
+            "count": len(result.data) if result.data else 0
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"Projects table test failed: {str(e)}"
+        }
 
 
 @app.get("/", tags=["Root"])
 async def read_root():
     return {"message": "Welcome to the Wally OCR and Canvas API"}
+
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint that verifies database connectivity.
+    """
+    try:
+        # Check database health
+        db_healthy = db_service.health_check()
+        
+        if not db_healthy:
+            raise HTTPException(status_code=503, detail="Database connection failed")
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "message": "All services are operational"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+
+@app.get("/db-info", tags=["Database"])
+async def database_info():
+    """
+    Get information about the database service.
+    """
+    try:
+        # Test basic connectivity
+        db_healthy = db_service.health_check()
+        
+        # Get some basic stats
+        stats = {}
+        try:
+            profiles_count = len(db_service.get_records('profiles', limit=1000))
+            file_objects_count = len(db_service.get_records('file_objects', limit=1000))
+            templates_count = len(db_service.get_records('templates', limit=1000))
+            
+            stats = {
+                "profiles": profiles_count,
+                "file_objects": file_objects_count,
+                "templates": templates_count
+            }
+        except Exception as e:
+            logger.warning(f"Could not fetch database stats: {e}")
+            stats = {"error": "Could not fetch stats"}
+        
+        return {
+            "database_healthy": db_healthy,
+            "service_class": db_service.__class__.__name__,
+            "client_initialized": db_service._client is not None,
+            "table_counts": stats
+        }
+    except Exception as e:
+        logger.error(f"Database info check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get database info: {str(e)}")
 
 # Custom OpenAPI schema for JWT token auth in Swagger UI
 def custom_openapi():

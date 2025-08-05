@@ -19,7 +19,11 @@ interface UseFormatHandlersProps {
   };
   getCurrentTextBoxes: (view: ViewMode) => TextField[];
   getCurrentImages: (view: ViewMode) => ImageType[];
-  updateTextBoxWithUndo: (id: string, updates: any, isOngoing?: boolean) => void;
+  updateTextBoxWithUndo: (
+    id: string,
+    updates: any,
+    isOngoing?: boolean
+  ) => void;
   updateShapeWithUndo: (id: string, updates: any, isOngoing?: boolean) => void;
   updateImage: (id: string, updates: any) => void;
 }

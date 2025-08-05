@@ -13,6 +13,7 @@ import {
   Trash2,
   Eye,
   ChevronDown,
+  Settings,
 } from "lucide-react";
 import {
   EditorState,
@@ -34,6 +35,8 @@ interface FloatingToolbarProps {
   onEditModeToggle: () => void;
   onDeletionToggle: () => void;
   onImageUpload?: () => void;
+  showFinalLayoutSettings?: boolean;
+  onToggleFinalLayoutSettings?: () => void;
 }
 
 export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
@@ -49,6 +52,8 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   onEditModeToggle,
   onDeletionToggle,
   onImageUpload,
+  showFinalLayoutSettings,
+  onToggleFinalLayoutSettings,
 }) => {
   const [isShapeMenuOpen, setIsShapeMenuOpen] = useState(false);
   const shapeMenuRef = useRef<HTMLDivElement>(null);
@@ -97,7 +102,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
 
   return (
     <>
-      {/* Hide left toolbar in translate mode */}
+      {/* Hide left toolbar only in translate mode */}
       {currentWorkflowStep !== "translate" && (
         <div
           className="absolute z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300"
@@ -371,31 +376,33 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             </>
           )}
 
-          {/* Final Layout Step: Show only original and split, but keep edit/deletion toggles */}
+          {/* Final Layout Step: Show only final-layout specific controls */}
           {currentWorkflowStep === "final-layout" && (
             <>
               <button
-                onClick={() => onViewChange("original")}
+                onClick={() => onViewChange("final-layout")}
                 className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
-                  currentView === "original"
+                  currentView === "final-layout"
                     ? "bg-primary text-white hover:bg-primaryLight shadow-md"
                     : "text-gray-700 hover:text-primary"
                 }`}
-                title="Original Document"
+                title="Final Layout Document"
               >
-                <FileText className="w-5 h-5" />
+                <Eye className="w-5 h-5" />
               </button>
-              <button
-                onClick={() => onViewChange("split")}
-                className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
-                  currentView === "split"
-                    ? "bg-primary text-white hover:bg-primaryLight shadow-md"
-                    : "text-gray-700 hover:text-primary"
-                }`}
-                title="Split Screen"
-              >
-                <SplitSquareHorizontal className="w-5 h-5" />
-              </button>
+              {onToggleFinalLayoutSettings && (
+                <button
+                  onClick={onToggleFinalLayoutSettings}
+                  className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${
+                    showFinalLayoutSettings
+                      ? "bg-primary text-white hover:bg-primaryLight shadow-md"
+                      : "text-gray-700 hover:text-primary"
+                  }`}
+                  title="Toggle Final Layout Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              )}
               <button
                 onClick={onEditModeToggle}
                 className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 ${

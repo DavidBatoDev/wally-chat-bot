@@ -1,6 +1,7 @@
 import domtoimage from "dom-to-image";
 import { toast } from "sonner";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { uploadFileWithFallback } from "./fileUploadService";
 
 export interface SnapshotData {
   pageNumber: number;
@@ -240,10 +241,16 @@ async function capturePageView(
 
 /**
  * Creates a PDF with the export_first_page.pdf as the first page, followed by captured snapshots arranged in a 2x2 grid
+ * Uploads the PDF to Supabase storage or creates a blob URL as fallback
  */
 export async function createFinalLayoutPdf(
   snapshots: SnapshotData[]
-): Promise<File> {
+): Promise<{
+  url: string;
+  isSupabaseUrl: boolean;
+  filePath?: string;
+  fileObjectId?: string;
+}> {
   try {
     const pdfDoc = await PDFDocument.create();
 
@@ -299,12 +306,18 @@ export async function createFinalLayoutPdf(
       });
     }
 
-    // Convert to file
+    // Convert to PDF bytes
     const pdfBytes = await pdfDoc.save();
-    const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
-    return new File([pdfBlob], "final-layout-with-template.pdf", {
+    
+    // Create a File object for upload
+    const pdfFile = new File([pdfBytes], "final-layout-with-template.pdf", {
       type: "application/pdf",
     });
+
+    // Upload to Supabase or use blob URL as fallback
+    const uploadResult = await uploadFileWithFallback(pdfFile);
+
+    return uploadResult;
   } catch (error) {
     console.error("Error creating final layout PDF:", error);
     throw new Error(

@@ -5,6 +5,7 @@ import {
   ErasureState,
   ViewMode,
 } from "../../types/pdf-editor.types";
+import { screenToDocumentCoordinates } from "../../utils/coordinates";
 
 interface UseShapeDrawingHandlersProps {
   toolState: ToolState;
@@ -15,7 +16,9 @@ interface UseShapeDrawingHandlersProps {
     scale: number;
     pageWidth: number;
     currentPage: number;
+    finalLayoutCurrentPage?: number;
   };
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number;
   viewState: {
     currentView: ViewMode;
   };
@@ -46,7 +49,20 @@ export const useShapeDrawingHandlers = ({
   viewState,
   documentRef,
   handleAddShapeWithUndo,
+  getTranslatedTemplateScaleFactor,
 }: UseShapeDrawingHandlersProps) => {
+  // Helper function to get the correct current page based on view
+  const getCurrentPageForView = useCallback(() => {
+    if (viewState.currentView === "final-layout") {
+      return documentState.finalLayoutCurrentPage || 1;
+    }
+    return documentState.currentPage;
+  }, [
+    viewState.currentView,
+    documentState.currentPage,
+    documentState.finalLayoutCurrentPage,
+  ]);
+
   // Shape drawing handlers
   const handleShapeDrawStart = useCallback(
     (e: React.MouseEvent) => {
@@ -55,30 +71,37 @@ export const useShapeDrawingHandlers = ({
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      let x = (e.clientX - rect.left) / documentState.scale;
-      let y = (e.clientY - rect.top) / documentState.scale;
-      let targetView: "original" | "translated" | null = null;
-
       // Determine target view in split mode
+      let targetView: "original" | "translated" | null = null;
       if (viewState.currentView === "split") {
         const clickX = e.clientX - rect.left;
         const singleDocWidth = documentState.pageWidth * documentState.scale;
         const gap = 20;
 
         if (clickX > singleDocWidth + gap) {
-          // Click on translated side
           targetView = "translated";
-          x = (clickX - singleDocWidth - gap) / documentState.scale;
         } else if (clickX <= singleDocWidth) {
-          // Click on original side
           targetView = "original";
         } else {
-          // Click in gap
-          return;
+          return; // Click in gap
         }
       } else {
         targetView = viewState.currentView;
       }
+
+      // Convert screen coordinates to document coordinates
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        targetView,
+        viewState.currentView,
+        documentState.pageWidth,
+        targetView === "translated"
+          ? getTranslatedTemplateScaleFactor?.(documentState.currentPage)
+          : undefined
+      );
 
       setToolState((prev) => ({
         ...prev,
@@ -103,23 +126,19 @@ export const useShapeDrawingHandlers = ({
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-
-      // Calculate base coordinates
-      let x = clickX / documentState.scale;
-      let y = clickY / documentState.scale;
-
-      // Adjust coordinates for split view
-      if (viewState.currentView === "split") {
-        const singleDocWidth = documentState.pageWidth;
-        const gap = 20 / documentState.scale;
-
-        // Check if we're drawing on the translated side
-        if (toolState.shapeDrawTargetView === "translated") {
-          x = (clickX - documentState.pageWidth * documentState.scale - 20) / documentState.scale;
-        }
-      }
+      // Convert screen coordinates to document coordinates
+      const { x, y } = screenToDocumentCoordinates(
+        e.clientX,
+        e.clientY,
+        rect,
+        documentState.scale,
+        toolState.shapeDrawTargetView,
+        viewState.currentView,
+        documentState.pageWidth,
+        toolState.shapeDrawTargetView === "translated"
+          ? getTranslatedTemplateScaleFactor?.(documentState.currentPage)
+          : undefined
+      );
 
       setToolState((prev) => ({
         ...prev,
@@ -148,13 +167,14 @@ export const useShapeDrawingHandlers = ({
     if (toolState.shapeDrawingMode === "line") {
       // For lines, use direct coordinates without minimum size constraint
       const targetView = toolState.shapeDrawTargetView || viewState.currentView;
+
       handleAddShapeWithUndo(
         "line",
         0, // Not used for lines
         0, // Not used for lines
         0, // Not used for lines
         0, // Not used for lines
-        documentState.currentPage,
+        getCurrentPageForView(),
         viewState.currentView,
         toolState.shapeDrawTargetView || undefined,
         // Line coordinates
@@ -173,17 +193,24 @@ export const useShapeDrawingHandlers = ({
       );
 
       if (width > 10 && height > 10) {
-        const x = Math.min(toolState.shapeDrawStart.x, toolState.shapeDrawEnd.x);
-        const y = Math.min(toolState.shapeDrawStart.y, toolState.shapeDrawEnd.y);
+        const x = Math.min(
+          toolState.shapeDrawStart.x,
+          toolState.shapeDrawEnd.x
+        );
+        const y = Math.min(
+          toolState.shapeDrawStart.y,
+          toolState.shapeDrawEnd.y
+        );
 
-        const targetView = toolState.shapeDrawTargetView || viewState.currentView;
+        const targetView =
+          toolState.shapeDrawTargetView || viewState.currentView;
         handleAddShapeWithUndo(
           toolState.shapeDrawingMode as "circle" | "rectangle",
           x,
           y,
           width,
           height,
-          documentState.currentPage,
+          getCurrentPageForView(),
           viewState.currentView,
           toolState.shapeDrawTargetView || undefined
         );
@@ -211,6 +238,7 @@ export const useShapeDrawingHandlers = ({
     toolState,
     handleAddShapeWithUndo,
     documentState.currentPage,
+    documentState.finalLayoutCurrentPage,
     viewState.currentView,
     setToolState,
     setEditorState,

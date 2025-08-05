@@ -27,7 +27,7 @@ export interface PageData {
 
 // Document and page related types
 export interface DocumentState {
-  url: string;
+  url: string; // This now contains the actual URL (Supabase public URL or blob URL)
   currentPage: number;
   numPages: number;
   scale: number;
@@ -45,6 +45,14 @@ export interface DocumentState {
   pages: PageData[];
   deletedPages: Set<number>;
   isTransforming: boolean;
+  // Supabase storage fields
+  supabaseFilePath?: string; // The internal file path in Supabase storage (for deletion)
+  isSupabaseUrl?: boolean;
+  // Final layout fields
+  finalLayoutUrl?: string;
+  finalLayoutCurrentPage?: number;
+  finalLayoutNumPages?: number;
+  finalLayoutDeletedPages?: Set<number>;
 }
 
 export interface TextField {
@@ -54,6 +62,7 @@ export interface TextField {
   width: number;
   height: number;
   value: string;
+  placeholder?: string; // Placeholder text for the text field
   fontSize: number;
   fontFamily: string;
   page: number;
@@ -122,6 +131,11 @@ export interface Image {
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;
+  // Supabase storage metadata
+  isSupabaseUrl?: boolean;
+  filePath?: string; // Supabase storage path for cleanup/management
+  fileName?: string; // Original filename for reference
+  fileObjectId?: string; // UUID from file_objects table
 }
 
 // Deletion rectangle interface
@@ -194,7 +208,7 @@ export interface ErasureState {
   isDrawingErasure: boolean;
   erasureDrawStart: { x: number; y: number } | null;
   erasureDrawEnd: { x: number; y: number } | null;
-  erasureDrawTargetView: "original" | "translated" | null;
+  erasureDrawTargetView: "original" | "translated" | "final-layout" | null;
   erasureSettings: {
     width: number;
     height: number;
@@ -241,11 +255,11 @@ export interface MultiSelectionState {
   selectionEnd: { x: number; y: number } | null;
   isMovingSelection: boolean;
   moveStart: { x: number; y: number } | null;
-  targetView: "original" | "translated" | null;
+  targetView: "original" | "translated" | "final-layout" | null;
 }
 
 // View state types
-export type ViewMode = "original" | "translated" | "split";
+export type ViewMode = "original" | "translated" | "split" | "final-layout";
 
 export type WorkflowStep = "translate" | "layout" | "final-layout";
 
@@ -310,6 +324,11 @@ export interface ElementCollections {
   translatedDeletionRectangles: DeletionRectangle[];
   translatedImages: Image[];
   untranslatedTexts: UntranslatedText[];
+  // Final layout elements
+  finalLayoutTextboxes: TextField[];
+  finalLayoutShapes: Shape[];
+  finalLayoutDeletionRectangles: DeletionRectangle[];
+  finalLayoutImages: Image[];
 }
 
 // Page management

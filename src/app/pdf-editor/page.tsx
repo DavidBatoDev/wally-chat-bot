@@ -18,11 +18,11 @@ const PDFEditor: React.FC = () => {
   const router = useRouter();
   const { projects, currentUser } = useTranslationStore();
   const [project, setProject] = useState<any>(null);
-  const projectId = searchParams.get('projectId');
+  const projectId = searchParams.get("projectId");
 
   useEffect(() => {
     if (projectId) {
-      const foundProject = projects.find(p => p.id === projectId);
+      const foundProject = projects.find((p) => p.id === projectId);
       if (foundProject) {
         setProject(foundProject);
       }
@@ -32,35 +32,37 @@ const PDFEditor: React.FC = () => {
   // Add keyboard shortcut for back navigation
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         handleBackToProject();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [project]);
 
   const handleBackToProject = () => {
     if (project && currentUser) {
       // Route based on current user's role
       const userRole = currentUser.role;
-      console.log('Routing to user role:', userRole);
+      console.log("Routing to user role:", userRole);
       router.push(`/exp/${userRole}`);
     } else if (project) {
       // Fallback: determine route based on project assignment
-      const userRole = project.assignedTranslator ? 'translator' : 'project-manager';
-      console.log('Routing to fallback role:', userRole);
+      const userRole = project.assignedTranslator
+        ? "translator"
+        : "project-manager";
+      console.log("Routing to fallback role:", userRole);
       router.push(`/exp/${userRole}`);
     } else {
       // Fallback to main dashboard
-      console.log('Routing to main dashboard');
-      router.push('/exp');
+      console.log("Routing to main dashboard");
+      router.push("/exp");
     }
   };
 
   const handleBackToDashboard = () => {
-    router.push('/exp');
+    router.push("/exp");
   };
 
   return (
@@ -90,21 +92,23 @@ const PDFEditor: React.FC = () => {
             </div>
             <div>
               <h1 className="text-lg font-semibold">{project.qCode}</h1>
-              <p className="text-sm text-muted-foreground">{project.clientName}</p>
+              <p className="text-sm text-muted-foreground">
+                {project.clientName}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">
-              {project.sourceLanguage} → {project.targetLanguages.join(', ')}
+              {project.sourceLanguage} → {project.targetLanguages.join(", ")}
             </span>
           </div>
         </div>
       )}
-      
+
       {/* PDF Editor Content */}
       <div className="flex-1">
         <TextFormatProvider>
-          <PDFEditorContent projectData={project} />
+          <PDFEditorContent />
         </TextFormatProvider>
       </div>
     </div>

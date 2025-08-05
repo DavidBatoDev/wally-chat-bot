@@ -9,8 +9,8 @@ export interface CoordinateAdjustment {
 export const adjustSplitViewCoordinates = (
   x: number,
   y: number,
-  targetView: "original" | "translated" | null,
-  currentView: "original" | "translated" | "split",
+  targetView: "original" | "translated" | "final-layout" | null,
+  currentView: "original" | "translated" | "split" | "final-layout",
   pageWidth: number,
   scale: number
 ): CoordinateAdjustment => {
@@ -29,12 +29,18 @@ export const adjustSplitViewCoordinates = (
 export const getPreviewLeft = (
   x: number,
   isTranslated: boolean,
-  currentView: "original" | "translated" | "split",
+  currentView: "original" | "translated" | "split" | "final-layout",
   pageWidth: number,
-  scale: number
+  scale: number,
+  templateScaleFactor?: number
 ): number => {
   if (currentView === "split" && isTranslated) {
-    return x * scale + pageWidth * scale + 20;
+    // Apply template scaling factor to the preview position
+    const effectiveScale =
+      templateScaleFactor && templateScaleFactor !== 1
+        ? scale * templateScaleFactor
+        : scale;
+    return x * effectiveScale + pageWidth * scale + 20;
   }
   return x * scale;
 };
@@ -79,9 +85,10 @@ export const screenToDocumentCoordinates = (
   clientY: number,
   rect: DOMRect,
   scale: number,
-  targetView: "original" | "translated" | null,
-  currentView: "original" | "translated" | "split",
-  pageWidth: number
+  targetView: "original" | "translated" | "final-layout" | null,
+  currentView: "original" | "translated" | "split" | "final-layout",
+  pageWidth: number,
+  templateScaleFactor?: number
 ): CoordinateAdjustment => {
   let x = (clientX - rect.left) / scale;
   let y = (clientY - rect.top) / scale;
@@ -91,6 +98,12 @@ export const screenToDocumentCoordinates = (
     const singleDocWidth = pageWidth;
     const gap = 20 / scale;
     x = x - singleDocWidth - gap;
+
+    // Apply template scaling factor to coordinates when template is scaled in split view
+    if (templateScaleFactor && templateScaleFactor !== 1) {
+      x = x / templateScaleFactor;
+      y = y / templateScaleFactor;
+    }
   }
 
   return { x, y };

@@ -6,6 +6,7 @@ import {
   TextField,
   ViewMode,
 } from "../../types/pdf-editor.types";
+import { screenToDocumentCoordinates } from "../../utils/coordinates";
 
 interface UseDocumentMouseHandlersProps {
   editorState: EditorState;
@@ -20,6 +21,7 @@ interface UseDocumentMouseHandlersProps {
     currentPage: number;
     pdfBackgroundColor: string;
   };
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number;
   viewState: {
     currentView: ViewMode;
   };
@@ -31,7 +33,7 @@ interface UseDocumentMouseHandlersProps {
     width: number,
     height: number,
     page: number,
-    view: ViewMode,
+    view: "original" | "translated" | "final-layout",
     background: string,
     opacity: number
   ) => string | null;
@@ -49,6 +51,7 @@ export const useDocumentMouseHandlers = ({
   documentRef,
   currentPageTextBoxes,
   handleAddDeletionRectangleWithUndo,
+  getTranslatedTemplateScaleFactor,
 }: UseDocumentMouseHandlersProps) => {
   // Document mouse handlers for text selection and erasure
   const handleDocumentMouseDown = useCallback(
@@ -86,30 +89,38 @@ export const useDocumentMouseHandlers = ({
         const rect = documentRef.current?.getBoundingClientRect();
         if (!rect) return;
 
-        let x = (e.clientX - rect.left) / documentState.scale;
-        let y = (e.clientY - rect.top) / documentState.scale;
-        let targetView: "original" | "translated" | undefined = undefined;
-
-        // Set targetView based on currentView and click position
+        // Determine target view
+        let targetView: "original" | "translated" | "final-layout" | undefined =
+          undefined;
         if (viewState.currentView === "split") {
           const clickX = e.clientX - rect.left;
           const singleDocWidth = documentState.pageWidth * documentState.scale;
           const gap = 20;
 
           if (clickX > singleDocWidth + gap) {
-            // Click on translated side
             targetView = "translated";
-            x = (clickX - singleDocWidth - gap) / documentState.scale;
           } else if (clickX <= singleDocWidth) {
-            // Click on original side
             targetView = "original";
           } else {
-            // Click in gap
-            return;
+            return; // Click in gap
           }
         } else {
           targetView = viewState.currentView;
         }
+
+        // Convert screen coordinates to document coordinates
+        const { x, y } = screenToDocumentCoordinates(
+          e.clientX,
+          e.clientY,
+          rect,
+          documentState.scale,
+          targetView,
+          viewState.currentView,
+          documentState.pageWidth,
+          targetView === "translated"
+            ? getTranslatedTemplateScaleFactor?.(documentState.currentPage)
+            : undefined
+        );
 
         setErasureState((prev) => ({
           ...prev,
@@ -160,25 +171,19 @@ export const useDocumentMouseHandlers = ({
         const rect = documentRef.current?.getBoundingClientRect();
         if (!rect) return;
 
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        // Calculate base coordinates
-        let x = clickX / documentState.scale;
-        let y = clickY / documentState.scale;
-
-        // Adjust coordinates for split view
-        if (viewState.currentView === "split") {
-          const singleDocWidth = documentState.pageWidth;
-          const gap = 20 / documentState.scale;
-
-          // Check if we're drawing on the translated side
-          if (erasureState.erasureDrawTargetView === "translated") {
-            x =
-              (clickX - documentState.pageWidth * documentState.scale - 20) /
-              documentState.scale;
-          }
-        }
+        // Convert screen coordinates to document coordinates
+        const { x, y } = screenToDocumentCoordinates(
+          e.clientX,
+          e.clientY,
+          rect,
+          documentState.scale,
+          erasureState.erasureDrawTargetView,
+          viewState.currentView,
+          documentState.pageWidth,
+          erasureState.erasureDrawTargetView === "translated"
+            ? getTranslatedTemplateScaleFactor?.(documentState.currentPage)
+            : undefined
+        );
 
         setErasureState((prev) => ({
           ...prev,

@@ -12,6 +12,8 @@ import {
   FileText,
   Settings,
   Check,
+  FolderOpen,
+  RefreshCw,
 } from "lucide-react";
 import { WorkflowStep } from "../../types/pdf-editor.types";
 
@@ -20,6 +22,7 @@ interface PDFEditorHeaderProps {
   onSidebarToggle: () => void;
   onFileUpload: () => void;
   onSaveProject: () => void;
+  onProjectManagement?: () => void;
   onExportData: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -36,6 +39,8 @@ interface PDFEditorHeaderProps {
   isCurrentPageTranslated?: boolean;
   currentWorkflowStep: WorkflowStep;
   onWorkflowStepChange: (step: WorkflowStep) => void;
+  onRecreateFinalLayout?: () => void;
+  isCapturingSnapshots?: boolean;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -43,6 +48,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onSidebarToggle,
   onFileUpload,
   onSaveProject,
+  onProjectManagement,
   onExportData,
   onUndo,
   onRedo,
@@ -59,6 +65,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   isCurrentPageTranslated,
   currentWorkflowStep,
   onWorkflowStepChange,
+  onRecreateFinalLayout,
+  isCapturingSnapshots,
 }) => {
   return (
     <div className="bg-white border-b border-primary/20 shadow-sm">
@@ -219,6 +227,26 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
 
         {/* Right-aligned Action Buttons */}
         <div className="flex items-center space-x-3">
+          {onProjectManagement && (
+            <Button
+              onClick={onProjectManagement}
+              variant="ghost"
+              size="sm"
+              className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
+              title="Project Management"
+            >
+              <FolderOpen className="w-4 h-4" />
+            </Button>
+          )}
+          <Button
+            onClick={onSaveProject}
+            variant="ghost"
+            size="sm"
+            className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
+            title="Save Project"
+          >
+            <Save className="w-4 h-4" />
+          </Button>
           {onOpenSettings && (
             <Button
               onClick={onOpenSettings}
@@ -281,12 +309,22 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               )}
               {currentWorkflowStep === "final-layout" && (
                 <Button
-                  onClick={onExportData}
-                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                  onClick={onRecreateFinalLayout}
+                  disabled={isCapturingSnapshots}
+                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   size="sm"
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export PDF
+                  {isCapturingSnapshots ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Recreating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Recreate Final-Layout
+                    </>
+                  )}
                 </Button>
               )}
             </>
