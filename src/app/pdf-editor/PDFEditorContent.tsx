@@ -266,11 +266,9 @@ export const PDFEditorContent: React.FC = () => {
       );
       // If the page has a birth certificate template, use its URL for translated view
       if (page?.translatedTemplateURL) {
-        console.log("Using template URL:", page.translatedTemplateURL);
         return page.translatedTemplateURL;
       }
       // Otherwise, return empty string to show blank page
-      console.log("No template URL found, returning empty string");
       return "";
     },
     [documentState.pages]
@@ -3912,42 +3910,54 @@ export const PDFEditorContent: React.FC = () => {
       const file = event.target.files?.[0];
       if (!file) return;
 
-      // Store file reference for automatic project creation
-      lastUploadedFileRef.current = file;
+      // Start upload loading state
+      setIsUploadingFile(true);
 
-      const fileType = getFileType(file.name);
+      try {
+        // Store file reference for automatic project creation
+        lastUploadedFileRef.current = file;
 
-      // Clear all elements and state when uploading a new document
-      clearAllElementsAndState();
+        const fileType = getFileType(file.name);
 
-      // Process the file upload
-      if (fileType === "image") {
-        // For images, create a blank PDF and add the image as an interactive element
-        createBlankPdfAndAddImage(file);
-      } else {
-        // For PDFs, load normally
-        actions.loadDocument(file);
-        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
-      }
+        // Clear all elements and state when uploading a new document
+        clearAllElementsAndState();
 
-      // Note: Automatic project creation will happen when document is fully loaded
-      // See the useEffect hook that monitors documentState.isDocumentLoaded
+        // Process the file upload
+        if (fileType === "image") {
+          // For images, create a blank PDF and add the image as an interactive element
+          createBlankPdfAndAddImage(file);
+        } else {
+          // For PDFs, load normally
+          actions.loadDocument(file);
+          setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+        }
 
-      if (!isUserAuthenticated) {
-        // Show a toast suggesting the user to sign in for project management
-        toast.info("Sign in to automatically save your projects!", {
-          description:
-            "You can still work on your document, but it won't be saved to your account. Click here to sign in.",
-          duration: 5000,
-          action: {
-            label: "Sign In",
-            onClick: () => {
-              // Redirect to login page
-              window.location.href = "/auth/login";
+        // Note: Automatic project creation will happen when document is fully loaded
+        // See the useEffect hook that monitors documentState.isDocumentLoaded
+
+        if (!isUserAuthenticated) {
+          // Show a toast suggesting the user to sign in for project management
+          toast.info("Sign in to automatically save your projects!", {
+            description:
+              "You can still work on your document, but it won't be saved to your account. Click here to sign in.",
+            duration: 5000,
+            action: {
+              label: "Sign In",
+              onClick: () => {
+                // Redirect to login page
+                window.location.href = "/auth/login";
+              },
             },
-          },
-        });
+          });
+        }
+      } catch (error) {
+        console.error("Error uploading file:", error);
+        toast.error("Failed to upload file");
+        setIsUploadingFile(false);
       }
+
+      // Note: setIsUploadingFile(false) will be called when document is loaded
+      // in the useEffect that monitors documentState.isDocumentLoaded
     },
     [
       getFileType,
@@ -4189,6 +4199,9 @@ export const PDFEditorContent: React.FC = () => {
   // Check for languages after document is loaded
   useEffect(() => {
     if (documentState.isDocumentLoaded && documentState.url) {
+      // Stop file upload loading state when document is fully loaded
+      setIsUploadingFile(false);
+
       // Open sidebar when document is loaded
       setViewState((prev) => ({
         ...prev,
@@ -4281,6 +4294,13 @@ export const PDFEditorContent: React.FC = () => {
       hasCreatedProjectForCurrentDocumentRef.current = false;
     }
   }, [documentState.isDocumentLoaded]);
+
+  // Clear upload loading state on document error
+  useEffect(() => {
+    if (documentState.error) {
+      setIsUploadingFile(false);
+    }
+  }, [documentState.error]);
 
   // Cleanup effect to clear any remaining debounce timers
   useEffect(() => {
@@ -4694,6 +4714,9 @@ export const PDFEditorContent: React.FC = () => {
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingPNG, setIsExportingPNG] = useState(false);
   const [isExportingJPEG, setIsExportingJPEG] = useState(false);
+
+  // Add state for file upload loading
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Add state for project management modal
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -7055,6 +7078,13 @@ export const PDFEditorContent: React.FC = () => {
         isOpen={isExportingJPEG}
         title="Exporting JPEG"
         message="Please wait while we generate your JPEG file..."
+      />
+
+      {/* File Upload Loading Modal */}
+      <LoadingModal
+        isOpen={isUploadingFile}
+        title="Loading Document"
+        message="Please wait while we load your document..."
       />
 
       {/* Untranslated Check Modal */}
