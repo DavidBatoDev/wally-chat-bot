@@ -9,10 +9,8 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-/ClaudeContext
+/ClaudeContext/
 CLAUDE.md
-/.claude
 database-schema.mmd
 
 # testing
