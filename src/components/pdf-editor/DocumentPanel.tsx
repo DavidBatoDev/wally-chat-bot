@@ -18,6 +18,7 @@ interface DocumentPanelProps {
   pageWidth: number;
   pageHeight: number;
   scale: number;
+  pdfRenderScale: number; // Add PDF render scale
   numPages: number;
   isScaleChanging: boolean;
   isAddTextBoxMode: boolean;
@@ -37,6 +38,7 @@ interface DocumentPanelProps {
   };
   actions: {
     capturePdfBackgroundColor: () => void;
+    updatePdfRenderScale: (scale: number) => void; // Add PDF render scale action
   };
   setDocumentState: React.Dispatch<React.SetStateAction<any>>;
 
@@ -120,6 +122,7 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
   pageWidth,
   pageHeight,
   scale,
+  pdfRenderScale,
   numPages,
   isScaleChanging,
   isAddTextBoxMode,
@@ -193,6 +196,7 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
       pageWidth={effectivePageWidth}
       pageHeight={effectivePageHeight}
       scale={scale}
+      pdfRenderScale={pdfRenderScale}
       isScaleChanging={isScaleChanging}
       isAddTextBoxMode={isAddTextBoxMode}
       isTextSpanZooming={isTextSpanZooming}

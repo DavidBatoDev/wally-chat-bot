@@ -1200,11 +1200,12 @@ export const PDFEditorContent: React.FC = () => {
 
         // Create URL for the final layout file and store it
         // Handle both Blob/File objects and result objects with metadata
-        const finalLayoutUrl = typeof finalLayoutResult === 'object' && 'url' in finalLayoutResult 
-          ? finalLayoutResult.url 
-          : URL.createObjectURL(finalLayoutResult as Blob);
+        const finalLayoutUrl =
+          typeof finalLayoutResult === "object" && "url" in finalLayoutResult
+            ? finalLayoutResult.url
+            : URL.createObjectURL(finalLayoutResult as Blob);
 
-        console.log("Storing final layout URL...");
+        console.log("Final layout URL created:", finalLayoutUrl);
 
         // Update document state with final layout URL (without loading as main document)
         setDocumentState((prev) => ({
@@ -1336,17 +1337,20 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   // Helper function to convert data URL to File object
-  const dataUrlToFile = useCallback((dataUrl: string, fileName: string): File => {
-    const arr = dataUrl.split(',');
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], fileName, { type: mime });
-  }, []);
+  const dataUrlToFile = useCallback(
+    (dataUrl: string, fileName: string): File => {
+      const arr = dataUrl.split(",");
+      const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
+      const bstr = atob(arr[1]);
+      let n = bstr.length;
+      const u8arr = new Uint8Array(n);
+      while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new File([u8arr], fileName, { type: mime });
+    },
+    []
+  );
 
   // Function to add interactive elements (images and lines) to the final layout
   const addInteractiveElementsToLayout = useCallback(
@@ -1402,14 +1406,28 @@ export const PDFEditorContent: React.FC = () => {
               (quadrantHeight - translatedDimensions.height) / 2;
 
             // Upload original image to Supabase
-            const originalFileName = `final-layout-original-page-${snapshot1.pageNumber}-${Date.now()}.png`;
-            const originalFile = dataUrlToFile(snapshot1.originalImage, originalFileName);
-            const originalUploadResult = await uploadFileWithFallback(originalFile);
-            
+            const originalFileName = `final-layout-original-page-${
+              snapshot1.pageNumber
+            }-${Date.now()}.png`;
+            const originalFile = dataUrlToFile(
+              snapshot1.originalImage,
+              originalFileName
+            );
+            const originalUploadResult = await uploadFileWithFallback(
+              originalFile
+            );
+
             // Upload translated image to Supabase
-            const translatedFileName = `final-layout-translated-page-${snapshot1.pageNumber}-${Date.now()}.png`;
-            const translatedFile = dataUrlToFile(snapshot1.translatedImage, translatedFileName);
-            const translatedUploadResult = await uploadFileWithFallback(translatedFile);
+            const translatedFileName = `final-layout-translated-page-${
+              snapshot1.pageNumber
+            }-${Date.now()}.png`;
+            const translatedFile = dataUrlToFile(
+              snapshot1.translatedImage,
+              translatedFileName
+            );
+            const translatedUploadResult = await uploadFileWithFallback(
+              translatedFile
+            );
 
             // Original image (bottom-left, centered in quadrant) - swapped position
             const originalImageId = handleAddImageWithUndo(
@@ -1453,9 +1471,14 @@ export const PDFEditorContent: React.FC = () => {
               }
             );
           } catch (error) {
-            console.error(`Error uploading images for snapshot ${snapshot1.pageNumber}:`, error);
-            toast.error(`Failed to upload images for page ${snapshot1.pageNumber}`);
-            
+            console.error(
+              `Error uploading images for snapshot ${snapshot1.pageNumber}:`,
+              error
+            );
+            toast.error(
+              `Failed to upload images for page ${snapshot1.pageNumber}`
+            );
+
             // Fallback to using data URLs directly if upload fails
             const originalDimensions = calculateFittedImageDimensions(
               snapshot1.originalWidth,
@@ -1469,16 +1492,24 @@ export const PDFEditorContent: React.FC = () => {
               quadrantWidth,
               quadrantHeight
             );
-            const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
-            const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
-            const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
-            const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
+            const originalOffsetX =
+              (quadrantWidth - originalDimensions.width) / 2;
+            const originalOffsetY =
+              (quadrantHeight - originalDimensions.height) / 2;
+            const translatedOffsetX =
+              (quadrantWidth - translatedDimensions.width) / 2;
+            const translatedOffsetY =
+              (quadrantHeight - translatedDimensions.height) / 2;
 
             // Add images with data URLs as fallback
             handleAddImageWithUndo(
               snapshot1.originalImage,
               gridMargin + originalOffsetX,
-              pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY,
+              pageHeight -
+                labelSpace -
+                quadrantHeight * 2 -
+                gridSpacing +
+                originalOffsetY,
               originalDimensions.width,
               originalDimensions.height,
               pageNumber,
@@ -1488,7 +1519,11 @@ export const PDFEditorContent: React.FC = () => {
             handleAddImageWithUndo(
               snapshot1.translatedImage,
               gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
-              pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY,
+              pageHeight -
+                labelSpace -
+                quadrantHeight * 2 -
+                gridSpacing +
+                translatedOffsetY,
               translatedDimensions.width,
               translatedDimensions.height,
               pageNumber,
@@ -1546,14 +1581,28 @@ export const PDFEditorContent: React.FC = () => {
               (quadrantHeight - translatedDimensions2.height) / 2;
 
             // Upload original image to Supabase
-            const originalFileName2 = `final-layout-original-page-${snapshot2.pageNumber}-${Date.now()}.png`;
-            const originalFile2 = dataUrlToFile(snapshot2.originalImage, originalFileName2);
-            const originalUploadResult2 = await uploadFileWithFallback(originalFile2);
-            
+            const originalFileName2 = `final-layout-original-page-${
+              snapshot2.pageNumber
+            }-${Date.now()}.png`;
+            const originalFile2 = dataUrlToFile(
+              snapshot2.originalImage,
+              originalFileName2
+            );
+            const originalUploadResult2 = await uploadFileWithFallback(
+              originalFile2
+            );
+
             // Upload translated image to Supabase
-            const translatedFileName2 = `final-layout-translated-page-${snapshot2.pageNumber}-${Date.now()}.png`;
-            const translatedFile2 = dataUrlToFile(snapshot2.translatedImage, translatedFileName2);
-            const translatedUploadResult2 = await uploadFileWithFallback(translatedFile2);
+            const translatedFileName2 = `final-layout-translated-page-${
+              snapshot2.pageNumber
+            }-${Date.now()}.png`;
+            const translatedFile2 = dataUrlToFile(
+              snapshot2.translatedImage,
+              translatedFileName2
+            );
+            const translatedUploadResult2 = await uploadFileWithFallback(
+              translatedFile2
+            );
 
             // Original image (top-left, centered in quadrant) - swapped position
             const originalImageId2 = handleAddImageWithUndo(
@@ -1589,9 +1638,14 @@ export const PDFEditorContent: React.FC = () => {
               }
             );
           } catch (error) {
-            console.error(`Error uploading images for snapshot ${snapshot2.pageNumber}:`, error);
-            toast.error(`Failed to upload images for page ${snapshot2.pageNumber}`);
-            
+            console.error(
+              `Error uploading images for snapshot ${snapshot2.pageNumber}:`,
+              error
+            );
+            toast.error(
+              `Failed to upload images for page ${snapshot2.pageNumber}`
+            );
+
             // Fallback to using data URLs directly if upload fails
             const originalDimensions2 = calculateFittedImageDimensions(
               snapshot2.originalWidth,
@@ -1605,10 +1659,14 @@ export const PDFEditorContent: React.FC = () => {
               quadrantWidth,
               quadrantHeight
             );
-            const originalOffsetX2 = (quadrantWidth - originalDimensions2.width) / 2;
-            const originalOffsetY2 = (quadrantHeight - originalDimensions2.height) / 2;
-            const translatedOffsetX2 = (quadrantWidth - translatedDimensions2.width) / 2;
-            const translatedOffsetY2 = (quadrantHeight - translatedDimensions2.height) / 2;
+            const originalOffsetX2 =
+              (quadrantWidth - originalDimensions2.width) / 2;
+            const originalOffsetY2 =
+              (quadrantHeight - originalDimensions2.height) / 2;
+            const translatedOffsetX2 =
+              (quadrantWidth - translatedDimensions2.width) / 2;
+            const translatedOffsetY2 =
+              (quadrantHeight - translatedDimensions2.height) / 2;
 
             // Add images with data URLs as fallback
             handleAddImageWithUndo(
@@ -1914,7 +1972,6 @@ export const PDFEditorContent: React.FC = () => {
       updateShapeWithUndo,
       updateImage,
     });
-
 
   // Effect to handle element selection and ElementFormatDrawer updates
   useEffect(() => {
@@ -2450,7 +2507,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth,
         erasureState.erasureDrawTargetView === "translated"
           ? getTranslatedTemplateScaleFactor(documentState.currentPage)
-          : undefined
+          : undefined,
+        documentState.pdfRenderScale
       );
 
       setErasureState((prev) => ({
@@ -2601,7 +2659,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth,
         clickedView === "translated"
           ? getTranslatedTemplateScaleFactor(documentState.currentPage)
-          : undefined
+          : undefined,
+        documentState.pdfRenderScale
       );
 
       setEditorState((prev) => ({
@@ -2670,7 +2729,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth,
         editorState.multiSelection.targetView === "translated"
           ? getTranslatedTemplateScaleFactor(documentState.currentPage)
-          : undefined
+          : undefined,
+        documentState.pdfRenderScale
       );
 
       setEditorState((prev) => ({
@@ -2975,7 +3035,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth,
         editorState.multiSelection.targetView === "translated"
           ? getTranslatedTemplateScaleFactor(documentState.currentPage)
-          : undefined
+          : undefined,
+        documentState.pdfRenderScale
       );
 
       setEditorState((prev) => ({
@@ -3019,7 +3080,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth,
         editorState.multiSelection.targetView === "translated"
           ? getTranslatedTemplateScaleFactor(documentState.currentPage)
-          : undefined
+          : undefined,
+        documentState.pdfRenderScale
       );
 
       const deltaX = x - editorState.multiSelection.moveStart.x;
@@ -3127,7 +3189,8 @@ export const PDFEditorContent: React.FC = () => {
         documentState.pageWidth,
         targetView === "translated"
           ? getTranslatedTemplateScaleFactor(documentState.currentPage)
-          : undefined
+          : undefined,
+        documentState.pdfRenderScale
       );
 
       // Helper function to get the correct current page based on view
@@ -3705,7 +3768,7 @@ export const PDFEditorContent: React.FC = () => {
   const handlePageChange = useCallback(
     (page: number) => {
       const isFinalLayout = viewState.currentView === "final-layout";
-      
+
       // Clear multi-selection when switching pages
       setEditorState((prev) => ({
         ...prev,
@@ -3720,16 +3783,24 @@ export const PDFEditorContent: React.FC = () => {
           moveStart: null,
         },
       }));
-      
+
       // Also clear single element selection state
       setSelectedElementId(null);
       setSelectedElementType(null);
       setCurrentFormat(null);
       setIsDrawerOpen(false);
-      
+
       actions.changePage(page, isFinalLayout);
     },
-    [actions, viewState.currentView, documentState, setSelectedElementId, setSelectedElementType, setCurrentFormat, setIsDrawerOpen]
+    [
+      actions,
+      viewState.currentView,
+      documentState,
+      setSelectedElementId,
+      setSelectedElementType,
+      setCurrentFormat,
+      setIsDrawerOpen,
+    ]
   );
 
   const handlePageDelete = useCallback(
@@ -5327,6 +5398,7 @@ export const PDFEditorContent: React.FC = () => {
                         pageWidth={documentState.pageWidth}
                         pageHeight={documentState.pageHeight}
                         scale={documentState.scale}
+                        pdfRenderScale={documentState.pdfRenderScale}
                         numPages={documentState.numPages}
                         isScaleChanging={documentState.isScaleChanging}
                         isAddTextBoxMode={editorState.isAddTextBoxMode}
@@ -5434,6 +5506,7 @@ export const PDFEditorContent: React.FC = () => {
                           pageWidth={documentState.pageWidth}
                           pageHeight={documentState.pageHeight}
                           scale={documentState.scale}
+                          pdfRenderScale={documentState.pdfRenderScale}
                           numPages={documentState.finalLayoutNumPages || 1}
                           isScaleChanging={documentState.isScaleChanging}
                           isAddTextBoxMode={editorState.isAddTextBoxMode}
@@ -5549,6 +5622,7 @@ export const PDFEditorContent: React.FC = () => {
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
                             scale={documentState.scale}
+                            pdfRenderScale={documentState.pdfRenderScale}
                             numPages={documentState.numPages}
                             isScaleChanging={documentState.isScaleChanging}
                             isAddTextBoxMode={editorState.isAddTextBoxMode}
@@ -5699,6 +5773,7 @@ export const PDFEditorContent: React.FC = () => {
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
                             scale={documentState.scale}
+                            pdfRenderScale={documentState.pdfRenderScale}
                             numPages={documentState.numPages}
                             isScaleChanging={documentState.isScaleChanging}
                             isAddTextBoxMode={editorState.isAddTextBoxMode}
@@ -5971,6 +6046,7 @@ export const PDFEditorContent: React.FC = () => {
                               pageWidth={documentState.pageWidth}
                               pageHeight={documentState.pageHeight}
                               scale={documentState.scale}
+                              pdfRenderScale={documentState.pdfRenderScale}
                               numPages={documentState.numPages}
                               isScaleChanging={documentState.isScaleChanging}
                               isAddTextBoxMode={editorState.isAddTextBoxMode}
@@ -6945,14 +7021,14 @@ export const PDFEditorContent: React.FC = () => {
           ),
           isTransforming: documentState.isTransforming,
         }}
-        onZoomChange={(scale) => actions.updateScale(Math.max(1.0, scale))}
+        onZoomChange={(scale) => actions.updateScaleWithoutRerender(Math.max(1.0, scale))}
         onZoomIn={() =>
-          actions.updateScale(Math.min(5.0, documentState.scale + 0.1))
+          actions.updateScaleWithoutRerender(Math.min(5.0, documentState.scale + 0.1))
         }
         onZoomOut={() =>
-          actions.updateScale(Math.max(1.0, documentState.scale - 0.1))
+          actions.updateScaleWithoutRerender(Math.max(1.0, documentState.scale - 0.1))
         }
-        onZoomReset={() => actions.updateScale(1.0)}
+        onZoomReset={() => actions.updateScaleWithoutRerender(1.0)}
       />
 
       {/* Confirmation Modal */}
@@ -7005,7 +7081,6 @@ export const PDFEditorContent: React.FC = () => {
         originalImages={elementCollections.originalImages}
         pdfBackgroundColor={documentState.pdfBackgroundColor}
         onTemplateSelect={(template, pageNumber) => {
-
           // Update the specific page with the template information
           setPageBirthCertTemplate(pageNumber, template);
 
