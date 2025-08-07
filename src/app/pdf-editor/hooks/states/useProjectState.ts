@@ -153,6 +153,24 @@ interface UseProjectStateProps {
   }) => void;
 }
 
+// Helper function to safely convert various data types to arrays
+const safeToArray = (value: any): any[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    // Handle Set-like objects
+    if (value.size !== undefined && typeof value.forEach === 'function') {
+      return Array.from(value);
+    }
+    // Handle plain objects that might have numeric keys
+    if (Object.keys(value).every(key => !isNaN(Number(key)))) {
+      return Object.values(value);
+    }
+  }
+  return [];
+};
+
 export const useProjectState = (props: UseProjectStateProps) => {
   const {
     documentState,
@@ -483,36 +501,66 @@ export const useProjectState = (props: UseProjectStateProps) => {
             let result;
 
             if (originalProjectId && currentProjectId) {
-              // Update existing project (only if project still exists)
-              console.log("DEBUG: Updating existing project:", {
-                projectId: currentProjectId,
-                updateData: {
+              // First, verify the project still exists before attempting to update
+              console.log("DEBUG: Verifying project exists before update:", currentProjectId);
+              
+              try {
+                await getProject(currentProjectId);
+                console.log("DEBUG: Project exists, proceeding with update");
+                
+                // Update existing project
+                console.log("DEBUG: Updating existing project:", {
+                  projectId: currentProjectId,
+                  updateData: {
+                    name: projectState.name,
+                    project_data: projectState,
+                  },
+                });
+
+                result = await updateProject(currentProjectId, {
                   name: projectState.name,
                   project_data: projectState,
-                },
-              });
+                });
 
-              result = await updateProject(currentProjectId, {
-                name: projectState.name,
-                project_data: projectState,
-              });
+                console.log("DEBUG: Update result:", result);
 
-              console.log("DEBUG: Update result:", result);
+                // Ensure the project ID is preserved after update
+                if (result && !result.id) {
+                  console.log(
+                    "DEBUG: Update result missing ID, preserving current project ID"
+                  );
+                  result.id = currentProjectId;
+                } else if (result && result.id !== currentProjectId) {
+                  console.log(
+                    "DEBUG: Update result has different ID, updating current project ID:",
+                    {
+                      from: currentProjectId,
+                      to: result.id,
+                    }
+                  );
+                  setCurrentProjectId(result.id);
+                }
+              } catch (verifyError) {
+                console.log("DEBUG: Project no longer exists, creating new one instead:", {
+                  originalProjectId: currentProjectId,
+                  error: verifyError instanceof Error ? verifyError.message : String(verifyError),
+                });
+                
+                // Clear the invalid project ID
+                setCurrentProjectId(null);
+                
+                // Fall through to create new project
+                result = await createProject({
+                  name: projectState.name,
+                  description: `Project created on ${new Date().toLocaleDateString()}`,
+                  project_data: projectState,
+                  tags: ["manual-save"],
+                  is_public: false,
+                });
 
-              // Ensure the project ID is preserved after update
-              if (result && !result.id) {
-                console.log(
-                  "DEBUG: Update result missing ID, preserving current project ID"
-                );
-                result.id = currentProjectId;
-              } else if (result && result.id !== currentProjectId) {
-                console.log(
-                  "DEBUG: Update result has different ID, updating current project ID:",
-                  {
-                    from: currentProjectId,
-                    to: result.id,
-                  }
-                );
+                console.log("DEBUG: Create result (from failed update):", result);
+
+                // Set the current project ID for future saves
                 setCurrentProjectId(result.id);
               }
             } else {
@@ -718,12 +766,20 @@ export const useProjectState = (props: UseProjectStateProps) => {
           return false;
         }
 
+        // Debug logging for project state structure
+        console.log("DEBUG: Project state loaded:", {
+          hasDocumentState: !!projectState.documentState,
+          deletedPagesType: typeof projectState.documentState?.deletedPages,
+          deletedPagesValue: projectState.documentState?.deletedPages,
+          isDeletedPagesArray: Array.isArray(projectState.documentState?.deletedPages),
+        });
+
         // Restore document state (similar to importFromJson)
         setDocumentState((prev) => ({
           ...prev,
           ...projectState.documentState,
           // Convert arrays back to Sets/Maps where needed
-          deletedPages: new Set(projectState.documentState.deletedPages || []),
+          deletedPages: new Set(safeToArray(projectState.documentState.deletedPages)),
           detectedPageBackgrounds: new Map(
             Object.entries(
               projectState.documentState.detectedPageBackgrounds || {}
@@ -731,7 +787,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           ),
           // Convert final layout deleted pages back to Set if it exists
           finalLayoutDeletedPages: projectState.documentState.finalLayoutDeletedPages 
-            ? new Set(projectState.documentState.finalLayoutDeletedPages) 
+            ? new Set(safeToArray(projectState.documentState.finalLayoutDeletedPages))
             : new Set<number>(),
           // Ensure fileType is properly typed
           fileType:
@@ -1223,7 +1279,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           ...prev,
           ...projectData.documentState,
           // Convert arrays back to Sets/Maps where needed
-          deletedPages: new Set(projectData.documentState.deletedPages || []),
+          deletedPages: new Set(safeToArray(projectData.documentState.deletedPages)),
           detectedPageBackgrounds: new Map(
             Object.entries(
               projectData.documentState.detectedPageBackgrounds || {}
@@ -1231,7 +1287,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           ),
           // Convert final layout deleted pages back to Set if it exists
           finalLayoutDeletedPages: projectData.documentState.finalLayoutDeletedPages 
-            ? new Set(projectData.documentState.finalLayoutDeletedPages) 
+            ? new Set(safeToArray(projectData.documentState.finalLayoutDeletedPages))
             : new Set<number>(),
           // Ensure fileType is properly typed
           fileType:

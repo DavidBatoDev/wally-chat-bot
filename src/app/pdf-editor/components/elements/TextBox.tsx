@@ -92,21 +92,32 @@ export const MemoizedTextBox = memo(
             textBox.hasBeenManuallyResized || false;
 
           if (isNewLine) {
-            // For new lines, only expand height, keep current width
-            const { height } = measureText(
+            // For new lines, update both width and height
+            const { width, height } = measureText(
               newValue,
               textBox.fontSize,
               textBox.fontFamily,
               0, // characterSpacing
-              textBox.width, // maxWidth - don't exceed current width
+              undefined, // Remove maxWidth constraint to get natural width
               getPadding()
             );
 
             const padding = 4;
+            const newWidth = Math.max(textBox.width, width + padding);
             const newHeight = Math.max(textBox.height, height + padding);
 
+            let updates: Partial<TextField> = {};
+            
+            if (newWidth > textBox.width) {
+              updates.width = newWidth;
+            }
+            
             if (newHeight > textBox.height) {
-              onUpdate(textBox.id, { height: newHeight }, true);
+              updates.height = newHeight;
+            }
+
+            if (Object.keys(updates).length > 0) {
+              onUpdate(textBox.id, updates, true);
             }
           } else if (isAddingText) {
             // For regular text addition
@@ -305,20 +316,31 @@ export const MemoizedTextBox = memo(
           textBox.fontSize,
           textBox.fontFamily,
           0, // characterSpacing
-          textBox.width, // maxWidth - don't exceed current width
+          undefined, // Remove maxWidth constraint to get natural dimensions
           getPadding()
         );
 
         const padding = 4;
-        const minHeight = Math.max(height + padding, textBox.fontSize);
+        const newWidth = Math.max(textBox.width, width + padding);
+        const newHeight = Math.max(height + padding, textBox.fontSize);
 
-        // Only auto-resize if the current height is smaller than the minimum required height
-        // This allows users to manually make the textbox taller than the minimum
-        if (textBox.height < minHeight) {
-          onUpdate(textBox.id, { height: minHeight }, false);
+        let updates: Partial<TextField> = {};
+
+        // Always update both width and height when font size changes
+        if (newWidth > textBox.width) {
+          updates.width = newWidth;
+        }
+
+        if (textBox.height < newHeight) {
+          updates.height = newHeight;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          onUpdate(textBox.id, updates, false);
         }
       }
     }, [
+      textBox.id,
       textBox.fontSize,
       textBox.value,
       textBox.width,
