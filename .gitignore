@@ -11,7 +11,7 @@
 !.yarn/versions
 /ClaudeContext/
 CLAUDE.md
-database-schema.mmd
+database-schema.mmd 
 
 # testing
 /coverage
