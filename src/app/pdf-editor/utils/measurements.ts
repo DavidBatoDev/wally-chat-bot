@@ -16,6 +16,7 @@ export const measureText = (
   maxWidth?: number,
   padding?: { top?: number; right?: number; bottom?: number; left?: number }
 ): { width: number; height: number } => {
+  console.log("measureText called");
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) return { width: 100, height: fontSize };

@@ -11,6 +11,7 @@ export interface SnapshotData {
   originalHeight: number;
   translatedWidth: number;
   translatedHeight: number;
+  pageType?: "social_media" | "birth_cert" | "dynamic_content";
 }
 
 export interface CaptureSnapshotsOptions {
@@ -19,6 +20,11 @@ export interface CaptureSnapshotsOptions {
     numPages: number;
     scale: number;
     currentPage: number;
+    pages: Array<{
+      pageNumber: number;
+      pageType?: "social_media" | "birth_cert" | "dynamic_content";
+      isTranslated: boolean;
+    }>;
   };
   pageState: {
     deletedPages: Set<number>;
@@ -113,6 +119,12 @@ export async function captureAllPageSnapshots(
           }
         );
 
+        // Get page type from document state
+        const pageData = documentState.pages.find(
+          (p) => p.pageNumber === pageNumber
+        );
+        const pageType = pageData?.pageType || "dynamic_content";
+
         snapshots.push({
           pageNumber,
           originalImage: originalCapture.dataUrl,
@@ -121,6 +133,7 @@ export async function captureAllPageSnapshots(
           originalHeight: originalCapture.height,
           translatedWidth: translatedCapture.width,
           translatedHeight: translatedCapture.height,
+          pageType,
         });
       } catch (pageError) {
         console.error(`Error capturing page ${pageNumber}:`, pageError);
@@ -243,9 +256,7 @@ async function capturePageView(
  * Creates a PDF with the export_first_page.pdf as the first page, followed by captured snapshots arranged in a 2x2 grid
  * Uploads the PDF to Supabase storage or creates a blob URL as fallback
  */
-export async function createFinalLayoutPdf(
-  snapshots: SnapshotData[]
-): Promise<{
+export async function createFinalLayoutPdf(snapshots: SnapshotData[]): Promise<{
   url: string;
   isSupabaseUrl: boolean;
   filePath?: string;
@@ -275,29 +286,48 @@ export async function createFinalLayoutPdf(
       // Continue with the layout pages even if template fails to load
     }
 
-    // Calculate how many PDF pages we need for snapshots (2 snapshots per PDF page)
-    const pagesNeeded = Math.ceil(snapshots.length / 2);
+    // Separate snapshots by page type
+    const birthCertSnapshots = snapshots.filter(
+      (s) => s.pageType === "birth_cert"
+    );
+    const dynamicContentSnapshots = snapshots.filter(
+      (s) => s.pageType !== "birth_cert"
+    );
 
-    for (let pdfPageIndex = 0; pdfPageIndex < pagesNeeded; pdfPageIndex++) {
-      const page = pdfDoc.addPage([612, 792]); // Letter size
-      const { width: pageWidth, height: pageHeight } = page.getSize();
+    // Sort birth cert snapshots by page number (birth certs go first)
+    birthCertSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
 
-      // Get snapshots for this PDF page (for page numbering reference)
-      const snapshot1 = snapshots[pdfPageIndex * 2];
-      const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
+    // Sort dynamic content snapshots by page number
+    dynamicContentSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
 
-      // Calculate grid layout to match export PDF function
-      const gridMargin = 10;
-      const gridSpacing = 8;
-      const labelSpace = 15;
-      const availableWidth = pageWidth - gridMargin * 2;
-      const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
+    console.log(
+      `Processing ${birthCertSnapshots.length} birth certificate pages and ${dynamicContentSnapshots.length} dynamic content pages`
+    );
 
-      const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
-      const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
+    // Process birth certificate pages first (each gets 2 full pages: original + translated)
+    for (const snapshot of birthCertSnapshots) {
+      console.log(
+        `DEBUG: Creating birth cert pages for page ${snapshot.pageNumber}`
+      );
 
-      // Create a clean white background (blank page)
-      page.drawRectangle({
+      // Add original page (blank)
+      const originalPage = pdfDoc.addPage([612, 792]); // Letter size
+      const { width: pageWidth, height: pageHeight } = originalPage.getSize();
+
+      // Create a clean white background
+      originalPage.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+        color: rgb(1, 1, 1), // White background
+      });
+
+      // Add translated page (blank)
+      const translatedPage = pdfDoc.addPage([612, 792]); // Letter size
+
+      // Create a clean white background
+      translatedPage.drawRectangle({
         x: 0,
         y: 0,
         width: pageWidth,
@@ -306,9 +336,80 @@ export async function createFinalLayoutPdf(
       });
     }
 
+    // Process dynamic content pages in 2x2 grid layout (blank pages)
+    const dynamicPagesNeeded = Math.ceil(dynamicContentSnapshots.length / 2);
+
+    for (
+      let pdfPageIndex = 0;
+      pdfPageIndex < dynamicPagesNeeded;
+      pdfPageIndex++
+    ) {
+      const page = pdfDoc.addPage([612, 792]); // Letter size
+      const { width: pageWidth, height: pageHeight } = page.getSize();
+
+      // Get snapshots for this PDF page (2 snapshots per PDF page for dynamic content)
+      const snapshot1 = dynamicContentSnapshots[pdfPageIndex * 2];
+      const snapshot2 = dynamicContentSnapshots[pdfPageIndex * 2 + 1];
+
+      // Create a clean white background
+      page.drawRectangle({
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+        color: rgb(1, 1, 1), // White background
+      });
+
+      // Add page titles for the dynamic content pages in 2x2 layout
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+      if (snapshot1) {
+        // Top left quadrant label - Original
+        page.drawText(`Page ${snapshot1.pageNumber} - Original`, {
+          x: 10,
+          y: pageHeight - 15,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0),
+        });
+
+        // Top right quadrant label - Translated
+        page.drawText(`Page ${snapshot1.pageNumber} - Translated`, {
+          x: pageWidth / 2 + 10,
+          y: pageHeight - 15,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      }
+
+      if (snapshot2) {
+        // Bottom left quadrant label - Original
+        page.drawText(`Page ${snapshot2.pageNumber} - Original`, {
+          x: 10,
+          y: pageHeight / 2 - 5,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0),
+        });
+
+        // Bottom right quadrant label - Translated
+        page.drawText(`Page ${snapshot2.pageNumber} - Translated`, {
+          x: pageWidth / 2 + 10,
+          y: pageHeight / 2 - 5,
+          size: 10,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      }
+    }
+
     // Convert to PDF bytes
     const pdfBytes = await pdfDoc.save();
-    
+
+    // Debug: Log final page count
+    console.log(`DEBUG: Final PDF has ${pdfDoc.getPageCount()} pages total`);
+
     // Create a File object for upload
     const pdfFile = new File([pdfBytes], "final-layout-with-template.pdf", {
       type: "application/pdf",
@@ -327,97 +428,3 @@ export async function createFinalLayoutPdf(
     );
   }
 }
-
-/**
- * Adds a snapshot's original and translated images to a PDF page
- */
-// async function addSnapshotToPage(
-//   page: any,
-//   pdfDoc: PDFDocument,
-//   snapshot: SnapshotData,
-//   layout: {
-//     originalX: number;
-//     originalY: number;
-//     translatedX: number;
-//     translatedY: number;
-//     quadrantWidth: number;
-//     quadrantHeight: number;
-//   }
-// ) {
-//   try {
-//     // Embed original image
-//     const originalImageBytes = await fetch(snapshot.originalImage).then((res) =>
-//       res.arrayBuffer()
-//     );
-//     const originalImage = await pdfDoc.embedPng(originalImageBytes);
-
-//     // Embed translated image
-//     const translatedImageBytes = await fetch(snapshot.translatedImage).then(
-//       (res) => res.arrayBuffer()
-//     );
-//     const translatedImage = await pdfDoc.embedPng(translatedImageBytes);
-
-//     // Calculate scaling to fit within quadrants while maintaining aspect ratio
-//     const originalAspect = snapshot.originalWidth / snapshot.originalHeight;
-//     const translatedAspect =
-//       snapshot.translatedWidth / snapshot.translatedHeight;
-//     const quadrantAspect = layout.quadrantWidth / layout.quadrantHeight;
-
-//     // Scale original image
-//     let originalWidth, originalHeight;
-//     if (originalAspect > quadrantAspect) {
-//       originalWidth = layout.quadrantWidth;
-//       originalHeight = layout.quadrantWidth / originalAspect;
-//     } else {
-//       originalHeight = layout.quadrantHeight;
-//       originalWidth = layout.quadrantHeight * originalAspect;
-//     }
-
-//     // Scale translated image
-//     let translatedWidth, translatedHeight;
-//     if (translatedAspect > quadrantAspect) {
-//       translatedWidth = layout.quadrantWidth;
-//       translatedHeight = layout.quadrantWidth / translatedAspect;
-//     } else {
-//       translatedHeight = layout.quadrantHeight;
-//       translatedWidth = layout.quadrantHeight * translatedAspect;
-//     }
-
-//     // Center images in their quadrants
-//     const originalCenterX =
-//       layout.originalX + (layout.quadrantWidth - originalWidth) / 2;
-//     const originalCenterY =
-//       layout.originalY + (layout.quadrantHeight - originalHeight) / 2;
-//     const translatedCenterX =
-//       layout.translatedX + (layout.quadrantWidth - translatedWidth) / 2;
-//     const translatedCenterY =
-//       layout.translatedY + (layout.quadrantHeight - translatedHeight) / 2;
-
-//     // Draw images
-//     page.drawImage(originalImage, {
-//       x: originalCenterX,
-//       y: originalCenterY,
-//       width: originalWidth,
-//       height: originalHeight,
-//     });
-
-//     page.drawImage(translatedImage, {
-//       x: translatedCenterX,
-//       y: translatedCenterY,
-//       width: translatedWidth,
-//       height: translatedHeight,
-//     });
-
-//     // Add page number label
-//     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-//     page.drawText(`Page ${snapshot.pageNumber}`, {
-//       x: layout.originalX,
-//       y: layout.originalY - 15,
-//       size: 10,
-//       color: rgb(0.5, 0.5, 0.5),
-//     });
-//   } catch (error) {
-//     console.error("Error adding snapshot to page:", error);
-//     // Continue without this snapshot rather than failing completely
-//   }
-// }

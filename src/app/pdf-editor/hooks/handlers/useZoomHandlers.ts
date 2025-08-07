@@ -9,6 +9,7 @@ interface UseZoomHandlersProps {
   };
   actions: {
     updateScale: (scale: number) => void;
+    updateScaleWithoutRerender: (scale: number) => void;
     resetScaleChanging: () => void;
   };
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -39,10 +40,11 @@ export const useZoomHandlers = ({
         const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor;
         const newScale = Math.max(1.0, documentState.scale + delta); // Prevent below 100%
         if (newScale !== documentState.scale) {
-          actions.updateScale(newScale);
+          // Use updateScaleWithoutRerender to avoid PDF re-rendering
+          actions.updateScaleWithoutRerender(newScale);
         }
         setViewState((prev) => ({ ...prev, zoomMode: "page" }));
-        actions.resetScaleChanging();
+        // Don't call resetScaleChanging immediately to avoid re-rendering
         return false;
       }
     };

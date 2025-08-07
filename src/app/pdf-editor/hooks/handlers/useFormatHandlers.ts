@@ -107,6 +107,22 @@ export const useFormatHandlers = ({
                 viewState.currentView
               ).find((tb) => tb.id === element.id);
 
+              console.log("Multi-selection textbox processing:", {
+                elementId: element.id,
+                format,
+                currentTextBox: currentTextBox ? {
+                  id: currentTextBox.id,
+                  fontSize: currentTextBox.fontSize,
+                  fontFamily: currentTextBox.fontFamily,
+                  value: currentTextBox.value
+                } : null,
+                hasFormatChanges: {
+                  fontSize: "fontSize" in format,
+                  fontFamily: "fontFamily" in format,
+                  isPaddingChange
+                }
+              });
+
               if (
                 currentTextBox &&
                 ("fontSize" in format ||
@@ -142,6 +158,15 @@ export const useFormatHandlers = ({
                   format.fontFamily !== undefined
                     ? format.fontFamily
                     : currentTextBox.fontFamily;
+
+                console.log("About to call measureText for multi-selection:", {
+                  elementId: element.id,
+                  text: currentTextBox.value,
+                  fontSize,
+                  fontFamily,
+                  letterSpacing: currentTextBox.letterSpacing || 0,
+                  padding
+                });
 
                 const { width: newTextWidth, height: newTextHeight } =
                   measureText(

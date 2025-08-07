@@ -88,23 +88,51 @@ export const screenToDocumentCoordinates = (
   targetView: "original" | "translated" | "final-layout" | null,
   currentView: "original" | "translated" | "split" | "final-layout",
   pageWidth: number,
-  templateScaleFactor?: number
+  templateScaleFactor?: number,
+  pdfRenderScale?: number // Optional parameter for new CSS transform approach
 ): CoordinateAdjustment => {
-  let x = (clientX - rect.left) / scale;
-  let y = (clientY - rect.top) / scale;
+  // If pdfRenderScale is provided, we're using the CSS transform approach
+  // Otherwise, fall back to the old direct scaling approach
+  if (pdfRenderScale && pdfRenderScale !== scale) {
+    // New CSS transform approach
+    const visualScale = scale / pdfRenderScale;
+    
+    // Convert screen coordinates accounting for both PDF render scale and visual transform
+    let x = (clientX - rect.left) / (pdfRenderScale * visualScale);
+    let y = (clientY - rect.top) / (pdfRenderScale * visualScale);
 
-  // For split screen view, adjust coordinates based on which side was clicked
-  if (currentView === "split" && targetView === "translated") {
-    const singleDocWidth = pageWidth;
-    const gap = 20 / scale;
-    x = x - singleDocWidth - gap;
+    // For split screen view, adjust coordinates based on which side was clicked
+    if (currentView === "split" && targetView === "translated") {
+      const singleDocWidth = pageWidth;
+      const gap = 20 / (pdfRenderScale * visualScale);
+      x = x - singleDocWidth - gap;
 
-    // Apply template scaling factor to coordinates when template is scaled in split view
-    if (templateScaleFactor && templateScaleFactor !== 1) {
-      x = x / templateScaleFactor;
-      y = y / templateScaleFactor;
+      // Apply template scaling factor to coordinates when template is scaled in split view
+      if (templateScaleFactor && templateScaleFactor !== 1) {
+        x = x / templateScaleFactor;
+        y = y / templateScaleFactor;
+      }
     }
-  }
 
-  return { x, y };
+    return { x, y };
+  } else {
+    // Old direct scaling approach (backward compatibility)
+    let x = (clientX - rect.left) / scale;
+    let y = (clientY - rect.top) / scale;
+
+    // For split screen view, adjust coordinates based on which side was clicked
+    if (currentView === "split" && targetView === "translated") {
+      const singleDocWidth = pageWidth;
+      const gap = 20 / scale;
+      x = x - singleDocWidth - gap;
+
+      // Apply template scaling factor to coordinates when template is scaled in split view
+      if (templateScaleFactor && templateScaleFactor !== 1) {
+        x = x / templateScaleFactor;
+        y = y / templateScaleFactor;
+      }
+    }
+
+    return { x, y };
+  }
 };

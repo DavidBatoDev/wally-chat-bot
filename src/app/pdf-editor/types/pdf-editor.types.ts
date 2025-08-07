@@ -31,6 +31,7 @@ export interface DocumentState {
   currentPage: number;
   numPages: number;
   scale: number;
+  pdfRenderScale: number; // The scale at which PDF is actually rendered (for high quality)
   pageWidth: number;
   pageHeight: number;
   isLoading: boolean;

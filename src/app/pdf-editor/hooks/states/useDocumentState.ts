@@ -10,6 +10,7 @@ export const useDocumentState = () => {
     currentPage: 1,
     numPages: 0,
     scale: 1.0,
+    pdfRenderScale: 3.0, // Initialize with high quality render scale
     pageWidth: 612,
     pageHeight: 792,
     isLoading: false,
@@ -68,26 +69,41 @@ export const useDocumentState = () => {
         return;
       }
 
-      // Initialize pages array when document loads
-      const initialPages: PageData[] = Array.from(
-        { length: numPages },
-        (_, index) => ({
+      // If we have existing pages, preserve them if they have the same count
+      // This handles cases where the document is reloaded during workflow changes
+      const existingPages = documentState.pages;
+      let initialPages: PageData[];
+
+      if (existingPages.length === numPages && existingPages.length > 0) {
+        // Preserve existing pages with their pageType settings
+        console.log("Preserving existing pages with their settings");
+        initialPages = existingPages;
+      } else {
+        // Initialize new pages array when document loads
+        console.log("Creating new pages array");
+        initialPages = Array.from({ length: numPages }, (_, index) => ({
           pageNumber: index + 1,
           isTranslated: false,
-        })
-      );
+          pageType: "dynamic_content" as const,
+        }));
+      }
 
-      console.log("Resetting document state for new document");
+      console.log("Resetting document state for document load");
       setDocumentState((prev) => ({
         ...prev,
         numPages,
         isDocumentLoaded: true,
         error: "",
         pages: initialPages,
-        deletedPages: new Set(),
+        deletedPages: prev.deletedPages, // Preserve deleted pages
       }));
     },
-    [documentState.numPages, documentState.isDocumentLoaded]
+    [
+      documentState.numPages,
+      documentState.isDocumentLoaded,
+      documentState.pages,
+      documentState.deletedPages,
+    ]
   );
 
   const handleDocumentLoadError = useCallback((error: Error) => {
@@ -265,11 +281,39 @@ export const useDocumentState = () => {
     }, 150);
   }, []);
 
+  // Update scale without triggering re-rendering (for smooth zoom)
+  const updateScaleWithoutRerender = useCallback((newScale: number) => {
+    setDocumentState((prev) => ({
+      ...prev,
+      scale: Math.max(0.1, Math.min(5.0, newScale)),
+      // Don't set isScaleChanging to avoid PDF re-rendering
+    }));
+  }, []);
+
+  // Update PDF render scale (causes re-render but improves quality)
+  const updatePdfRenderScale = useCallback((newRenderScale: number) => {
+    setDocumentState((prev) => ({
+      ...prev,
+      pdfRenderScale: Math.max(1.0, Math.min(5.0, newRenderScale)),
+      isScaleChanging: true,
+    }));
+
+    // Reset scale changing state after a delay
+    setTimeout(() => {
+      setDocumentState((prev) => ({
+        ...prev,
+        isScaleChanging: false,
+      }));
+    }, 150);
+  }, []);
+
   // Change current page
   const changePage = useCallback(
     (page: number, isFinalLayout = false) => {
-      console.log("document state final layout URL:", documentState.finalLayoutUrl);
-
+      console.log(
+        "document state final layout URL:",
+        documentState.finalLayoutUrl
+      );
 
       if (isFinalLayout) {
         // Handle final layout page change
@@ -485,6 +529,7 @@ export const useDocumentState = () => {
         (_, index) => ({
           pageNumber: documentState.numPages + index + 1,
           isTranslated: false,
+          pageType: "dynamic_content" as const,
         })
       );
 
@@ -529,6 +574,8 @@ export const useDocumentState = () => {
       loadDocument,
       loadDocumentFromUrl,
       updateScale,
+      updateScaleWithoutRerender,
+      updatePdfRenderScale,
       changePage,
       capturePdfBackgroundColor,
       updatePdfBackgroundColor,
