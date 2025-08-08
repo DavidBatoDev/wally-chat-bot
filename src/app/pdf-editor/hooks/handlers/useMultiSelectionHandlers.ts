@@ -92,8 +92,12 @@ export const useMultiSelectionHandlers = ({
 
     // Helper function to get the correct current page based on target view
     const getCurrentPageForView = (view: string) => {
-      // Always use the current page that the user is viewing
-      // Final layout should respect the current page navigation
+      if (view === "final-layout") {
+        // For final-layout, use the final layout current page
+        return (
+          documentState.finalLayoutCurrentPage || documentState.currentPage
+        );
+      }
       return documentState.currentPage;
     };
 
