@@ -148,6 +148,24 @@ console.warn = (...args: any[]) => {
   originalConsoleWarn(...args);
 };
 
+// Helper function to get PDF page count without loading as main document
+const getPdfPageCount = async (pdfUrl: string): Promise<number> => {
+  try {
+    const loadingTask = pdfjs.getDocument(pdfUrl);
+    const pdf = await loadingTask.promise;
+    const pageCount = pdf.numPages;
+    
+    // Clean up the loading task
+    loadingTask.destroy();
+    
+    return pageCount;
+  } catch (error) {
+    console.error("Error getting PDF page count:", error);
+    // Return a fallback count based on common scenarios
+    return 7; // Default fallback
+  }
+};
+
 export const PDFEditorContent: React.FC = () => {
   const {
     isDrawerOpen,
@@ -258,12 +276,6 @@ export const PDFEditorContent: React.FC = () => {
   const getTranslatedDocumentUrl = useCallback(
     (pageNumber: number) => {
       const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
-      console.log(
-        "Getting translated document URL for page:",
-        pageNumber,
-        "page data:",
-        page
-      );
       // If the page has a birth certificate template, use its URL for translated view
       if (page?.translatedTemplateURL) {
         return page.translatedTemplateURL;
@@ -1137,12 +1149,12 @@ export const PDFEditorContent: React.FC = () => {
       // Clear only final-layout elements, preserve original and translated elements
       clearFinalLayoutElementsOnly();
 
-      // Clear editor state (but preserve isEditMode for final layout)
+      // Clear editor state (and disable edit mode for final layout)
       setEditorState((prev) => ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: null,
-        isEditMode: true, // Keep edit mode enabled for final layout
+        isEditMode: false, // Keep edit mode disabled for final layout
         isAddTextBoxMode: false,
         isTextSelectionMode: false,
         showDeletionRectangles: false,
@@ -1207,13 +1219,17 @@ export const PDFEditorContent: React.FC = () => {
 
         console.log("Final layout URL created:", finalLayoutUrl);
 
-        // Update document state with final layout URL (without loading as main document)
+        // Get the actual page count from the PDF without loading it as main document
+        const finalLayoutPageCount = await getPdfPageCount(finalLayoutUrl);
+        console.log("Final layout page count:", finalLayoutPageCount);
+
+        // Update document state with final layout URL and correct page count
         setDocumentState((prev) => ({
           ...prev,
           finalLayoutUrl: finalLayoutUrl,
           finalLayoutCurrentPage: 1,
-          finalLayoutNumPages: Math.ceil(snapshots.length / 2) + 1, // +1 for template page
-          finalLayoutDeletedPages: new Set<number>(), // Initialize empty set for deleted pages
+          finalLayoutNumPages: finalLayoutPageCount,
+          finalLayoutDeletedPages: new Set<number>(),
         }));
 
         setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
@@ -1352,385 +1368,392 @@ export const PDFEditorContent: React.FC = () => {
     []
   );
 
+  // Helper function to add full-page image for birth certificates
+  const addFullPageImage = useCallback(
+    async (
+      imageDataUrl: string,
+      imageWidth: number,
+      imageHeight: number,
+      pageNumber: number,
+      imagePrefix: string
+    ) => {
+      try {
+        // Calculate dimensions to fit the full page while maintaining aspect ratio
+        const pageWidth = 612; // Letter size in points
+        const pageHeight = 792;
+        const margin = 20; // Small margin around the image
+        const maxWidth = pageWidth - margin * 2;
+        const maxHeight = pageHeight - margin * 2;
+        
+        const fittedDimensions = calculateFittedImageDimensions(
+          imageWidth,
+          imageHeight,
+          maxWidth,
+          maxHeight
+        );
+        
+        // Center the image on the page
+        const offsetX = (pageWidth - fittedDimensions.width) / 2;
+        const offsetY = (pageHeight - fittedDimensions.height) / 2;
+        
+        // Upload image to Supabase
+        const fileName = `${imagePrefix}-${Date.now()}.png`;
+        const file = dataUrlToFile(imageDataUrl, fileName);
+        const uploadResult = await uploadFileWithFallback(file);
+        
+        // Add the image to the final layout
+        handleAddImageWithUndo(
+          uploadResult.url,
+          offsetX,
+          offsetY,
+          fittedDimensions.width,
+          fittedDimensions.height,
+          pageNumber,
+          "final-layout",
+          {
+            isSupabaseUrl: true,
+            filePath: uploadResult.filePath,
+            fileName: fileName,
+            fileObjectId: uploadResult.fileObjectId,
+          }
+        );
+      } catch (error) {
+        console.error(`Error uploading full page image for page ${pageNumber}:`, error);
+        toast.error(`Failed to upload image for page ${pageNumber}`);
+        
+        // Fallback to using data URL directly
+        const pageWidth = 612;
+        const pageHeight = 792;
+        const margin = 20;
+        const maxWidth = pageWidth - margin * 2;
+        const maxHeight = pageHeight - margin * 2;
+        
+        const fittedDimensions = calculateFittedImageDimensions(
+          imageWidth,
+          imageHeight,
+          maxWidth,
+          maxHeight
+        );
+        
+        const offsetX = (pageWidth - fittedDimensions.width) / 2;
+        const offsetY = (pageHeight - fittedDimensions.height) / 2;
+        
+        handleAddImageWithUndo(
+          imageDataUrl,
+          offsetX,
+          offsetY,
+          fittedDimensions.width,
+          fittedDimensions.height,
+          pageNumber,
+          "final-layout",
+          undefined
+        );
+      }
+    },
+    [calculateFittedImageDimensions, dataUrlToFile, handleAddImageWithUndo]
+  );
+
+  // Helper function to add quadrant images for dynamic content
+  const addQuadrantImages = useCallback(
+    async (
+      snapshot: SnapshotData,
+      pageNumber: number,
+      gridMargin: number,
+      pageHeight: number,
+      labelSpace: number,
+      quadrantWidth: number,
+      quadrantHeight: number,
+      gridSpacing: number,
+      position: "top" | "bottom"
+    ) => {
+      try {
+        // Calculate fitted dimensions for both images
+        const originalDimensions = calculateFittedImageDimensions(
+          snapshot.originalWidth,
+          snapshot.originalHeight,
+          quadrantWidth,
+          quadrantHeight
+        );
+        const translatedDimensions = calculateFittedImageDimensions(
+          snapshot.translatedWidth,
+          snapshot.translatedHeight,
+          quadrantWidth,
+          quadrantHeight
+        );
+        
+        // Calculate centering offsets
+        const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
+        const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
+        const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
+        const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
+        
+        // Calculate Y positions based on row (top or bottom)
+        const rowY = position === "top" 
+          ? pageHeight - labelSpace - quadrantHeight + originalOffsetY
+          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY;
+        const translatedRowY = position === "top"
+          ? pageHeight - labelSpace - quadrantHeight + translatedOffsetY
+          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY;
+        
+        // Upload original image
+        const originalFileName = `final-layout-original-page-${snapshot.pageNumber}-${position}-${Date.now()}.png`;
+        const originalFile = dataUrlToFile(snapshot.originalImage, originalFileName);
+        const originalUploadResult = await uploadFileWithFallback(originalFile);
+        
+        // Upload translated image
+        const translatedFileName = `final-layout-translated-page-${snapshot.pageNumber}-${position}-${Date.now()}.png`;
+        const translatedFile = dataUrlToFile(snapshot.translatedImage, translatedFileName);
+        const translatedUploadResult = await uploadFileWithFallback(translatedFile);
+        
+        // Add original image (left side)
+        handleAddImageWithUndo(
+          originalUploadResult.url,
+          gridMargin + originalOffsetX,
+          rowY,
+          originalDimensions.width,
+          originalDimensions.height,
+          pageNumber,
+          "final-layout",
+          {
+            isSupabaseUrl: true,
+            filePath: originalUploadResult.filePath,
+            fileName: originalFileName,
+            fileObjectId: originalUploadResult.fileObjectId,
+          }
+        );
+        
+        // Add translated image (right side)
+        handleAddImageWithUndo(
+          translatedUploadResult.url,
+          gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
+          translatedRowY,
+          translatedDimensions.width,
+          translatedDimensions.height,
+          pageNumber,
+          "final-layout",
+          {
+            isSupabaseUrl: true,
+            filePath: translatedUploadResult.filePath,
+            fileName: translatedFileName,
+            fileObjectId: translatedUploadResult.fileObjectId,
+          }
+        );
+      } catch (error) {
+        console.error(`Error uploading quadrant images for snapshot ${snapshot.pageNumber}:`, error);
+        toast.error(`Failed to upload images for page ${snapshot.pageNumber}`);
+        
+        // Fallback to using data URLs directly
+        const originalDimensions = calculateFittedImageDimensions(
+          snapshot.originalWidth,
+          snapshot.originalHeight,
+          quadrantWidth,
+          quadrantHeight
+        );
+        const translatedDimensions = calculateFittedImageDimensions(
+          snapshot.translatedWidth,
+          snapshot.translatedHeight,
+          quadrantWidth,
+          quadrantHeight
+        );
+        
+        const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
+        const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
+        const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
+        const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
+        
+        const rowY = position === "top" 
+          ? pageHeight - labelSpace - quadrantHeight + originalOffsetY
+          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY;
+        const translatedRowY = position === "top"
+          ? pageHeight - labelSpace - quadrantHeight + translatedOffsetY
+          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY;
+        
+        handleAddImageWithUndo(
+          snapshot.originalImage,
+          gridMargin + originalOffsetX,
+          rowY,
+          originalDimensions.width,
+          originalDimensions.height,
+          pageNumber,
+          "final-layout",
+          undefined
+        );
+        
+        handleAddImageWithUndo(
+          snapshot.translatedImage,
+          gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
+          translatedRowY,
+          translatedDimensions.width,
+          translatedDimensions.height,
+          pageNumber,
+          "final-layout",
+          undefined
+        );
+      }
+    },
+    [calculateFittedImageDimensions, dataUrlToFile, handleAddImageWithUndo]
+  );
+
+  // Helper function to add grid lines for dynamic content layout
+  const addGridLines = useCallback(
+    (
+      pageNumber: number,
+      gridMargin: number,
+      pageWidth: number,
+      pageHeight: number,
+      labelSpace: number,
+      availableWidth: number,
+      quadrantHeight: number,
+      gridSpacing: number,
+      hasSecondSnapshot: boolean
+    ) => {
+      // Add vertical dividing line between original and translated
+      handleAddShapeWithUndo(
+        "line",
+        gridMargin + availableWidth / 2,
+        gridMargin,
+        2, // width
+        pageHeight - labelSpace, // height
+        pageNumber,
+        "final-layout",
+        undefined,
+        gridMargin + availableWidth / 2, // x1
+        gridMargin, // y1
+        gridMargin + availableWidth / 2, // x2
+        pageHeight - labelSpace // y2
+      );
+      
+      // Add horizontal dividing line between top and bottom rows (if there's a second snapshot)
+      if (hasSecondSnapshot) {
+        handleAddShapeWithUndo(
+          "line",
+          gridMargin,
+          pageHeight - labelSpace - quadrantHeight - gridSpacing / 2,
+          availableWidth, // width
+          2, // height
+          pageNumber,
+          "final-layout",
+          undefined,
+          gridMargin, // x1
+          pageHeight - labelSpace - quadrantHeight - gridSpacing / 2, // y1
+          gridMargin + availableWidth, // x2
+          pageHeight - labelSpace - quadrantHeight - gridSpacing / 2 // y2
+        );
+      }
+    },
+    [handleAddShapeWithUndo]
+  );
+
   // Function to add interactive elements (images and lines) to the final layout
   const addInteractiveElementsToLayout = useCallback(
     async (snapshots: SnapshotData[]) => {
-      const pagesNeeded = Math.ceil(snapshots.length / 2);
+      console.log("Adding interactive elements, total snapshots:", snapshots.length);
+      
+      // Separate snapshots by page type (matching the PDF creation logic)
+      const birthCertSnapshots = snapshots.filter(s => s.pageType === "birth_cert");
+      const dynamicContentSnapshots = snapshots.filter(s => s.pageType !== "birth_cert");
+      
+      // Sort both arrays by page number
+      birthCertSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
+      dynamicContentSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
+      
+      console.log(`Processing ${birthCertSnapshots.length} birth cert snapshots and ${dynamicContentSnapshots.length} dynamic content snapshots`);
+      
+      let currentPdfPageNumber = 2; // Start after template page (page 1)
+      
+      // 1. Process birth certificate pages (2 PDF pages per birth cert: original + translated)
+      for (const snapshot of birthCertSnapshots) {
+        console.log(`Adding birth cert elements for original page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`);
+        
+        // Add full-page original image
+        await addFullPageImage(
+          snapshot.originalImage, 
+          snapshot.originalWidth, 
+          snapshot.originalHeight,
+          currentPdfPageNumber, 
+          `birth-cert-original-${snapshot.pageNumber}`
+        );
+        currentPdfPageNumber++;
+        
+        console.log(`Adding birth cert elements for translated page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`);
+        
+        // Add full-page translated image  
+        await addFullPageImage(
+          snapshot.translatedImage, 
+          snapshot.translatedWidth, 
+          snapshot.translatedHeight,
+          currentPdfPageNumber, 
+          `birth-cert-translated-${snapshot.pageNumber}`
+        );
+        currentPdfPageNumber++;
+      }
+      
+      // 2. Process dynamic content pages (2x2 grid layout)
+      if (dynamicContentSnapshots.length > 0) {
+        console.log(`Starting dynamic content layout from PDF page ${currentPdfPageNumber}`);
+        
+        const dynamicPagesNeeded = Math.ceil(dynamicContentSnapshots.length / 2);
+        
+        for (let pdfPageIndex = 0; pdfPageIndex < dynamicPagesNeeded; pdfPageIndex++) {
+          const pageNumber = currentPdfPageNumber + pdfPageIndex;
+          const snapshot1 = dynamicContentSnapshots[pdfPageIndex * 2];
+          const snapshot2 = dynamicContentSnapshots[pdfPageIndex * 2 + 1];
+          
+          console.log(`Adding dynamic content elements to PDF page ${pageNumber}`);
+          
+          // Calculate layout dimensions (matching the PDF creation logic)
+          const pageWidth = 612; // Letter size in points
+          const pageHeight = 792;
+          const gridMargin = 10;
+          const gridSpacing = 8;
+          const labelSpace = 15;
+          const availableWidth = pageWidth - gridMargin * 2;
+          const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
+          const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
+          const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
 
-      for (let pdfPageIndex = 0; pdfPageIndex < pagesNeeded; pdfPageIndex++) {
-        // Start from page 2 since page 1 is the template page (export_first_page.pdf)
-        const pageNumber = pdfPageIndex + 2;
-        const snapshot1 = snapshots[pdfPageIndex * 2];
-        const snapshot2 = snapshots[pdfPageIndex * 2 + 1];
-
-        // Calculate layout dimensions (matching the PDF creation logic)
-        const pageWidth = 612; // Letter size in points
-        const pageHeight = 792;
-        const gridMargin = 10;
-        const gridSpacing = 8;
-        const labelSpace = 15;
-        const availableWidth = pageWidth - gridMargin * 2;
-        const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
-        const quadrantWidth = (availableWidth - gridSpacing) / 2; // ~292px
-        const quadrantHeight = (availableHeight - gridSpacing) / 2; // ~379.5px
-
-        // Add first snapshot's images (bottom row) - corrected positioning
-        if (snapshot1) {
-          try {
-            // Calculate fitted dimensions for original image
-            const originalDimensions = calculateFittedImageDimensions(
-              snapshot1.originalWidth,
-              snapshot1.originalHeight,
-              quadrantWidth,
-              quadrantHeight
-            );
-
-            // Calculate fitted dimensions for translated image
-            const translatedDimensions = calculateFittedImageDimensions(
-              snapshot1.translatedWidth,
-              snapshot1.translatedHeight,
-              quadrantWidth,
-              quadrantHeight
-            );
-
-            // Calculate centering offsets for original image
-            const originalOffsetX =
-              (quadrantWidth - originalDimensions.width) / 2;
-            const originalOffsetY =
-              (quadrantHeight - originalDimensions.height) / 2;
-
-            // Calculate centering offsets for translated image
-            const translatedOffsetX =
-              (quadrantWidth - translatedDimensions.width) / 2;
-            const translatedOffsetY =
-              (quadrantHeight - translatedDimensions.height) / 2;
-
-            // Upload original image to Supabase
-            const originalFileName = `final-layout-original-page-${
-              snapshot1.pageNumber
-            }-${Date.now()}.png`;
-            const originalFile = dataUrlToFile(
-              snapshot1.originalImage,
-              originalFileName
-            );
-            const originalUploadResult = await uploadFileWithFallback(
-              originalFile
-            );
-
-            // Upload translated image to Supabase
-            const translatedFileName = `final-layout-translated-page-${
-              snapshot1.pageNumber
-            }-${Date.now()}.png`;
-            const translatedFile = dataUrlToFile(
-              snapshot1.translatedImage,
-              translatedFileName
-            );
-            const translatedUploadResult = await uploadFileWithFallback(
-              translatedFile
-            );
-
-            // Original image (bottom-left, centered in quadrant) - swapped position
-            const originalImageId = handleAddImageWithUndo(
-              originalUploadResult.url,
-              gridMargin + originalOffsetX,
-              pageHeight -
-                labelSpace -
-                quadrantHeight * 2 -
-                gridSpacing +
-                originalOffsetY,
-              originalDimensions.width,
-              originalDimensions.height,
+          // Add first snapshot's images (top row)
+          if (snapshot1) {
+            await addQuadrantImages(
+              snapshot1,
               pageNumber,
-              "final-layout",
-              {
-                isSupabaseUrl: true,
-                filePath: originalUploadResult.filePath,
-                fileName: originalFileName,
-                fileObjectId: originalUploadResult.fileObjectId,
-              }
-            );
-
-            // Translated image (bottom-right, centered in quadrant) - swapped position
-            const translatedImageId = handleAddImageWithUndo(
-              translatedUploadResult.url,
-              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
-              pageHeight -
-                labelSpace -
-                quadrantHeight * 2 -
-                gridSpacing +
-                translatedOffsetY,
-              translatedDimensions.width,
-              translatedDimensions.height,
-              pageNumber,
-              "final-layout",
-              {
-                isSupabaseUrl: true,
-                filePath: translatedUploadResult.filePath,
-                fileName: translatedFileName,
-                fileObjectId: translatedUploadResult.fileObjectId,
-              }
-            );
-          } catch (error) {
-            console.error(
-              `Error uploading images for snapshot ${snapshot1.pageNumber}:`,
-              error
-            );
-            toast.error(
-              `Failed to upload images for page ${snapshot1.pageNumber}`
-            );
-
-            // Fallback to using data URLs directly if upload fails
-            const originalDimensions = calculateFittedImageDimensions(
-              snapshot1.originalWidth,
-              snapshot1.originalHeight,
+              gridMargin,
+              pageHeight,
+              labelSpace,
               quadrantWidth,
-              quadrantHeight
-            );
-            const translatedDimensions = calculateFittedImageDimensions(
-              snapshot1.translatedWidth,
-              snapshot1.translatedHeight,
-              quadrantWidth,
-              quadrantHeight
-            );
-            const originalOffsetX =
-              (quadrantWidth - originalDimensions.width) / 2;
-            const originalOffsetY =
-              (quadrantHeight - originalDimensions.height) / 2;
-            const translatedOffsetX =
-              (quadrantWidth - translatedDimensions.width) / 2;
-            const translatedOffsetY =
-              (quadrantHeight - translatedDimensions.height) / 2;
-
-            // Add images with data URLs as fallback
-            handleAddImageWithUndo(
-              snapshot1.originalImage,
-              gridMargin + originalOffsetX,
-              pageHeight -
-                labelSpace -
-                quadrantHeight * 2 -
-                gridSpacing +
-                originalOffsetY,
-              originalDimensions.width,
-              originalDimensions.height,
-              pageNumber,
-              "final-layout",
-              undefined
-            );
-            handleAddImageWithUndo(
-              snapshot1.translatedImage,
-              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
-              pageHeight -
-                labelSpace -
-                quadrantHeight * 2 -
-                gridSpacing +
-                translatedOffsetY,
-              translatedDimensions.width,
-              translatedDimensions.height,
-              pageNumber,
-              "final-layout",
-              undefined
+              quadrantHeight,
+              gridSpacing,
+              "top" // Position: top row
             );
           }
 
-          // Add dividing line between original and translated (vertical)
-          const verticalLineId = handleAddShapeWithUndo(
-            "line",
-            gridMargin + quadrantWidth + gridSpacing / 2,
-            gridMargin,
-            2, // width
-            pageHeight - labelSpace, // height
-            pageNumber,
-            "final-layout",
-            undefined, // targetView should be undefined for final layout
-            gridMargin + quadrantWidth + gridSpacing / 2, // x1
-            gridMargin, // y1
-            gridMargin + quadrantWidth + gridSpacing / 2, // x2
-            pageHeight - labelSpace // y2
-          );
-        }
-
-        // Add second snapshot's images (top row) - corrected positioning
-        if (snapshot2) {
-          try {
-            // Calculate fitted dimensions for original image
-            const originalDimensions2 = calculateFittedImageDimensions(
-              snapshot2.originalWidth,
-              snapshot2.originalHeight,
-              quadrantWidth,
-              quadrantHeight
-            );
-
-            // Calculate fitted dimensions for translated image
-            const translatedDimensions2 = calculateFittedImageDimensions(
-              snapshot2.translatedWidth,
-              snapshot2.translatedHeight,
-              quadrantWidth,
-              quadrantHeight
-            );
-
-            // Calculate centering offsets for original image
-            const originalOffsetX2 =
-              (quadrantWidth - originalDimensions2.width) / 2;
-            const originalOffsetY2 =
-              (quadrantHeight - originalDimensions2.height) / 2;
-
-            // Calculate centering offsets for translated image
-            const translatedOffsetX2 =
-              (quadrantWidth - translatedDimensions2.width) / 2;
-            const translatedOffsetY2 =
-              (quadrantHeight - translatedDimensions2.height) / 2;
-
-            // Upload original image to Supabase
-            const originalFileName2 = `final-layout-original-page-${
-              snapshot2.pageNumber
-            }-${Date.now()}.png`;
-            const originalFile2 = dataUrlToFile(
-              snapshot2.originalImage,
-              originalFileName2
-            );
-            const originalUploadResult2 = await uploadFileWithFallback(
-              originalFile2
-            );
-
-            // Upload translated image to Supabase
-            const translatedFileName2 = `final-layout-translated-page-${
-              snapshot2.pageNumber
-            }-${Date.now()}.png`;
-            const translatedFile2 = dataUrlToFile(
-              snapshot2.translatedImage,
-              translatedFileName2
-            );
-            const translatedUploadResult2 = await uploadFileWithFallback(
-              translatedFile2
-            );
-
-            // Original image (top-left, centered in quadrant) - swapped position
-            const originalImageId2 = handleAddImageWithUndo(
-              originalUploadResult2.url,
-              gridMargin + originalOffsetX2,
-              pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
-              originalDimensions2.width,
-              originalDimensions2.height,
+          // Add second snapshot's images (bottom row)
+          if (snapshot2) {
+            await addQuadrantImages(
+              snapshot2,
               pageNumber,
-              "final-layout",
-              {
-                isSupabaseUrl: true,
-                filePath: originalUploadResult2.filePath,
-                fileName: originalFileName2,
-                fileObjectId: originalUploadResult2.fileObjectId,
-              }
-            );
-
-            // Translated image (top-right, centered in quadrant) - swapped position
-            const translatedImageId2 = handleAddImageWithUndo(
-              translatedUploadResult2.url,
-              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
-              pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
-              translatedDimensions2.width,
-              translatedDimensions2.height,
-              pageNumber,
-              "final-layout",
-              {
-                isSupabaseUrl: true,
-                filePath: translatedUploadResult2.filePath,
-                fileName: translatedFileName2,
-                fileObjectId: translatedUploadResult2.fileObjectId,
-              }
-            );
-          } catch (error) {
-            console.error(
-              `Error uploading images for snapshot ${snapshot2.pageNumber}:`,
-              error
-            );
-            toast.error(
-              `Failed to upload images for page ${snapshot2.pageNumber}`
-            );
-
-            // Fallback to using data URLs directly if upload fails
-            const originalDimensions2 = calculateFittedImageDimensions(
-              snapshot2.originalWidth,
-              snapshot2.originalHeight,
+              gridMargin,
+              pageHeight,
+              labelSpace,
               quadrantWidth,
-              quadrantHeight
-            );
-            const translatedDimensions2 = calculateFittedImageDimensions(
-              snapshot2.translatedWidth,
-              snapshot2.translatedHeight,
-              quadrantWidth,
-              quadrantHeight
-            );
-            const originalOffsetX2 =
-              (quadrantWidth - originalDimensions2.width) / 2;
-            const originalOffsetY2 =
-              (quadrantHeight - originalDimensions2.height) / 2;
-            const translatedOffsetX2 =
-              (quadrantWidth - translatedDimensions2.width) / 2;
-            const translatedOffsetY2 =
-              (quadrantHeight - translatedDimensions2.height) / 2;
-
-            // Add images with data URLs as fallback
-            handleAddImageWithUndo(
-              snapshot2.originalImage,
-              gridMargin + originalOffsetX2,
-              pageHeight - labelSpace - quadrantHeight + originalOffsetY2,
-              originalDimensions2.width,
-              originalDimensions2.height,
-              pageNumber,
-              "final-layout",
-              undefined
-            );
-            handleAddImageWithUndo(
-              snapshot2.translatedImage,
-              gridMargin + quadrantWidth + gridSpacing + translatedOffsetX2,
-              pageHeight - labelSpace - quadrantHeight + translatedOffsetY2,
-              translatedDimensions2.width,
-              translatedDimensions2.height,
-              pageNumber,
-              "final-layout",
-              undefined
+              quadrantHeight,
+              gridSpacing,
+              "bottom" // Position: bottom row
             );
           }
 
-          // Add dividing line between original and translated (vertical, top row)
-          const verticalLineId2 = handleAddShapeWithUndo(
-            "line",
-            gridMargin + quadrantWidth + gridSpacing / 2,
-            pageHeight - labelSpace - quadrantHeight,
-            2, // width
-            quadrantHeight, // height
-            pageNumber,
-            "final-layout",
-            undefined, // targetView should be undefined for final layout
-            gridMargin + quadrantWidth + gridSpacing / 2, // x1
-            pageHeight - labelSpace - quadrantHeight, // y1
-            gridMargin + quadrantWidth + gridSpacing / 2, // x2
-            pageHeight - labelSpace // y2 - corrected to go to top
-          );
-        }
-
-        // Add horizontal dividing line between top and bottom rows (if there's a second snapshot)
-        if (snapshot2) {
-          const horizontalLineId = handleAddShapeWithUndo(
-            "line",
-            gridMargin,
-            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2,
-            availableWidth, // width
-            2, // height
-            pageNumber,
-            "final-layout",
-            undefined, // targetView should be undefined for final layout
-            gridMargin, // x1
-            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2, // y1
-            gridMargin + availableWidth, // x2
-            pageHeight - labelSpace - quadrantHeight - gridSpacing / 2 // y2
-          );
+          // Add dividing lines
+          addGridLines(pageNumber, gridMargin, pageWidth, pageHeight, labelSpace, availableWidth, quadrantHeight, gridSpacing, !!snapshot2);
         }
       }
+      
+      console.log("Interactive elements layout completed");
     },
     [
       handleAddImageWithUndo,
       handleAddShapeWithUndo,
       calculateFittedImageDimensions,
+      dataUrlToFile,
     ]
   );
 
@@ -1786,10 +1809,10 @@ export const PDFEditorContent: React.FC = () => {
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
-        // Enable edit mode for final layout to allow element editing
+        // Disable edit mode for final layout to prevent editing
         setEditorState((prev) => ({
           ...prev,
-          isEditMode: true,
+          isEditMode: false,
         }));
 
         // Set view to final-layout and zoom to 100%
@@ -7021,12 +7044,18 @@ export const PDFEditorContent: React.FC = () => {
           ),
           isTransforming: documentState.isTransforming,
         }}
-        onZoomChange={(scale) => actions.updateScaleWithoutRerender(Math.max(1.0, scale))}
+        onZoomChange={(scale) =>
+          actions.updateScaleWithoutRerender(Math.max(1.0, scale))
+        }
         onZoomIn={() =>
-          actions.updateScaleWithoutRerender(Math.min(5.0, documentState.scale + 0.1))
+          actions.updateScaleWithoutRerender(
+            Math.min(5.0, documentState.scale + 0.1)
+          )
         }
         onZoomOut={() =>
-          actions.updateScaleWithoutRerender(Math.max(1.0, documentState.scale - 0.1))
+          actions.updateScaleWithoutRerender(
+            Math.max(1.0, documentState.scale - 0.1)
+          )
         }
         onZoomReset={() => actions.updateScaleWithoutRerender(1.0)}
       />

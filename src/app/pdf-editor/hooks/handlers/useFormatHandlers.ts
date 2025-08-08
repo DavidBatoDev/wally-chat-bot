@@ -102,26 +102,23 @@ export const useFormatHandlers = ({
           // Apply text format changes to all selected textboxes
           selectedElements.forEach((element) => {
             if (element.type === "textbox") {
-              // Get current textbox state
-              const currentTextBox = getCurrentTextBoxes(
-                viewState.currentView
-              ).find((tb) => tb.id === element.id);
-
-              console.log("Multi-selection textbox processing:", {
-                elementId: element.id,
-                format,
-                currentTextBox: currentTextBox ? {
-                  id: currentTextBox.id,
-                  fontSize: currentTextBox.fontSize,
-                  fontFamily: currentTextBox.fontFamily,
-                  value: currentTextBox.value
-                } : null,
-                hasFormatChanges: {
-                  fontSize: "fontSize" in format,
-                  fontFamily: "fontFamily" in format,
-                  isPaddingChange
-                }
-              });
+              // Get current textbox state - for split view, we need to search across all collections
+              let currentTextBox: TextField | undefined;
+              
+              if (viewState.currentView === "split") {
+                // In split view, search across all collections to find the element
+                const originalTextBoxes = getCurrentTextBoxes("original");
+                const translatedTextBoxes = getCurrentTextBoxes("translated");
+                const finalLayoutTextBoxes = getCurrentTextBoxes("final-layout");
+                
+                currentTextBox = originalTextBoxes.find(tb => tb.id === element.id) ||
+                                translatedTextBoxes.find(tb => tb.id === element.id) ||
+                                finalLayoutTextBoxes.find(tb => tb.id === element.id);
+              } else {
+                // For other views, use the standard approach
+                const allTextBoxes = getCurrentTextBoxes(viewState.currentView);
+                currentTextBox = allTextBoxes.find((tb) => tb.id === element.id);
+              }
 
               if (
                 currentTextBox &&
@@ -158,15 +155,6 @@ export const useFormatHandlers = ({
                   format.fontFamily !== undefined
                     ? format.fontFamily
                     : currentTextBox.fontFamily;
-
-                console.log("About to call measureText for multi-selection:", {
-                  elementId: element.id,
-                  text: currentTextBox.value,
-                  fontSize,
-                  fontFamily,
-                  letterSpacing: currentTextBox.letterSpacing || 0,
-                  padding
-                });
 
                 const { width: newTextWidth, height: newTextHeight } =
                   measureText(
@@ -224,6 +212,7 @@ export const useFormatHandlers = ({
           currentTextBox &&
           ("fontSize" in format || "fontFamily" in format || isPaddingChange)
         ) {
+
           // Use new or current padding values
           const padding = {
             top:
@@ -252,6 +241,7 @@ export const useFormatHandlers = ({
             format.fontFamily !== undefined
               ? format.fontFamily
               : currentTextBox.fontFamily;
+
           const { width: newTextWidth, height: newTextHeight } = measureText(
             currentTextBox.value,
             fontSize,

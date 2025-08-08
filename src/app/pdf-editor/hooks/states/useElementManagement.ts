@@ -955,11 +955,6 @@ export const useElementManagement = () => {
         sortedElements.push(element);
       });
 
-      console.log(
-        `📝 Translated Elements for Page ${currentPage}:`,
-        sortedElements
-      );
-
       return sortedElements;
     },
     [layerState.translatedLayerOrder, elementCollections]

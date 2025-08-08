@@ -205,10 +205,8 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
   // Use isPdfFile to check for PDF
   const isPdf = pdfUrl && isPdfFile(pdfUrl);
 
-  // In final-layout or translate mode, only show original view
-  const showOnlyOriginal =
-    currentWorkflowStep === "final-layout" ||
-    currentWorkflowStep === "translate";
+  // Always show only original view
+  const showOnlyOriginal = true;
 
   // Helper function to create sorted elements array
   const createSortedElements = (elements: {
@@ -306,7 +304,7 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
 
   return (
     <div style={{ display: "flex", gap: 4 }}>
-      {/* Original view */}
+      {/* Original view - always shown */}
       <div
         style={{
           position: "relative",
@@ -361,74 +359,6 @@ const SidebarPagePreviewComponent: React.FC<SidebarPagePreviewProps> = ({
         {/* Render all elements in correct layering order */}
         {originalSortedElements.map((item) => renderElement(item, scale))}
       </div>
-      {/* Translated view - only show if not in final-layout */}
-      {!showOnlyOriginal && (
-        <div
-          style={{
-            position: "relative",
-            width: (translatedTemplateWidth || pageWidth) * scale,
-            height: (translatedTemplateHeight || pageHeight) * scale,
-            background: pdfBackgroundColor,
-            border: "1px solid #e5e7eb",
-            borderRadius: 4,
-            overflow: "hidden",
-          }}
-        >
-          {/* PDF or image background for translated view - only if template URL exists */}
-          {translatedPdfUrl && translatedPdfUrl !== "" && (
-            <>
-              {isPdfFile(translatedPdfUrl) ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    width: "100%",
-                    height: "100%",
-                    zIndex: 0,
-                  }}
-                >
-                  <Document file={translatedPdfUrl} loading={null} error={null}>
-                    <Page
-                      pageNumber={1}
-                      width={pageWidth * scale}
-                      renderAnnotationLayer={false}
-                      renderTextLayer={false}
-                      loading={null}
-                      error={null}
-                    />
-                  </Document>
-                </div>
-              ) : (
-                <img
-                  src={translatedPdfUrl}
-                  alt="Translated document preview"
-                  style={{
-                    width: pageWidth * scale,
-                    height: pageHeight * scale,
-                    maxWidth: "none",
-                    display: "block",
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    zIndex: 0,
-                  }}
-                  draggable={false}
-                />
-              )}
-            </>
-          )}
-          {/* Render all elements in correct layering order */}
-          {translatedSortedElements.map((item) =>
-            renderElement(
-              item,
-              scale,
-              translatedTemplateWidth || pageWidth,
-              translatedTemplateHeight || pageHeight
-            )
-          )}
-        </div>
-      )}
     </div>
   );
 };

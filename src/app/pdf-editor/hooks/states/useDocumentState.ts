@@ -49,9 +49,8 @@ export const useDocumentState = () => {
   // Document loading handlers
   const handleDocumentLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
-      console.log(`handleDocumentLoadSuccess called with ${numPages} pages`);
-      console.log("Current document state before load success:", documentState);
-
+      console.log("handleDocumentLoadSuccess called with", numPages, "pages");
+      
       // Only reset pages and deletedPages if this is truly a new document load
       // Check if numPages has actually changed or if we're reloading the same document
       if (
@@ -69,17 +68,45 @@ export const useDocumentState = () => {
         return;
       }
 
-      // If we have existing pages, preserve them if they have the same count
-      // This handles cases where the document is reloaded during workflow changes
+      // Enhanced page preservation logic for workflow switching
       const existingPages = documentState.pages;
       let initialPages: PageData[];
 
       if (existingPages.length === numPages && existingPages.length > 0) {
-        // Preserve existing pages with their pageType settings
+        // Preserve existing pages with their pageType settings (same page count)
         console.log("Preserving existing pages with their settings");
         initialPages = existingPages;
+      } else if (existingPages.length > 0) {
+        // Create new pages array with preserved page types where applicable
+        initialPages = Array.from({ length: numPages }, (_, index) => {
+          const pageNumber = index + 1;
+          
+          // Try to find existing page data for this page number
+          const existingPage = existingPages.find(p => p.pageNumber === pageNumber);
+          
+          if (existingPage) {
+            return {
+              pageNumber,
+              isTranslated: existingPage.isTranslated,
+              pageType: existingPage.pageType || "dynamic_content",
+              backgroundColor: existingPage.backgroundColor,
+              birthCertTemplate: existingPage.birthCertTemplate,
+              birthCertType: existingPage.birthCertType,
+              translatedTemplateURL: existingPage.translatedTemplateURL,
+              translatedTemplateWidth: existingPage.translatedTemplateWidth,
+              translatedTemplateHeight: existingPage.translatedTemplateHeight,
+            } as PageData;
+          } else {
+            // Create new page with default settings
+            return {
+              pageNumber,
+              isTranslated: false,
+              pageType: "dynamic_content" as const,
+            };
+          }
+        });
       } else {
-        // Initialize new pages array when document loads
+        // Initialize new pages array when document loads for the first time
         console.log("Creating new pages array");
         initialPages = Array.from({ length: numPages }, (_, index) => ({
           pageNumber: index + 1,
@@ -328,11 +355,6 @@ export const useDocumentState = () => {
               finalLayoutCurrentPage: page,
               isPageLoading: true,
             };
-            console.log("🔄 Final layout state updated:", {
-              from: prev.finalLayoutCurrentPage,
-              to: page,
-              newState: newState,
-            });
             return newState;
           });
         } else {

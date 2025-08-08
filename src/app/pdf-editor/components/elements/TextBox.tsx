@@ -552,11 +552,11 @@ export const MemoizedTextBox = memo(
             }}
           >
             <textarea
-              value={textBox.value}
+              value={isEditMode || (textBox.value && textBox.value.trim() !== "") ? textBox.value : ""}
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
-              placeholder={textBox.placeholder || "Enter Text..."}
+              placeholder={isEditMode ? (textBox.placeholder || "Enter Text...") : ""}
               data-textbox-id={textBox.id}
               className="absolute top-0 left-0 w-full h-full bg-transparent overflow-hidden border-none outline-none cursor-text resize-none"
               style={{

@@ -155,16 +155,15 @@ export const moveSelectedElements = (
   pageWidth: number,
   pageHeight: number
 ) => {
-  console.log("moveSelectedElements called", {
-    selectedElementsCount: selectedElements.length,
-    deltaX,
-    deltaY,
-    pageWidth,
-    pageHeight,
-  });
+  // console.log("moveSelectedElements called", {
+  //   selectedElementsCount: selectedElements.length,
+  //   deltaX,
+  //   deltaY,
+  //   pageWidth,
+  //   pageHeight,
+  // });
 
   selectedElements.forEach((selectedElement) => {
-    console.log("Processing element", selectedElement);
 
     const element = getElementById(selectedElement.id, selectedElement.type);
     if (element) {
@@ -250,21 +249,21 @@ export const moveSelectedElements = (
         );
       }
 
-      console.log("Moving element", {
-        id: selectedElement.id,
-        type: selectedElement.type,
-        from: {
-          x: selectedElement.originalPosition.x,
-          y: selectedElement.originalPosition.y,
-        },
-        to: { x: constrainedX, y: constrainedY },
-        originalDelta: { deltaX, deltaY },
-        constrained: {
-          deltaX: constrainedX - selectedElement.originalPosition.x,
-          deltaY: constrainedY - selectedElement.originalPosition.y,
-        },
-        pageBounds: { width: pageWidth, height: pageHeight },
-      });
+      // console.log("Moving element", {
+      //   id: selectedElement.id,
+      //   type: selectedElement.type,
+      //   from: {
+      //     x: selectedElement.originalPosition.x,
+      //     y: selectedElement.originalPosition.y,
+      //   },
+      //   to: { x: constrainedX, y: constrainedY },
+      //   originalDelta: { deltaX, deltaY },
+      //   constrained: {
+      //     deltaX: constrainedX - selectedElement.originalPosition.x,
+      //     deltaY: constrainedY - selectedElement.originalPosition.y,
+      //   },
+      //   pageBounds: { width: pageWidth, height: pageHeight },
+      // });
 
       switch (selectedElement.type) {
         case "textbox":
