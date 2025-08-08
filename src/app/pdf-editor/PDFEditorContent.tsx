@@ -68,6 +68,9 @@ import {
   useHandleDeleteDeletionRectangleWithUndo,
   useHandleAddImageWithUndo,
   useHandleDeleteImageWithUndo,
+  useHandleUpdateImageWithUndo,
+  useUpdateImageWithUndo,
+  useHandleMultiDeleteWithUndo,
 } from "./hooks/handlers/undoRedoHandlers";
 
 // Import refactored event handler hooks
@@ -211,6 +214,10 @@ export const PDFEditorContent: React.FC = () => {
     deleteShape,
     deleteImage,
     deleteDeletionRectangle,
+    restoreTextBox,
+    restoreShape,
+    restoreImage,
+    restoreDeletionRectangle,
     moveToFront,
     moveToBack,
     moveForward,
@@ -588,12 +595,14 @@ export const PDFEditorContent: React.FC = () => {
   const handleAddTextBoxWithUndo = useHandleAddTextBoxWithUndo(
     addTextBox,
     deleteTextBox,
-    history
+    history,
+    elementCollections
   );
   const handleDuplicateTextBoxWithUndo = useHandleDuplicateTextBoxWithUndo(
     duplicateTextBox,
     deleteTextBox,
-    history
+    history,
+    elementCollections
   );
   const handleUpdateTextBoxWithUndo = useHandleUpdateTextBoxWithUndo(
     updateTextBox,
@@ -604,26 +613,30 @@ export const PDFEditorContent: React.FC = () => {
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
     documentState,
-    viewState
+    viewState,
+    history
   );
   const updateOriginalTextBoxWithUndo = useUpdateOriginalTextBoxWithUndo(
     updateTextBox,
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
-    documentState
+    documentState,
+    history
   );
   const updateTranslatedTextBoxWithUndo = useUpdateTranslatedTextBoxWithUndo(
     updateTextBox,
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
-    documentState
+    documentState,
+    history
   );
 
   const updateFinalLayoutTextBoxWithUndo = useUpdateFinalLayoutTextBoxWithUndo(
     updateTextBox,
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
-    documentState
+    documentState,
+    history
   );
   const handleAddShapeWithUndo = useHandleAddShapeWithUndo(
     addShape,
@@ -639,13 +652,12 @@ export const PDFEditorContent: React.FC = () => {
     handleUpdateShapeWithUndo,
     getCurrentShapeState,
     elementCollections,
-    ongoingOperations
+    history
   );
   const handleDeleteTextBoxWithUndo = useHandleDeleteTextBoxWithUndo(
     deleteTextBox,
-    addTextBox,
+    restoreTextBox,
     history,
-    handleAddTextBoxWithUndo,
     elementCollections,
     editorState,
     selectedElementId,
@@ -729,7 +741,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleDeleteShapeWithUndo = useHandleDeleteShapeWithUndo(
     deleteShape,
-    addShape,
+    restoreShape,
     history,
     elementCollections,
     editorState,
@@ -745,7 +757,7 @@ export const PDFEditorContent: React.FC = () => {
   const handleDeleteDeletionRectangleWithUndo =
     useHandleDeleteDeletionRectangleWithUndo(
       deleteDeletionRectangle,
-      addDeletionRectangle,
+      restoreDeletionRectangle,
       history,
       elementCollections
     );
@@ -756,11 +768,51 @@ export const PDFEditorContent: React.FC = () => {
   );
   const handleDeleteImageWithUndo = useHandleDeleteImageWithUndo(
     deleteImage,
-    addImage,
+    restoreImage,
     history,
     elementCollections,
     selectedElementId,
     clearSelectionState
+  );
+  
+  // Multi-delete handler for selected elements
+  const handleMultiDeleteWithUndo = useHandleMultiDeleteWithUndo(
+    deleteTextBox,
+    deleteShape,
+    deleteImage,
+    restoreTextBox,
+    restoreShape,
+    restoreImage,
+    history,
+    elementCollections,
+    editorState.multiSelection,
+    clearSelectionState
+  );
+  
+  // Add image update handlers
+  const handleUpdateImageWithUndo = useHandleUpdateImageWithUndo(
+    updateImage,
+    history
+  );
+  
+  const getCurrentImageState = useCallback(
+    (id: string): Partial<ImageType> | null => {
+      const allImages = [
+        ...elementCollections.originalImages,
+        ...elementCollections.translatedImages,
+        ...elementCollections.finalLayoutImages,
+      ];
+      const image = allImages.find((img) => img.id === id);
+      return image ? { ...image } : null;
+    },
+    [elementCollections]
+  );
+  
+  const updateImageWithUndo = useUpdateImageWithUndo(
+    updateImage,
+    handleUpdateImageWithUndo,
+    getCurrentImageState,
+    history
   );
 
   // Use a ref to track ongoing operations for immediate access in timers
@@ -1046,7 +1098,9 @@ export const PDFEditorContent: React.FC = () => {
     updateTextBoxWithUndo,
     updateShapeWithUndo,
     updateImage,
+    updateImageWithUndo,
     getElementById,
+    history,
   });
 
   // Refs
@@ -2492,6 +2546,40 @@ export const PDFEditorContent: React.FC = () => {
     getTranslatedTemplateScaleFactor,
   });
 
+  // Delete selected elements - defined before useKeyboardHandlers to avoid initialization error
+  const handleDeleteSelection = useCallback(() => {
+    const { selectedElements } = editorState.multiSelection;
+
+    if (selectedElements.length > 0) {
+      console.log('[PDFEditorContent] Deleting', selectedElements.length, 'selected elements');
+      // Use the multi-delete handler for atomic undo/redo
+      handleMultiDeleteWithUndo();
+    }
+
+    // Clear selection
+    setEditorState((prev) => ({
+      ...prev,
+      multiSelection: {
+        ...prev.multiSelection,
+        selectedElements: [],
+        selectionBounds: null,
+      },
+    }));
+
+    // Also clear single element selection state
+    setSelectedElementId(null);
+    setSelectedElementType(null);
+    setCurrentFormat(null);
+    setIsDrawerOpen(false);
+  }, [
+    editorState.multiSelection.selectedElements,
+    handleMultiDeleteWithUndo,
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setIsDrawerOpen,
+  ]);
+
   // Keyboard handlers for shortcuts, undo/redo, and multi-selection
   useKeyboardHandlers({
     editorState,
@@ -2503,11 +2591,14 @@ export const PDFEditorContent: React.FC = () => {
     erasureState,
     currentPageTextBoxes,
     handleAddDeletionRectangleWithUndo,
-    handleDeleteTextBoxWithUndo: (id: string) =>
-      deleteTextBox(id, viewState.currentView),
+    handleDeleteTextBoxWithUndo,
+    handleDeleteShapeWithUndo,
+    handleDeleteImageWithUndo,
+    handleDeleteSelection,
     history,
     handleMultiSelectionMove,
     handleMultiSelectionMoveEnd,
+    elementCollections,
   });
 
   // Erasure drawing handlers
@@ -2930,55 +3021,6 @@ export const PDFEditorContent: React.FC = () => {
     editorState.multiSelection.isMovingSelection,
   ]);
 
-  // Delete selected elements
-  const handleDeleteSelection = useCallback(() => {
-    const { selectedElements, targetView } = editorState.multiSelection;
-
-    selectedElements.forEach((selectedElement) => {
-      // Use targetView for split view, otherwise use currentView
-      const deleteView = targetView || viewState.currentView;
-
-      switch (selectedElement.type) {
-        case "textbox":
-          handleDeleteTextBoxWithUndo(selectedElement.id, deleteView);
-          break;
-        case "shape":
-          handleDeleteShapeWithUndo(selectedElement.id, deleteView);
-          break;
-        case "image":
-          handleDeleteImageWithUndo(selectedElement.id, deleteView);
-          break;
-      }
-    });
-
-    // Clear selection
-    setEditorState((prev) => ({
-      ...prev,
-      multiSelection: {
-        ...prev.multiSelection,
-        selectedElements: [],
-        selectionBounds: null,
-      },
-    }));
-
-    // Also clear single element selection state
-    setSelectedElementId(null);
-    setSelectedElementType(null);
-    setCurrentFormat(null);
-    setIsDrawerOpen(false);
-  }, [
-    editorState.multiSelection.selectedElements,
-    editorState.multiSelection.targetView,
-    handleDeleteTextBoxWithUndo,
-    handleDeleteShapeWithUndo,
-    handleDeleteImageWithUndo,
-    viewState.currentView,
-    setSelectedElementId,
-    setSelectedElementType,
-    setCurrentFormat,
-    setIsDrawerOpen,
-  ]);
-
   // Handle drag stop for selection rectangle
   const handleDragStopSelection = useCallback(
     (deltaX: number, deltaY: number) => {
@@ -3160,6 +3202,12 @@ export const PDFEditorContent: React.FC = () => {
   const handleMoveSelectionMouseUp = useCallback(() => {
     if (!editorState.multiSelection.isMovingSelection) return;
 
+    // End any ongoing batch operations for multi-selection move
+    if (history.isBatching()) {
+      console.log('[PDFEditorContent] Ending batch for multi-selection move');
+      history.endBatch();
+    }
+
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -3168,7 +3216,7 @@ export const PDFEditorContent: React.FC = () => {
         moveStart: null,
       },
     }));
-  }, [editorState.multiSelection.isMovingSelection]);
+  }, [editorState.multiSelection.isMovingSelection, history]);
 
   // Document click handler
   const handleDocumentContainerClick = useCallback(

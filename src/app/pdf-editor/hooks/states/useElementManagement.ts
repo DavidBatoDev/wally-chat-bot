@@ -717,6 +717,49 @@ export const useElementManagement = () => {
     [removeFromLayerOrder]
   );
 
+  // Restore textbox with its original ID and properties
+  const restoreTextBox = useCallback(
+    (textBox: TextField, currentView: ViewMode) => {
+      console.log('[ElementManagement] Restoring textbox:', textBox, 'to view:', currentView);
+      
+      setElementCollections((prev) => {
+        // Check if textbox already exists in the current state
+        const existingTextBoxes = [
+          ...prev.originalTextBoxes,
+          ...prev.translatedTextBoxes,
+          ...prev.finalLayoutTextboxes,
+        ];
+        
+        if (existingTextBoxes.some(tb => tb.id === textBox.id)) {
+          console.warn('[ElementManagement] Textbox already exists:', textBox.id, '- skipping restore');
+          return prev; // Return unchanged state
+        }
+
+        console.log('[ElementManagement] Actually restoring textbox:', textBox.id);
+        
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedTextBoxes: [...prev.translatedTextBoxes, textBox],
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutTextboxes: [...prev.finalLayoutTextboxes, textBox],
+          };
+        } else {
+          return {
+            ...prev,
+            originalTextBoxes: [...prev.originalTextBoxes, textBox],
+          };
+        }
+      });
+      
+      addToLayerOrder(textBox.id, currentView);
+    },
+    [addToLayerOrder]
+  );
+
   const deleteShape = useCallback(
     (id: string, currentView: ViewMode) => {
       setElementCollections((prev) => {
@@ -746,6 +789,49 @@ export const useElementManagement = () => {
       removeFromLayerOrder(id, currentView);
     },
     [removeFromLayerOrder]
+  );
+
+  // Restore shape with its original ID and properties
+  const restoreShape = useCallback(
+    (shape: ShapeType, currentView: ViewMode) => {
+      console.log('[ElementManagement] Restoring shape:', shape, 'to view:', currentView);
+      
+      setElementCollections((prev) => {
+        // Check if shape already exists in the current state
+        const existingShapes = [
+          ...prev.originalShapes,
+          ...prev.translatedShapes,
+          ...prev.finalLayoutShapes,
+        ];
+        
+        if (existingShapes.some(s => s.id === shape.id)) {
+          console.warn('[ElementManagement] Shape already exists:', shape.id, '- skipping restore');
+          return prev; // Return unchanged state
+        }
+
+        console.log('[ElementManagement] Actually restoring shape:', shape.id);
+        
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedShapes: [...prev.translatedShapes, shape],
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutShapes: [...prev.finalLayoutShapes, shape],
+          };
+        } else {
+          return {
+            ...prev,
+            originalShapes: [...prev.originalShapes, shape],
+          };
+        }
+      });
+      
+      addToLayerOrder(shape.id, currentView);
+    },
+    [addToLayerOrder]
   );
 
   const deleteImage = useCallback(
@@ -779,6 +865,49 @@ export const useElementManagement = () => {
     [removeFromLayerOrder]
   );
 
+  // Restore image with its original ID and properties
+  const restoreImage = useCallback(
+    (image: ImageType, currentView: ViewMode) => {
+      console.log('[ElementManagement] Restoring image:', image, 'to view:', currentView);
+      
+      setElementCollections((prev) => {
+        // Check if image already exists in the current state
+        const existingImages = [
+          ...prev.originalImages,
+          ...prev.translatedImages,
+          ...prev.finalLayoutImages,
+        ];
+        
+        if (existingImages.some(img => img.id === image.id)) {
+          console.warn('[ElementManagement] Image already exists:', image.id, '- skipping restore');
+          return prev; // Return unchanged state
+        }
+
+        console.log('[ElementManagement] Actually restoring image:', image.id);
+        
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedImages: [...prev.translatedImages, image],
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutImages: [...prev.finalLayoutImages, image],
+          };
+        } else {
+          return {
+            ...prev,
+            originalImages: [...prev.originalImages, image],
+          };
+        }
+      });
+      
+      addToLayerOrder(image.id, currentView);
+    },
+    [addToLayerOrder]
+  );
+
   const deleteDeletionRectangle = useCallback(
     (id: string, currentView: ViewMode) => {
       setElementCollections((prev) => {
@@ -804,6 +933,47 @@ export const useElementManagement = () => {
             originalDeletionRectangles: prev.originalDeletionRectangles.filter(
               (rect) => rect.id !== id
             ),
+          };
+        }
+      });
+    },
+    []
+  );
+
+  // Restore deletion rectangle with its original ID and properties
+  const restoreDeletionRectangle = useCallback(
+    (rect: DeletionRectangle, currentView: ViewMode) => {
+      console.log('[ElementManagement] Restoring deletion rectangle:', rect, 'to view:', currentView);
+      
+      setElementCollections((prev) => {
+        // Check if rect already exists in the current state
+        const existingRects = [
+          ...prev.originalDeletionRectangles,
+          ...prev.translatedDeletionRectangles,
+          ...prev.finalLayoutDeletionRectangles,
+        ];
+        
+        if (existingRects.some(r => r.id === rect.id)) {
+          console.warn('[ElementManagement] Deletion rectangle already exists:', rect.id, '- skipping restore');
+          return prev; // Return unchanged state
+        }
+
+        console.log('[ElementManagement] Actually restoring deletion rectangle:', rect.id);
+        
+        if (currentView === "translated") {
+          return {
+            ...prev,
+            translatedDeletionRectangles: [...prev.translatedDeletionRectangles, rect],
+          };
+        } else if (currentView === "final-layout") {
+          return {
+            ...prev,
+            finalLayoutDeletionRectangles: [...prev.finalLayoutDeletionRectangles, rect],
+          };
+        } else {
+          return {
+            ...prev,
+            originalDeletionRectangles: [...prev.originalDeletionRectangles, rect],
           };
         }
       });
@@ -1068,6 +1238,40 @@ export const useElementManagement = () => {
     [elementCollections.untranslatedTexts]
   );
 
+  // Helper functions to get current state of elements
+  const getCurrentTextBoxState = useCallback(
+    (id: string): TextField | undefined => {
+      return [
+        ...elementCollections.originalTextBoxes,
+        ...elementCollections.translatedTextBoxes,
+        ...elementCollections.finalLayoutTextboxes,
+      ].find((tb) => tb.id === id);
+    },
+    [elementCollections]
+  );
+
+  const getCurrentShapeState = useCallback(
+    (id: string): ShapeType | undefined => {
+      return [
+        ...elementCollections.originalShapes,
+        ...elementCollections.translatedShapes,
+        ...elementCollections.finalLayoutShapes,
+      ].find((shape) => shape.id === id);
+    },
+    [elementCollections]
+  );
+
+  const getCurrentImageState = useCallback(
+    (id: string): ImageType | undefined => {
+      return [
+        ...elementCollections.originalImages,
+        ...elementCollections.translatedImages,
+        ...elementCollections.finalLayoutImages,
+      ].find((img) => img.id === id);
+    },
+    [elementCollections]
+  );
+
   return {
     elementCollections,
     setElementCollections,
@@ -1083,6 +1287,9 @@ export const useElementManagement = () => {
     getOriginalSortedElements,
     getTranslatedSortedElements,
     getFinalLayoutSortedElements,
+    getCurrentTextBoxState,
+    getCurrentShapeState,
+    getCurrentImageState,
     // Layer management
     addToLayerOrder,
     removeFromLayerOrder,
@@ -1107,6 +1314,11 @@ export const useElementManagement = () => {
     deleteShape,
     deleteImage,
     deleteDeletionRectangle,
+    // Element restoration (for undo)
+    restoreTextBox,
+    restoreShape,
+    restoreImage,
+    restoreDeletionRectangle,
     // Untranslated texts management
     addUntranslatedText,
     updateUntranslatedText,

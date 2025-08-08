@@ -37,15 +37,20 @@ interface UseKeyboardHandlersProps {
     background: string,
     opacity: number
   ) => string | null;
-  handleDeleteTextBoxWithUndo: (id: string) => void;
+  handleDeleteTextBoxWithUndo: (id: string, view: ViewMode) => void;
+  handleDeleteShapeWithUndo: (id: string, view: ViewMode) => void;
+  handleDeleteImageWithUndo: (id: string, view: ViewMode) => void;
+  handleDeleteSelection: () => void;
   history: {
-    canUndo: (page: number, view: ViewMode) => boolean;
-    canRedo: (page: number, view: ViewMode) => boolean;
-    undo: (page: number, view: ViewMode) => void;
-    redo: (page: number, view: ViewMode) => void;
+    canUndo: () => boolean;
+    canRedo: () => boolean;
+    undo: () => boolean;
+    redo: () => boolean;
+    endBatch: () => void;
   };
   handleMultiSelectionMove: (event: CustomEvent) => void;
   handleMultiSelectionMoveEnd: (event: CustomEvent) => void;
+  elementCollections: any;
 }
 
 export const useKeyboardHandlers = ({
@@ -59,9 +64,13 @@ export const useKeyboardHandlers = ({
   currentPageTextBoxes,
   handleAddDeletionRectangleWithUndo,
   handleDeleteTextBoxWithUndo,
+  handleDeleteShapeWithUndo,
+  handleDeleteImageWithUndo,
+  handleDeleteSelection,
   history,
   handleMultiSelectionMove,
   handleMultiSelectionMoveEnd,
+  elementCollections,
 }: UseKeyboardHandlersProps) => {
   // Undo/Redo debouncing state
   const UNDO_REDO_DEBOUNCE_MS = 300; // 300ms debounce for undo/redo
@@ -145,6 +154,45 @@ export const useKeyboardHandlers = ({
           }
         }
 
+        // Delete key to delete selected elements
+        if (e.key === "Delete" && !e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          
+          // Check for multi-selection first
+          if (editorState.multiSelection.selectedElements.length > 0) {
+            console.log('[KeyboardHandlers] Delete key pressed for multi-selection');
+            // Use the multi-delete handler
+            handleDeleteSelection();
+          } else if (editorState.selectedFieldId) {
+            console.log('[KeyboardHandlers] Delete key pressed for single textbox:', editorState.selectedFieldId);
+            // Single textbox selected
+            const textBoxView = elementCollections.originalTextBoxes.some((tb: any) => tb.id === editorState.selectedFieldId)
+              ? "original"
+              : elementCollections.translatedTextBoxes.some((tb: any) => tb.id === editorState.selectedFieldId)
+              ? "translated"
+              : "final-layout";
+            handleDeleteTextBoxWithUndo(editorState.selectedFieldId, textBoxView);
+          } else if (editorState.selectedShapeId) {
+            console.log('[KeyboardHandlers] Delete key pressed for single shape:', editorState.selectedShapeId);
+            // Single shape selected
+            const shapeView = elementCollections.originalShapes.some((s: any) => s.id === editorState.selectedShapeId)
+              ? "original"
+              : elementCollections.translatedShapes.some((s: any) => s.id === editorState.selectedShapeId)
+              ? "translated"
+              : "final-layout";
+            handleDeleteShapeWithUndo(editorState.selectedShapeId, shapeView);
+          } else if (editorState.selectedImageId) {
+            console.log('[KeyboardHandlers] Delete key pressed for single image:', editorState.selectedImageId);
+            // Single image selected
+            const imageView = elementCollections.originalImages.some((img: any) => img.id === editorState.selectedImageId)
+              ? "original"
+              : elementCollections.translatedImages.some((img: any) => img.id === editorState.selectedImageId)
+              ? "translated"
+              : "final-layout";
+            handleDeleteImageWithUndo(editorState.selectedImageId, imageView);
+          }
+        }
+
         // Ctrl+Z to undo
         if (e.key === "z" || e.key === "Z") {
           e.preventDefault();
@@ -153,12 +201,14 @@ export const useKeyboardHandlers = ({
             return;
           }
 
-          if (
-            history.canUndo(documentState.currentPage, viewState.currentView)
-          ) {
-            history.undo(documentState.currentPage, viewState.currentView);
-            lastUndoTime = now;
-            toast.success("Undo");
+          // End any ongoing batch before undo
+          history.endBatch();
+          
+          if (history.canUndo()) {
+            if (history.undo()) {
+              lastUndoTime = now;
+              toast.success("Undo");
+            }
           }
         }
 
@@ -174,12 +224,14 @@ export const useKeyboardHandlers = ({
             return;
           }
 
-          if (
-            history.canRedo(documentState.currentPage, viewState.currentView)
-          ) {
-            history.redo(documentState.currentPage, viewState.currentView);
-            lastRedoTime = now;
-            toast.success("Redo");
+          // End any ongoing batch before redo
+          history.endBatch();
+          
+          if (history.canRedo()) {
+            if (history.redo()) {
+              lastRedoTime = now;
+              toast.success("Redo");
+            }
           }
         }
       }
