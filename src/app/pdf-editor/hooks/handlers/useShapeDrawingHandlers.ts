@@ -31,7 +31,7 @@ interface UseShapeDrawingHandlersProps {
     height: number,
     page: number,
     view: ViewMode,
-    targetView?: "original" | "translated",
+    targetView?: "original" | "translated" | "final-layout",
     // Line-specific parameters
     x1?: number,
     y1?: number,
@@ -68,11 +68,14 @@ export const useShapeDrawingHandlers = ({
     (e: React.MouseEvent) => {
       if (!toolState.shapeDrawingMode) return;
 
+      // Only left click
+      if (e.button !== 0) return;
+
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) return;
 
       // Determine target view in split mode
-      let targetView: "original" | "translated" | null = null;
+      let targetView: "original" | "translated" | "final-layout" | null = null;
       if (viewState.currentView === "split") {
         const clickX = e.clientX - rect.left;
         const singleDocWidth = documentState.pageWidth * documentState.scale;
@@ -95,7 +98,7 @@ export const useShapeDrawingHandlers = ({
         e.clientY,
         rect,
         documentState.scale,
-        targetView,
+        targetView === "final-layout" ? null : targetView,
         viewState.currentView,
         documentState.pageWidth,
         targetView === "translated"
@@ -105,23 +108,29 @@ export const useShapeDrawingHandlers = ({
 
       setToolState((prev) => ({
         ...prev,
+        isDrawingShape: true,
         shapeDrawStart: { x, y },
+        shapeDrawEnd: { x, y },
         shapeDrawTargetView: targetView,
         isDrawingInProgress: true,
       }));
+
+      e.preventDefault();
     },
     [
       toolState.shapeDrawingMode,
       documentState.scale,
       documentState.pageWidth,
+      documentState.currentPage,
       viewState.currentView,
       setToolState,
+      getTranslatedTemplateScaleFactor,
     ]
   );
 
   const handleShapeDrawMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!toolState.isDrawingInProgress || !toolState.shapeDrawStart) return;
+      if (!toolState.isDrawingShape || !toolState.shapeDrawStart) return;
 
       const rect = documentRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -132,7 +141,9 @@ export const useShapeDrawingHandlers = ({
         e.clientY,
         rect,
         documentState.scale,
-        toolState.shapeDrawTargetView,
+        toolState.shapeDrawTargetView === "final-layout"
+          ? null
+          : toolState.shapeDrawTargetView,
         viewState.currentView,
         documentState.pageWidth,
         toolState.shapeDrawTargetView === "translated"
@@ -146,19 +157,21 @@ export const useShapeDrawingHandlers = ({
       }));
     },
     [
-      toolState.isDrawingInProgress,
+      toolState.isDrawingShape,
       toolState.shapeDrawStart,
       toolState.shapeDrawTargetView,
       documentState.scale,
       documentState.pageWidth,
+      documentState.currentPage,
       viewState.currentView,
       setToolState,
+      getTranslatedTemplateScaleFactor,
     ]
   );
 
   const handleShapeDrawEnd = useCallback(() => {
     if (
-      !toolState.isDrawingInProgress ||
+      !toolState.isDrawingShape ||
       !toolState.shapeDrawStart ||
       !toolState.shapeDrawEnd
     )
@@ -219,6 +232,7 @@ export const useShapeDrawingHandlers = ({
 
     setToolState((prev) => ({
       ...prev,
+      isDrawingShape: false,
       shapeDrawStart: null,
       shapeDrawEnd: null,
       shapeDrawTargetView: null,
@@ -235,10 +249,13 @@ export const useShapeDrawingHandlers = ({
       isErasureMode: false,
     }));
   }, [
-    toolState,
+    toolState.isDrawingShape,
+    toolState.shapeDrawStart,
+    toolState.shapeDrawEnd,
+    toolState.shapeDrawingMode,
+    toolState.shapeDrawTargetView,
     handleAddShapeWithUndo,
-    documentState.currentPage,
-    documentState.finalLayoutCurrentPage,
+    getCurrentPageForView,
     viewState.currentView,
     setToolState,
     setEditorState,

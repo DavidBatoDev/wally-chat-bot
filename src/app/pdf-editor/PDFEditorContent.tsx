@@ -3337,24 +3337,6 @@ export const PDFEditorContent: React.FC = () => {
         setSelectedElementType("textbox");
         setIsDrawerOpen(true);
         setAutoFocusTextBoxId(fieldId);
-      } else if (toolState.shapeDrawingMode) {
-        if (!toolState.isDrawingInProgress) {
-          const targetView =
-            viewState.currentView === "split"
-              ? determineClickedView(
-                  e.clientX - rect.left,
-                  documentState.pageWidth,
-                  documentState.scale
-                )
-              : null;
-
-          setToolState((prev) => ({
-            ...prev,
-            shapeDrawStart: { x, y },
-            shapeDrawTargetView: targetView,
-            isDrawingInProgress: true,
-          }));
-        }
       } else {
         // Don't clear selection if we're in multi-selection mode and have selected elements
         if (
@@ -5509,19 +5491,22 @@ export const PDFEditorContent: React.FC = () => {
                         editorState.isTextSelectionMode ||
                         erasureState.isErasureMode ||
                         editorState.isSelectionMode ||
-                        editorState.multiSelection.isMovingSelection
+                        editorState.multiSelection.isMovingSelection ||
+                        toolState.shapeDrawingMode
                       ) {
                         if (editorState.multiSelection.isMovingSelection) {
                           handleMoveSelectionMouseDown(e);
                         } else if (editorState.isSelectionMode) {
                           handleMultiSelectionMouseDown(e);
+                        } else if (toolState.shapeDrawingMode) {
+                          handleShapeDrawStart(e);
                         } else {
                           handleDocumentMouseDown(e);
                         }
                       }
                     }}
                     onMouseMove={(e) => {
-                      if (toolState.shapeDrawingMode) {
+                      if (toolState.shapeDrawingMode && toolState.isDrawingShape) {
                         handleShapeDrawMove(e);
                       } else if (editorState.multiSelection.isMovingSelection) {
                         handleMoveSelectionMouseMove(e);
@@ -5534,7 +5519,7 @@ export const PDFEditorContent: React.FC = () => {
                       }
                     }}
                     onMouseUp={(e) => {
-                      if (toolState.shapeDrawingMode) {
+                      if (toolState.shapeDrawingMode && toolState.isDrawingShape) {
                         handleShapeDrawEnd();
                       } else if (editorState.multiSelection.isMovingSelection) {
                         handleMoveSelectionMouseUp();
@@ -6740,7 +6725,7 @@ export const PDFEditorContent: React.FC = () => {
                     )}
 
                     {/* Shape Drawing Preview */}
-                    {toolState.isDrawingInProgress &&
+                    {toolState.isDrawingShape &&
                       toolState.shapeDrawStart &&
                       toolState.shapeDrawEnd && (
                         <>
