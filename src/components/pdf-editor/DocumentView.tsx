@@ -86,12 +86,14 @@ const DocumentView: React.FC<DocumentViewProps> = ({
             key={`${documentUrl}-${pdfRenderScale}`} // Force re-render when render scale changes
             file={documentUrl}
             onLoadSuccess={
-              viewType === "original" || viewType === "final-layout"
+              // Only the original document should trigger main load success
+              viewType === "original"
                 ? handlers.handleDocumentLoadSuccess
                 : () => {}
             }
             onLoadError={
-              viewType === "original" || viewType === "final-layout"
+              // Avoid mutating main doc error state from final-layout/translated loads
+              viewType === "original"
                 ? handlers.handleDocumentLoadError
                 : () => {}
             }
@@ -120,7 +122,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                       viewport.height
                     );
                   } else if (viewType === "final-layout") {
-                    // For final-layout view, handle page load success
+                    // For final-layout view, handle page load success (page size only)
                     handlers.handlePageLoadSuccess(page);
                   }
                 }}

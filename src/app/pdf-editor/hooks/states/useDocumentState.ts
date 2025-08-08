@@ -49,9 +49,8 @@ export const useDocumentState = () => {
   // Document loading handlers
   const handleDocumentLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
-      console.log(`handleDocumentLoadSuccess called with ${numPages} pages`);
-      console.log("Current document state before load success:", documentState);
-
+      console.log("handleDocumentLoadSuccess called with", numPages, "pages");
+      
       // Only reset pages and deletedPages if this is truly a new document load
       // Check if numPages has actually changed or if we're reloading the same document
       if (
@@ -75,10 +74,9 @@ export const useDocumentState = () => {
 
       if (existingPages.length === numPages && existingPages.length > 0) {
         // Preserve existing pages with their pageType settings (same page count)
-        // console.log("Preserving existing pages with their settings");
+        console.log("Preserving existing pages with their settings");
         initialPages = existingPages;
       } else if (existingPages.length > 0) {
-        
         // Create new pages array with preserved page types where applicable
         initialPages = Array.from({ length: numPages }, (_, index) => {
           const pageNumber = index + 1;
@@ -109,23 +107,23 @@ export const useDocumentState = () => {
         });
       } else {
         // Initialize new pages array when document loads for the first time
-        // console.log("Creating new pages array");
-        // initialPages = Array.from({ length: numPages }, (_, index) => ({
-        //   pageNumber: index + 1,
-        //   isTranslated: false,
-        //   pageType: "dynamic_content" as const,
-        // }));
+        console.log("Creating new pages array");
+        initialPages = Array.from({ length: numPages }, (_, index) => ({
+          pageNumber: index + 1,
+          isTranslated: false,
+          pageType: "dynamic_content" as const,
+        }));
       }
 
-      // console.log("Resetting document state for document load");
-      // setDocumentState((prev) => ({
-      //   ...prev,
-      //   numPages,
-      //   isDocumentLoaded: true,
-      //   error: "",
-      //   pages: initialPages,
-      //   deletedPages: prev.deletedPages, // Preserve deleted pages
-      // }));
+      console.log("Resetting document state for document load");
+      setDocumentState((prev) => ({
+        ...prev,
+        numPages,
+        isDocumentLoaded: true,
+        error: "",
+        pages: initialPages,
+        deletedPages: prev.deletedPages, // Preserve deleted pages
+      }));
     },
     [
       documentState.numPages,
