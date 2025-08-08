@@ -205,14 +205,27 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     formData.append("file", blob, `page-${pageNumber}.png`);
     formData.append("page_number", "1");
 
-    // Always send frontend document dimensions to backend for accurate coordinate calculations
-    // This is important because each page can have different dimensions
-    formData.append("frontend_page_width", documentState.pageWidth.toString());
-    formData.append(
-      "frontend_page_height",
-      documentState.pageHeight.toString()
-    );
+    // Always send current page-specific dimensions to backend for accurate coordinate calculations
+    // This is critical because each page can have different dimensions, especially in multi-page documents
+    // or documents with mixed page sizes (e.g., birth certificates with different templates)
+    
+    // Ensure dimensions are valid before sending
+    const pageWidth = documentState.pageWidth > 0 ? documentState.pageWidth : 595; // A4 width fallback
+    const pageHeight = documentState.pageHeight > 0 ? documentState.pageHeight : 842; // A4 height fallback
+    
+    formData.append("frontend_page_width", pageWidth.toString());
+    formData.append("frontend_page_height", pageHeight.toString());
     formData.append("frontend_scale", documentState.scale.toString());
+
+    console.log(`📤 Sending page ${pageNumber} OCR request with dimensions:`, {
+      pageWidth: pageWidth,
+      pageHeight: pageHeight,
+      scale: documentState.scale,
+      pageType: options.pageType,
+      templateId: options.birthCertTemplateId,
+      originalPageWidth: documentState.pageWidth,
+      originalPageHeight: documentState.pageHeight
+    });
 
     // Call the appropriate OCR API based on page type
     const { processFile, processTemplateOcr } = await import("@/lib/api");
@@ -431,6 +444,18 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
 
 /**
  * Performs OCR on all pages in a document
+ * 
+ * This function processes each page individually and dynamically determines the current page dimensions
+ * for each page. This is crucial because:
+ * 1. Different pages may have different dimensions (mixed page sizes)
+ * 2. Birth certificate pages may use different templates with varying dimensions
+ * 3. The rendered page dimensions may change based on document state or zoom level
+ * 
+ * For each page, the function:
+ * - Switches to the target page
+ * - Gets the current rendered page dimensions from the DOM
+ * - Falls back to stored page-specific dimensions if DOM query fails
+ * - Sends the page-specific dimensions to the backend for accurate coordinate calculations
  */
 export async function performBulkOcr(options: BulkOcrOptions): Promise<{
   success: boolean;
@@ -481,26 +506,68 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
         const pageType = pageData?.pageType;
         const birthCertTemplateId = pageData?.birthCertTemplate?.id;
 
-        // Get page-specific dimensions for this page
-        const pageDimensions = {
-          pageWidth:
+        // Get current rendered page dimensions for this specific page
+        // This ensures we always send the actual current page dimensions to the backend
+        let currentPageWidth = options.documentState.pageWidth;
+        let currentPageHeight = options.documentState.pageHeight;
+
+        // Try to get actual rendered dimensions from the DOM
+        if (options.documentRef?.current) {
+          const pdfPage = options.documentRef.current.querySelector(
+            ".react-pdf__Page"
+          ) as HTMLElement;
+          if (pdfPage) {
+            const rect = pdfPage.getBoundingClientRect();
+            // Convert from rendered size to actual PDF dimensions accounting for scale
+            const calculatedWidth = rect.width / options.documentState.scale;
+            const calculatedHeight = rect.height / options.documentState.scale;
+            
+            // Only use calculated dimensions if they are valid (non-zero)
+            if (calculatedWidth > 0 && calculatedHeight > 0) {
+              currentPageWidth = calculatedWidth;
+              currentPageHeight = calculatedHeight;
+            }
+            
+            console.log(`📐 Page ${page} dimensions:`, {
+              renderedWidth: rect.width,
+              renderedHeight: rect.height,
+              scale: options.documentState.scale,
+              calculatedPageWidth: calculatedWidth,
+              calculatedPageHeight: calculatedHeight,
+              finalPageWidth: currentPageWidth,
+              finalPageHeight: currentPageHeight,
+              storedWidth: pageData?.translatedTemplateWidth || 'not available',
+              storedHeight: pageData?.translatedTemplateHeight || 'not available'
+            });
+          }
+        }
+
+        // Fallback to stored page-specific dimensions if DOM query fails or calculated dimensions are invalid
+        if (!currentPageWidth || !currentPageHeight || currentPageWidth <= 0 || currentPageHeight <= 0) {
+          currentPageWidth =
             pageData?.translatedTemplateWidth ||
-            options.documentState.pageWidth,
-          pageHeight:
+            options.documentState.pageWidth;
+          currentPageHeight =
             pageData?.translatedTemplateHeight ||
-            options.documentState.pageHeight,
-        };
+            options.documentState.pageHeight;
+            
+          console.log(`📐 Page ${page} using fallback dimensions:`, {
+            pageWidth: currentPageWidth,
+            pageHeight: currentPageHeight,
+            source: pageData?.translatedTemplateWidth ? 'stored page data' : 'document state'
+          });
+        }
 
         const result = await performPageOcr({
           ...ocrOptions,
           pageNumber: page,
           pageType,
           birthCertTemplateId,
-          // Override document state with page-specific dimensions
+          // Always override document state with current page-specific dimensions
           documentState: {
             ...options.documentState,
-            pageWidth: pageDimensions.pageWidth,
-            pageHeight: pageDimensions.pageHeight,
+            pageWidth: currentPageWidth,
+            pageHeight: currentPageHeight,
           },
         });
 
