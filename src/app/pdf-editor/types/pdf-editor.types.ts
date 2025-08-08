@@ -200,7 +200,7 @@ export interface ToolState {
   shapeDrawStart: { x: number; y: number } | null;
   shapeDrawEnd: { x: number; y: number } | null;
   isDrawingInProgress: boolean;
-  shapeDrawTargetView: "original" | "translated" | null;
+  shapeDrawTargetView: "original" | "translated" | "final-layout" | null;
 }
 
 // Erasure tool state
