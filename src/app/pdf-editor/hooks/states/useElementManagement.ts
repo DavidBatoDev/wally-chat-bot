@@ -37,6 +37,7 @@ export const useElementManagement = () => {
   const [layerState, setLayerState] = useState<LayerState>({
     originalLayerOrder: [],
     translatedLayerOrder: [],
+    finalLayoutLayerOrder: [],
   });
 
   // Helper functions to get current arrays based on view
@@ -90,7 +91,7 @@ export const useElementManagement = () => {
         ? layerState.originalLayerOrder
         : currentView === "translated"
         ? layerState.translatedLayerOrder
-        : layerState.originalLayerOrder; // For final-layout, use original layer order for now
+        : layerState.finalLayoutLayerOrder;
     },
     [layerState]
   );
@@ -110,11 +111,10 @@ export const useElementManagement = () => {
             translatedLayerOrder: [...prev.translatedLayerOrder, elementId],
           };
         } else {
-          // For final-layout, we'll use the original layer order for now
-          // TODO: Add final-layout layer order support
+          // For final-layout view
           return {
             ...prev,
-            originalLayerOrder: [...prev.originalLayerOrder, elementId],
+            finalLayoutLayerOrder: [...prev.finalLayoutLayerOrder, elementId],
           };
         }
       });
@@ -132,10 +132,17 @@ export const useElementManagement = () => {
               (id) => id !== elementId
             ),
           };
-        } else {
+        } else if (currentView === "translated") {
           return {
             ...prev,
             translatedLayerOrder: prev.translatedLayerOrder.filter(
+              (id) => id !== elementId
+            ),
+          };
+        } else {
+          return {
+            ...prev,
+            finalLayoutLayerOrder: prev.finalLayoutLayerOrder.filter(
               (id) => id !== elementId
             ),
           };
@@ -151,15 +158,19 @@ export const useElementManagement = () => {
         const layerOrder =
           currentView === "original"
             ? prev.originalLayerOrder
-            : prev.translatedLayerOrder;
+            : currentView === "translated"
+            ? prev.translatedLayerOrder
+            : prev.finalLayoutLayerOrder;
 
         const filtered = layerOrder.filter((id) => id !== elementId);
         const newOrder = [...filtered, elementId];
 
         if (currentView === "original") {
           return { ...prev, originalLayerOrder: newOrder };
-        } else {
+        } else if (currentView === "translated") {
           return { ...prev, translatedLayerOrder: newOrder };
+        } else {
+          return { ...prev, finalLayoutLayerOrder: newOrder };
         }
       });
     },
@@ -171,15 +182,19 @@ export const useElementManagement = () => {
       const layerOrder =
         currentView === "original"
           ? prev.originalLayerOrder
-          : prev.translatedLayerOrder;
+          : currentView === "translated"
+          ? prev.translatedLayerOrder
+          : prev.finalLayoutLayerOrder;
 
       const filtered = layerOrder.filter((id) => id !== elementId);
       const newOrder = [elementId, ...filtered];
 
       if (currentView === "original") {
         return { ...prev, originalLayerOrder: newOrder };
-      } else {
+      } else if (currentView === "translated") {
         return { ...prev, translatedLayerOrder: newOrder };
+      } else {
+        return { ...prev, finalLayoutLayerOrder: newOrder };
       }
     });
   }, []);
@@ -190,7 +205,9 @@ export const useElementManagement = () => {
         const layerOrder =
           currentView === "original"
             ? prev.originalLayerOrder
-            : prev.translatedLayerOrder;
+            : currentView === "translated"
+            ? prev.translatedLayerOrder
+            : prev.finalLayoutLayerOrder;
 
         const index = layerOrder.indexOf(elementId);
         if (index === -1 || index === layerOrder.length - 1) return prev;
@@ -203,8 +220,10 @@ export const useElementManagement = () => {
 
         if (currentView === "original") {
           return { ...prev, originalLayerOrder: newOrder };
-        } else {
+        } else if (currentView === "translated") {
           return { ...prev, translatedLayerOrder: newOrder };
+        } else {
+          return { ...prev, finalLayoutLayerOrder: newOrder };
         }
       });
     },
@@ -217,7 +236,9 @@ export const useElementManagement = () => {
         const layerOrder =
           currentView === "original"
             ? prev.originalLayerOrder
-            : prev.translatedLayerOrder;
+            : currentView === "translated"
+            ? prev.translatedLayerOrder
+            : prev.finalLayoutLayerOrder;
 
         const index = layerOrder.indexOf(elementId);
         if (index <= 0) return prev;
@@ -230,8 +251,10 @@ export const useElementManagement = () => {
 
         if (currentView === "original") {
           return { ...prev, originalLayerOrder: newOrder };
-        } else {
+        } else if (currentView === "translated") {
           return { ...prev, translatedLayerOrder: newOrder };
+        } else {
+          return { ...prev, finalLayoutLayerOrder: newOrder };
         }
       });
     },
@@ -963,7 +986,7 @@ export const useElementManagement = () => {
   // Get sorted elements for final layout
   const getFinalLayoutSortedElements = useCallback(
     (currentPage: number): SortedElement[] => {
-      const layerOrder = layerState.originalLayerOrder; // Use original layer order for final layout
+      const layerOrder = layerState.finalLayoutLayerOrder;
       const textBoxes = elementCollections.finalLayoutTextboxes.filter(
         (box) => box.page === currentPage
       );
@@ -1005,7 +1028,7 @@ export const useElementManagement = () => {
 
       return sortedElements;
     },
-    [layerState.originalLayerOrder, elementCollections]
+    [layerState.finalLayoutLayerOrder, elementCollections]
   );
 
   // Helper functions for layer position checks
