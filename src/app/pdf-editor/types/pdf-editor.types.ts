@@ -279,6 +279,7 @@ export interface ViewState {
 export interface LayerState {
   originalLayerOrder: string[];
   translatedLayerOrder: string[];
+  finalLayoutLayerOrder: string[];
 }
 
 // Component Props

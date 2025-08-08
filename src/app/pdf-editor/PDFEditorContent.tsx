@@ -1861,6 +1861,40 @@ export const PDFEditorContent: React.FC = () => {
         setShowFinalLayoutSettings(false);
       }
 
+      // Handle entering translate step
+      if (step === "translate" && prev !== "translate") {
+        console.log("Entering translate step, disabling edit mode and setting view to split");
+        
+        // Disable edit mode for translate step
+        setEditorState((prev) => ({
+          ...prev,
+          isEditMode: false,
+        }));
+
+        // Set view to split for translate step
+        setViewState((prevState) => ({
+          ...prevState,
+          currentView: "split",
+        }));
+      }
+
+      // Handle entering layout step
+      if (step === "layout" && prev !== "layout") {
+        console.log("Entering layout step, enabling edit mode and setting view to split");
+        
+        // Enable edit mode for layout step
+        setEditorState((prev) => ({
+          ...prev,
+          isEditMode: true,
+        }));
+
+        // Set view to split for layout step
+        setViewState((prevState) => ({
+          ...prevState,
+          currentView: "split",
+        }));
+      }
+
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
         // Disable edit mode for final layout to prevent editing
@@ -3400,6 +3434,7 @@ export const PDFEditorContent: React.FC = () => {
     setLayerState({
       originalLayerOrder: [],
       translatedLayerOrder: [],
+      finalLayoutLayerOrder: [],
     });
 
     // Clear editor state
@@ -4291,11 +4326,46 @@ export const PDFEditorContent: React.FC = () => {
 
   // Effects
   useEffect(() => {
+    // Create view-aware layer management functions
+    const createLayerFunction = (fn: Function, defaultView?: ViewMode) => {
+      return (id: string, targetView?: ViewMode) => {
+        // Determine which view to use for layer management
+        let effectiveView: ViewMode;
+        if (targetView) {
+          effectiveView = targetView;
+        } else if (viewState.currentView === "split") {
+          // In split view, we need to determine which side the element belongs to
+          // Check if the element exists in original or translated collections
+          const isInOriginal = 
+            elementCollections.originalTextBoxes.some(tb => tb.id === id) ||
+            elementCollections.originalShapes.some(shape => shape.id === id) ||
+            elementCollections.originalImages.some(img => img.id === id);
+          
+          const isInTranslated = 
+            elementCollections.translatedTextBoxes.some(tb => tb.id === id) ||
+            elementCollections.translatedShapes.some(shape => shape.id === id) ||
+            elementCollections.translatedImages.some(img => img.id === id);
+          
+          if (isInOriginal) {
+            effectiveView = "original";
+          } else if (isInTranslated) {
+            effectiveView = "translated";
+          } else {
+            effectiveView = defaultView || "original";
+          }
+        } else {
+          effectiveView = viewState.currentView;
+        }
+        
+        fn(id, effectiveView);
+      };
+    };
+
     setLayerOrderFunctions({
-      moveToFront: (id) => moveToFront(id, viewState.currentView),
-      moveToBack: (id) => moveToBack(id, viewState.currentView),
-      moveForward: (id) => moveForward(id, viewState.currentView),
-      moveBackward: (id) => moveBackward(id, viewState.currentView),
+      moveToFront: createLayerFunction(moveToFront, "original"),
+      moveToBack: createLayerFunction(moveToBack, "original"),
+      moveForward: createLayerFunction(moveForward, "original"),
+      moveBackward: createLayerFunction(moveBackward, "original"),
     });
   }, [
     moveToFront,
@@ -4303,18 +4373,54 @@ export const PDFEditorContent: React.FC = () => {
     moveForward,
     moveBackward,
     viewState.currentView,
+    elementCollections,
     setLayerOrderFunctions,
   ]);
 
   useEffect(() => {
+    // Create view-aware layer position helper functions
+    const createLayerPositionHelper = (fn: Function, defaultView?: ViewMode) => {
+      return (id: string, targetView?: ViewMode) => {
+        // Determine which view to use for layer position checking
+        let effectiveView: ViewMode;
+        if (targetView) {
+          effectiveView = targetView;
+        } else if (viewState.currentView === "split") {
+          // In split view, we need to determine which side the element belongs to
+          const isInOriginal = 
+            elementCollections.originalTextBoxes.some(tb => tb.id === id) ||
+            elementCollections.originalShapes.some(shape => shape.id === id) ||
+            elementCollections.originalImages.some(img => img.id === id);
+          
+          const isInTranslated = 
+            elementCollections.translatedTextBoxes.some(tb => tb.id === id) ||
+            elementCollections.translatedShapes.some(shape => shape.id === id) ||
+            elementCollections.translatedImages.some(img => img.id === id);
+          
+          if (isInOriginal) {
+            effectiveView = "original";
+          } else if (isInTranslated) {
+            effectiveView = "translated";
+          } else {
+            effectiveView = defaultView || "original";
+          }
+        } else {
+          effectiveView = viewState.currentView;
+        }
+        
+        return fn(id, effectiveView);
+      };
+    };
+
     setLayerPositionHelpers({
-      isElementAtFront: (id) => isElementAtFront(id, viewState.currentView),
-      isElementAtBack: (id) => isElementAtBack(id, viewState.currentView),
+      isElementAtFront: createLayerPositionHelper(isElementAtFront, "original"),
+      isElementAtBack: createLayerPositionHelper(isElementAtBack, "original"),
     });
   }, [
     isElementAtFront,
     isElementAtBack,
     viewState.currentView,
+    elementCollections,
     setLayerPositionHelpers,
   ]);
 
@@ -4459,8 +4565,8 @@ export const PDFEditorContent: React.FC = () => {
   // Render elements with view-specific update functions
   const renderElement = (element: SortedElement, targetView: ViewMode) => {
     // For split view, we need to determine which view this element belongs to
-    // This function is called from single view contexts, so we use the current view
-    const actualTargetView = targetView === "split" ? "original" : targetView;
+    // In split view, targetView will be "original" or "translated" when called correctly
+    const actualTargetView = targetView;
 
     // Calculate effective scale for translated view in split screen
     const effectiveScale =
@@ -4532,7 +4638,7 @@ export const PDFEditorContent: React.FC = () => {
           pageHeight={documentState.pageHeight}
           onSelect={handleShapeSelect}
           onUpdate={updateShapeWithUndo}
-          onDelete={(id) => handleDeleteShapeWithUndo(id, targetView)}
+          onDelete={(id) => handleDeleteShapeWithUndo(id, actualTargetView)}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
         />
@@ -4552,7 +4658,7 @@ export const PDFEditorContent: React.FC = () => {
           pageHeight={documentState.pageHeight}
           onSelect={handleImageSelect}
           onUpdate={updateImage}
-          onDelete={(id) => handleDeleteImageWithUndo(id, targetView)}
+          onDelete={(id) => handleDeleteImageWithUndo(id, actualTargetView)}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
         />

@@ -72,6 +72,7 @@ export interface ProjectState {
   layerState: {
     originalLayerOrder: string[];
     translatedLayerOrder: string[];
+    finalLayoutLayerOrder: string[];
   };
   editorState: {
     selectedFieldId: string | null;
@@ -453,6 +454,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           layerState: {
             originalLayerOrder: [...layerState.originalLayerOrder],
             translatedLayerOrder: [...layerState.translatedLayerOrder],
+            finalLayoutLayerOrder: [...layerState.finalLayoutLayerOrder],
           },
           editorState: {
             selectedFieldId: editorState.selectedFieldId,
@@ -827,6 +829,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           translatedLayerOrder: [
             ...projectState.layerState.translatedLayerOrder,
           ],
+          finalLayoutLayerOrder: [...(projectState.layerState.finalLayoutLayerOrder || [])],
         });
 
         // Restore editor state (similar to importFromJson)
@@ -956,6 +959,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           layerState: {
             originalLayerOrder: [...layerState.originalLayerOrder],
             translatedLayerOrder: [...layerState.translatedLayerOrder],
+            finalLayoutLayerOrder: [...layerState.finalLayoutLayerOrder],
           },
           editorState: {
             selectedFieldId: editorState.selectedFieldId,
@@ -1324,6 +1328,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
           translatedLayerOrder: [
             ...projectData.layerState.translatedLayerOrder,
           ],
+          finalLayoutLayerOrder: [...(projectData.layerState.finalLayoutLayerOrder || [])],
         });
 
         // Restore editor state
