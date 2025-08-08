@@ -53,14 +53,11 @@ export const useShapeDrawingHandlers = ({
 }: UseShapeDrawingHandlersProps) => {
   // Helper function to get the correct current page based on view
   const getCurrentPageForView = useCallback(() => {
-    if (viewState.currentView === "final-layout") {
-      return documentState.finalLayoutCurrentPage || 1;
-    }
+    // Always use the current page that the user is viewing
+    // Final layout should respect the current page navigation
     return documentState.currentPage;
   }, [
-    viewState.currentView,
     documentState.currentPage,
-    documentState.finalLayoutCurrentPage,
   ]);
 
   // Shape drawing handlers
@@ -141,7 +138,9 @@ export const useShapeDrawingHandlers = ({
         e.clientY,
         rect,
         documentState.scale,
-        toolState.shapeDrawTargetView === "final-layout" ? null : toolState.shapeDrawTargetView,
+        toolState.shapeDrawTargetView === "final-layout"
+          ? null
+          : toolState.shapeDrawTargetView,
         viewState.currentView,
         documentState.pageWidth,
         toolState.shapeDrawTargetView === "translated"

@@ -3252,9 +3252,8 @@ export const PDFEditorContent: React.FC = () => {
 
       // Helper function to get the correct current page based on view
       const getCurrentPageForView = () => {
-        if (viewState.currentView === "final-layout") {
-          return documentState.finalLayoutCurrentPage || 1;
-        }
+        // Always use the current page that the user is viewing
+        // Final layout should respect the current page navigation
         return documentState.currentPage;
       };
 
@@ -3468,9 +3467,8 @@ export const PDFEditorContent: React.FC = () => {
 
         // Helper function to get the correct current page based on view
         const getCurrentPageForView = () => {
-          if (viewState.currentView === "final-layout") {
-            return documentState.finalLayoutCurrentPage || 1;
-          }
+          // Always use the current page that the user is viewing
+          // Final layout should respect the current page navigation
           return documentState.currentPage;
         };
 
@@ -5615,7 +5613,7 @@ export const PDFEditorContent: React.FC = () => {
                           viewType="final-layout"
                           documentUrl={documentState.finalLayoutUrl}
                           currentPage={
-                            documentState.finalLayoutCurrentPage || 1
+                            documentState.finalLayoutCurrentPage || documentState.currentPage
                           }
                           pageWidth={documentState.pageWidth}
                           pageHeight={documentState.pageHeight}
@@ -5630,7 +5628,7 @@ export const PDFEditorContent: React.FC = () => {
                           actions={actions}
                           setDocumentState={setDocumentState}
                           deletionRectangles={
-                            elementCollections.originalDeletionRectangles
+                            elementCollections.finalLayoutDeletionRectangles
                           }
                           showDeletionRectangles={
                             editorState.showDeletionRectangles
@@ -5643,7 +5641,7 @@ export const PDFEditorContent: React.FC = () => {
                           }
                           colorToRgba={colorToRgba}
                           sortedElements={getFinalLayoutSortedElements(
-                            documentState.finalLayoutCurrentPage || 1
+                            documentState.finalLayoutCurrentPage || documentState.currentPage
                           )}
                           getElementsInSelectionPreview={
                             getElementsInSelectionPreview

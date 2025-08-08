@@ -241,7 +241,7 @@ export function useUpdateFinalLayoutTextBoxWithUndo(
             id,
             before,
             after,
-            documentState.finalLayoutCurrentPage || 1,
+            documentState.finalLayoutCurrentPage || documentState.currentPage,
             "final-layout"
           );
         }
