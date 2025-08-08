@@ -258,12 +258,6 @@ export const PDFEditorContent: React.FC = () => {
   const getTranslatedDocumentUrl = useCallback(
     (pageNumber: number) => {
       const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
-      console.log(
-        "Getting translated document URL for page:",
-        pageNumber,
-        "page data:",
-        page
-      );
       // If the page has a birth certificate template, use its URL for translated view
       if (page?.translatedTemplateURL) {
         return page.translatedTemplateURL;
