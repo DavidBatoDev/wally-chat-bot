@@ -1149,12 +1149,12 @@ export const PDFEditorContent: React.FC = () => {
       // Clear only final-layout elements, preserve original and translated elements
       clearFinalLayoutElementsOnly();
 
-      // Clear editor state (but preserve isEditMode for final layout)
+      // Clear editor state (and disable edit mode for final layout)
       setEditorState((prev) => ({
         ...prev,
         selectedFieldId: null,
         selectedShapeId: null,
-        isEditMode: true, // Keep edit mode enabled for final layout
+        isEditMode: false, // Keep edit mode disabled for final layout
         isAddTextBoxMode: false,
         isTextSelectionMode: false,
         showDeletionRectangles: false,
@@ -1809,10 +1809,10 @@ export const PDFEditorContent: React.FC = () => {
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
-        // Enable edit mode for final layout to allow element editing
+        // Disable edit mode for final layout to prevent editing
         setEditorState((prev) => ({
           ...prev,
-          isEditMode: true,
+          isEditMode: false,
         }));
 
         // Set view to final-layout and zoom to 100%
