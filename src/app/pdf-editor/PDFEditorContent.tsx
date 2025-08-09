@@ -68,6 +68,9 @@ import {
   useHandleDeleteDeletionRectangleWithUndo,
   useHandleAddImageWithUndo,
   useHandleDeleteImageWithUndo,
+  useHandleUpdateImageWithUndo,
+  useUpdateImageWithUndo,
+  useHandleMultiDeleteWithUndo,
 } from "./hooks/handlers/undoRedoHandlers";
 
 // Import refactored event handler hooks
@@ -154,10 +157,10 @@ const getPdfPageCount = async (pdfUrl: string): Promise<number> => {
     const loadingTask = pdfjs.getDocument(pdfUrl);
     const pdf = await loadingTask.promise;
     const pageCount = pdf.numPages;
-    
+
     // Clean up the loading task
     loadingTask.destroy();
-    
+
     return pageCount;
   } catch (error) {
     console.error("Error getting PDF page count:", error);
@@ -211,6 +214,10 @@ export const PDFEditorContent: React.FC = () => {
     deleteShape,
     deleteImage,
     deleteDeletionRectangle,
+    restoreTextBox,
+    restoreShape,
+    restoreImage,
+    restoreDeletionRectangle,
     moveToFront,
     moveToBack,
     moveForward,
@@ -588,12 +595,14 @@ export const PDFEditorContent: React.FC = () => {
   const handleAddTextBoxWithUndo = useHandleAddTextBoxWithUndo(
     addTextBox,
     deleteTextBox,
-    history
+    history,
+    elementCollections
   );
   const handleDuplicateTextBoxWithUndo = useHandleDuplicateTextBoxWithUndo(
     duplicateTextBox,
     deleteTextBox,
-    history
+    history,
+    elementCollections
   );
   const handleUpdateTextBoxWithUndo = useHandleUpdateTextBoxWithUndo(
     updateTextBox,
@@ -604,26 +613,30 @@ export const PDFEditorContent: React.FC = () => {
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
     documentState,
-    viewState
+    viewState,
+    history
   );
   const updateOriginalTextBoxWithUndo = useUpdateOriginalTextBoxWithUndo(
     updateTextBox,
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
-    documentState
+    documentState,
+    history
   );
   const updateTranslatedTextBoxWithUndo = useUpdateTranslatedTextBoxWithUndo(
     updateTextBox,
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
-    documentState
+    documentState,
+    history
   );
 
   const updateFinalLayoutTextBoxWithUndo = useUpdateFinalLayoutTextBoxWithUndo(
     updateTextBox,
     handleUpdateTextBoxWithUndo,
     getCurrentTextBoxState,
-    documentState
+    documentState,
+    history
   );
   const handleAddShapeWithUndo = useHandleAddShapeWithUndo(
     addShape,
@@ -639,13 +652,12 @@ export const PDFEditorContent: React.FC = () => {
     handleUpdateShapeWithUndo,
     getCurrentShapeState,
     elementCollections,
-    ongoingOperations
+    history
   );
   const handleDeleteTextBoxWithUndo = useHandleDeleteTextBoxWithUndo(
     deleteTextBox,
-    addTextBox,
+    restoreTextBox,
     history,
-    handleAddTextBoxWithUndo,
     elementCollections,
     editorState,
     selectedElementId,
@@ -729,7 +741,7 @@ export const PDFEditorContent: React.FC = () => {
 
   const handleDeleteShapeWithUndo = useHandleDeleteShapeWithUndo(
     deleteShape,
-    addShape,
+    restoreShape,
     history,
     elementCollections,
     editorState,
@@ -745,7 +757,7 @@ export const PDFEditorContent: React.FC = () => {
   const handleDeleteDeletionRectangleWithUndo =
     useHandleDeleteDeletionRectangleWithUndo(
       deleteDeletionRectangle,
-      addDeletionRectangle,
+      restoreDeletionRectangle,
       history,
       elementCollections
     );
@@ -756,11 +768,51 @@ export const PDFEditorContent: React.FC = () => {
   );
   const handleDeleteImageWithUndo = useHandleDeleteImageWithUndo(
     deleteImage,
-    addImage,
+    restoreImage,
     history,
     elementCollections,
     selectedElementId,
     clearSelectionState
+  );
+
+  // Multi-delete handler for selected elements
+  const handleMultiDeleteWithUndo = useHandleMultiDeleteWithUndo(
+    deleteTextBox,
+    deleteShape,
+    deleteImage,
+    restoreTextBox,
+    restoreShape,
+    restoreImage,
+    history,
+    elementCollections,
+    editorState.multiSelection,
+    clearSelectionState
+  );
+
+  // Add image update handlers
+  const handleUpdateImageWithUndo = useHandleUpdateImageWithUndo(
+    updateImage,
+    history
+  );
+
+  const getCurrentImageState = useCallback(
+    (id: string): Partial<ImageType> | null => {
+      const allImages = [
+        ...elementCollections.originalImages,
+        ...elementCollections.translatedImages,
+        ...elementCollections.finalLayoutImages,
+      ];
+      const image = allImages.find((img) => img.id === id);
+      return image ? { ...image } : null;
+    },
+    [elementCollections]
+  );
+
+  const updateImageWithUndo = useUpdateImageWithUndo(
+    updateImage,
+    handleUpdateImageWithUndo,
+    getCurrentImageState,
+    history
   );
 
   // Use a ref to track ongoing operations for immediate access in timers
@@ -1046,7 +1098,9 @@ export const PDFEditorContent: React.FC = () => {
     updateTextBoxWithUndo,
     updateShapeWithUndo,
     updateImage,
+    updateImageWithUndo,
     getElementById,
+    history,
   });
 
   // Refs
@@ -1211,11 +1265,9 @@ export const PDFEditorContent: React.FC = () => {
         }
 
         // Create URL for the final layout file and store it
-        // Handle both Blob/File objects and result objects with metadata
-        const finalLayoutUrl =
-          typeof finalLayoutResult === "object" && "url" in finalLayoutResult
-            ? finalLayoutResult.url
-            : URL.createObjectURL(finalLayoutResult as Blob);
+        // The createFinalLayoutPdf function already returns a properly managed URL
+        const finalLayoutUrl = finalLayoutResult.url;
+        const isSupabaseUrl = finalLayoutResult.isSupabaseUrl;
 
         console.log("Final layout URL created:", finalLayoutUrl);
 
@@ -1230,6 +1282,9 @@ export const PDFEditorContent: React.FC = () => {
           finalLayoutCurrentPage: 1,
           finalLayoutNumPages: finalLayoutPageCount,
           finalLayoutDeletedPages: new Set<number>(),
+          // Update metadata if uploaded to Supabase
+          finalLayoutSupabaseFilePath: finalLayoutResult.filePath,
+          finalLayoutIsSupabaseUrl: isSupabaseUrl,
         }));
 
         setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
@@ -1384,23 +1439,23 @@ export const PDFEditorContent: React.FC = () => {
         const margin = 20; // Small margin around the image
         const maxWidth = pageWidth - margin * 2;
         const maxHeight = pageHeight - margin * 2;
-        
+
         const fittedDimensions = calculateFittedImageDimensions(
           imageWidth,
           imageHeight,
           maxWidth,
           maxHeight
         );
-        
+
         // Center the image on the page
         const offsetX = (pageWidth - fittedDimensions.width) / 2;
         const offsetY = (pageHeight - fittedDimensions.height) / 2;
-        
+
         // Upload image to Supabase
         const fileName = `${imagePrefix}-${Date.now()}.png`;
         const file = dataUrlToFile(imageDataUrl, fileName);
         const uploadResult = await uploadFileWithFallback(file);
-        
+
         // Add the image to the final layout
         handleAddImageWithUndo(
           uploadResult.url,
@@ -1418,26 +1473,29 @@ export const PDFEditorContent: React.FC = () => {
           }
         );
       } catch (error) {
-        console.error(`Error uploading full page image for page ${pageNumber}:`, error);
+        console.error(
+          `Error uploading full page image for page ${pageNumber}:`,
+          error
+        );
         toast.error(`Failed to upload image for page ${pageNumber}`);
-        
+
         // Fallback to using data URL directly
         const pageWidth = 612;
         const pageHeight = 792;
         const margin = 20;
         const maxWidth = pageWidth - margin * 2;
         const maxHeight = pageHeight - margin * 2;
-        
+
         const fittedDimensions = calculateFittedImageDimensions(
           imageWidth,
           imageHeight,
           maxWidth,
           maxHeight
         );
-        
+
         const offsetX = (pageWidth - fittedDimensions.width) / 2;
         const offsetY = (pageHeight - fittedDimensions.height) / 2;
-        
+
         handleAddImageWithUndo(
           imageDataUrl,
           offsetX,
@@ -1480,31 +1538,56 @@ export const PDFEditorContent: React.FC = () => {
           quadrantWidth,
           quadrantHeight
         );
-        
+
         // Calculate centering offsets
         const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
-        const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
-        const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
-        const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
-        
+        const originalOffsetY =
+          (quadrantHeight - originalDimensions.height) / 2;
+        const translatedOffsetX =
+          (quadrantWidth - translatedDimensions.width) / 2;
+        const translatedOffsetY =
+          (quadrantHeight - translatedDimensions.height) / 2;
+
         // Calculate Y positions based on row (top or bottom)
-        const rowY = position === "top" 
-          ? pageHeight - labelSpace - quadrantHeight + originalOffsetY
-          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY;
-        const translatedRowY = position === "top"
-          ? pageHeight - labelSpace - quadrantHeight + translatedOffsetY
-          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY;
-        
+        const rowY =
+          position === "top"
+            ? pageHeight - labelSpace - quadrantHeight + originalOffsetY
+            : pageHeight -
+              labelSpace -
+              quadrantHeight * 2 -
+              gridSpacing +
+              originalOffsetY;
+        const translatedRowY =
+          position === "top"
+            ? pageHeight - labelSpace - quadrantHeight + translatedOffsetY
+            : pageHeight -
+              labelSpace -
+              quadrantHeight * 2 -
+              gridSpacing +
+              translatedOffsetY;
+
         // Upload original image
-        const originalFileName = `final-layout-original-page-${snapshot.pageNumber}-${position}-${Date.now()}.png`;
-        const originalFile = dataUrlToFile(snapshot.originalImage, originalFileName);
+        const originalFileName = `final-layout-original-page-${
+          snapshot.pageNumber
+        }-${position}-${Date.now()}.png`;
+        const originalFile = dataUrlToFile(
+          snapshot.originalImage,
+          originalFileName
+        );
         const originalUploadResult = await uploadFileWithFallback(originalFile);
-        
+
         // Upload translated image
-        const translatedFileName = `final-layout-translated-page-${snapshot.pageNumber}-${position}-${Date.now()}.png`;
-        const translatedFile = dataUrlToFile(snapshot.translatedImage, translatedFileName);
-        const translatedUploadResult = await uploadFileWithFallback(translatedFile);
-        
+        const translatedFileName = `final-layout-translated-page-${
+          snapshot.pageNumber
+        }-${position}-${Date.now()}.png`;
+        const translatedFile = dataUrlToFile(
+          snapshot.translatedImage,
+          translatedFileName
+        );
+        const translatedUploadResult = await uploadFileWithFallback(
+          translatedFile
+        );
+
         // Add original image (left side)
         handleAddImageWithUndo(
           originalUploadResult.url,
@@ -1521,7 +1604,7 @@ export const PDFEditorContent: React.FC = () => {
             fileObjectId: originalUploadResult.fileObjectId,
           }
         );
-        
+
         // Add translated image (right side)
         handleAddImageWithUndo(
           translatedUploadResult.url,
@@ -1539,9 +1622,12 @@ export const PDFEditorContent: React.FC = () => {
           }
         );
       } catch (error) {
-        console.error(`Error uploading quadrant images for snapshot ${snapshot.pageNumber}:`, error);
+        console.error(
+          `Error uploading quadrant images for snapshot ${snapshot.pageNumber}:`,
+          error
+        );
         toast.error(`Failed to upload images for page ${snapshot.pageNumber}`);
-        
+
         // Fallback to using data URLs directly
         const originalDimensions = calculateFittedImageDimensions(
           snapshot.originalWidth,
@@ -1555,19 +1641,32 @@ export const PDFEditorContent: React.FC = () => {
           quadrantWidth,
           quadrantHeight
         );
-        
+
         const originalOffsetX = (quadrantWidth - originalDimensions.width) / 2;
-        const originalOffsetY = (quadrantHeight - originalDimensions.height) / 2;
-        const translatedOffsetX = (quadrantWidth - translatedDimensions.width) / 2;
-        const translatedOffsetY = (quadrantHeight - translatedDimensions.height) / 2;
-        
-        const rowY = position === "top" 
-          ? pageHeight - labelSpace - quadrantHeight + originalOffsetY
-          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + originalOffsetY;
-        const translatedRowY = position === "top"
-          ? pageHeight - labelSpace - quadrantHeight + translatedOffsetY
-          : pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing + translatedOffsetY;
-        
+        const originalOffsetY =
+          (quadrantHeight - originalDimensions.height) / 2;
+        const translatedOffsetX =
+          (quadrantWidth - translatedDimensions.width) / 2;
+        const translatedOffsetY =
+          (quadrantHeight - translatedDimensions.height) / 2;
+
+        const rowY =
+          position === "top"
+            ? pageHeight - labelSpace - quadrantHeight + originalOffsetY
+            : pageHeight -
+              labelSpace -
+              quadrantHeight * 2 -
+              gridSpacing +
+              originalOffsetY;
+        const translatedRowY =
+          position === "top"
+            ? pageHeight - labelSpace - quadrantHeight + translatedOffsetY
+            : pageHeight -
+              labelSpace -
+              quadrantHeight * 2 -
+              gridSpacing +
+              translatedOffsetY;
+
         handleAddImageWithUndo(
           snapshot.originalImage,
           gridMargin + originalOffsetX,
@@ -1578,7 +1677,7 @@ export const PDFEditorContent: React.FC = () => {
           "final-layout",
           undefined
         );
-        
+
         handleAddImageWithUndo(
           snapshot.translatedImage,
           gridMargin + quadrantWidth + gridSpacing + translatedOffsetX,
@@ -1622,7 +1721,7 @@ export const PDFEditorContent: React.FC = () => {
         gridMargin + availableWidth / 2, // x2
         pageHeight - labelSpace // y2
       );
-      
+
       // Add horizontal dividing line between top and bottom rows (if there's a second snapshot)
       if (hasSecondSnapshot) {
         handleAddShapeWithUndo(
@@ -1647,60 +1746,83 @@ export const PDFEditorContent: React.FC = () => {
   // Function to add interactive elements (images and lines) to the final layout
   const addInteractiveElementsToLayout = useCallback(
     async (snapshots: SnapshotData[]) => {
-      console.log("Adding interactive elements, total snapshots:", snapshots.length);
-      
+      console.log(
+        "Adding interactive elements, total snapshots:",
+        snapshots.length
+      );
+
       // Separate snapshots by page type (matching the PDF creation logic)
-      const birthCertSnapshots = snapshots.filter(s => s.pageType === "birth_cert");
-      const dynamicContentSnapshots = snapshots.filter(s => s.pageType !== "birth_cert");
-      
+      const birthCertSnapshots = snapshots.filter(
+        (s) => s.pageType === "birth_cert"
+      );
+      const dynamicContentSnapshots = snapshots.filter(
+        (s) => s.pageType !== "birth_cert"
+      );
+
       // Sort both arrays by page number
       birthCertSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
       dynamicContentSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
-      
-      console.log(`Processing ${birthCertSnapshots.length} birth cert snapshots and ${dynamicContentSnapshots.length} dynamic content snapshots`);
-      
+
+      console.log(
+        `Processing ${birthCertSnapshots.length} birth cert snapshots and ${dynamicContentSnapshots.length} dynamic content snapshots`
+      );
+
       let currentPdfPageNumber = 2; // Start after template page (page 1)
-      
+
       // 1. Process birth certificate pages (2 PDF pages per birth cert: original + translated)
       for (const snapshot of birthCertSnapshots) {
-        console.log(`Adding birth cert elements for original page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`);
-        
+        console.log(
+          `Adding birth cert elements for original page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`
+        );
+
         // Add full-page original image
         await addFullPageImage(
-          snapshot.originalImage, 
-          snapshot.originalWidth, 
+          snapshot.originalImage,
+          snapshot.originalWidth,
           snapshot.originalHeight,
-          currentPdfPageNumber, 
+          currentPdfPageNumber,
           `birth-cert-original-${snapshot.pageNumber}`
         );
         currentPdfPageNumber++;
-        
-        console.log(`Adding birth cert elements for translated page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`);
-        
-        // Add full-page translated image  
+
+        console.log(
+          `Adding birth cert elements for translated page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`
+        );
+
+        // Add full-page translated image
         await addFullPageImage(
-          snapshot.translatedImage, 
-          snapshot.translatedWidth, 
+          snapshot.translatedImage,
+          snapshot.translatedWidth,
           snapshot.translatedHeight,
-          currentPdfPageNumber, 
+          currentPdfPageNumber,
           `birth-cert-translated-${snapshot.pageNumber}`
         );
         currentPdfPageNumber++;
       }
-      
+
       // 2. Process dynamic content pages (2x2 grid layout)
       if (dynamicContentSnapshots.length > 0) {
-        console.log(`Starting dynamic content layout from PDF page ${currentPdfPageNumber}`);
-        
-        const dynamicPagesNeeded = Math.ceil(dynamicContentSnapshots.length / 2);
-        
-        for (let pdfPageIndex = 0; pdfPageIndex < dynamicPagesNeeded; pdfPageIndex++) {
+        console.log(
+          `Starting dynamic content layout from PDF page ${currentPdfPageNumber}`
+        );
+
+        const dynamicPagesNeeded = Math.ceil(
+          dynamicContentSnapshots.length / 2
+        );
+
+        for (
+          let pdfPageIndex = 0;
+          pdfPageIndex < dynamicPagesNeeded;
+          pdfPageIndex++
+        ) {
           const pageNumber = currentPdfPageNumber + pdfPageIndex;
           const snapshot1 = dynamicContentSnapshots[pdfPageIndex * 2];
           const snapshot2 = dynamicContentSnapshots[pdfPageIndex * 2 + 1];
-          
-          console.log(`Adding dynamic content elements to PDF page ${pageNumber}`);
-          
+
+          console.log(
+            `Adding dynamic content elements to PDF page ${pageNumber}`
+          );
+
           // Calculate layout dimensions (matching the PDF creation logic)
           const pageWidth = 612; // Letter size in points
           const pageHeight = 792;
@@ -1743,10 +1865,20 @@ export const PDFEditorContent: React.FC = () => {
           }
 
           // Add dividing lines
-          addGridLines(pageNumber, gridMargin, pageWidth, pageHeight, labelSpace, availableWidth, quadrantHeight, gridSpacing, !!snapshot2);
+          addGridLines(
+            pageNumber,
+            gridMargin,
+            pageWidth,
+            pageHeight,
+            labelSpace,
+            availableWidth,
+            quadrantHeight,
+            gridSpacing,
+            !!snapshot2
+          );
         }
       }
-      
+
       console.log("Interactive elements layout completed");
     },
     [
@@ -1809,8 +1941,10 @@ export const PDFEditorContent: React.FC = () => {
 
       // Handle entering translate step
       if (step === "translate" && prev !== "translate") {
-        console.log("Entering translate step, disabling edit mode and setting view to split");
-        
+        console.log(
+          "Entering translate step, disabling edit mode and setting view to split"
+        );
+
         // Disable edit mode for translate step
         setEditorState((prev) => ({
           ...prev,
@@ -1826,8 +1960,10 @@ export const PDFEditorContent: React.FC = () => {
 
       // Handle entering layout step
       if (step === "layout" && prev !== "layout") {
-        console.log("Entering layout step, enabling edit mode and setting view to split");
-        
+        console.log(
+          "Entering layout step, enabling edit mode and setting view to split"
+        );
+
         // Enable edit mode for layout step
         setEditorState((prev) => ({
           ...prev,
@@ -2526,6 +2662,44 @@ export const PDFEditorContent: React.FC = () => {
     getTranslatedTemplateScaleFactor,
   });
 
+  // Delete selected elements - defined before useKeyboardHandlers to avoid initialization error
+  const handleDeleteSelection = useCallback(() => {
+    const { selectedElements } = editorState.multiSelection;
+
+    if (selectedElements.length > 0) {
+      console.log(
+        "[PDFEditorContent] Deleting",
+        selectedElements.length,
+        "selected elements"
+      );
+      // Use the multi-delete handler for atomic undo/redo
+      handleMultiDeleteWithUndo();
+    }
+
+    // Clear selection
+    setEditorState((prev) => ({
+      ...prev,
+      multiSelection: {
+        ...prev.multiSelection,
+        selectedElements: [],
+        selectionBounds: null,
+      },
+    }));
+
+    // Also clear single element selection state
+    setSelectedElementId(null);
+    setSelectedElementType(null);
+    setCurrentFormat(null);
+    setIsDrawerOpen(false);
+  }, [
+    editorState.multiSelection.selectedElements,
+    handleMultiDeleteWithUndo,
+    setSelectedElementId,
+    setSelectedElementType,
+    setCurrentFormat,
+    setIsDrawerOpen,
+  ]);
+
   // Keyboard handlers for shortcuts, undo/redo, and multi-selection
   useKeyboardHandlers({
     editorState,
@@ -2537,11 +2711,14 @@ export const PDFEditorContent: React.FC = () => {
     erasureState,
     currentPageTextBoxes,
     handleAddDeletionRectangleWithUndo,
-    handleDeleteTextBoxWithUndo: (id: string) =>
-      deleteTextBox(id, viewState.currentView),
+    handleDeleteTextBoxWithUndo,
+    handleDeleteShapeWithUndo,
+    handleDeleteImageWithUndo,
+    handleDeleteSelection,
     history,
     handleMultiSelectionMove,
     handleMultiSelectionMoveEnd,
+    elementCollections,
   });
 
   // Erasure drawing handlers
@@ -2964,55 +3141,6 @@ export const PDFEditorContent: React.FC = () => {
     editorState.multiSelection.isMovingSelection,
   ]);
 
-  // Delete selected elements
-  const handleDeleteSelection = useCallback(() => {
-    const { selectedElements, targetView } = editorState.multiSelection;
-
-    selectedElements.forEach((selectedElement) => {
-      // Use targetView for split view, otherwise use currentView
-      const deleteView = targetView || viewState.currentView;
-
-      switch (selectedElement.type) {
-        case "textbox":
-          handleDeleteTextBoxWithUndo(selectedElement.id, deleteView);
-          break;
-        case "shape":
-          handleDeleteShapeWithUndo(selectedElement.id, deleteView);
-          break;
-        case "image":
-          handleDeleteImageWithUndo(selectedElement.id, deleteView);
-          break;
-      }
-    });
-
-    // Clear selection
-    setEditorState((prev) => ({
-      ...prev,
-      multiSelection: {
-        ...prev.multiSelection,
-        selectedElements: [],
-        selectionBounds: null,
-      },
-    }));
-
-    // Also clear single element selection state
-    setSelectedElementId(null);
-    setSelectedElementType(null);
-    setCurrentFormat(null);
-    setIsDrawerOpen(false);
-  }, [
-    editorState.multiSelection.selectedElements,
-    editorState.multiSelection.targetView,
-    handleDeleteTextBoxWithUndo,
-    handleDeleteShapeWithUndo,
-    handleDeleteImageWithUndo,
-    viewState.currentView,
-    setSelectedElementId,
-    setSelectedElementType,
-    setCurrentFormat,
-    setIsDrawerOpen,
-  ]);
-
   // Handle drag stop for selection rectangle
   const handleDragStopSelection = useCallback(
     (deltaX: number, deltaY: number) => {
@@ -3194,6 +3322,12 @@ export const PDFEditorContent: React.FC = () => {
   const handleMoveSelectionMouseUp = useCallback(() => {
     if (!editorState.multiSelection.isMovingSelection) return;
 
+    // End any ongoing batch operations for multi-selection move
+    if (history.isBatching()) {
+      console.log("[PDFEditorContent] Ending batch for multi-selection move");
+      history.endBatch();
+    }
+
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -3202,7 +3336,7 @@ export const PDFEditorContent: React.FC = () => {
         moveStart: null,
       },
     }));
-  }, [editorState.multiSelection.isMovingSelection]);
+  }, [editorState.multiSelection.isMovingSelection, history]);
 
   // Document click handler
   const handleDocumentContainerClick = useCallback(
@@ -3526,6 +3660,7 @@ export const PDFEditorContent: React.FC = () => {
         // Store current state before appending
         const currentDeletedPages = new Set(documentState.deletedPages);
         const currentPages = [...documentState.pages];
+        const oldUrl = documentState.url;
 
         // Add a new blank page (A4 size: 595.28 x 841.89 points)
         const newPage = currentPdfDoc.addPage([595.28, 841.89]);
@@ -3541,9 +3676,19 @@ export const PDFEditorContent: React.FC = () => {
           type: "application/pdf",
         });
 
-        // Update document URL without using loadDocument to preserve deletedPages
-        const newUrl = URL.createObjectURL(updatedFile);
+        // Upload to Supabase or create blob URL
+        const uploadResult = await uploadFileWithFallback(updatedFile);
+        const newUrl = uploadResult.url;
         const newPageNumber = currentPdfDoc.getPageCount();
+
+        // Clean up old blob URL if it's a blob URL (not Supabase URL)
+        if (
+          oldUrl &&
+          oldUrl.startsWith("blob:") &&
+          !uploadResult.isSupabaseUrl
+        ) {
+          URL.revokeObjectURL(oldUrl);
+        }
 
         setDocumentState((prev) => ({
           ...prev,
@@ -3560,6 +3705,9 @@ export const PDFEditorContent: React.FC = () => {
           deletedPages: currentDeletedPages, // Preserve deleted pages
           isDocumentLoaded: true,
           error: "",
+          // Update metadata if uploaded to Supabase
+          supabaseFilePath: uploadResult.filePath,
+          isSupabaseUrl: uploadResult.isSupabaseUrl,
         }));
 
         // Calculate proper image dimensions and position
@@ -3631,6 +3779,7 @@ export const PDFEditorContent: React.FC = () => {
         const currentDeletedPages = new Set(documentState.deletedPages);
         const currentPages = [...documentState.pages];
         const currentNumPages = documentState.numPages;
+        const oldUrl = documentState.url;
 
         // Load the new document to append
         const newArrayBuffer = await pdfFile.arrayBuffer();
@@ -3660,6 +3809,15 @@ export const PDFEditorContent: React.FC = () => {
         const totalPages = currentPdfDoc.getPageCount();
         const addedPagesCount = newPages.length;
 
+        // Clean up old blob URL if it's a blob URL (not Supabase URL)
+        if (
+          oldUrl &&
+          oldUrl.startsWith("blob:") &&
+          !uploadResult.isSupabaseUrl
+        ) {
+          URL.revokeObjectURL(oldUrl);
+        }
+
         // Create new page entries for the appended pages
         const newPageEntries = Array.from(
           { length: addedPagesCount },
@@ -3678,6 +3836,9 @@ export const PDFEditorContent: React.FC = () => {
           deletedPages: currentDeletedPages, // Preserve deleted pages
           isDocumentLoaded: true,
           error: "",
+          // Update metadata if uploaded to Supabase
+          supabaseFilePath: uploadResult.filePath,
+          isSupabaseUrl: uploadResult.isSupabaseUrl,
         }));
 
         toast.success("PDF document appended successfully!");
@@ -4270,16 +4431,20 @@ export const PDFEditorContent: React.FC = () => {
         } else if (viewState.currentView === "split") {
           // In split view, we need to determine which side the element belongs to
           // Check if the element exists in original or translated collections
-          const isInOriginal = 
-            elementCollections.originalTextBoxes.some(tb => tb.id === id) ||
-            elementCollections.originalShapes.some(shape => shape.id === id) ||
-            elementCollections.originalImages.some(img => img.id === id);
-          
-          const isInTranslated = 
-            elementCollections.translatedTextBoxes.some(tb => tb.id === id) ||
-            elementCollections.translatedShapes.some(shape => shape.id === id) ||
-            elementCollections.translatedImages.some(img => img.id === id);
-          
+          const isInOriginal =
+            elementCollections.originalTextBoxes.some((tb) => tb.id === id) ||
+            elementCollections.originalShapes.some(
+              (shape) => shape.id === id
+            ) ||
+            elementCollections.originalImages.some((img) => img.id === id);
+
+          const isInTranslated =
+            elementCollections.translatedTextBoxes.some((tb) => tb.id === id) ||
+            elementCollections.translatedShapes.some(
+              (shape) => shape.id === id
+            ) ||
+            elementCollections.translatedImages.some((img) => img.id === id);
+
           if (isInOriginal) {
             effectiveView = "original";
           } else if (isInTranslated) {
@@ -4290,7 +4455,7 @@ export const PDFEditorContent: React.FC = () => {
         } else {
           effectiveView = viewState.currentView;
         }
-        
+
         fn(id, effectiveView);
       };
     };
@@ -4313,7 +4478,10 @@ export const PDFEditorContent: React.FC = () => {
 
   useEffect(() => {
     // Create view-aware layer position helper functions
-    const createLayerPositionHelper = (fn: Function, defaultView?: ViewMode) => {
+    const createLayerPositionHelper = (
+      fn: Function,
+      defaultView?: ViewMode
+    ) => {
       return (id: string, targetView?: ViewMode) => {
         // Determine which view to use for layer position checking
         let effectiveView: ViewMode;
@@ -4321,16 +4489,20 @@ export const PDFEditorContent: React.FC = () => {
           effectiveView = targetView;
         } else if (viewState.currentView === "split") {
           // In split view, we need to determine which side the element belongs to
-          const isInOriginal = 
-            elementCollections.originalTextBoxes.some(tb => tb.id === id) ||
-            elementCollections.originalShapes.some(shape => shape.id === id) ||
-            elementCollections.originalImages.some(img => img.id === id);
-          
-          const isInTranslated = 
-            elementCollections.translatedTextBoxes.some(tb => tb.id === id) ||
-            elementCollections.translatedShapes.some(shape => shape.id === id) ||
-            elementCollections.translatedImages.some(img => img.id === id);
-          
+          const isInOriginal =
+            elementCollections.originalTextBoxes.some((tb) => tb.id === id) ||
+            elementCollections.originalShapes.some(
+              (shape) => shape.id === id
+            ) ||
+            elementCollections.originalImages.some((img) => img.id === id);
+
+          const isInTranslated =
+            elementCollections.translatedTextBoxes.some((tb) => tb.id === id) ||
+            elementCollections.translatedShapes.some(
+              (shape) => shape.id === id
+            ) ||
+            elementCollections.translatedImages.some((img) => img.id === id);
+
           if (isInOriginal) {
             effectiveView = "original";
           } else if (isInTranslated) {
@@ -4341,7 +4513,7 @@ export const PDFEditorContent: React.FC = () => {
         } else {
           effectiveView = viewState.currentView;
         }
-        
+
         return fn(id, effectiveView);
       };
     };
@@ -4468,6 +4640,31 @@ export const PDFEditorContent: React.FC = () => {
     documentState.url,
     documentState.numPages, // Include numPages to ensure document is fully processed
     createProjectOnUpload,
+  ]);
+
+  // Cleanup effect for blob URLs
+  useEffect(() => {
+    return () => {
+      // Cleanup main document blob URL on unmount
+      if (
+        documentState.url &&
+        documentState.url.startsWith("blob:") &&
+        !documentState.isSupabaseUrl
+      ) {
+        URL.revokeObjectURL(documentState.url);
+      }
+      // Cleanup final layout blob URL on unmount
+      if (
+        documentState.finalLayoutUrl &&
+        documentState.finalLayoutUrl.startsWith("blob:")
+      ) {
+        URL.revokeObjectURL(documentState.finalLayoutUrl);
+      }
+    };
+  }, [
+    documentState.url,
+    documentState.finalLayoutUrl,
+    documentState.isSupabaseUrl,
   ]);
 
   // Reset project creation flag when a new document is uploaded
@@ -4941,10 +5138,8 @@ export const PDFEditorContent: React.FC = () => {
             return;
           }
 
-          if (
-            history.canUndo(documentState.currentPage, viewState.currentView)
-          ) {
-            history.undo(documentState.currentPage, viewState.currentView);
+          if (history.canUndo()) {
+            history.undo();
             setLastUndoTime(now);
             toast.success("Undo");
           }
@@ -4955,22 +5150,14 @@ export const PDFEditorContent: React.FC = () => {
             return;
           }
 
-          if (
-            history.canRedo(documentState.currentPage, viewState.currentView)
-          ) {
-            history.redo(documentState.currentPage, viewState.currentView);
+          if (history.canRedo()) {
+            history.redo();
             setLastRedoTime(now);
             toast.success("Redo");
           }
         }}
-        canUndo={history.canUndo(
-          documentState.currentPage,
-          viewState.currentView
-        )}
-        canRedo={history.canRedo(
-          documentState.currentPage,
-          viewState.currentView
-        )}
+        canUndo={history.canUndo()}
+        canRedo={history.canRedo()}
         // Bulk OCR props
         onRunOcrAllPages={() => checkLanguageAndRunOcr("bulk")}
         isBulkOcrRunning={isBulkOcrRunning}
@@ -5458,7 +5645,10 @@ export const PDFEditorContent: React.FC = () => {
                       }
                     }}
                     onMouseMove={(e) => {
-                      if (toolState.shapeDrawingMode && toolState.isDrawingShape) {
+                      if (
+                        toolState.shapeDrawingMode &&
+                        toolState.isDrawingShape
+                      ) {
                         handleShapeDrawMove(e);
                       } else if (editorState.multiSelection.isMovingSelection) {
                         handleMoveSelectionMouseMove(e);
@@ -5471,7 +5661,10 @@ export const PDFEditorContent: React.FC = () => {
                       }
                     }}
                     onMouseUp={(e) => {
-                      if (toolState.shapeDrawingMode && toolState.isDrawingShape) {
+                      if (
+                        toolState.shapeDrawingMode &&
+                        toolState.isDrawingShape
+                      ) {
                         handleShapeDrawEnd();
                       } else if (editorState.multiSelection.isMovingSelection) {
                         handleMoveSelectionMouseUp();

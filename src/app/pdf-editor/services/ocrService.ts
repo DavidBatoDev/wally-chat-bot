@@ -209,19 +209,9 @@ export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
     // This is critical because each page can have different dimensions, especially in multi-page documents
     // or documents with mixed page sizes (e.g., birth certificates with different templates)
     
-    // Use fixed dimensions to prevent layout shifts and ensure consistency
-    const FIXED_PAGE_WIDTH = 595; // A4 width in points (210mm)
-    const FIXED_PAGE_HEIGHT = 842; // A4 height in points (297mm)
-    
-    // Ensure dimensions are valid before sending, use fixed dimensions as baseline
-    const pageWidth = Math.max(
-      documentState.pageWidth > 0 ? documentState.pageWidth : FIXED_PAGE_WIDTH,
-      FIXED_PAGE_WIDTH
-    );
-    const pageHeight = Math.max(
-      documentState.pageHeight > 0 ? documentState.pageHeight : FIXED_PAGE_HEIGHT,
-      FIXED_PAGE_HEIGHT
-    );
+    // Ensure dimensions are valid before sending
+    const pageWidth = documentState.pageWidth > 0 ? documentState.pageWidth : 595; // A4 width fallback
+    const pageHeight = documentState.pageHeight > 0 ? documentState.pageHeight : 842; // A4 height fallback
     
     formData.append("frontend_page_width", pageWidth.toString());
     formData.append("frontend_page_height", pageHeight.toString());
@@ -518,14 +508,10 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
 
         // Get current rendered page dimensions for this specific page
         // This ensures we always send the actual current page dimensions to the backend
-        // Use fixed dimensions to prevent layout shifts when switching between pages
-        const FIXED_PAGE_WIDTH = 595; // A4 width in points (210mm)
-        const FIXED_PAGE_HEIGHT = 842; // A4 height in points (297mm)
-        
-        let currentPageWidth = FIXED_PAGE_WIDTH;
-        let currentPageHeight = FIXED_PAGE_HEIGHT;
+        let currentPageWidth = options.documentState.pageWidth;
+        let currentPageHeight = options.documentState.pageHeight;
 
-        // Try to get actual rendered dimensions from the DOM but constrain to fixed dimensions
+        // Try to get actual rendered dimensions from the DOM
         if (options.documentRef?.current) {
           const pdfPage = options.documentRef.current.querySelector(
             ".react-pdf__Page"
@@ -536,11 +522,10 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
             const calculatedWidth = rect.width / options.documentState.scale;
             const calculatedHeight = rect.height / options.documentState.scale;
             
-            // Only use calculated dimensions if they are valid (non-zero) and not too different from fixed dimensions
+            // Only use calculated dimensions if they are valid (non-zero)
             if (calculatedWidth > 0 && calculatedHeight > 0) {
-              // Use calculated dimensions but ensure consistency by using fixed dimensions as fallback
-              currentPageWidth = Math.max(calculatedWidth, FIXED_PAGE_WIDTH);
-              currentPageHeight = Math.max(calculatedHeight, FIXED_PAGE_HEIGHT);
+              currentPageWidth = calculatedWidth;
+              currentPageHeight = calculatedHeight;
             }
             
             console.log(`📐 Page ${page} dimensions:`, {
@@ -558,21 +543,18 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
         }
 
         // Fallback to stored page-specific dimensions if DOM query fails or calculated dimensions are invalid
-        // Use fixed dimensions as absolute fallback to prevent layout shifts
         if (!currentPageWidth || !currentPageHeight || currentPageWidth <= 0 || currentPageHeight <= 0) {
           currentPageWidth =
             pageData?.translatedTemplateWidth ||
-            options.documentState.pageWidth ||
-            FIXED_PAGE_WIDTH; // Use fixed width as final fallback
+            options.documentState.pageWidth;
           currentPageHeight =
             pageData?.translatedTemplateHeight ||
-            options.documentState.pageHeight ||
-            FIXED_PAGE_HEIGHT; // Use fixed height as final fallback
+            options.documentState.pageHeight;
             
           console.log(`📐 Page ${page} using fallback dimensions:`, {
             pageWidth: currentPageWidth,
             pageHeight: currentPageHeight,
-            source: pageData?.translatedTemplateWidth ? 'stored page data' : 'fixed dimensions fallback'
+            source: pageData?.translatedTemplateWidth ? 'stored page data' : 'document state'
           });
         }
 
@@ -792,7 +774,7 @@ export async function convertEntitiesToTextBoxes(
 
     // Determine placeholder text
     const textValue = entity.text || "";
-    const entityPlaceholder = entity.type || "";
+    const entityPlaceholder = entity.placeholder || "";
 
     // Always show placeholder: entity placeholder if provided, otherwise "Enter Text..."
     const placeholder = entityPlaceholder || "Enter Text...";

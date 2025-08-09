@@ -38,7 +38,9 @@ interface UseMultiSelectionHandlersProps {
   ) => void;
   updateShapeWithUndo: (id: string, updates: any, isOngoing?: boolean) => void;
   updateImage: (id: string, updates: any) => void;
+  updateImageWithUndo?: (id: string, updates: any, isOngoing?: boolean) => void;
   getElementById: (id: string, type: "textbox" | "shape" | "image") => any;
+  history?: any;
 }
 
 export const useMultiSelectionHandlers = ({
@@ -53,7 +55,9 @@ export const useMultiSelectionHandlers = ({
   updateTextBoxWithUndo,
   updateShapeWithUndo,
   updateImage,
+  updateImageWithUndo,
   getElementById,
+  history,
 }: UseMultiSelectionHandlersProps) => {
   // Multi-selection drag handlers for individual Rnd components
 
@@ -168,7 +172,7 @@ export const useMultiSelectionHandlers = ({
         deltaY,
         (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
         (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-        updateImage,
+        (id, updates) => updateImageWithUndo(id, updates, true), // Mark as ongoing operation
         getElementById,
         documentState.pageWidth,
         documentState.pageHeight
@@ -206,7 +210,7 @@ export const useMultiSelectionHandlers = ({
       editorState.multiSelection.selectedElements,
       updateTextBoxWithUndo,
       updateShapeWithUndo,
-      updateImage,
+      updateImageWithUndo,
       getElementById,
       documentState.pageWidth,
       documentState.pageHeight,
@@ -215,6 +219,11 @@ export const useMultiSelectionHandlers = ({
   );
 
   const handleMultiSelectionMoveEnd = useCallback(() => {
+    // End batch operation if there's one
+    if (history && history.endBatch) {
+      history.endBatch();
+    }
+    
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -223,7 +232,7 @@ export const useMultiSelectionHandlers = ({
         moveStart: null,
       },
     }));
-  }, [setEditorState]);
+  }, [setEditorState, history]);
 
   const handleMultiSelectDragStart = useCallback(
     (id: string) => {
@@ -290,7 +299,18 @@ export const useMultiSelectionHandlers = ({
                     ); // Mark as ongoing operation
                     break;
                   case "image":
-                    updateImage(el.id, { x: constrainedX, y: constrainedY });
+                    if (updateImageWithUndo) {
+                      updateImageWithUndo(
+                        el.id,
+                        {
+                          x: constrainedX,
+                          y: constrainedY,
+                        },
+                        true
+                      );
+                    } else {
+                      updateImage(el.id, { x: constrainedX, y: constrainedY });
+                    }
                     break;
                 }
               }
@@ -314,6 +334,11 @@ export const useMultiSelectionHandlers = ({
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
+        // End batch operation if there's one
+        if (history && history.endBatch) {
+          history.endBatch();
+        }
+        
         // Update original positions for next drag
         setEditorState((prev) => ({
           ...prev,
@@ -334,7 +359,7 @@ export const useMultiSelectionHandlers = ({
       // Clear initial positions
       initialPositionsRef.current = {};
     },
-    [editorState.multiSelection.selectedElements, setEditorState]
+    [editorState.multiSelection.selectedElements, setEditorState, history]
   );
 
   // Multi-element selection mouse handlers

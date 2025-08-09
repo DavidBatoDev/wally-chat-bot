@@ -50,7 +50,7 @@ export const useDocumentState = () => {
   const handleDocumentLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
       console.log("handleDocumentLoadSuccess called with", numPages, "pages");
-      
+
       // Only reset pages and deletedPages if this is truly a new document load
       // Check if numPages has actually changed or if we're reloading the same document
       if (
@@ -80,10 +80,12 @@ export const useDocumentState = () => {
         // Create new pages array with preserved page types where applicable
         initialPages = Array.from({ length: numPages }, (_, index) => {
           const pageNumber = index + 1;
-          
+
           // Try to find existing page data for this page number
-          const existingPage = existingPages.find(p => p.pageNumber === pageNumber);
-          
+          const existingPage = existingPages.find(
+            (p) => p.pageNumber === pageNumber
+          );
+
           if (existingPage) {
             return {
               pageNumber,
@@ -207,18 +209,28 @@ export const useDocumentState = () => {
   const loadDocument = useCallback(async (file: File) => {
     const fileType = getFileType(file.name);
 
-    // Set initial loading state
-    setDocumentState((prev) => ({
-      ...prev,
-      isLoading: true,
-      currentPage: 1,
-      error: "",
-      pdfBackgroundColor: "white",
-      detectedPageBackgrounds: new Map(),
-      pages: [], // Clear pages when loading new document
-      deletedPages: new Set(), // Clear deleted pages when loading new document
-      isTransforming: false, // Reset transforming state
-    }));
+    // Store current URL for cleanup
+    setDocumentState((prevState) => {
+      const oldUrl = prevState.url;
+
+      // Clean up old blob URL if it exists and is a blob URL
+      if (oldUrl && oldUrl.startsWith("blob:") && !prevState.isSupabaseUrl) {
+        URL.revokeObjectURL(oldUrl);
+      }
+
+      // Set initial loading state
+      return {
+        ...prevState,
+        isLoading: true,
+        currentPage: 1,
+        error: "",
+        pdfBackgroundColor: "white",
+        detectedPageBackgrounds: new Map(),
+        pages: [], // Clear pages when loading new document
+        deletedPages: new Set(), // Clear deleted pages when loading new document
+        isTransforming: false, // Reset transforming state
+      };
+    });
 
     try {
       // Upload file to Supabase or use blob URL as fallback
@@ -580,6 +592,66 @@ export const useDocumentState = () => {
     },
     []
   );
+
+  return {
+    documentState,
+    setDocumentState,
+    handlers: {
+      handleDocumentLoadSuccess,
+      handleDocumentLoadError,
+      handlePageLoadSuccess,
+      handlePageLoadError,
+      handleImageLoadSuccess,
+      handleImageLoadError,
+    },
+    actions: {
+      loadDocument,
+      loadDocumentFromUrl,
+      updateScale,
+      updateScaleWithoutRerender,
+      updatePdfRenderScale,
+      changePage,
+      capturePdfBackgroundColor,
+      updatePdfBackgroundColor,
+      resetScaleChanging,
+      loadFinalLayoutFromUrl,
+    },
+    pageActions: {
+      addPage,
+      appendPages,
+      updatePage,
+      deletePage,
+      getCurrentPage,
+      getNonDeletedPages,
+      setPageTranslated,
+      setIsTransforming,
+      handleDocumentAppend,
+    },
+  };
+
+  // Cleanup effect for blob URLs
+  useEffect(() => {
+    return () => {
+      // Cleanup blob URL on unmount
+      if (
+        documentState.url &&
+        documentState.url.startsWith("blob:") &&
+        !documentState.isSupabaseUrl
+      ) {
+        URL.revokeObjectURL(documentState.url);
+      }
+      if (
+        documentState.finalLayoutUrl &&
+        documentState.finalLayoutUrl.startsWith("blob:")
+      ) {
+        URL.revokeObjectURL(documentState.finalLayoutUrl);
+      }
+    };
+  }, [
+    documentState.url,
+    documentState.finalLayoutUrl,
+    documentState.isSupabaseUrl,
+  ]);
 
   return {
     documentState,

@@ -9,6 +9,9 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+/ClaudeContext/
+CLAUDE.md
+database-schema.mmd 
 
 # testing
 /coverage
