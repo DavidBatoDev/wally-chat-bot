@@ -202,7 +202,9 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               <ToolbarTooltip id="edit-mode-tools" text="Toggle Edit Mode">
                 <button
                   onClick={onEditModeToggle}
-                  className="p-2 rounded-md transition-all duration-200 hover:bg-primary/10 flex items-center gap-1 text-gray-700 hover:text-primary"
+                  className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 flex items-center gap-1 text-gray-700 hover:text-primary ${
+                    editorState.isEditMode ? "bg-gray-200" : ""
+                  }`}
                 >
                   <Edit2 className="w-5 h-5" />
                   <ChevronDown
