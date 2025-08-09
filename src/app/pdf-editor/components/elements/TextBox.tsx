@@ -39,6 +39,8 @@ interface TextBoxProps {
   onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
+  // Element index for z-index ordering
+  elementIndex?: number;
 }
 
 // Custom comparison function for memo to prevent unnecessary rerenders
@@ -82,7 +84,8 @@ const arePropsEqual = (prevProps: TextBoxProps, nextProps: TextBoxProps) => {
     prevProps.isTextSelectionMode !== nextProps.isTextSelectionMode ||
     prevProps.isSelectedInTextMode !== nextProps.isSelectedInTextMode ||
     prevProps.autoFocusId !== nextProps.autoFocusId ||
-    prevProps.isInSelectionPreview !== nextProps.isInSelectionPreview
+    prevProps.isInSelectionPreview !== nextProps.isInSelectionPreview ||
+    prevProps.elementIndex !== nextProps.elementIndex
   ) {
     return false;
   }
@@ -125,6 +128,8 @@ export const MemoizedTextBox = memo(
     onMultiSelectDragStop,
     // Selection preview prop
     isInSelectionPreview = false,
+    // Element index for z-index ordering
+    elementIndex = 0,
   }: TextBoxProps) => {
     // Helper function to get padding object from textbox
     const getPadding = () => ({
@@ -610,7 +615,10 @@ export const MemoizedTextBox = memo(
             ? "ring-2 ring-blue-400 ring-dashed selection-preview"
             : ""
         }`}
-        style={{ transform: "none" }}
+        style={{
+          transform: "none",
+          zIndex: isSelected ? 9999 : elementIndex,
+        }}
         onClick={handleClick}
       >
         <div className="w-full h-full relative group">
@@ -621,7 +629,8 @@ export const MemoizedTextBox = memo(
                 e.stopPropagation();
                 onDelete(textBox.id);
               }}
-              className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+              className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200"
+              style={{ zIndex: 10 }}
               title="Delete text field"
             >
               <Trash2 size={10} />
@@ -630,7 +639,10 @@ export const MemoizedTextBox = memo(
 
           {/* Move handle and Duplicate button - only show when selected and in edit mode and NOT in text selection mode */}
           {isEditMode && isSelected && !isTextSelectionMode && (
-            <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+            <div
+              className="absolute -bottom-7 left-1 transform transition-all duration-300 flex items-center space-x-1"
+              style={{ zIndex: 20 }}
+            >
               <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
               </div>
@@ -652,7 +664,7 @@ export const MemoizedTextBox = memo(
           {/* Resize handle - only show when selected and in edit mode and NOT in text selection mode */}
           {isEditMode && isSelected && !isTextSelectionMode && (
             <div
-              className="absolute bottom-0 right-0 w-4 h-4 bg-gray-600 border-2 border-white rounded-full shadow-lg cursor-se-resize transform translate-x-1 translate-y-1 z-30 flex items-center justify-center hover:scale-110 transition-transform duration-200"
+              className="absolute bottom-0 right-0 w-4 h-4 bg-gray-600 border-2 border-white rounded-full shadow-lg cursor-se-resize transform translate-x-1 translate-y-1 flex items-center justify-center hover:scale-110 transition-transform duration-200"
               style={{
                 backgroundImage: `
                 linear-gradient(45deg, transparent 30%, white 30%, white 40%, transparent 40%),
@@ -660,6 +672,7 @@ export const MemoizedTextBox = memo(
               `,
                 backgroundSize: "8px 8px",
                 backgroundRepeat: "no-repeat",
+                zIndex: 30,
               }}
               onMouseDown={(e) => {
                 e.stopPropagation();

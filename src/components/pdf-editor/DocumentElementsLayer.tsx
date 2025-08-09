@@ -210,7 +210,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
         ))}
 
       {/* Elements in Layer Order */}
-      {sortedElements.map(({ type, element }) => {
+      {sortedElements.map(({ type, element }, index) => {
         if (type === "textbox") {
           const textBox = element as TextField;
           const isInSelectionPreview = elementsInSelectionPreview.has(
@@ -234,6 +234,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               autoFocusId={autoFocusTextBoxId}
               onAutoFocusComplete={onAutoFocusComplete}
               isInSelectionPreview={isInSelectionPreview}
+              elementIndex={index}
             />
           );
         } else if (type === "shape") {
@@ -252,6 +253,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               onUpdate={onUpdateShape}
               onDelete={onDeleteShape}
               isInSelectionPreview={isInSelectionPreview}
+              elementIndex={index}
             />
           );
         } else if (type === "image") {
@@ -270,6 +272,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               onUpdate={onUpdateImage}
               onDelete={onDeleteImage}
               isInSelectionPreview={isInSelectionPreview}
+              elementIndex={index}
             />
           );
         }

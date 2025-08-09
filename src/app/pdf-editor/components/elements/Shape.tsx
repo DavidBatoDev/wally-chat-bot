@@ -21,6 +21,8 @@ interface ShapeProps {
   onDelete: (id: string) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
+  // Element index for z-index ordering
+  elementIndex?: number;
 }
 
 export const MemoizedShape = memo(
@@ -36,6 +38,8 @@ export const MemoizedShape = memo(
     onDelete,
     // Selection preview prop
     isInSelectionPreview = false,
+    // Element index for z-index ordering
+    elementIndex = 0,
   }: ShapeProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -95,16 +99,7 @@ export const MemoizedShape = memo(
             true
           ); // Mark as ongoing operation
         }}
-        onResizeStart={(e) => {
-          e.preventDefault(); // Prevent text selection
-
-          // Add class to body to prevent text selection globally
-          document.body.classList.add("resizing-element");
-        }}
         onResizeStop={(e, direction, ref, delta, position) => {
-          // Remove class from body to restore text selection
-          document.body.classList.remove("resizing-element");
-
           onUpdate(
             shape.id,
             {
@@ -126,6 +121,7 @@ export const MemoizedShape = memo(
         }`}
         style={{
           transform: "none",
+          zIndex: isSelected ? 9999 : elementIndex,
         }}
         onClick={handleClick}
       >
@@ -155,7 +151,10 @@ export const MemoizedShape = memo(
           {isEditMode && isSelected && (
             <>
               {/* Move handle */}
-              <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20 flex items-center space-x-1">
+              <div
+                className="absolute -bottom-7 left-1 transform transition-all duration-300 flex items-center space-x-1"
+                style={{ zIndex: 20 }}
+              >
                 <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                   <Move size={10} />
                 </div>
@@ -167,7 +166,8 @@ export const MemoizedShape = memo(
                   e.stopPropagation();
                   onDelete(shape.id);
                 }}
-                className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+                className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200"
+                style={{ zIndex: 10 }}
                 title="Delete shape"
               >
                 <Trash2 size={10} />

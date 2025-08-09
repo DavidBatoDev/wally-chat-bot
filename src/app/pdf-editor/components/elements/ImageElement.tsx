@@ -15,6 +15,8 @@ interface ImageElementProps {
   onDelete: (id: string) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
+  // Element index for z-index ordering
+  elementIndex?: number;
 }
 
 export const MemoizedImage = memo(
@@ -30,6 +32,8 @@ export const MemoizedImage = memo(
     onDelete,
     // Selection preview prop
     isInSelectionPreview = false,
+    // Element index for z-index ordering
+    elementIndex = 0,
   }: ImageElementProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -197,6 +201,7 @@ export const MemoizedImage = memo(
         }`}
         style={{
           transform: "none",
+          zIndex: isSelected ? 9999 : elementIndex,
         }}
         onClick={handleClick}
       >
@@ -208,7 +213,8 @@ export const MemoizedImage = memo(
                 e.stopPropagation();
                 onDelete(image.id);
               }}
-              className="absolute top-[-15px] left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 z-10"
+              className="absolute top-[-15px] left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200"
+              style={{ zIndex: 10 }}
               title="Delete image"
             >
               <Trash2 size={10} />
@@ -217,7 +223,10 @@ export const MemoizedImage = memo(
 
           {/* Move handle - only show when selected and in edit mode */}
           {isEditMode && isSelected && (
-            <div className="absolute -bottom-7 left-1 transform transition-all duration-300 z-20">
+            <div
+              className="absolute -bottom-7 left-1 transform transition-all duration-300"
+              style={{ zIndex: 20 }}
+            >
               <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
               </div>
@@ -256,37 +265,45 @@ export const MemoizedImage = memo(
             <>
               {/* Corner handles */}
               <div
-                className="absolute top-0 left-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-nw-resize transform -translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute top-0 left-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-nw-resize transform -translate-x-1/2 -translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "nw")}
               />
               <div
-                className="absolute top-0 right-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-ne-resize transform translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute top-0 right-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-ne-resize transform translate-x-1/2 -translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "ne")}
               />
               <div
-                className="absolute bottom-0 left-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-sw-resize transform -translate-x-1/2 translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute bottom-0 left-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-sw-resize transform -translate-x-1/2 translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "sw")}
               />
               <div
-                className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-se-resize transform translate-x-1/2 translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 border-2 border-white rounded-sm cursor-se-resize transform translate-x-1/2 translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "se")}
               />
 
               {/* Edge handles */}
               <div
-                className="absolute top-0 left-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-n-resize transform -translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute top-0 left-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-n-resize transform -translate-x-1/2 -translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "n")}
               />
               <div
-                className="absolute bottom-0 left-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-s-resize transform -translate-x-1/2 translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute bottom-0 left-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-s-resize transform -translate-x-1/2 translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "s")}
               />
               <div
-                className="absolute left-0 top-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-w-resize transform -translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute left-0 top-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-w-resize transform -translate-x-1/2 -translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "w")}
               />
               <div
-                className="absolute right-0 top-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-e-resize transform translate-x-1/2 -translate-y-1/2 z-50 hover:bg-blue-600 transition-colors"
+                className="absolute right-0 top-1/2 w-2 h-2 bg-blue-500 border-2 border-white rounded-sm cursor-e-resize transform translate-x-1/2 -translate-y-1/2 hover:bg-blue-600 transition-colors"
+                style={{ zIndex: 30 }}
                 onMouseDown={(e) => handleResizeStart(e, "e")}
               />
             </>
