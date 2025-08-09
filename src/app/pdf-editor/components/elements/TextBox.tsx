@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect } from "react";
+import React, { memo, useCallback, useEffect, useMemo } from "react";
 import { Rnd } from "react-rnd";
 import { Trash2, Move, Copy } from "lucide-react";
 import { TextField } from "../../types/pdf-editor.types";
@@ -33,6 +33,66 @@ interface TextBoxProps {
   // Selection preview prop
   isInSelectionPreview?: boolean;
 }
+
+// Custom comparison function for memo to prevent unnecessary rerenders
+const arePropsEqual = (prevProps: TextBoxProps, nextProps: TextBoxProps) => {
+  // Check if the textbox object itself changed (most important check)
+  if (prevProps.textBox !== nextProps.textBox) {
+    // If objects are different, check if the actual content changed
+    const prev = prevProps.textBox;
+    const next = nextProps.textBox;
+
+    // Check all relevant textbox properties
+    if (
+      prev.id !== next.id ||
+      prev.value !== next.value ||
+      prev.x !== next.x ||
+      prev.y !== next.y ||
+      prev.width !== next.width ||
+      prev.height !== next.height ||
+      prev.fontSize !== next.fontSize ||
+      prev.fontFamily !== next.fontFamily ||
+      prev.color !== next.color ||
+      prev.backgroundColor !== next.backgroundColor ||
+      prev.textAlign !== next.textAlign ||
+      prev.paddingTop !== next.paddingTop ||
+      prev.paddingRight !== next.paddingRight ||
+      prev.paddingBottom !== next.paddingBottom ||
+      prev.paddingLeft !== next.paddingLeft ||
+      prev.hasBeenManuallyResized !== next.hasBeenManuallyResized ||
+      prev.page !== next.page
+    ) {
+      return false;
+    }
+  }
+
+  // Check other important props that affect rendering
+  if (
+    prevProps.isSelected !== nextProps.isSelected ||
+    prevProps.isEditMode !== nextProps.isEditMode ||
+    prevProps.scale !== nextProps.scale ||
+    prevProps.showPaddingIndicator !== nextProps.showPaddingIndicator ||
+    prevProps.isTextSelectionMode !== nextProps.isTextSelectionMode ||
+    prevProps.isSelectedInTextMode !== nextProps.isSelectedInTextMode ||
+    prevProps.autoFocusId !== nextProps.autoFocusId ||
+    prevProps.isInSelectionPreview !== nextProps.isInSelectionPreview
+  ) {
+    return false;
+  }
+
+  // For multi-selection, only check if this specific textbox's selection state changed
+  const prevIsMultiSelected =
+    prevProps.selectedElementIds?.includes(prevProps.textBox.id) || false;
+  const nextIsMultiSelected =
+    nextProps.selectedElementIds?.includes(nextProps.textBox.id) || false;
+
+  if (prevIsMultiSelected !== nextIsMultiSelected) {
+    return false;
+  }
+
+  // All relevant props are the same, no need to rerender
+  return true;
+};
 
 export const MemoizedTextBox = memo(
   ({
@@ -77,96 +137,125 @@ export const MemoizedTextBox = memo(
       return availableWidth <= 0 || availableHeight <= 0;
     };
 
-    const handleTextChange = useCallback(
-      (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const newValue = e.target.value;
-        onUpdate(textBox.id, { value: newValue }, true); // Mark as ongoing operation
-
-        // Auto-resize textbox based on content changes
-        if (newValue.length !== textBox.value.length) {
-          const isAddingText = newValue.length > textBox.value.length;
-          const isNewLine =
-            (newValue.includes("\n") && !textBox.value.includes("\n")) ||
-            newValue.split("\n").length > textBox.value.split("\n").length;
-          const hasBeenManuallyResized =
-            textBox.hasBeenManuallyResized || false;
-
-          if (isNewLine) {
-            // For new lines, update both width and height
-            const { width, height } = measureText(
-              newValue,
-              textBox.fontSize,
-              textBox.fontFamily,
-              0, // characterSpacing
-              undefined, // Remove maxWidth constraint to get natural width
-              getPadding()
-            );
-
-            const padding = 4;
-            const newWidth = Math.max(textBox.width, width + padding);
-            const newHeight = Math.max(textBox.height, height + padding);
-
-            let updates: Partial<TextField> = {};
-            
-            if (newWidth > textBox.width) {
-              updates.width = newWidth;
-            }
-            
-            if (newHeight > textBox.height) {
-              updates.height = newHeight;
-            }
-
-            if (Object.keys(updates).length > 0) {
-              onUpdate(textBox.id, updates, true);
-            }
-          } else if (isAddingText) {
-            // For regular text addition
-            const { width, height } = measureText(
-              newValue,
-              textBox.fontSize,
-              textBox.fontFamily,
-              0, // characterSpacing
-              undefined, // maxWidth
-              getPadding()
-            );
-
-            const padding = 4;
-            const newHeight = Math.max(textBox.height, height + padding);
-
-            // Only expand width if the textbox hasn't been manually resized
-            let updates: Partial<TextField> = {};
-
-            if (newHeight > textBox.height) {
-              updates.height = newHeight;
-            }
-
-            if (!hasBeenManuallyResized) {
-              const newWidth = Math.max(textBox.width, width + padding);
-              if (newWidth > textBox.width) {
-                updates.width = newWidth;
-              }
-            }
-
-            if (Object.keys(updates).length > 0) {
-              onUpdate(textBox.id, updates, true);
-            }
-          }
-          // Note: We don't shrink textboxes when text is deleted to avoid layout jumps
-        }
-      },
+    // Memoize padding calculation to avoid recalculation on every render
+    const padding = useMemo(
+      () => getPadding(),
       [
-        textBox.id,
-        onUpdate,
-        textBox.value,
-        textBox.fontSize,
-        textBox.fontFamily,
-        textBox.width,
-        textBox.height,
         textBox.paddingTop,
         textBox.paddingRight,
         textBox.paddingBottom,
         textBox.paddingLeft,
       ]
+    );
+
+    // Memoize stable textbox properties to reduce callback dependencies
+    const textBoxProps = useMemo(
+      () => ({
+        id: textBox.id,
+        fontSize: textBox.fontSize,
+        fontFamily: textBox.fontFamily,
+        width: textBox.width,
+        height: textBox.height,
+        hasBeenManuallyResized: textBox.hasBeenManuallyResized || false,
+      }),
+      [
+        textBox.id,
+        textBox.fontSize,
+        textBox.fontFamily,
+        textBox.width,
+        textBox.height,
+        textBox.hasBeenManuallyResized,
+      ]
+    );
+
+    const handleTextChange = useCallback(
+      (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newValue = e.target.value;
+        const currentValue = textBox.value;
+
+        // Always update the text value first
+        onUpdate(textBoxProps.id, { value: newValue }, true); // Mark as ongoing operation
+
+        // Auto-resize textbox based on content changes
+        if (newValue.length !== currentValue.length) {
+          const isAddingText = newValue.length > currentValue.length;
+          const isNewLine =
+            (newValue.includes("\n") && !currentValue.includes("\n")) ||
+            newValue.split("\n").length > currentValue.split("\n").length;
+
+          if (isNewLine) {
+            // For new lines, update both width and height
+            const { width, height } = measureText(
+              newValue,
+              textBoxProps.fontSize,
+              textBoxProps.fontFamily,
+              0, // characterSpacing
+              undefined, // Remove maxWidth constraint to get natural width
+              padding
+            );
+
+            const paddingValue = 4;
+            const newWidth = Math.max(textBoxProps.width, width + paddingValue);
+            const newHeight = Math.max(
+              textBoxProps.height,
+              height + paddingValue
+            );
+
+            let updates: Partial<TextField> = {};
+
+            if (newWidth > textBoxProps.width) {
+              updates.width = newWidth;
+            }
+
+            if (newHeight > textBoxProps.height) {
+              updates.height = newHeight;
+            }
+
+            if (Object.keys(updates).length > 0) {
+              onUpdate(textBoxProps.id, updates, true);
+            }
+          } else if (isAddingText) {
+            // For regular text addition
+            const { width, height } = measureText(
+              newValue,
+              textBoxProps.fontSize,
+              textBoxProps.fontFamily,
+              0, // characterSpacing
+              undefined, // maxWidth
+              padding
+            );
+
+            const paddingValue = 4;
+            const newHeight = Math.max(
+              textBoxProps.height,
+              height + paddingValue
+            );
+
+            // Only expand width if the textbox hasn't been manually resized
+            let updates: Partial<TextField> = {};
+
+            if (newHeight > textBoxProps.height) {
+              updates.height = newHeight;
+            }
+
+            if (!textBoxProps.hasBeenManuallyResized) {
+              const newWidth = Math.max(
+                textBoxProps.width,
+                width + paddingValue
+              );
+              if (newWidth > textBoxProps.width) {
+                updates.width = newWidth;
+              }
+            }
+
+            if (Object.keys(updates).length > 0) {
+              onUpdate(textBoxProps.id, updates, true);
+            }
+          }
+          // Note: We don't shrink textboxes when text is deleted to avoid layout jumps
+        }
+      },
+      [onUpdate, textBox.value, textBoxProps, padding]
     );
 
     const handleClick = useCallback(
@@ -175,39 +264,39 @@ export const MemoizedTextBox = memo(
 
         // In text selection mode, use the text selection handler
         if (isTextSelectionMode && onTextSelectionClick) {
-          onTextSelectionClick(textBox.id, e);
+          onTextSelectionClick(textBoxProps.id, e);
         } else {
-          onSelect(textBox.id);
+          onSelect(textBoxProps.id);
         }
       },
-      [textBox.id, onSelect, isTextSelectionMode, onTextSelectionClick]
+      [textBoxProps.id, onSelect, isTextSelectionMode, onTextSelectionClick]
     );
 
     const handleFocus = useCallback(() => {
-      console.log(`TextBox focused: ${textBox.id}`, {
-        textBoxId: textBox.id,
+      console.log(`TextBox focused: ${textBoxProps.id}`, {
+        textBoxId: textBoxProps.id,
         value: textBox.value,
         x: textBox.x,
         y: textBox.y,
-        width: textBox.width,
-        height: textBox.height,
+        width: textBoxProps.width,
+        height: textBoxProps.height,
         page: textBox.page,
       });
-      onSelect(textBox.id);
+      onSelect(textBoxProps.id);
 
       // Clear default text when manually focusing on a textbox with "New Text Field"
       if (textBox.value === "New Text Field") {
-        onUpdate(textBox.id, { value: "" }, false);
+        onUpdate(textBoxProps.id, { value: "" }, false);
       }
     }, [
-      textBox.id,
+      textBoxProps.id,
       onSelect,
       textBox.value,
       onUpdate,
       textBox.x,
       textBox.y,
-      textBox.width,
-      textBox.height,
+      textBoxProps.width,
+      textBoxProps.height,
       textBox.page,
     ]);
 
@@ -219,10 +308,15 @@ export const MemoizedTextBox = memo(
           selectedElementIds.length > 1 &&
           onMultiSelectDragStart
         ) {
-          onMultiSelectDragStart(textBox.id);
+          onMultiSelectDragStart(textBoxProps.id);
         }
       },
-      [isMultiSelected, selectedElementIds, onMultiSelectDragStart, textBox.id]
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDragStart,
+        textBoxProps.id,
+      ]
     );
 
     const handleDrag = useCallback(
@@ -234,14 +328,14 @@ export const MemoizedTextBox = memo(
         ) {
           const deltaX = (d.x - textBox.x * scale) / scale;
           const deltaY = (d.y - textBox.y * scale) / scale;
-          onMultiSelectDrag(textBox.id, deltaX, deltaY);
+          onMultiSelectDrag(textBoxProps.id, deltaX, deltaY);
         }
       },
       [
         isMultiSelected,
         selectedElementIds,
         onMultiSelectDrag,
-        textBox.id,
+        textBoxProps.id,
         textBox.x,
         textBox.y,
         scale,
@@ -257,17 +351,17 @@ export const MemoizedTextBox = memo(
         ) {
           const deltaX = (d.x - textBox.x * scale) / scale;
           const deltaY = (d.y - textBox.y * scale) / scale;
-          onMultiSelectDragStop(textBox.id, deltaX, deltaY);
+          onMultiSelectDragStop(textBoxProps.id, deltaX, deltaY);
         } else {
           // Regular single element update
-          onUpdate(textBox.id, { x: d.x / scale, y: d.y / scale }, true); // Mark as ongoing operation
+          onUpdate(textBoxProps.id, { x: d.x / scale, y: d.y / scale }, true); // Mark as ongoing operation
         }
       },
       [
         isMultiSelected,
         selectedElementIds,
         onMultiSelectDragStop,
-        textBox.id,
+        textBoxProps.id,
         textBox.x,
         textBox.y,
         scale,
@@ -277,18 +371,18 @@ export const MemoizedTextBox = memo(
 
     // Auto-focus logic
     useEffect(() => {
-      if (autoFocusId === textBox.id && onAutoFocusComplete) {
+      if (autoFocusId === textBoxProps.id && onAutoFocusComplete) {
         // Use a timeout to ensure the DOM element is available after render
         const timeoutId = setTimeout(() => {
           const textareaElement = document.querySelector(
-            `[data-textbox-id="${textBox.id}"]`
+            `[data-textbox-id="${textBoxProps.id}"]`
           ) as HTMLTextAreaElement;
           if (textareaElement) {
             textareaElement.focus();
 
             // If the textbox has default "New Text Field" text, clear it and position cursor
             if (textBox.value === "New Text Field") {
-              onUpdate(textBox.id, { value: "" }, false);
+              onUpdate(textBoxProps.id, { value: "" }, false);
               textareaElement.setSelectionRange(0, 0);
             } else {
               // Position cursor at the end of existing text
@@ -298,13 +392,19 @@ export const MemoizedTextBox = memo(
               );
             }
 
-            onAutoFocusComplete(textBox.id);
+            onAutoFocusComplete(textBoxProps.id);
           }
         }, 50); // Small delay to ensure DOM is ready
 
         return () => clearTimeout(timeoutId);
       }
-    }, [autoFocusId, textBox.id, onAutoFocusComplete, textBox.value, onUpdate]);
+    }, [
+      autoFocusId,
+      textBoxProps.id,
+      onAutoFocusComplete,
+      textBox.value,
+      onUpdate,
+    ]);
 
     // Auto-resize when font size changes
     useEffect(() => {
@@ -313,61 +413,65 @@ export const MemoizedTextBox = memo(
         // Calculate new dimensions based on current content and font size
         const { width, height } = measureText(
           textBox.value,
-          textBox.fontSize,
-          textBox.fontFamily,
+          textBoxProps.fontSize,
+          textBoxProps.fontFamily,
           0, // characterSpacing
           undefined, // Remove maxWidth constraint to get natural dimensions
-          getPadding()
+          padding
         );
 
-        const padding = 4;
-        const newWidth = Math.max(textBox.width, width + padding);
-        const newHeight = Math.max(height + padding, textBox.fontSize);
+        const paddingValue = 4;
+        const newWidth = Math.max(textBoxProps.width, width + paddingValue);
+        const newHeight = Math.max(
+          height + paddingValue,
+          textBoxProps.fontSize
+        );
 
         let updates: Partial<TextField> = {};
 
         // Always update both width and height when font size changes
-        if (newWidth > textBox.width) {
+        if (newWidth > textBoxProps.width) {
           updates.width = newWidth;
         }
 
-        if (textBox.height < newHeight) {
+        if (textBoxProps.height < newHeight) {
           updates.height = newHeight;
         }
 
         if (Object.keys(updates).length > 0) {
-          onUpdate(textBox.id, updates, false);
+          onUpdate(textBoxProps.id, updates, false);
         }
       }
     }, [
-      textBox.id,
-      textBox.fontSize,
+      textBoxProps.id,
+      textBoxProps.fontSize,
+      textBoxProps.fontFamily,
       textBox.value,
-      textBox.width,
-      textBox.height,
-      textBox.paddingTop,
-      textBox.paddingRight,
-      textBox.paddingBottom,
-      textBox.paddingLeft,
+      textBoxProps.width,
+      textBoxProps.height,
+      padding,
       isSelected,
       onUpdate,
     ]);
 
     return (
       <Rnd
-        key={textBox.id}
+        key={textBoxProps.id}
         position={{ x: textBox.x * scale, y: textBox.y * scale }}
-        size={{ width: textBox.width * scale, height: textBox.height * scale }}
+        size={{
+          width: textBoxProps.width * scale,
+          height: textBoxProps.height * scale,
+        }}
         bounds="parent"
         disableDragging={isTextSelectionMode}
         dragHandleClassName="drag-handle"
         enableResizing={false}
         minHeight={measureWrappedTextHeight(
           textBox.value,
-          textBox.fontSize,
-          textBox.fontFamily,
-          textBox.width,
-          getPadding()
+          textBoxProps.fontSize,
+          textBoxProps.fontFamily,
+          textBoxProps.width,
+          padding
         )}
         onDragStart={handleDragStart}
         onDrag={handleDrag}
@@ -377,17 +481,17 @@ export const MemoizedTextBox = memo(
           const userSetHeight = parseInt(ref.style.height) / scale;
           const minHeight = measureWrappedTextHeight(
             textBox.value,
-            textBox.fontSize,
-            textBox.fontFamily,
+            textBoxProps.fontSize,
+            textBoxProps.fontFamily,
             newWidth,
-            getPadding()
+            padding
           );
           const finalHeight = Math.max(userSetHeight, minHeight);
 
           // Check if the resize would cause text clipping
           if (!wouldResizeCauseClipping(newWidth, finalHeight)) {
             onUpdate(
-              textBox.id,
+              textBoxProps.id,
               {
                 x: position.x / scale,
                 y: position.y / scale,
@@ -465,8 +569,8 @@ export const MemoizedTextBox = memo(
                 e.stopPropagation();
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const startWidth = textBox.width * scale;
-                const startHeight = textBox.height * scale;
+                const startWidth = textBoxProps.width * scale;
+                const startHeight = textBoxProps.height * scale;
 
                 const handleMouseMove = (moveEvent: MouseEvent) => {
                   const deltaX = moveEvent.clientX - startX;
@@ -474,10 +578,10 @@ export const MemoizedTextBox = memo(
                   const newWidth = Math.max(50, startWidth + deltaX) / scale;
                   const minHeight = measureWrappedTextHeight(
                     textBox.value,
-                    textBox.fontSize,
-                    textBox.fontFamily,
+                    textBoxProps.fontSize,
+                    textBoxProps.fontFamily,
                     newWidth,
-                    getPadding()
+                    padding
                   );
                   const userSetHeight = Math.max(
                     minHeight,
@@ -488,7 +592,7 @@ export const MemoizedTextBox = memo(
                   // Check if the resize would cause text clipping
                   if (!wouldResizeCauseClipping(newWidth, finalHeight)) {
                     onUpdate(
-                      textBox.id,
+                      textBoxProps.id,
                       {
                         width: newWidth,
                         height: finalHeight,
@@ -552,16 +656,22 @@ export const MemoizedTextBox = memo(
             }}
           >
             <textarea
-              value={isEditMode || (textBox.value && textBox.value.trim() !== "") ? textBox.value : ""}
+              value={
+                isEditMode || (textBox.value && textBox.value.trim() !== "")
+                  ? textBox.value
+                  : ""
+              }
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
-              placeholder={isEditMode ? (textBox.placeholder || "Enter Text...") : ""}
-              data-textbox-id={textBox.id}
+              placeholder={
+                isEditMode ? textBox.placeholder || "Enter Text..." : ""
+              }
+              data-textbox-id={textBoxProps.id}
               className="absolute top-0 left-0 w-full h-full bg-transparent overflow-hidden border-none outline-none cursor-text resize-none"
               style={{
-                fontSize: `${textBox.fontSize * scale}px`,
-                fontFamily: textBox.fontFamily,
+                fontSize: `${textBoxProps.fontSize * scale}px`,
+                fontFamily: textBoxProps.fontFamily,
                 fontWeight: textBox.bold ? "bold" : "normal",
                 fontStyle: textBox.italic ? "italic" : "normal",
                 color:
@@ -681,7 +791,8 @@ export const MemoizedTextBox = memo(
         </div>
       </Rnd>
     );
-  }
+  },
+  arePropsEqual
 );
 
 MemoizedTextBox.displayName = "MemoizedTextBox";
