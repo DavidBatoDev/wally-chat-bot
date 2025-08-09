@@ -37,10 +37,18 @@ export const MemoizedImage = memo(
   }: ImageElementProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
+        // Don't allow selection if we're currently dragging AND this is not the selected element
+        if (
+          document.body.classList.contains("dragging-element") &&
+          !isSelected
+        ) {
+          return;
+        }
+
         e.stopPropagation();
         onSelect(image.id);
       },
-      [image.id, onSelect]
+      [image.id, onSelect, isSelected]
     );
 
     // Custom resize handlers
@@ -189,7 +197,14 @@ export const MemoizedImage = memo(
         dragHandleClassName="drag-handle"
         disableDragging={!isEditMode}
         enableResizing={false}
+        onDragStart={(e, d) => {
+          document.body.classList.add("dragging-element");
+        }}
         onDragStop={(e, d) => {
+          // Remove the class after drag with a small delay to prevent immediate selection
+          setTimeout(() => {
+            document.body.classList.remove("dragging-element");
+          }, 50);
           onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
         }}
         className={`image-element select-none ${

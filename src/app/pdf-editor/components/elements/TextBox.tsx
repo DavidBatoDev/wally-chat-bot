@@ -361,6 +361,14 @@ export const MemoizedTextBox = memo(
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
+        // Don't allow selection if we're currently dragging AND this is not the selected element
+        if (
+          document.body.classList.contains("dragging-element") &&
+          !isSelected
+        ) {
+          return;
+        }
+
         e.stopPropagation();
 
         // In text selection mode, use the text selection handler
@@ -370,7 +378,13 @@ export const MemoizedTextBox = memo(
           onSelect(textBoxProps.id);
         }
       },
-      [textBoxProps.id, onSelect, isTextSelectionMode, onTextSelectionClick]
+      [
+        textBoxProps.id,
+        onSelect,
+        isTextSelectionMode,
+        onTextSelectionClick,
+        isSelected,
+      ]
     );
 
     const handleFocus = useCallback(() => {
@@ -574,9 +588,18 @@ export const MemoizedTextBox = memo(
           textBoxProps.width,
           padding
         )}
-        onDragStart={handleDragStart}
+        onDragStart={(e, d) => {
+          document.body.classList.add("dragging-element");
+          handleDragStart(e, d);
+        }}
         onDrag={handleDrag}
-        onDragStop={handleDragStop}
+        onDragStop={(e, d) => {
+          // Remove the class after drag with a small delay to prevent immediate selection
+          setTimeout(() => {
+            document.body.classList.remove("dragging-element");
+          }, 50);
+          handleDragStop(e, d);
+        }}
         onResizeStop={(e, direction, ref, delta, position) => {
           const newWidth = parseInt(ref.style.width) / scale;
           const userSetHeight = parseInt(ref.style.height) / scale;

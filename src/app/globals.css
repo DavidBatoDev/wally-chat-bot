@@ -26,7 +26,6 @@
     /* --primary: 222 84% 5%;
     --primary-light: 222 84% 10%; */
 
-
     --primary-foreground: 0 0% 98%;
 
     --secondary: 0 0% 96.1%;
@@ -45,8 +44,6 @@
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
   }
-
-
 
   * {
     @apply border-border;
@@ -79,11 +76,11 @@
 
 @layer utilities {
   .scrollbar-hide {
-    -ms-overflow-style: none;  /* Internet Explorer 10+ */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+    scrollbar-width: none; /* Firefox */
   }
   .scrollbar-hide::-webkit-scrollbar {
-    display: none;  /* Safari and Chrome */
+    display: none; /* Safari and Chrome */
   }
 }
 
@@ -279,4 +276,9 @@
 
 .group:hover .group-hover\:text-wally-50 {
   color: var(--color-wally-50);
+}
+
+/* Prevent text selection during drag operations */
+.dragging-element {
+  user-select: none;
 }
