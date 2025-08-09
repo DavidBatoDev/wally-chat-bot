@@ -324,6 +324,22 @@
   -ms-user-select: none;
 }
 
+/* Prevent text selection during resize operations */
+.no-text-select {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
+/* Apply to entire document when resizing elements */
+body.resizing-element {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
 /* Selection rectangle animation */
 .selection-rectangle {
   animation: selectionPulse 0.5s ease-in-out infinite alternate;

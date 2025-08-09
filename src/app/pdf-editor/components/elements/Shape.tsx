@@ -95,7 +95,16 @@ export const MemoizedShape = memo(
             true
           ); // Mark as ongoing operation
         }}
+        onResizeStart={(e) => {
+          e.preventDefault(); // Prevent text selection
+
+          // Add class to body to prevent text selection globally
+          document.body.classList.add("resizing-element");
+        }}
         onResizeStop={(e, direction, ref, delta, position) => {
+          // Remove class from body to restore text selection
+          document.body.classList.remove("resizing-element");
+
           onUpdate(
             shape.id,
             {

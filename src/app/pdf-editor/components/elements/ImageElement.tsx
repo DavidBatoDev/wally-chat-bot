@@ -43,6 +43,11 @@ export const MemoizedImage = memo(
     const handleResizeStart = useCallback(
       (e: React.MouseEvent, direction: string) => {
         e.stopPropagation();
+        e.preventDefault(); // Prevent text selection
+
+        // Add class to body to prevent text selection globally
+        document.body.classList.add("resizing-element");
+
         const startX = e.clientX;
         const startY = e.clientY;
         const startWidth = image.width * scale;
@@ -160,6 +165,9 @@ export const MemoizedImage = memo(
         const handleMouseUp = () => {
           document.removeEventListener("mousemove", handleMouseMove);
           document.removeEventListener("mouseup", handleMouseUp);
+
+          // Remove class from body to restore text selection
+          document.body.classList.remove("resizing-element");
         };
 
         document.addEventListener("mousemove", handleMouseMove);

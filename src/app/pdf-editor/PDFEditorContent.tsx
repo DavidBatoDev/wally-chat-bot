@@ -4681,8 +4681,15 @@ export const PDFEditorContent: React.FC = () => {
     }
   }, [documentState.error]);
 
-  // Cleanup effect to clear any remaining debounce timers
+  // Cleanup effect to clear any remaining debounce timers and classes
   useEffect(() => {
+    // Handle window blur to cleanup resizing state
+    const handleWindowBlur = () => {
+      document.body.classList.remove("resizing-element");
+    };
+
+    window.addEventListener("blur", handleWindowBlur);
+
     return () => {
       // Clear all debounce timers on unmount
       Object.values(debounceTimersRef.current).forEach((timer) => {
@@ -4690,6 +4697,12 @@ export const PDFEditorContent: React.FC = () => {
       });
       debounceTimersRef.current = {};
       ongoingOperationsRef.current = {};
+
+      // Ensure resizing class is removed on unmount
+      document.body.classList.remove("resizing-element");
+
+      // Remove event listener
+      window.removeEventListener("blur", handleWindowBlur);
     };
   }, []);
 

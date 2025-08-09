@@ -663,6 +663,11 @@ export const MemoizedTextBox = memo(
               }}
               onMouseDown={(e) => {
                 e.stopPropagation();
+                e.preventDefault(); // Prevent text selection
+
+                // Add class to body to prevent text selection globally
+                document.body.classList.add("resizing-element");
+
                 const startX = e.clientX;
                 const startY = e.clientY;
                 const startWidth = textBoxProps.width * scale;
@@ -702,6 +707,9 @@ export const MemoizedTextBox = memo(
                 const handleMouseUp = (upEvent: MouseEvent) => {
                   document.removeEventListener("mousemove", handleMouseMove);
                   document.removeEventListener("mouseup", handleMouseUp);
+
+                  // Remove class from body to restore text selection
+                  document.body.classList.remove("resizing-element");
 
                   // Create final undo command when resize ends
                   const finalWidth =
