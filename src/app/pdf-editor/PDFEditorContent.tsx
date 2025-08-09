@@ -5286,12 +5286,50 @@ export const PDFEditorContent: React.FC = () => {
                   clearSelectionState();
                   setViewState((prev) => ({ ...prev, currentView: view }));
                 }}
-                onEditModeToggle={() =>
-                  setEditorState((prev) => ({
-                    ...prev,
-                    isEditMode: !prev.isEditMode,
-                  }))
-                }
+                onEditModeToggle={() => {
+                  setEditorState((prev) => {
+                    const newEditMode = !prev.isEditMode;
+                    // Clear all modes and selections when turning off edit mode
+                    if (!newEditMode) {
+                      clearSelectionState();
+
+                      // Clear all tool states
+                      setToolState((toolPrev) => ({
+                        ...toolPrev,
+                        shapeDrawingMode: null,
+                        isDrawingShape: false,
+                        shapeDrawStart: null,
+                        shapeDrawEnd: null,
+                        isDrawingInProgress: false,
+                        shapeDrawTargetView: null,
+                      }));
+
+                      // Clear erasure state
+                      setErasureState((erasurePrev) => ({
+                        ...erasurePrev,
+                        isErasureMode: false,
+                        isDrawingErasure: false,
+                        erasureDrawStart: null,
+                        erasureDrawEnd: null,
+                        erasureDrawTargetView: null,
+                      }));
+
+                      return {
+                        ...prev,
+                        isEditMode: newEditMode,
+                        isAddTextBoxMode: false,
+                        isTextSelectionMode: false,
+                        isImageUploadMode: false,
+                        isSelectionMode: false,
+                      };
+                    }
+
+                    return {
+                      ...prev,
+                      isEditMode: newEditMode,
+                    };
+                  });
+                }}
                 onDeletionToggle={() =>
                   setEditorState((prev) => ({
                     ...prev,
@@ -5309,74 +5347,11 @@ export const PDFEditorContent: React.FC = () => {
                     return !prev;
                   });
                 }}
+                onErasureStateChange={setErasureState}
+                documentState={documentState}
+                onPdfBackgroundColorChange={actions.updatePdfBackgroundColor}
               />
             )}
-
-            {/* Erasure Settings Popup - Only show when PDF is loaded */}
-            {erasureState.isErasureMode &&
-              documentState.url &&
-              !documentState.error && (
-                <div
-                  className="absolute z-50 bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-4 rounded-lg transition-all duration-300"
-                  style={{
-                    top: "340px", // Below the floating toolbar (80px + ~200px for toolbar height)
-                    left: "16px", // Same left position as floating toolbar
-                    minWidth: "280px",
-                  }}
-                >
-                  <div className="space-y-3">
-                    {/* Opacity */}
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600 w-20">
-                        Opacity:
-                      </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.1"
-                        value={erasureState.erasureSettings.opacity}
-                        onChange={(e) =>
-                          setErasureState((prev) => ({
-                            ...prev,
-                            erasureSettings: {
-                              ...prev.erasureSettings,
-                              opacity: parseFloat(e.target.value),
-                            },
-                          }))
-                        }
-                        className="flex-1 w-5"
-                      />
-                      <span className="text-xs text-gray-500 w-10">
-                        {Math.round(erasureState.erasureSettings.opacity * 100)}
-                        %
-                      </span>
-                    </div>
-                    {/* Page Background Color Picker */}
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-600 w-20">
-                        Page BG:
-                      </label>
-                      <input
-                        type="color"
-                        value={
-                          documentState.pdfBackgroundColor.startsWith("#")
-                            ? documentState.pdfBackgroundColor
-                            : rgbStringToHex(documentState.pdfBackgroundColor)
-                        }
-                        onChange={(e) => {
-                          const newColor = e.target.value;
-                          actions.updatePdfBackgroundColor(newColor);
-                        }}
-                        className="w-8 h-8 rounded border border-gray-300 cursor-pointer"
-                      />
-                      <span className="text-xs text-gray-500">
-                        {documentState.pdfBackgroundColor}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
 
             {/* Document Viewer */}
             <div
