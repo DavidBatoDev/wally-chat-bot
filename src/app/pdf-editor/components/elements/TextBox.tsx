@@ -1,4 +1,11 @@
-import React, { memo, useCallback, useEffect, useMemo } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  startTransition,
+} from "react";
 import { Rnd } from "react-rnd";
 import { Trash2, Move, Copy } from "lucide-react";
 import { TextField } from "../../types/pdf-editor.types";
@@ -168,13 +175,51 @@ export const MemoizedTextBox = memo(
       ]
     );
 
-    const handleTextChange = useCallback(
+    // Debounce timer ref for resize operations
+    const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const lastResizeRequestRef = useRef<number>(0);
+    const isTypingFastRef = useRef<boolean>(false);
+    const fastTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Immediate text change handler (for responsive typing)
+    const handleTextChangeImmediate = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
+
+        // Always update the text value immediately for responsive typing
+        onUpdate(textBoxProps.id, { value: newValue }, true);
+
+        // Detect fast typing
+        const now = Date.now();
+        const timeSinceLastResize = now - lastResizeRequestRef.current;
+
+        if (timeSinceLastResize < 100) {
+          // Less than 100ms between keystrokes = fast typing
+          isTypingFastRef.current = true;
+
+          // Reset fast typing flag after user stops typing
+          if (fastTypingTimeoutRef.current) {
+            clearTimeout(fastTypingTimeoutRef.current);
+          }
+          fastTypingTimeoutRef.current = setTimeout(() => {
+            isTypingFastRef.current = false;
+          }, 500); // 500ms of no typing to reset fast typing flag
+        }
+
+        lastResizeRequestRef.current = now;
+      },
+      [onUpdate, textBoxProps.id]
+    );
+
+    // Debounced resize handler (for expensive operations)
+    const handleTextChangeDebounced = useCallback(
+      (newValue: string) => {
         const currentValue = textBox.value;
 
-        // Always update the text value first
-        onUpdate(textBoxProps.id, { value: newValue }, true); // Mark as ongoing operation
+        // Skip expensive resize operations during fast typing
+        if (isTypingFastRef.current) {
+          return;
+        }
 
         // Auto-resize textbox based on content changes
         if (newValue.length !== currentValue.length) {
@@ -212,7 +257,10 @@ export const MemoizedTextBox = memo(
             }
 
             if (Object.keys(updates).length > 0) {
-              onUpdate(textBoxProps.id, updates, true);
+              // Use startTransition for non-critical resize updates
+              startTransition(() => {
+                onUpdate(textBoxProps.id, updates, true);
+              });
             }
           } else if (isAddingText) {
             // For regular text addition
@@ -249,7 +297,10 @@ export const MemoizedTextBox = memo(
             }
 
             if (Object.keys(updates).length > 0) {
-              onUpdate(textBoxProps.id, updates, true);
+              // Use startTransition for non-critical resize updates
+              startTransition(() => {
+                onUpdate(textBoxProps.id, updates, true);
+              });
             }
           }
           // Note: We don't shrink textboxes when text is deleted to avoid layout jumps
@@ -257,6 +308,51 @@ export const MemoizedTextBox = memo(
       },
       [onUpdate, textBox.value, textBoxProps, padding]
     );
+
+    // Combined text change handler with debouncing for resize operations
+    const handleTextChange = useCallback(
+      (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newValue = e.target.value;
+
+        // Update text immediately for responsive typing
+        handleTextChangeImmediate(e);
+
+        // Debounce expensive resize calculations
+        if (resizeTimeoutRef.current) {
+          clearTimeout(resizeTimeoutRef.current);
+        }
+
+        // Use more aggressive debouncing during fast typing
+        const debounceDelay = isTypingFastRef.current ? 500 : 150;
+
+        resizeTimeoutRef.current = setTimeout(() => {
+          // Use requestIdleCallback for non-critical resize operations during fast typing
+          if (isTypingFastRef.current && window.requestIdleCallback) {
+            window.requestIdleCallback(
+              () => {
+                handleTextChangeDebounced(newValue);
+              },
+              { timeout: 1000 }
+            ); // Max 1 second delay
+          } else {
+            handleTextChangeDebounced(newValue);
+          }
+        }, debounceDelay);
+      },
+      [handleTextChangeImmediate, handleTextChangeDebounced]
+    );
+
+    // Cleanup timeouts on unmount
+    useEffect(() => {
+      return () => {
+        if (resizeTimeoutRef.current) {
+          clearTimeout(resizeTimeoutRef.current);
+        }
+        if (fastTypingTimeoutRef.current) {
+          clearTimeout(fastTypingTimeoutRef.current);
+        }
+      };
+    }, []);
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {

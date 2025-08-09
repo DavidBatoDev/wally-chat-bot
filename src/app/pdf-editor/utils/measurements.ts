@@ -8,6 +8,56 @@ export const generateUUID = (): string => {
   });
 };
 
+// Cache for measureText results to avoid repeated DOM operations
+const measureTextCache = new Map<
+  string,
+  { width: number; height: number; timestamp: number }
+>();
+const CACHE_TTL = 5000; // 5 seconds cache TTL
+const MAX_CACHE_SIZE = 100; // Maximum cache entries
+
+// Function to generate cache key
+const generateCacheKey = (
+  text: string,
+  fontSize: number,
+  fontFamily: string,
+  characterSpacing: number,
+  maxWidth?: number,
+  padding?: { top?: number; right?: number; bottom?: number; left?: number }
+): string => {
+  const paddingKey = padding
+    ? `${padding.top || 0},${padding.right || 0},${padding.bottom || 0},${
+        padding.left || 0
+      }`
+    : "0,0,0,0";
+  return `${text}|${fontSize}|${fontFamily}|${characterSpacing}|${
+    maxWidth || "none"
+  }|${paddingKey}`;
+};
+
+// Function to clean expired cache entries
+const cleanExpiredCache = () => {
+  const now = Date.now();
+  for (const [key, value] of measureTextCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      measureTextCache.delete(key);
+    }
+  }
+};
+
+// Function to manage cache size
+const manageCacheSize = () => {
+  if (measureTextCache.size > MAX_CACHE_SIZE) {
+    // Remove oldest entries
+    const entries = Array.from(measureTextCache.entries()).sort(
+      (a, b) => a[1].timestamp - b[1].timestamp
+    );
+
+    const toRemove = entries.slice(0, Math.floor(MAX_CACHE_SIZE / 2));
+    toRemove.forEach(([key]) => measureTextCache.delete(key));
+  }
+};
+
 export const measureText = (
   text: string,
   fontSize: number,
@@ -16,6 +66,29 @@ export const measureText = (
   maxWidth?: number,
   padding?: { top?: number; right?: number; bottom?: number; left?: number }
 ): { width: number; height: number } => {
+  // Generate cache key
+  const cacheKey = generateCacheKey(
+    text,
+    fontSize,
+    fontFamily,
+    characterSpacing,
+    maxWidth,
+    padding
+  );
+
+  // Check cache first
+  const cached = measureTextCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return { width: cached.width, height: cached.height };
+  }
+
+  // Clean expired cache entries periodically (reduced frequency during heavy usage)
+  if (Math.random() < 0.05) {
+    // 5% chance to clean cache (reduced from 10% for better performance)
+    cleanExpiredCache();
+    manageCacheSize();
+  }
+
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) return { width: 100, height: fontSize };
@@ -48,7 +121,16 @@ export const measureText = (
       // For single line, check if it fits within the available width
       // If text fits within available width, return single line height
       if (maxLineWidth <= availableWidth) {
-        return { width: maxWidth, height: fontSize * 1.1 }; // Exactly one line height
+        const result = { width: maxWidth, height: fontSize * 1.1 }; // Exactly one line height
+
+        // Cache the result
+        measureTextCache.set(cacheKey, {
+          width: result.width,
+          height: result.height,
+          timestamp: Date.now(),
+        });
+
+        return result;
       }
     }
 
@@ -72,7 +154,19 @@ export const measureText = (
     const wrappedHeight = textarea.scrollHeight;
     document.body.removeChild(textarea);
 
-    return { width: maxWidth, height: Math.max(wrappedHeight, fontSize * 1.1) };
+    const result = {
+      width: maxWidth,
+      height: Math.max(wrappedHeight, fontSize * 1.1),
+    };
+
+    // Cache the result
+    measureTextCache.set(cacheKey, {
+      width: result.width,
+      height: result.height,
+      timestamp: Date.now(),
+    });
+
+    return result;
   }
 
   // Add padding to width and height when no maxWidth constraint is provided
@@ -84,7 +178,16 @@ export const measureText = (
   const finalHeight =
     Math.max(totalHeight, fontSize) + paddingTop + paddingBottom; // Ensure minimum height is at least font size (not forcing 2 lines)
 
-  return { width: finalWidth, height: finalHeight };
+  const result = { width: finalWidth, height: finalHeight };
+
+  // Cache the result
+  measureTextCache.set(cacheKey, {
+    width: result.width,
+    height: result.height,
+    timestamp: Date.now(),
+  });
+
+  return result;
 };
 
 export const measureWrappedTextHeight = (
