@@ -854,6 +854,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
             targetView: null,
             dragOffsets: {},
             isDragging: false,
+            selectionDragOffset: null,
           },
         }));
 
@@ -1349,6 +1350,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
             targetView: null,
             dragOffsets: {},
             isDragging: false,
+            selectionDragOffset: null,
           },
         }));
 

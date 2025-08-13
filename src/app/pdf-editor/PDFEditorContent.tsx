@@ -259,6 +259,7 @@ export const PDFEditorContent: React.FC = () => {
       targetView: null,
       dragOffsets: {},
       isDragging: false,
+      selectionDragOffset: null,
     },
     isSelectionMode: false,
   });
@@ -497,6 +498,7 @@ export const PDFEditorContent: React.FC = () => {
         moveStart: null,
         dragOffsets: {},
         isDragging: false,
+        selectionDragOffset: null,
       },
     }));
     setSelectedElementId(null);
@@ -1245,6 +1247,7 @@ export const PDFEditorContent: React.FC = () => {
           targetView: null,
           dragOffsets: {},
           isDragging: false,
+          selectionDragOffset: null,
         },
         isSelectionMode: false,
       }));
@@ -3448,6 +3451,7 @@ export const PDFEditorContent: React.FC = () => {
               moveStart: null,
               dragOffsets: {},
               isDragging: false,
+              selectionDragOffset: null,
             },
         }));
         setSelectedElementId(fieldId);
@@ -3481,6 +3485,7 @@ export const PDFEditorContent: React.FC = () => {
               moveStart: null,
               dragOffsets: {},
               isDragging: false,
+              selectionDragOffset: null,
             },
           }));
           setSelectedElementId(null);
@@ -3564,6 +3569,7 @@ export const PDFEditorContent: React.FC = () => {
         targetView: null,
         dragOffsets: {},
         isDragging: false,
+        selectionDragOffset: null,
       },
       isSelectionMode: false,
     }));
@@ -4019,6 +4025,7 @@ export const PDFEditorContent: React.FC = () => {
           moveStart: null,
           dragOffsets: {},
           isDragging: false,
+          selectionDragOffset: null,
         },
       }));
 
@@ -6325,12 +6332,7 @@ export const PDFEditorContent: React.FC = () => {
                                   onDrag={handleSelectionRectangleDrag}
                                   onDragStop={handleSelectionRectangleDragStop}
                                   // Transform offset for smooth dragging
-                                  dragOffset={
-                                    editorState.multiSelection.isDragging &&
-                                    editorState.multiSelection.selectedElements.length > 0
-                                      ? Object.values(editorState.multiSelection.dragOffsets)[0] || null
-                                      : null
-                                  }
+                                  dragOffset={editorState.multiSelection.selectionDragOffset}
                                 />
                               )}
                           </div>
@@ -6636,12 +6638,7 @@ export const PDFEditorContent: React.FC = () => {
                                     onDrag={handleSelectionRectangleDrag}
                                     onDragStop={handleSelectionRectangleDragStop}
                                     // Transform offset for smooth dragging
-                                    dragOffset={
-                                      editorState.multiSelection.isDragging &&
-                                      editorState.multiSelection.selectedElements.length > 0
-                                        ? Object.values(editorState.multiSelection.dragOffsets)[0] || null
-                                        : null
-                                    }
+                                    dragOffset={editorState.multiSelection.selectionDragOffset}
                                   />
                                 )}
                             </div>

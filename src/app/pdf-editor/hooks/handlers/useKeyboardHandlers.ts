@@ -249,6 +249,7 @@ export const useKeyboardHandlers = ({
             moveStart: null,
             dragOffsets: {},
             isDragging: false,
+            selectionDragOffset: null,
           },
         }));
       }

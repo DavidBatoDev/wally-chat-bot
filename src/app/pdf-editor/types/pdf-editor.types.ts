@@ -260,6 +260,8 @@ export interface MultiSelectionState {
   // Drag offsets for transform-based dragging performance optimization
   dragOffsets: Record<string, { x: number; y: number }>;
   isDragging: boolean;
+  // Unified drag offset for the entire selection rectangle
+  selectionDragOffset: { x: number; y: number } | null;
 }
 
 // View state types

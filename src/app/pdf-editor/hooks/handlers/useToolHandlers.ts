@@ -168,6 +168,7 @@ export const useToolHandlers = ({
           moveStart: null,
           dragOffsets: {},
           isDragging: false,
+          selectionDragOffset: null,
         },
       }));
       setToolState((prev) => ({
@@ -221,6 +222,7 @@ export const useToolHandlers = ({
           moveStart: null,
           dragOffsets: {},
           isDragging: false,
+          selectionDragOffset: null,
         },
       }));
       setToolState((prev) => ({
@@ -274,6 +276,7 @@ export const useToolHandlers = ({
           moveStart: null,
           dragOffsets: {},
           isDragging: false,
+          selectionDragOffset: null,
         },
       }));
       setToolState((prev) => ({

@@ -258,6 +258,7 @@ export const useMultiSelectionHandlers = ({
             ...prev.multiSelection,
             isDragging: true,
             dragOffsets: {},
+            selectionDragOffset: null,
           },
         }));
       }
@@ -396,6 +397,7 @@ export const useMultiSelectionHandlers = ({
             ...prev.multiSelection,
             isDragging: false,
             dragOffsets: {},
+            selectionDragOffset: null,
           },
         }));
         
@@ -453,14 +455,15 @@ export const useMultiSelectionHandlers = ({
       });
       initialPositionsRef.current = initial;
       
-      // Set dragging state
+      // Set dragging state with zero initial offset
       setEditorState((prev) => ({
         ...prev,
         multiSelection: {
           ...prev.multiSelection,
           isDragging: true,
-          dragOffsets: {},
           isMovingSelection: true,
+          // Store the current drag delta for the entire selection
+          selectionDragOffset: { x: 0, y: 0 },
         },
       }));
 
@@ -475,42 +478,25 @@ export const useMultiSelectionHandlers = ({
     (deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 0 && editorState.multiSelection.isDragging) {
-        // Update drag offsets for visual transform instead of actual positions
-        const newOffsets: Record<string, { x: number; y: number }> = {};
+        // Apply the same delta to all selected elements for unified movement
+        const dragOffsets: Record<string, { x: number; y: number }> = {};
         
         selectedElements.forEach((el) => {
-          const initialPos = initialPositionsRef.current[el.id];
-          if (initialPos) {
-            const element = getElementById(el.id, el.type);
-            if (element) {
-              const newX = initialPos.x + deltaX;
-              const newY = initialPos.y + deltaY;
-
-              // Apply boundary constraints for visual feedback
-              const constrainedX = Math.max(
-                0,
-                Math.min(newX, documentState.pageWidth - element.width)
-              );
-              const constrainedY = Math.max(
-                0,
-                Math.min(newY, documentState.pageHeight - element.height)
-              );
-
-              // Store offset for transform
-              newOffsets[el.id] = {
-                x: constrainedX - initialPos.x,
-                y: constrainedY - initialPos.y,
-              };
-            }
-          }
+          // All elements get the same delta offset for synchronized movement
+          dragOffsets[el.id] = {
+            x: deltaX,
+            y: deltaY,
+          };
         });
         
-        // Update drag offsets for transform-based positioning
+        // Update state with unified drag offsets and selection offset
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
             ...prev.multiSelection,
-            dragOffsets: newOffsets,
+            dragOffsets,
+            // Store the selection-wide drag offset for the selection rectangle
+            selectionDragOffset: { x: deltaX, y: deltaY },
           },
         }));
       }
@@ -518,9 +504,6 @@ export const useMultiSelectionHandlers = ({
     [
       editorState.multiSelection.selectedElements,
       editorState.multiSelection.isDragging,
-      getElementById,
-      documentState.pageWidth,
-      documentState.pageHeight,
       setEditorState,
     ]
   );
@@ -597,6 +580,7 @@ export const useMultiSelectionHandlers = ({
             isDragging: false,
             dragOffsets: {},
             isMovingSelection: false,
+            selectionDragOffset: null,
           },
         }));
         
@@ -867,6 +851,7 @@ export const useMultiSelectionHandlers = ({
             selectionEnd: null,
             dragOffsets: {},
             isDragging: false,
+            selectionDragOffset: null,
           },
         }));
       }
