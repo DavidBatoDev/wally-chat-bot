@@ -136,3 +136,56 @@ export class FrameRateMonitor {
     this.fps = 0;
   }
 }
+
+// Specialized performance monitor for drag operations
+export class DragPerformanceMonitor extends PerformanceMonitor {
+  private dragEventCount: number = 0;
+  private skippedFrames: number = 0;
+  private lastFrameTime: number = 0;
+
+  startDrag() {
+    this.start();
+    this.dragEventCount = 0;
+    this.skippedFrames = 0;
+    this.lastFrameTime = performance.now();
+  }
+
+  trackDragEvent(wasThrottled: boolean = false) {
+    this.dragEventCount++;
+    if (wasThrottled) {
+      this.skippedFrames++;
+    }
+    
+    const currentTime = performance.now();
+    if (this.lastFrameTime && currentTime - this.lastFrameTime < 16) {
+      // Frame rate is higher than 60fps, which is good
+    } else if (this.lastFrameTime && currentTime - this.lastFrameTime > 33) {
+      // Frame rate is lower than 30fps, which indicates lag
+      this.skippedFrames++;
+    }
+    this.lastFrameTime = currentTime;
+  }
+
+  endDrag() {
+    const duration = this.end();
+    
+    return {
+      duration,
+      totalDragEvents: this.dragEventCount,
+      skippedFrames: this.skippedFrames,
+      throttleEfficiency: this.dragEventCount > 0 ? (this.skippedFrames / this.dragEventCount) * 100 : 0,
+      averageFrameTime: this.dragEventCount > 0 ? duration / this.dragEventCount : 0,
+    };
+  }
+
+  getDragStats() {
+    return {
+      totalEvents: this.dragEventCount,
+      skippedFrames: this.skippedFrames,
+      throttleRate: this.dragEventCount > 0 ? (this.skippedFrames / this.dragEventCount) * 100 : 0,
+    };
+  }
+}
+
+// Global drag performance monitor instance
+export const dragPerformanceMonitor = new DragPerformanceMonitor();

@@ -13,6 +13,12 @@ interface ImageElementProps {
   onSelect: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Image>) => void;
   onDelete: (id: string) => void;
+  // Multi-selection props
+  isMultiSelected?: boolean;
+  selectedElementIds?: string[];
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
   // Element index for z-index ordering
@@ -32,6 +38,12 @@ export const MemoizedImage = memo(
     onSelect,
     onUpdate,
     onDelete,
+    // Multi-selection props
+    isMultiSelected = false,
+    selectedElementIds = [],
+    onMultiSelectDragStart,
+    onMultiSelectDrag,
+    onMultiSelectDragStop,
     // Selection preview prop
     isInSelectionPreview = false,
     // Element index for z-index ordering
@@ -192,6 +204,70 @@ export const MemoizedImage = memo(
       [image.id, image.width, image.height, image.x, image.y, scale, onUpdate]
     );
 
+    // Multi-selection drag handlers
+    const handleDragStart = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStart
+        ) {
+          onMultiSelectDragStart(image.id);
+        }
+      },
+      [isMultiSelected, selectedElementIds.length, onMultiSelectDragStart, image.id]
+    );
+
+    const handleDrag = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDrag
+        ) {
+          const deltaX = (d.x - image.x * scale) / scale;
+          const deltaY = (d.y - image.y * scale) / scale;
+          onMultiSelectDrag(image.id, deltaX, deltaY);
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds.length,
+        onMultiSelectDrag,
+        image.id,
+        image.x,
+        image.y,
+        scale,
+      ]
+    );
+
+    const handleDragStop = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStop
+        ) {
+          const deltaX = (d.x - image.x * scale) / scale;
+          const deltaY = (d.y - image.y * scale) / scale;
+          onMultiSelectDragStop(image.id, deltaX, deltaY);
+        } else {
+          // Handle single element drag
+          onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds.length,
+        onMultiSelectDragStop,
+        image.id,
+        image.x,
+        image.y,
+        scale,
+        onUpdate,
+      ]
+    );
+
     return (
       <Rnd
         key={image.id}
@@ -203,17 +279,21 @@ export const MemoizedImage = memo(
         enableResizing={false}
         onDragStart={(e, d) => {
           document.body.classList.add("dragging-element");
+          handleDragStart(e, d);
         }}
+        onDrag={handleDrag}
         onDragStop={(e, d) => {
           // Remove the class after drag with a small delay to prevent immediate selection
           setTimeout(() => {
             document.body.classList.remove("dragging-element");
           }, 50);
-          onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
+          handleDragStop(e, d);
         }}
         className={`image-element select-none ${
           isSelected ? "ring-2 ring-blue-500 selected" : ""
         } ${isEditMode ? "edit-mode" : ""} ${
+          isMultiSelected ? "ring-2 ring-blue-500 multi-selected" : ""
+        } ${
           isInSelectionPreview
             ? "ring-2 ring-blue-400 ring-dashed selection-preview"
             : ""

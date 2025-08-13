@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import {
   EditorState,
   TextField,
@@ -11,6 +11,7 @@ import {
   calculateSelectionBounds,
   moveSelectedElements,
 } from "../../utils/selectionUtils";
+import { throttle, debounce, dragPerformanceMonitor } from "../../utils/performance";
 
 interface UseMultiSelectionHandlersProps {
   editorState: EditorState;
@@ -63,6 +64,11 @@ export const useMultiSelectionHandlers = ({
 
   // Add throttling for mouse move events
   const mouseMoveThrottleRef = useRef<number | null>(null);
+  
+  // Performance optimizations for multi-element dragging
+  const dragThrottleRef = useRef<number | null>(null);
+  const lastDragPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const batchUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Helper function to get elements that would be captured in the current selection preview
   const getElementsInSelectionPreview = useCallback(() => {
@@ -241,6 +247,9 @@ export const useMultiSelectionHandlers = ({
     (id: string) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
+        // Start performance monitoring for multi-element drag
+        dragPerformanceMonitor.startDrag();
+        
         // Store initial positions of all selected elements
         const initial: Record<string, { x: number; y: number }> = {};
         selectedElements.forEach((el) => {
@@ -265,51 +274,71 @@ export const useMultiSelectionHandlers = ({
     [editorState.multiSelection.selectedElements, getElementById, setEditorState]
   );
 
+  // Throttled drag offset update for better performance
+  const updateDragOffsetsThrottled = useCallback(
+    throttle((newOffsets: Record<string, { x: number; y: number }>) => {
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          dragOffsets: newOffsets,
+        },
+      }));
+    }, 16), // 60fps throttling
+    [setEditorState]
+  );
+
   const handleMultiSelectDrag = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
-        // Update drag offsets for visual transform instead of actual positions
-        const newOffsets: Record<string, { x: number; y: number }> = {};
+        // Track drag event for performance monitoring
+        const wasThrottled = dragThrottleRef.current !== null;
+        dragPerformanceMonitor.trackDragEvent(wasThrottled);
         
-        selectedElements.forEach((el) => {
-          if (el.id !== id) {
-            // Skip the actively dragged element (react-rnd handles it)
-            const initialPos = initialPositionsRef.current[el.id];
-            if (initialPos) {
-              const element = getElementById(el.id, el.type);
-              if (element) {
-                const newX = initialPos.x + deltaX;
-                const newY = initialPos.y + deltaY;
+        // Cancel any pending animation frame to avoid stacking requests
+        if (dragThrottleRef.current) {
+          cancelAnimationFrame(dragThrottleRef.current);
+        }
 
-                // Apply boundary constraints for visual feedback
-                const constrainedX = Math.max(
-                  0,
-                  Math.min(newX, documentState.pageWidth - element.width)
-                );
-                const constrainedY = Math.max(
-                  0,
-                  Math.min(newY, documentState.pageHeight - element.height)
-                );
+        // Use requestAnimationFrame for smooth 60fps updates
+        dragThrottleRef.current = requestAnimationFrame(() => {
+          // Update drag offsets for visual transform instead of actual positions
+          const newOffsets: Record<string, { x: number; y: number }> = {};
+          
+          selectedElements.forEach((el) => {
+            if (el.id !== id) {
+              // Skip the actively dragged element (react-rnd handles it)
+              const initialPos = initialPositionsRef.current[el.id];
+              if (initialPos) {
+                const element = getElementById(el.id, el.type);
+                if (element) {
+                  const newX = initialPos.x + deltaX;
+                  const newY = initialPos.y + deltaY;
 
-                // Store offset for transform
-                newOffsets[el.id] = {
-                  x: constrainedX - initialPos.x,
-                  y: constrainedY - initialPos.y,
-                };
+                  // Apply boundary constraints for visual feedback
+                  const constrainedX = Math.max(
+                    0,
+                    Math.min(newX, documentState.pageWidth - element.width)
+                  );
+                  const constrainedY = Math.max(
+                    0,
+                    Math.min(newY, documentState.pageHeight - element.height)
+                  );
+
+                  // Store offset for transform
+                  newOffsets[el.id] = {
+                    x: constrainedX - initialPos.x,
+                    y: constrainedY - initialPos.y,
+                  };
+                }
               }
             }
-          }
+          });
+          
+          // Update drag offsets using throttled function
+          updateDragOffsetsThrottled(newOffsets);
         });
-        
-        // Update drag offsets for transform-based positioning
-        setEditorState((prev) => ({
-          ...prev,
-          multiSelection: {
-            ...prev.multiSelection,
-            dragOffsets: newOffsets,
-          },
-        }));
       }
     },
     [
@@ -318,7 +347,7 @@ export const useMultiSelectionHandlers = ({
       getElementById,
       documentState.pageWidth,
       documentState.pageHeight,
-      setEditorState,
+      updateDragOffsetsThrottled,
     ]
   );
 
@@ -326,7 +355,20 @@ export const useMultiSelectionHandlers = ({
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
-        // Apply final positions and clear drag state
+        // Cancel any pending drag animation frames
+        if (dragThrottleRef.current) {
+          cancelAnimationFrame(dragThrottleRef.current);
+          dragThrottleRef.current = null;
+        }
+
+        // Batch all element position updates for better performance
+        const positionUpdates: {
+          textboxes: Array<{ id: string; x: number; y: number }>;
+          shapes: Array<{ id: string; x: number; y: number }>;
+          images: Array<{ id: string; x: number; y: number }>;
+        } = { textboxes: [], shapes: [], images: [] };
+
+        // Collect all position updates
         selectedElements.forEach((el) => {
           if (el.id !== id) {
             // Skip the actively dragged element (react-rnd handles it)
@@ -347,68 +389,65 @@ export const useMultiSelectionHandlers = ({
                   Math.min(newY, documentState.pageHeight - element.height)
                 );
 
-                // Update actual positions only at the end
+                // Collect updates by type for batching
                 switch (el.type) {
                   case "textbox":
-                    updateTextBoxWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      false // Final update, not ongoing
-                    );
+                    positionUpdates.textboxes.push({
+                      id: el.id,
+                      x: constrainedX,
+                      y: constrainedY,
+                    });
                     break;
                   case "shape":
-                    updateShapeWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      false // Final update, not ongoing
-                    );
+                    positionUpdates.shapes.push({
+                      id: el.id,
+                      x: constrainedX,
+                      y: constrainedY,
+                    });
                     break;
                   case "image":
-                    if (updateImageWithUndo) {
-                      updateImageWithUndo(
-                        el.id,
-                        {
-                          x: constrainedX,
-                          y: constrainedY,
-                        },
-                        false // Final update, not ongoing
-                      );
-                    } else {
-                      updateImage(el.id, { x: constrainedX, y: constrainedY });
-                    }
+                    positionUpdates.images.push({
+                      id: el.id,
+                      x: constrainedX,
+                      y: constrainedY,
+                    });
                     break;
                 }
               }
             }
           }
         });
+
+        // Apply all updates in batch (use startTransition for non-critical updates)
+        if (positionUpdates.textboxes.length > 0) {
+          positionUpdates.textboxes.forEach(({ id, x, y }) => {
+            updateTextBoxWithUndo(id, { x, y }, false);
+          });
+        }
+
+        if (positionUpdates.shapes.length > 0) {
+          positionUpdates.shapes.forEach(({ id, x, y }) => {
+            updateShapeWithUndo(id, { x, y }, false);
+          });
+        }
+
+        if (positionUpdates.images.length > 0) {
+          positionUpdates.images.forEach(({ id, x, y }) => {
+            if (updateImageWithUndo) {
+              updateImageWithUndo(id, { x, y }, false);
+            } else {
+              updateImage(id, { x, y });
+            }
+          });
+        }
         
-        // Clear drag state
+        // Clear drag state and update positions in single state update
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
             ...prev.multiSelection,
             isDragging: false,
             dragOffsets: {},
-          },
-        }));
-        
-        // End batch operation if there's one
-        if (history && history.endBatch) {
-          history.endBatch();
-        }
-        
-        // Update original positions for next drag
-        setEditorState((prev) => ({
-          ...prev,
-          multiSelection: {
-            ...prev.multiSelection,
             selectedElements: prev.multiSelection.selectedElements.map(
               (el) => ({
                 ...el,
@@ -420,6 +459,22 @@ export const useMultiSelectionHandlers = ({
             ),
           },
         }));
+        
+        // End batch operation if there's one
+        if (history && history.endBatch) {
+          history.endBatch();
+        }
+
+        // End performance monitoring and log results
+        const perfResults = dragPerformanceMonitor.endDrag();
+        console.log('Multi-element drag performance:', {
+          duration: `${perfResults.duration.toFixed(2)}ms`,
+          totalEvents: perfResults.totalDragEvents,
+          throttledEvents: perfResults.skippedFrames,
+          throttleEfficiency: `${perfResults.throttleEfficiency.toFixed(1)}%`,
+          avgFrameTime: `${perfResults.averageFrameTime.toFixed(2)}ms`,
+          elementsCount: selectedElements.length
+        });
       }
       // Clear initial positions
       initialPositionsRef.current = {};
@@ -673,6 +728,22 @@ export const useMultiSelectionHandlers = ({
       setEditorState,
     ]
   );
+
+  // Cleanup effect for performance optimization refs
+  useEffect(() => {
+    return () => {
+      // Clean up any pending animation frames
+      if (dragThrottleRef.current) {
+        cancelAnimationFrame(dragThrottleRef.current);
+      }
+      if (mouseMoveThrottleRef.current) {
+        cancelAnimationFrame(mouseMoveThrottleRef.current);
+      }
+      if (batchUpdateTimeoutRef.current) {
+        clearTimeout(batchUpdateTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return {
     getElementsInSelectionPreview,

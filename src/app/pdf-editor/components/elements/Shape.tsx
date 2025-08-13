@@ -19,6 +19,12 @@ interface ShapeProps {
     isOngoingOperation?: boolean
   ) => void;
   onDelete: (id: string) => void;
+  // Multi-selection props
+  isMultiSelected?: boolean;
+  selectedElementIds?: string[];
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
   // Element index for z-index ordering
@@ -38,6 +44,12 @@ export const MemoizedShape = memo(
     onSelect,
     onUpdate,
     onDelete,
+    // Multi-selection props
+    isMultiSelected = false,
+    selectedElementIds = [],
+    onMultiSelectDragStart,
+    onMultiSelectDrag,
+    onMultiSelectDragStop,
     // Selection preview prop
     isInSelectionPreview = false,
     // Element index for z-index ordering
@@ -59,6 +71,79 @@ export const MemoizedShape = memo(
         onSelect(shape.id);
       },
       [shape.id, onSelect, isSelected]
+    );
+
+    // Multi-selection drag handlers
+    const handleDragStart = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStart
+        ) {
+          onMultiSelectDragStart(shape.id);
+        }
+      },
+      [isMultiSelected, selectedElementIds.length, onMultiSelectDragStart, shape.id]
+    );
+
+    const handleDrag = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDrag
+        ) {
+          const deltaX = (d.x - shape.x * scale) / scale;
+          const deltaY = (d.y - shape.y * scale) / scale;
+          onMultiSelectDrag(shape.id, deltaX, deltaY);
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds.length,
+        onMultiSelectDrag,
+        shape.id,
+        shape.x,
+        shape.y,
+        scale,
+      ]
+    );
+
+    const handleDragStop = useCallback(
+      (e: any, d: any) => {
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStop
+        ) {
+          const deltaX = (d.x - shape.x * scale) / scale;
+          const deltaY = (d.y - shape.y * scale) / scale;
+          onMultiSelectDragStop(shape.id, deltaX, deltaY);
+        } else {
+          // Handle single element drag
+          onUpdate(
+            shape.id,
+            {
+              x: d.x / scale,
+              y: d.y / scale,
+              type: shape.type,
+            },
+            false
+          );
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds.length,
+        onMultiSelectDragStop,
+        shape.id,
+        shape.x,
+        shape.y,
+        scale,
+        onUpdate,
+        shape.type,
+      ]
     );
 
     // Render line shapes using the Line component
@@ -102,21 +187,15 @@ export const MemoizedShape = memo(
         }
         onDragStart={(e, d) => {
           document.body.classList.add("dragging-element");
+          handleDragStart(e, d);
         }}
+        onDrag={handleDrag}
         onDragStop={(e, d) => {
           // Remove the class after drag with a small delay to prevent immediate selection
           setTimeout(() => {
             document.body.classList.remove("dragging-element");
           }, 50);
-          onUpdate(
-            shape.id,
-            {
-              x: d.x / scale,
-              y: d.y / scale,
-              type: shape.type,
-            },
-            true
-          ); // Mark as ongoing operation
+          handleDragStop(e, d);
         }}
         onResizeStop={(e, direction, ref, delta, position) => {
           onUpdate(
@@ -134,6 +213,8 @@ export const MemoizedShape = memo(
         className={`shape-element ${
           isSelected ? "ring-2 ring-gray-500 selected" : ""
         } ${isEditMode ? "edit-mode" : ""} ${
+          isMultiSelected ? "ring-2 ring-blue-500 multi-selected" : ""
+        } ${
           isInSelectionPreview
             ? "ring-2 ring-blue-400 ring-dashed selection-preview"
             : ""
