@@ -1,7 +1,8 @@
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useState, useRef } from "react";
 import { Rnd } from "react-rnd";
-import { Trash2, Move } from "lucide-react";
+import { Trash2, Move, RotateCw } from "lucide-react";
 import { Image } from "../../types/pdf-editor.types";
+import { dragThrottle } from "../../utils/performance";
 
 interface ImageElementProps {
   image: Image;
@@ -11,8 +12,18 @@ interface ImageElementProps {
   pageWidth: number;
   pageHeight: number;
   onSelect: (id: string) => void;
-  onUpdate: (id: string, updates: Partial<Image>) => void;
+  onUpdate: (
+    id: string,
+    updates: Partial<Image>,
+    isOngoingOperation?: boolean
+  ) => void;
   onDelete: (id: string) => void;
+  // Multi-selection props
+  isMultiSelected?: boolean;
+  selectedElementIds?: string[];
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
   // Element index for z-index ordering
@@ -32,6 +43,12 @@ export const MemoizedImage = memo(
     onSelect,
     onUpdate,
     onDelete,
+    // Multi-selection props
+    isMultiSelected = false,
+    selectedElementIds = [],
+    onMultiSelectDragStart,
+    onMultiSelectDrag,
+    onMultiSelectDragStop,
     // Selection preview prop
     isInSelectionPreview = false,
     // Element index for z-index ordering
@@ -39,6 +56,10 @@ export const MemoizedImage = memo(
     // Transform-based drag offset for performance optimization
     dragOffset,
   }: ImageElementProps) => {
+    const [imageLoadError, setImageLoadError] = useState(false);
+    // Track if this element is the one being actively dragged
+    const isActivelyDraggedRef = useRef(false);
+
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         // Don't allow selection if we're currently dragging AND this is not the selected element
@@ -53,6 +74,89 @@ export const MemoizedImage = memo(
         onSelect(image.id);
       },
       [image.id, onSelect, isSelected]
+    );
+
+    // Multi-selection drag handlers
+    const handleDragStart = useCallback(
+      (e: any, d: any) => {
+        isActivelyDraggedRef.current = true;
+        document.body.classList.add("dragging-element");
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStart
+        ) {
+          onMultiSelectDragStart(image.id);
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDragStart,
+        image.id,
+      ]
+    );
+
+    // Create a throttled version of the drag handler that only works for the actively dragged element
+    const throttledHandleDrag = useCallback(
+      dragThrottle((e: any, d: any) => {
+        // Only process multi-select drag if this element initiated the drag
+        if (
+          isActivelyDraggedRef.current &&
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDrag
+        ) {
+          const deltaX = (d.x - image.x * scale) / scale;
+          const deltaY = (d.y - image.y * scale) / scale;
+          onMultiSelectDrag(image.id, deltaX, deltaY);
+        }
+      }, { fps: 60, immediate: true }),
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDrag,
+        image.id,
+        image.x,
+        image.y,
+        scale,
+      ]
+    );
+
+    const handleDragStop = useCallback(
+      (e: any, d: any) => {
+        const wasActivelyDragged = isActivelyDraggedRef.current;
+        isActivelyDraggedRef.current = false;
+        
+        // Remove the class after drag with a small delay to prevent immediate selection
+        setTimeout(() => {
+          document.body.classList.remove("dragging-element");
+        }, 50);
+
+        if (
+          wasActivelyDragged &&
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStop
+        ) {
+          const deltaX = (d.x - image.x * scale) / scale;
+          const deltaY = (d.y - image.y * scale) / scale;
+          onMultiSelectDragStop(image.id, deltaX, deltaY);
+        } else if (!isMultiSelected || selectedElementIds.length <= 1) {
+          // Regular single element update
+          onUpdate(image.id, { x: d.x / scale, y: d.y / scale }, false);
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDragStop,
+        image.id,
+        image.x,
+        image.y,
+        scale,
+        onUpdate,
+      ]
     );
 
     // Custom resize handlers
@@ -202,16 +306,9 @@ export const MemoizedImage = memo(
         dragHandleClassName="drag-handle"
         disableDragging={!isEditMode}
         enableResizing={false}
-        onDragStart={(e, d) => {
-          document.body.classList.add("dragging-element");
-        }}
-        onDragStop={(e, d) => {
-          // Remove the class after drag with a small delay to prevent immediate selection
-          setTimeout(() => {
-            document.body.classList.remove("dragging-element");
-          }, 50);
-          onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
-        }}
+        onDragStart={handleDragStart}
+        onDrag={throttledHandleDrag}
+        onDragStop={handleDragStop}
         className={`image-element select-none ${
           isSelected ? "ring-2 ring-blue-500 selected" : ""
         } ${isEditMode ? "edit-mode" : ""} ${

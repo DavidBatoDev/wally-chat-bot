@@ -4813,6 +4813,12 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleShapeSelect}
           onUpdate={updateShapeWithUndo}
           onDelete={(id) => handleDeleteShapeWithUndo(id, actualTargetView)}
+          // Multi-selection props
+          isMultiSelected={isMultiSelected}
+          selectedElementIds={selectedElementIds}
+          onMultiSelectDragStart={handleMultiSelectDragStart}
+          onMultiSelectDrag={handleMultiSelectDrag}
+          onMultiSelectDragStop={handleMultiSelectDragStop}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance
@@ -4837,6 +4843,12 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleImageSelect}
           onUpdate={updateImage}
           onDelete={(id) => handleDeleteImageWithUndo(id, actualTargetView)}
+          // Multi-selection props
+          isMultiSelected={isMultiSelected}
+          selectedElementIds={selectedElementIds}
+          onMultiSelectDragStart={handleMultiSelectDragStart}
+          onMultiSelectDrag={handleMultiSelectDrag}
+          onMultiSelectDragStop={handleMultiSelectDragStop}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance

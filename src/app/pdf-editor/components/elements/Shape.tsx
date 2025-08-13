@@ -1,9 +1,10 @@
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useRef } from "react";
 import { Rnd } from "react-rnd";
 import { Trash2, Move } from "lucide-react";
 import { Shape } from "../../types/pdf-editor.types";
 import { hexToRgba } from "../../utils/colors";
 import { MemoizedLine } from "./Line";
+import { dragThrottle } from "../../utils/performance";
 
 interface ShapeProps {
   shape: Shape;
@@ -19,6 +20,12 @@ interface ShapeProps {
     isOngoingOperation?: boolean
   ) => void;
   onDelete: (id: string) => void;
+  // Multi-selection props
+  isMultiSelected?: boolean;
+  selectedElementIds?: string[];
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
   // Selection preview prop
   isInSelectionPreview?: boolean;
   // Element index for z-index ordering
@@ -38,6 +45,12 @@ export const MemoizedShape = memo(
     onSelect,
     onUpdate,
     onDelete,
+    // Multi-selection props
+    isMultiSelected = false,
+    selectedElementIds = [],
+    onMultiSelectDragStart,
+    onMultiSelectDrag,
+    onMultiSelectDragStop,
     // Selection preview prop
     isInSelectionPreview = false,
     // Element index for z-index ordering
@@ -45,20 +58,103 @@ export const MemoizedShape = memo(
     // Transform-based drag offset for performance optimization
     dragOffset,
   }: ShapeProps) => {
+    // Track if this element is the one being actively dragged
+    const isActivelyDraggedRef = useRef(false);
+
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         // Don't allow selection if we're currently dragging AND this is not the selected element
-        if (
-          document.body.classList.contains("dragging-element") &&
-          !isSelected
-        ) {
+        if (document.body.classList.contains("dragging-element")) {
           return;
         }
 
         e.stopPropagation();
         onSelect(shape.id);
       },
-      [shape.id, onSelect, isSelected]
+      [onSelect, shape.id]
+    );
+
+    // Multi-selection drag handlers
+    const handleDragStart = useCallback(
+      (e: any, d: any) => {
+        isActivelyDraggedRef.current = true;
+        document.body.classList.add("dragging-element");
+        if (
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStart
+        ) {
+          onMultiSelectDragStart(shape.id);
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDragStart,
+        shape.id,
+      ]
+    );
+
+    // Create a throttled version of the drag handler that only works for the actively dragged element
+    const throttledHandleDrag = useCallback(
+      dragThrottle((e: any, d: any) => {
+        // Only process multi-select drag if this element initiated the drag
+        if (
+          isActivelyDraggedRef.current &&
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDrag
+        ) {
+          const deltaX = (d.x - shape.x * scale) / scale;
+          const deltaY = (d.y - shape.y * scale) / scale;
+          onMultiSelectDrag(shape.id, deltaX, deltaY);
+        }
+      }, { fps: 60, immediate: true }),
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDrag,
+        shape.id,
+        shape.x,
+        shape.y,
+        scale,
+      ]
+    );
+
+    const handleDragStop = useCallback(
+      (e: any, d: any) => {
+        const wasActivelyDragged = isActivelyDraggedRef.current;
+        isActivelyDraggedRef.current = false;
+        
+        // Remove the class after drag with a small delay to prevent immediate selection
+        setTimeout(() => {
+          document.body.classList.remove("dragging-element");
+        }, 50);
+
+        if (
+          wasActivelyDragged &&
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDragStop
+        ) {
+          const deltaX = (d.x - shape.x * scale) / scale;
+          const deltaY = (d.y - shape.y * scale) / scale;
+          onMultiSelectDragStop(shape.id, deltaX, deltaY);
+        } else if (!isMultiSelected || selectedElementIds.length <= 1) {
+          // Regular single element update
+          onUpdate(shape.id, { x: d.x / scale, y: d.y / scale }, false); // Don't mark as ongoing operation - drag is a one-time event
+        }
+      },
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDragStop,
+        shape.id,
+        shape.x,
+        shape.y,
+        scale,
+        onUpdate,
+      ]
     );
 
     // Render line shapes using the Line component
@@ -101,24 +197,9 @@ export const MemoizedShape = memo(
               }
             : false
         }
-        onDragStart={(e, d) => {
-          document.body.classList.add("dragging-element");
-        }}
-        onDragStop={(e, d) => {
-          // Remove the class after drag with a small delay to prevent immediate selection
-          setTimeout(() => {
-            document.body.classList.remove("dragging-element");
-          }, 50);
-          onUpdate(
-            shape.id,
-            {
-              x: d.x / scale,
-              y: d.y / scale,
-              type: shape.type,
-            },
-            true
-          ); // Mark as ongoing operation
-        }}
+        onDragStart={handleDragStart}
+        onDrag={throttledHandleDrag}
+        onDragStop={handleDragStop}
         onResizeStop={(e, direction, ref, delta, position) => {
           onUpdate(
             shape.id,

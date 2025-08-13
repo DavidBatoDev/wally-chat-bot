@@ -11,6 +11,7 @@ import { Trash2, Move, Copy } from "lucide-react";
 import { TextField } from "../../types/pdf-editor.types";
 import { measureText } from "../../utils/measurements";
 import { measureWrappedTextHeight } from "../../utils/measurements";
+import { dragThrottle } from "../../utils/performance";
 
 interface TextBoxProps {
   textBox: TextField;
@@ -429,9 +430,13 @@ export const MemoizedTextBox = memo(
       textBox.page,
     ]);
 
-    // Multi-selection drag handlers
+    // Track if this element is the one being actively dragged
+    const isActivelyDraggedRef = useRef(false);
+
     const handleDragStart = useCallback(
       (e: any, d: any) => {
+        isActivelyDraggedRef.current = true;
+        document.body.classList.add("dragging-element");
         if (
           isMultiSelected &&
           selectedElementIds.length > 1 &&
@@ -471,9 +476,44 @@ export const MemoizedTextBox = memo(
       ]
     );
 
+    // Create a throttled version of the drag handler that only works for the actively dragged element
+    const throttledHandleDrag = useCallback(
+      dragThrottle((e: any, d: any) => {
+        // Only process multi-select drag if this element initiated the drag
+        if (
+          isActivelyDraggedRef.current &&
+          isMultiSelected &&
+          selectedElementIds.length > 1 &&
+          onMultiSelectDrag
+        ) {
+          const deltaX = (d.x - textBox.x * scale) / scale;
+          const deltaY = (d.y - textBox.y * scale) / scale;
+          onMultiSelectDrag(textBoxProps.id, deltaX, deltaY);
+        }
+      }, { fps: 60, immediate: true }),
+      [
+        isMultiSelected,
+        selectedElementIds,
+        onMultiSelectDrag,
+        textBoxProps.id,
+        textBox.x,
+        textBox.y,
+        scale,
+      ]
+    );
+
     const handleDragStop = useCallback(
       (e: any, d: any) => {
+        const wasActivelyDragged = isActivelyDraggedRef.current;
+        isActivelyDraggedRef.current = false;
+        
+        // Remove the class after drag with a small delay to prevent immediate selection
+        setTimeout(() => {
+          document.body.classList.remove("dragging-element");
+        }, 50);
+
         if (
+          wasActivelyDragged &&
           isMultiSelected &&
           selectedElementIds.length > 1 &&
           onMultiSelectDragStop
@@ -481,7 +521,7 @@ export const MemoizedTextBox = memo(
           const deltaX = (d.x - textBox.x * scale) / scale;
           const deltaY = (d.y - textBox.y * scale) / scale;
           onMultiSelectDragStop(textBoxProps.id, deltaX, deltaY);
-        } else {
+        } else if (!isMultiSelected || selectedElementIds.length <= 1) {
           // Regular single element update
           onUpdate(textBoxProps.id, { x: d.x / scale, y: d.y / scale }, true); // Mark as ongoing operation
         }
@@ -603,18 +643,9 @@ export const MemoizedTextBox = memo(
           textBoxProps.width,
           padding
         )}
-        onDragStart={(e, d) => {
-          document.body.classList.add("dragging-element");
-          handleDragStart(e, d);
-        }}
-        onDrag={handleDrag}
-        onDragStop={(e, d) => {
-          // Remove the class after drag with a small delay to prevent immediate selection
-          setTimeout(() => {
-            document.body.classList.remove("dragging-element");
-          }, 50);
-          handleDragStop(e, d);
-        }}
+        onDragStart={handleDragStart}
+        onDrag={throttledHandleDrag}
+        onDragStop={handleDragStop}
         onResizeStop={(e, direction, ref, delta, position) => {
           const newWidth = parseInt(ref.style.width) / scale;
           const userSetHeight = parseInt(ref.style.height) / scale;
