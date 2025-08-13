@@ -25,6 +25,8 @@ interface ImageElementProps {
   elementIndex?: number;
   // Transform-based drag offset for performance optimization
   dragOffset?: { x: number; y: number } | null;
+  // New: Direct DOM manipulation for performance optimization
+  registerElementRef?: (elementId: string, element: HTMLElement | null) => void;
 }
 
 export const MemoizedImage = memo(
@@ -50,7 +52,15 @@ export const MemoizedImage = memo(
     elementIndex = 0,
     // Transform-based drag offset for performance optimization
     dragOffset,
+    registerElementRef,
   }: ImageElementProps) => {
+    // Element ref management for direct DOM manipulation during drag
+    const elementRef = useCallback((node: HTMLElement | null) => {
+      if (registerElementRef) {
+        registerElementRef(image.id, node);
+      }
+    }, [registerElementRef, image.id]);
+
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         // Don't allow selection if we're currently dragging AND this is not the selected element
@@ -299,13 +309,15 @@ export const MemoizedImage = memo(
             : ""
         }`}
         style={{
-          transform: dragOffset 
+          // Only apply React-based transform if not using direct DOM manipulation
+          transform: dragOffset && !isMultiSelected
             ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)` 
             : "none",
           zIndex: isSelected ? 9999 : elementIndex,
-          willChange: dragOffset ? 'transform' : 'auto',
+          willChange: (dragOffset && !isMultiSelected) ? 'transform' : 'auto',
         }}
         onClick={handleClick}
+        ref={elementRef}
       >
         <div className="w-full h-full relative group">
           {/* Delete button - only show when selected and in edit mode */}

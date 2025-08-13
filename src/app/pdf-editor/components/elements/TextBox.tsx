@@ -43,6 +43,8 @@ interface TextBoxProps {
   elementIndex?: number;
   // Transform-based drag offset for performance optimization
   dragOffset?: { x: number; y: number } | null;
+  // New: Direct DOM manipulation for performance optimization
+  registerElementRef?: (elementId: string, element: HTMLElement | null) => void;
 }
 
 // Custom comparison function for memo to prevent unnecessary rerenders
@@ -92,14 +94,23 @@ const arePropsEqual = (prevProps: TextBoxProps, nextProps: TextBoxProps) => {
     return false;
   }
 
-  // Check drag offset for transform-based dragging performance
+  // For performance optimization: Skip drag offset comparison during active dragging
+  // This prevents re-renders during drag operations when using direct DOM manipulation
   const prevDragOffset = prevProps.dragOffset;
   const nextDragOffset = nextProps.dragOffset;
-  if (
-    (prevDragOffset === null) !== (nextDragOffset === null) ||
-    (prevDragOffset && nextDragOffset && 
-     (prevDragOffset.x !== nextDragOffset.x || prevDragOffset.y !== nextDragOffset.y))
-  ) {
+  
+  // Only check drag offset if both are null (not dragging) or both have values (position sync)
+  if (prevDragOffset === null && nextDragOffset === null) {
+    // Not dragging, no comparison needed
+  } else if (prevDragOffset && nextDragOffset) {
+    // Both dragging, compare positions only if they're significantly different
+    const xDiff = Math.abs(prevDragOffset.x - nextDragOffset.x);
+    const yDiff = Math.abs(prevDragOffset.y - nextDragOffset.y);
+    if (xDiff > 1 || yDiff > 1) { // Only re-render for significant position changes
+      return false;
+    }
+  } else if ((prevDragOffset === null) !== (nextDragOffset === null)) {
+    // Drag state changed (started or stopped)
     return false;
   }
 
@@ -144,6 +155,7 @@ export const MemoizedTextBox = memo(
     // Element index for z-index ordering
     elementIndex = 0,
     dragOffset,
+    registerElementRef,
   }: TextBoxProps) => {
     // Helper function to get padding object from textbox
     const getPadding = () => ({
@@ -152,6 +164,15 @@ export const MemoizedTextBox = memo(
       bottom: textBox.paddingBottom || 0,
       left: textBox.paddingLeft || 0,
     });
+
+    const padding = getPadding();
+    
+    // Element ref management for direct DOM manipulation during drag
+    const elementRef = useCallback((node: HTMLElement | null) => {
+      if (registerElementRef) {
+        registerElementRef(textBox.id, node);
+      }
+    }, [registerElementRef, textBox.id]);
 
     // Helper function to check if resize would cause text clipping
     const wouldResizeCauseClipping = (newWidth: number, newHeight: number) => {
@@ -586,6 +607,7 @@ export const MemoizedTextBox = memo(
     return (
       <Rnd
         key={textBoxProps.id}
+        ref={elementRef}
         position={{ x: textBox.x * scale, y: textBox.y * scale }}
         size={{
           width: textBoxProps.width * scale,
@@ -653,11 +675,12 @@ export const MemoizedTextBox = memo(
             : ""
         }`}
         style={{
-          transform: dragOffset 
+          // Only apply React-based transform if not using direct DOM manipulation
+          transform: dragOffset && !isMultiSelected
             ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)` 
             : "none",
           zIndex: isSelected ? 9999 : elementIndex,
-          willChange: dragOffset ? 'transform' : 'auto',
+          willChange: (dragOffset && !isMultiSelected) ? 'transform' : 'auto',
         }}
         onClick={handleClick}
       >

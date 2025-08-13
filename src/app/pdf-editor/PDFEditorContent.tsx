@@ -1088,6 +1088,8 @@ export const PDFEditorContent: React.FC = () => {
     handleMultiSelectDragStart,
     handleMultiSelectDrag,
     handleMultiSelectDragStop,
+    // New: registerElementRef for direct DOM manipulation during drag
+    registerElementRef,
   } = useMultiSelectionHandlers({
     editorState,
     setEditorState,
@@ -5825,6 +5827,16 @@ export const PDFEditorContent: React.FC = () => {
                           });
                         }}
                         onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
+                        // Performance optimization props
+                        onMultiSelectDragStart={handleMultiSelectDragStart}
+                        onMultiSelectDrag={handleMultiSelectDrag}
+                        onMultiSelectDragStop={handleMultiSelectDragStop}
+                        registerElementRef={registerElementRef}
                       />
                     )}
 
@@ -5936,6 +5948,16 @@ export const PDFEditorContent: React.FC = () => {
                             });
                           }}
                           onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
+                          // Performance optimization props
+                          onMultiSelectDragStart={handleMultiSelectDragStart}
+                          onMultiSelectDrag={handleMultiSelectDrag}
+                          onMultiSelectDragStop={handleMultiSelectDragStop}
+                          registerElementRef={registerElementRef}
                         />
                       )}
 
@@ -6080,6 +6102,16 @@ export const PDFEditorContent: React.FC = () => {
                               });
                             }}
                             onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
                           />
                         )}
                       </>
@@ -6203,6 +6235,11 @@ export const PDFEditorContent: React.FC = () => {
                               });
                             }}
                             onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
                           />
                           {/* Interactive elements overlay for Original in Split View */}
                           <div
@@ -6355,6 +6392,11 @@ export const PDFEditorContent: React.FC = () => {
                                     });
                                   }}
                                   onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
                                 />
                               )}
                           </div>
@@ -6506,6 +6548,11 @@ export const PDFEditorContent: React.FC = () => {
                                 });
                               }}
                               onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
                               header={
                                 <div className="absolute -top-8 left-0 right-0 flex items-center justify-center">
                                   <div className="bg-primary text-white px-3 py-1 rounded-t-lg text-sm font-medium">
@@ -6888,6 +6935,11 @@ export const PDFEditorContent: React.FC = () => {
                                     });
                                   }}
                                   onDragStopSelection={handleDragStopSelection}
+                            // Performance optimization props
+                            onMultiSelectDragStart={handleMultiSelectDragStart}
+                            onMultiSelectDrag={handleMultiSelectDrag}
+                            onMultiSelectDragStop={handleMultiSelectDragStop}
+                            registerElementRef={registerElementRef}
                                 />
                               )}
                           </>

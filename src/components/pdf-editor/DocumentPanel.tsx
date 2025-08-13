@@ -104,12 +104,21 @@ interface DocumentPanelProps {
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
+    dragOffsets?: Record<string, { x: number; y: number }>;
   };
   currentView: "original" | "translated" | "split" | "final-layout";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;
   onDragStopSelection: (deltaX: number, deltaY: number) => void;
+  
+  // Multi-selection drag handlers for performance optimization
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
+  
+  // Performance optimization: Direct DOM manipulation
+  registerElementRef?: (elementId: string, element: HTMLElement | null) => void;
 
   // Optional header
   header?: React.ReactNode;
@@ -166,6 +175,11 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
   onDeleteSelection,
   onDragSelection,
   onDragStopSelection,
+  // New performance optimization props
+  onMultiSelectDragStart,
+  onMultiSelectDrag,
+  onMultiSelectDragStop,
+  registerElementRef,
   header,
   templateWidth,
   templateHeight,
@@ -262,6 +276,11 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
         onDeleteSelection={onDeleteSelection}
         onDragSelection={onDragSelection}
         onDragStopSelection={onDragStopSelection}
+        // Performance optimization props
+        onMultiSelectDragStart={onMultiSelectDragStart}
+        onMultiSelectDrag={onMultiSelectDrag}
+        onMultiSelectDragStop={onMultiSelectDragStop}
+        registerElementRef={registerElementRef}
       />
     </DocumentView>
   );

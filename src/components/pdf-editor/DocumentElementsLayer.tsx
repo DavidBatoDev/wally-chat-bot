@@ -70,12 +70,21 @@ interface DocumentElementsLayerProps {
     selectionBounds: any;
     selectedElements: any[];
     isMovingSelection: boolean;
+    dragOffsets?: Record<string, { x: number; y: number }>;
   };
   currentView: "original" | "translated" | "split" | "final-layout";
   onMoveSelection: () => void;
   onDeleteSelection: () => void;
   onDragSelection: (deltaX: number, deltaY: number) => void;
   onDragStopSelection: (deltaX: number, deltaY: number) => void;
+  
+  // Multi-selection drag handlers
+  onMultiSelectDragStart?: (id: string) => void;
+  onMultiSelectDrag?: (id: string, deltaX: number, deltaY: number) => void;
+  onMultiSelectDragStop?: (id: string, deltaX: number, deltaY: number) => void;
+  
+  // Performance optimization: Direct DOM manipulation
+  registerElementRef?: (elementId: string, element: HTMLElement | null) => void;
 }
 
 const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
@@ -118,6 +127,11 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   onDeleteSelection,
   onDragSelection,
   onDragStopSelection,
+  // New performance optimization props
+  onMultiSelectDragStart,
+  onMultiSelectDrag,
+  onMultiSelectDragStop,
+  registerElementRef,
 }) => {
   // Use template dimensions for translated view if available, otherwise use original dimensions
   // In split view, we want to scale the template to match original document size
@@ -216,6 +230,11 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
           const isInSelectionPreview = elementsInSelectionPreview.has(
             textBox.id
           );
+          const isMultiSelected = multiSelection.selectedElements.some(
+            (el) => el.id === textBox.id
+          );
+          const dragOffset = multiSelection.dragOffsets?.[textBox.id] || null;
+          
           return (
             <MemoizedTextBox
               key={`${viewType}-text-${textBox.id}`}
@@ -235,11 +254,24 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               onAutoFocusComplete={onAutoFocusComplete}
               isInSelectionPreview={isInSelectionPreview}
               elementIndex={index}
+              // Multi-selection and performance props
+              isMultiSelected={isMultiSelected}
+              selectedElementIds={multiSelection.selectedElements.map(el => el.id)}
+              onMultiSelectDragStart={onMultiSelectDragStart}
+              onMultiSelectDrag={onMultiSelectDrag}
+              onMultiSelectDragStop={onMultiSelectDragStop}
+              dragOffset={dragOffset}
+              registerElementRef={registerElementRef}
             />
           );
         } else if (type === "shape") {
           const shape = element as ShapeType;
           const isInSelectionPreview = elementsInSelectionPreview.has(shape.id);
+          const isMultiSelected = multiSelection.selectedElements.some(
+            (el) => el.id === shape.id
+          );
+          const dragOffset = multiSelection.dragOffsets?.[shape.id] || null;
+          
           return (
             <MemoizedShape
               key={`${viewType}-shape-${shape.id}`}
@@ -254,11 +286,24 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               onDelete={onDeleteShape}
               isInSelectionPreview={isInSelectionPreview}
               elementIndex={index}
+              // Multi-selection and performance props
+              isMultiSelected={isMultiSelected}
+              selectedElementIds={multiSelection.selectedElements.map(el => el.id)}
+              onMultiSelectDragStart={onMultiSelectDragStart}
+              onMultiSelectDrag={onMultiSelectDrag}
+              onMultiSelectDragStop={onMultiSelectDragStop}
+              dragOffset={dragOffset}
+              registerElementRef={registerElementRef}
             />
           );
         } else if (type === "image") {
           const image = element as ImageType;
           const isInSelectionPreview = elementsInSelectionPreview.has(image.id);
+          const isMultiSelected = multiSelection.selectedElements.some(
+            (el) => el.id === image.id
+          );
+          const dragOffset = multiSelection.dragOffsets?.[image.id] || null;
+          
           return (
             <MemoizedImage
               key={`${viewType}-image-${image.id}`}
@@ -273,6 +318,14 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               onDelete={onDeleteImage}
               isInSelectionPreview={isInSelectionPreview}
               elementIndex={index}
+              // Multi-selection and performance props
+              isMultiSelected={isMultiSelected}
+              selectedElementIds={multiSelection.selectedElements.map(el => el.id)}
+              onMultiSelectDragStart={onMultiSelectDragStart}
+              onMultiSelectDrag={onMultiSelectDrag}
+              onMultiSelectDragStop={onMultiSelectDragStop}
+              dragOffset={dragOffset}
+              registerElementRef={registerElementRef}
             />
           );
         }

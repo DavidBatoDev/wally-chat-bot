@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useRef, useEffect, startTransition } from "react";
 import {
   EditorState,
   TextField,
@@ -69,6 +69,42 @@ export const useMultiSelectionHandlers = ({
   const dragThrottleRef = useRef<number | null>(null);
   const lastDragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const batchUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // New: Direct DOM manipulation during drag for optimal performance
+  const dragElementRefsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const isDraggingRef = useRef<boolean>(false);
+  const dragActivePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Helper function to register element DOM references for direct manipulation
+  const registerElementRef = useCallback((elementId: string, element: HTMLElement | null) => {
+    if (element) {
+      dragElementRefsRef.current.set(elementId, element);
+    } else {
+      dragElementRefsRef.current.delete(elementId);
+    }
+  }, []);
+
+  // Optimized direct DOM transformation during drag
+  const applyDirectTransform = useCallback((elementId: string, offsetX: number, offsetY: number) => {
+    const element = dragElementRefsRef.current.get(elementId);
+    if (element) {
+      // Apply transform directly to DOM for immediate visual feedback
+      element.style.transform = `translate(${offsetX * documentState.scale}px, ${offsetY * documentState.scale}px)`;
+      element.style.willChange = 'transform';
+      
+      // Store the active position for later batch update
+      dragActivePositionsRef.current.set(elementId, { x: offsetX, y: offsetY });
+    }
+  }, [documentState.scale]);
+
+  // Clear direct transforms and restore normal positioning
+  const clearDirectTransforms = useCallback(() => {
+    dragElementRefsRef.current.forEach((element, elementId) => {
+      element.style.transform = 'none';
+      element.style.willChange = 'auto';
+    });
+    dragActivePositionsRef.current.clear();
+  }, []);
 
   // Helper function to get elements that would be captured in the current selection preview
   const getElementsInSelectionPreview = useCallback(() => {
@@ -303,12 +339,11 @@ export const useMultiSelectionHandlers = ({
 
         // Use requestAnimationFrame for smooth 60fps updates
         dragThrottleRef.current = requestAnimationFrame(() => {
-          // Update drag offsets for visual transform instead of actual positions
-          const newOffsets: Record<string, { x: number; y: number }> = {};
+          isDraggingRef.current = true;
           
+          // Apply direct DOM transforms immediately for visual feedback
           selectedElements.forEach((el) => {
-            if (el.id !== id) {
-              // Skip the actively dragged element (react-rnd handles it)
+            if (el.id !== id) { // Skip the actively dragged element (react-rnd handles it)
               const initialPos = initialPositionsRef.current[el.id];
               if (initialPos) {
                 const element = getElementById(el.id, el.type);
@@ -326,18 +361,27 @@ export const useMultiSelectionHandlers = ({
                     Math.min(newY, documentState.pageHeight - element.height)
                   );
 
-                  // Store offset for transform
-                  newOffsets[el.id] = {
-                    x: constrainedX - initialPos.x,
-                    y: constrainedY - initialPos.y,
-                  };
+                  // Apply direct transform for immediate visual feedback
+                  const offsetX = constrainedX - initialPos.x;
+                  const offsetY = constrainedY - initialPos.y;
+                  applyDirectTransform(el.id, offsetX, offsetY);
                 }
               }
             }
           });
-          
-          // Update drag offsets using throttled function
-          updateDragOffsetsThrottled(newOffsets);
+
+          // Use startTransition for non-urgent state updates to avoid blocking renders
+          startTransition(() => {
+            // Only update essential drag state, not visual positions
+            setEditorState((prev) => ({
+              ...prev,
+              multiSelection: {
+                ...prev.multiSelection,
+                // Just update the drag active flag, not visual positions
+                isDraggingActive: true,
+              },
+            }));
+          });
         });
       }
     },
@@ -347,7 +391,7 @@ export const useMultiSelectionHandlers = ({
       getElementById,
       documentState.pageWidth,
       documentState.pageHeight,
-      updateDragOffsetsThrottled,
+      applyDirectTransform,
     ]
   );
 
@@ -360,6 +404,10 @@ export const useMultiSelectionHandlers = ({
           cancelAnimationFrame(dragThrottleRef.current);
           dragThrottleRef.current = null;
         }
+
+        // Clear direct transforms before applying final positions
+        clearDirectTransforms();
+        isDraggingRef.current = false;
 
         // Batch all element position updates for better performance
         const positionUpdates: {
@@ -418,28 +466,30 @@ export const useMultiSelectionHandlers = ({
           }
         });
 
-        // Apply all updates in batch (use startTransition for non-critical updates)
-        if (positionUpdates.textboxes.length > 0) {
-          positionUpdates.textboxes.forEach(({ id, x, y }) => {
-            updateTextBoxWithUndo(id, { x, y }, false);
-          });
-        }
+        // Apply all updates in batch using startTransition for better performance
+        startTransition(() => {
+          if (positionUpdates.textboxes.length > 0) {
+            positionUpdates.textboxes.forEach(({ id, x, y }) => {
+              updateTextBoxWithUndo(id, { x, y }, false);
+            });
+          }
 
-        if (positionUpdates.shapes.length > 0) {
-          positionUpdates.shapes.forEach(({ id, x, y }) => {
-            updateShapeWithUndo(id, { x, y }, false);
-          });
-        }
+          if (positionUpdates.shapes.length > 0) {
+            positionUpdates.shapes.forEach(({ id, x, y }) => {
+              updateShapeWithUndo(id, { x, y }, false);
+            });
+          }
 
-        if (positionUpdates.images.length > 0) {
-          positionUpdates.images.forEach(({ id, x, y }) => {
-            if (updateImageWithUndo) {
-              updateImageWithUndo(id, { x, y }, false);
-            } else {
-              updateImage(id, { x, y });
-            }
-          });
-        }
+          if (positionUpdates.images.length > 0) {
+            positionUpdates.images.forEach(({ id, x, y }) => {
+              if (updateImageWithUndo) {
+                updateImageWithUndo(id, { x, y }, false);
+              } else {
+                updateImage(id, { x, y });
+              }
+            });
+          }
+        });
         
         // Clear drag state and update positions in single state update
         setEditorState((prev) => ({
@@ -447,6 +497,7 @@ export const useMultiSelectionHandlers = ({
           multiSelection: {
             ...prev.multiSelection,
             isDragging: false,
+            isDraggingActive: false,
             dragOffsets: {},
             selectedElements: prev.multiSelection.selectedElements.map(
               (el) => ({
@@ -491,6 +542,7 @@ export const useMultiSelectionHandlers = ({
       documentState.pageHeight,
       setEditorState,
       history,
+      clearDirectTransforms,
     ]
   );
 
@@ -742,8 +794,10 @@ export const useMultiSelectionHandlers = ({
       if (batchUpdateTimeoutRef.current) {
         clearTimeout(batchUpdateTimeoutRef.current);
       }
+      // Clear any active transforms
+      clearDirectTransforms();
     };
-  }, []);
+  }, [clearDirectTransforms]);
 
   return {
     getElementsInSelectionPreview,
@@ -755,5 +809,7 @@ export const useMultiSelectionHandlers = ({
     handleMultiSelectionMouseDown,
     handleMultiSelectionMouseMove,
     handleMultiSelectionMouseUp,
+    // New: Export the ref registration function for components to use
+    registerElementRef,
   };
 };

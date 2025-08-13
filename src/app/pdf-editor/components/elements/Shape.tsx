@@ -31,6 +31,8 @@ interface ShapeProps {
   elementIndex?: number;
   // Transform-based drag offset for performance optimization
   dragOffset?: { x: number; y: number } | null;
+  // New: Direct DOM manipulation for performance optimization
+  registerElementRef?: (elementId: string, element: HTMLElement | null) => void;
 }
 
 export const MemoizedShape = memo(
@@ -56,7 +58,15 @@ export const MemoizedShape = memo(
     elementIndex = 0,
     // Transform-based drag offset for performance optimization
     dragOffset,
+    registerElementRef,
   }: ShapeProps) => {
+    // Element ref management for direct DOM manipulation during drag
+    const elementRef = useCallback((node: HTMLElement | null) => {
+      if (registerElementRef) {
+        registerElementRef(shape.id, node);
+      }
+    }, [registerElementRef, shape.id]);
+
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
         // Don't allow selection if we're currently dragging AND this is not the selected element
@@ -167,6 +177,7 @@ export const MemoizedShape = memo(
     return (
       <Rnd
         key={shape.id}
+        ref={elementRef}
         position={{ x: shape.x * scale, y: shape.y * scale }}
         size={{ width: shape.width * scale, height: shape.height * scale }}
         bounds="parent"
@@ -220,11 +231,12 @@ export const MemoizedShape = memo(
             : ""
         }`}
         style={{
-          transform: dragOffset
+          // Only apply React-based transform if not using direct DOM manipulation
+          transform: dragOffset && !isMultiSelected
             ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)`
             : "none",
           zIndex: isSelected ? 9999 : elementIndex,
-          willChange: dragOffset ? 'transform' : 'auto',
+          willChange: (dragOffset && !isMultiSelected) ? 'transform' : 'auto',
         }}
         onClick={handleClick}
       >
