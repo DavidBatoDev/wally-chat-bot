@@ -29,6 +29,63 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
+// High-performance throttle using requestAnimationFrame
+export function rafThrottle<T extends (...args: any[]) => any>(
+  func: T
+): (...args: Parameters<T>) => void {
+  let rafId: number | null = null;
+  return function (this: any, ...args: Parameters<T>) {
+    if (rafId === null) {
+      rafId = requestAnimationFrame(() => {
+        func.apply(this, args);
+        rafId = null;
+      });
+    }
+  };
+}
+
+// Optimized throttle for multi-selection drag operations
+export function multiSelectDragThrottle<T extends (...args: any[]) => any>(
+  func: T,
+  options: { fps?: number; maxElements?: number } = {}
+): (...args: Parameters<T>) => void {
+  const { fps = 60, maxElements = 50 } = options;
+  const delay = 1000 / fps;
+  let lastExecution = 0;
+  let rafId: number | null = null;
+
+  return function (this: any, ...args: Parameters<T>) {
+    const now = performance.now();
+    
+    // For small selections, use RAF for smoother performance
+    if (!args[0] || (Array.isArray(args[0]) && args[0].length <= 5)) {
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          func.apply(this, args);
+          rafId = null;
+          lastExecution = now;
+        });
+      }
+      return;
+    }
+
+    // For larger selections, use adaptive throttling
+    const elementCount = Array.isArray(args[0]) ? args[0].length : 1;
+    const adaptiveDelay = Math.max(delay, Math.min(delay * (elementCount / maxElements), 50));
+
+    if (now - lastExecution >= adaptiveDelay) {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        func.apply(this, args);
+        rafId = null;
+        lastExecution = now;
+      });
+    }
+  };
+}
+
 // RequestAnimationFrame wrapper for smooth animations
 export function smoothAnimation(callback: () => void): () => void {
   let animationId: number | null = null;

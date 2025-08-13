@@ -318,3 +318,42 @@ export const moveSelectedElements = (
     }
   });
 };
+
+// Optimized version for better performance during drag operations
+export const moveSelectedElementsOptimized = (
+  selectedElements: SelectedElement[],
+  deltaX: number,
+  deltaY: number,
+  elementCache: Map<string, any>,
+  pageWidth: number,
+  pageHeight: number
+): Array<{id: string, type: string, x: number, y: number}> => {
+  const updates: Array<{id: string, type: string, x: number, y: number}> = [];
+
+  selectedElements.forEach((selectedElement) => {
+    const element = elementCache.get(selectedElement.id);
+    if (element) {
+      const newX = selectedElement.originalPosition.x + deltaX;
+      const newY = selectedElement.originalPosition.y + deltaY;
+
+      // Fast boundary constraint calculations
+      const constrainedX = Math.max(
+        0,
+        Math.min(newX, pageWidth - element.width)
+      );
+      const constrainedY = Math.max(
+        0,
+        Math.min(newY, pageHeight - element.height)
+      );
+
+      updates.push({
+        id: selectedElement.id,
+        type: selectedElement.type,
+        x: constrainedX,
+        y: constrainedY,
+      });
+    }
+  });
+
+  return updates;
+};

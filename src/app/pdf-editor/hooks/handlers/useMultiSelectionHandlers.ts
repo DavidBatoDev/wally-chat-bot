@@ -11,6 +11,7 @@ import {
   calculateSelectionBounds,
   moveSelectedElements,
 } from "../../utils/selectionUtils";
+import { multiSelectDragThrottle } from "../../utils/performance";
 
 interface UseMultiSelectionHandlersProps {
   editorState: EditorState;
@@ -63,6 +64,26 @@ export const useMultiSelectionHandlers = ({
 
   // Add throttling for mouse move events
   const mouseMoveThrottleRef = useRef<number | null>(null);
+  
+  // Cache for element references to avoid repeated getElementById calls
+  const elementCacheRef = useRef<Map<string, any>>(new Map());
+  
+  // Performance optimization: Pre-fetch and cache element references
+  const updateElementCache = useCallback((selectedElements: any[]) => {
+    elementCacheRef.current.clear();
+    selectedElements.forEach((el) => {
+      const element = getElementById(el.id, el.type);
+      if (element) {
+        elementCacheRef.current.set(el.id, element);
+      }
+    });
+  }, [getElementById]);
+  
+  // Optimized cached element getter
+  const getCachedElement = useCallback((id: string, type: "textbox" | "shape" | "image") => {
+    const cached = elementCacheRef.current.get(id);
+    return cached || getElementById(id, type);
+  }, [getElementById]);
 
   // Helper function to get elements that would be captured in the current selection preview
   const getElementsInSelectionPreview = useCallback(() => {
@@ -241,10 +262,13 @@ export const useMultiSelectionHandlers = ({
     (id: string) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1) {
+        // Pre-cache element references for performance
+        updateElementCache(selectedElements);
+        
         // Store initial positions of all selected elements
         const initial: Record<string, { x: number; y: number }> = {};
         selectedElements.forEach((el) => {
-          const element = getElementById(el.id, el.type);
+          const element = getCachedElement(el.id, el.type);
           if (element) {
             initial[el.id] = { x: element.x, y: element.y };
           }
@@ -260,16 +284,23 @@ export const useMultiSelectionHandlers = ({
             dragOffsets: {},
           },
         }));
+        
+        // Start batch operation for better undo/redo performance
+        if (history && history.startBatch) {
+          history.startBatch();
+        }
       }
     },
-    [editorState.multiSelection.selectedElements, getElementById, setEditorState]
+    [editorState.multiSelection.selectedElements, getCachedElement, setEditorState, updateElementCache, history]
   );
 
+  // Optimized drag handler with throttling and CSS transforms
   const handleMultiSelectDrag = useCallback(
-    (id: string, deltaX: number, deltaY: number) => {
+    multiSelectDragThrottle((id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
-        // Update drag offsets for visual transform instead of actual positions
+        // Use CSS transforms for visual feedback instead of updating actual positions
+        // This is much faster as it only updates the visual representation
         const newOffsets: Record<string, { x: number; y: number }> = {};
         
         selectedElements.forEach((el) => {
@@ -277,12 +308,12 @@ export const useMultiSelectionHandlers = ({
             // Skip the actively dragged element (react-rnd handles it)
             const initialPos = initialPositionsRef.current[el.id];
             if (initialPos) {
-              const element = getElementById(el.id, el.type);
+              const element = getCachedElement(el.id, el.type);
               if (element) {
                 const newX = initialPos.x + deltaX;
                 const newY = initialPos.y + deltaY;
 
-                // Apply boundary constraints for visual feedback
+                // Apply lightweight boundary constraints for visual feedback only
                 const constrainedX = Math.max(
                   0,
                   Math.min(newX, documentState.pageWidth - element.width)
@@ -292,7 +323,7 @@ export const useMultiSelectionHandlers = ({
                   Math.min(newY, documentState.pageHeight - element.height)
                 );
 
-                // Store offset for transform
+                // Store offset for CSS transform (much faster than position updates)
                 newOffsets[el.id] = {
                   x: constrainedX - initialPos.x,
                   y: constrainedY - initialPos.y,
@@ -302,7 +333,7 @@ export const useMultiSelectionHandlers = ({
           }
         });
         
-        // Update drag offsets for transform-based positioning
+        // Single state update with transform offsets
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
@@ -311,11 +342,11 @@ export const useMultiSelectionHandlers = ({
           },
         }));
       }
-    },
+    }),
     [
       editorState.multiSelection.selectedElements,
       editorState.multiSelection.isDragging,
-      getElementById,
+      getCachedElement,
       documentState.pageWidth,
       documentState.pageHeight,
       setEditorState,
@@ -326,13 +357,15 @@ export const useMultiSelectionHandlers = ({
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
-        // Apply final positions and clear drag state
+        // Batch all position updates for better performance
+        const updates: Array<{element: any, id: string, type: string, x: number, y: number}> = [];
+        
         selectedElements.forEach((el) => {
           if (el.id !== id) {
             // Skip the actively dragged element (react-rnd handles it)
             const initialPos = initialPositionsRef.current[el.id];
             if (initialPos) {
-              const element = getElementById(el.id, el.type);
+              const element = getCachedElement(el.id, el.type);
               if (element) {
                 const newX = initialPos.x + deltaX;
                 const newY = initialPos.y + deltaY;
@@ -347,49 +380,38 @@ export const useMultiSelectionHandlers = ({
                   Math.min(newY, documentState.pageHeight - element.height)
                 );
 
-                // Update actual positions only at the end
-                switch (el.type) {
-                  case "textbox":
-                    updateTextBoxWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      false // Final update, not ongoing
-                    );
-                    break;
-                  case "shape":
-                    updateShapeWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      false // Final update, not ongoing
-                    );
-                    break;
-                  case "image":
-                    if (updateImageWithUndo) {
-                      updateImageWithUndo(
-                        el.id,
-                        {
-                          x: constrainedX,
-                          y: constrainedY,
-                        },
-                        false // Final update, not ongoing
-                      );
-                    } else {
-                      updateImage(el.id, { x: constrainedX, y: constrainedY });
-                    }
-                    break;
-                }
+                updates.push({
+                  element,
+                  id: el.id,
+                  type: el.type,
+                  x: constrainedX,
+                  y: constrainedY
+                });
               }
             }
           }
         });
         
-        // Clear drag state
+        // Apply all updates in a batch for better performance
+        updates.forEach(({id: elementId, type, x, y}) => {
+          switch (type) {
+            case "textbox":
+              updateTextBoxWithUndo(elementId, { x, y }, false);
+              break;
+            case "shape":
+              updateShapeWithUndo(elementId, { x, y }, false);
+              break;
+            case "image":
+              if (updateImageWithUndo) {
+                updateImageWithUndo(elementId, { x, y }, false);
+              } else {
+                updateImage(elementId, { x, y });
+              }
+              break;
+          }
+        });
+        
+        // Clear drag state and cache
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
@@ -399,7 +421,7 @@ export const useMultiSelectionHandlers = ({
           },
         }));
         
-        // End batch operation if there's one
+        // End batch operation
         if (history && history.endBatch) {
           history.endBatch();
         }
@@ -420,6 +442,9 @@ export const useMultiSelectionHandlers = ({
             ),
           },
         }));
+        
+        // Clear element cache
+        elementCacheRef.current.clear();
       }
       // Clear initial positions
       initialPositionsRef.current = {};
@@ -431,7 +456,7 @@ export const useMultiSelectionHandlers = ({
       updateShapeWithUndo,
       updateImage,
       updateImageWithUndo,
-      getElementById,
+      getCachedElement,
       documentState.pageWidth,
       documentState.pageHeight,
       setEditorState,
@@ -503,21 +528,19 @@ export const useMultiSelectionHandlers = ({
       )
         return;
 
-      // Throttle mouse move events using requestAnimationFrame
+      // Improved throttling using requestAnimationFrame
       if (mouseMoveThrottleRef.current) {
-        return;
+        cancelAnimationFrame(mouseMoveThrottleRef.current);
       }
 
       mouseMoveThrottleRef.current = requestAnimationFrame(() => {
-        mouseMoveThrottleRef.current = null;
-        
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         if (!rect) return;
 
         let x = (e.clientX - rect.left) / documentState.scale;
         let y = (e.clientY - rect.top) / documentState.scale;
 
-        // Adjust coordinates for split view
+        // Optimize coordinate adjustment for split view
         if (
           viewState.currentView === "split" &&
           (editorState.multiSelection.targetView === "translated" ||
@@ -529,6 +552,7 @@ export const useMultiSelectionHandlers = ({
           x = (clickX - singleDocWidth - gap) / documentState.scale;
         }
 
+        // Single state update with minimal object creation
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
@@ -536,6 +560,8 @@ export const useMultiSelectionHandlers = ({
             selectionEnd: { x, y },
           },
         }));
+        
+        mouseMoveThrottleRef.current = null;
       });
     },
     [
