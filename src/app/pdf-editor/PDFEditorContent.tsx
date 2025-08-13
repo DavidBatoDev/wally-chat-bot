@@ -77,6 +77,7 @@ import {
 import { useMultiSelectionHandlers } from "./hooks/handlers/useMultiSelectionHandlers";
 import { useToolHandlers } from "./hooks/handlers/useToolHandlers";
 import { useShapeDrawingHandlers } from "./hooks/handlers/useShapeDrawingHandlers";
+import { ShapePreview } from "./components/elements/ShapePreview";
 import { useDocumentMouseHandlers } from "./hooks/handlers/useDocumentMouseHandlers";
 import { useFormatHandlers } from "./hooks/handlers/useFormatHandlers";
 import { useKeyboardHandlers } from "./hooks/handlers/useKeyboardHandlers";
@@ -2629,18 +2630,22 @@ export const PDFEditorContent: React.FC = () => {
   });
 
   // Shape drawing handlers (extracted to custom hook)
-  const { handleShapeDrawStart, handleShapeDrawMove, handleShapeDrawEnd } =
-    useShapeDrawingHandlers({
-      toolState,
-      setToolState,
-      setEditorState,
-      setErasureState,
-      documentState,
-      viewState,
-      documentRef,
-      handleAddShapeWithUndo,
-      getTranslatedTemplateScaleFactor,
-    });
+  const {
+    handleShapeDrawStart,
+    handleShapeDrawMove,
+    handleShapeDrawEnd,
+    cleanup: cleanupShapeDrawing,
+  } = useShapeDrawingHandlers({
+    toolState,
+    setToolState,
+    setEditorState,
+    setErasureState,
+    documentState,
+    viewState,
+    documentRef,
+    handleAddShapeWithUndo,
+    getTranslatedTemplateScaleFactor,
+  });
 
   // Document mouse handlers for text selection and erasure
   const {
@@ -2661,6 +2666,13 @@ export const PDFEditorContent: React.FC = () => {
     handleAddDeletionRectangleWithUndo,
     getTranslatedTemplateScaleFactor,
   });
+
+  // Cleanup shape drawing on unmount
+  useEffect(() => {
+    return () => {
+      cleanupShapeDrawing();
+    };
+  }, [cleanupShapeDrawing]);
 
   // Delete selected elements - defined before useKeyboardHandlers to avoid initialization error
   const handleDeleteSelection = useCallback(() => {
@@ -6857,298 +6869,28 @@ export const PDFEditorContent: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Shape Drawing Preview */}
+                    {/* Shape Drawing Preview - Optimized Canvas-based Component */}
                     {toolState.isDrawingShape &&
                       toolState.shapeDrawStart &&
                       toolState.shapeDrawEnd && (
-                        <>
-                          {toolState.shapeDrawingMode === "line" ? (
-                            // Line preview using SVG
-                            <svg
-                              className="absolute pointer-events-none"
-                              style={{
-                                left: getPreviewLeft(
-                                  Math.min(
-                                    toolState.shapeDrawStart.x,
-                                    toolState.shapeDrawEnd.x
-                                  ) - 10,
-                                  viewState.currentView === "split"
-                                    ? toolState.shapeDrawTargetView ===
-                                        "translated"
-                                    : viewState.currentView === "translated",
-                                  viewState.currentView,
-                                  documentState.pageWidth,
-                                  documentState.scale,
-                                  toolState.shapeDrawTargetView === "translated"
-                                    ? getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      )
-                                    : undefined
-                                ),
-                                top:
-                                  (Math.min(
-                                    toolState.shapeDrawStart.y,
-                                    toolState.shapeDrawEnd.y
-                                  ) -
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale),
-                                width:
-                                  (Math.abs(
-                                    toolState.shapeDrawEnd.x -
-                                      toolState.shapeDrawStart.x
-                                  ) +
-                                    20) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale),
-                                height:
-                                  (Math.abs(
-                                    toolState.shapeDrawEnd.y -
-                                      toolState.shapeDrawStart.y
-                                  ) +
-                                    20) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale),
-                                zIndex: 50,
-                              }}
-                            >
-                              <line
-                                x1={
-                                  (toolState.shapeDrawStart.x -
-                                    Math.min(
-                                      toolState.shapeDrawStart.x,
-                                      toolState.shapeDrawEnd.x
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                y1={
-                                  (toolState.shapeDrawStart.y -
-                                    Math.min(
-                                      toolState.shapeDrawStart.y,
-                                      toolState.shapeDrawEnd.y
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                x2={
-                                  (toolState.shapeDrawEnd.x -
-                                    Math.min(
-                                      toolState.shapeDrawStart.x,
-                                      toolState.shapeDrawEnd.x
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                y2={
-                                  (toolState.shapeDrawEnd.y -
-                                    Math.min(
-                                      toolState.shapeDrawStart.y,
-                                      toolState.shapeDrawEnd.y
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                stroke="#ef4444"
-                                strokeWidth="2"
-                                strokeDasharray="5,5"
-                                strokeLinecap="round"
-                              />
-                              {/* Preview anchor points */}
-                              <circle
-                                cx={
-                                  (toolState.shapeDrawStart.x -
-                                    Math.min(
-                                      toolState.shapeDrawStart.x,
-                                      toolState.shapeDrawEnd.x
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                cy={
-                                  (toolState.shapeDrawStart.y -
-                                    Math.min(
-                                      toolState.shapeDrawStart.y,
-                                      toolState.shapeDrawEnd.y
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                r="4"
-                                fill="#3b82f6"
-                                stroke="white"
-                                strokeWidth="1"
-                              />
-                              <circle
-                                cx={
-                                  (toolState.shapeDrawEnd.x -
-                                    Math.min(
-                                      toolState.shapeDrawStart.x,
-                                      toolState.shapeDrawEnd.x
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                cy={
-                                  (toolState.shapeDrawEnd.y -
-                                    Math.min(
-                                      toolState.shapeDrawStart.y,
-                                      toolState.shapeDrawEnd.y
-                                    ) +
-                                    10) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale)
-                                }
-                                r="4"
-                                fill="#3b82f6"
-                                stroke="white"
-                                strokeWidth="1"
-                              />
-                            </svg>
-                          ) : (
-                            // Rectangle/Circle preview using bounding box
-                            <div
-                              className="absolute border-2 border-dashed border-red-500 bg-red-100 bg-opacity-30 pointer-events-none"
-                              style={{
-                                left: getPreviewLeft(
-                                  Math.min(
-                                    toolState.shapeDrawStart.x,
-                                    toolState.shapeDrawEnd.x
-                                  ),
-                                  viewState.currentView === "split"
-                                    ? toolState.shapeDrawTargetView ===
-                                        "translated"
-                                    : viewState.currentView === "translated",
-                                  viewState.currentView,
-                                  documentState.pageWidth,
-                                  documentState.scale,
-                                  toolState.shapeDrawTargetView === "translated"
-                                    ? getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      )
-                                    : undefined
-                                ),
-                                top:
-                                  Math.min(
-                                    toolState.shapeDrawStart.y,
-                                    toolState.shapeDrawEnd.y
-                                  ) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale),
-                                width:
-                                  Math.abs(
-                                    toolState.shapeDrawEnd.x -
-                                      toolState.shapeDrawStart.x
-                                  ) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale),
-                                height:
-                                  Math.abs(
-                                    toolState.shapeDrawEnd.y -
-                                      toolState.shapeDrawStart.y
-                                  ) *
-                                  (toolState.shapeDrawTargetView ===
-                                    "translated" &&
-                                  viewState.currentView === "split"
-                                    ? documentState.scale *
-                                      (getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      ) || 1)
-                                    : documentState.scale),
-                                borderRadius:
-                                  toolState.shapeDrawingMode === "circle"
-                                    ? "50%"
-                                    : "0",
-                                zIndex: 50,
-                              }}
-                            />
-                          )}
-                        </>
+                        <ShapePreview
+                          key={`${toolState.shapeDrawStart.x}-${toolState.shapeDrawStart.y}-${toolState.shapeDrawEnd.x}-${toolState.shapeDrawEnd.y}`}
+                          isDrawing={toolState.isDrawingShape}
+                          shapeType={toolState.shapeDrawingMode}
+                          startCoords={toolState.shapeDrawStart}
+                          endCoords={toolState.shapeDrawEnd}
+                          targetView={toolState.shapeDrawTargetView}
+                          currentView={viewState.currentView}
+                          pageWidth={documentState.pageWidth}
+                          scale={documentState.scale}
+                          templateScaleFactor={
+                            toolState.shapeDrawTargetView === "translated"
+                              ? getTranslatedTemplateScaleFactor?.(
+                                  documentState.currentPage
+                                )
+                              : undefined
+                          }
+                        />
                       )}
 
                     {/* Erasure Drawing Preview */}

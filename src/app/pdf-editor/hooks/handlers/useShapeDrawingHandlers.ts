@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef, useMemo } from "react";
 import {
   ToolState,
   EditorState,
@@ -21,6 +21,7 @@ interface UseShapeDrawingHandlersProps {
   getTranslatedTemplateScaleFactor?: (pageNumber: number) => number;
   viewState: {
     currentView: ViewMode;
+    currentWorkflowStep?: "translate" | "layout" | "final-layout";
   };
   documentRef: React.RefObject<HTMLDivElement | null>;
   handleAddShapeWithUndo: (
@@ -51,6 +52,46 @@ export const useShapeDrawingHandlers = ({
   handleAddShapeWithUndo,
   getTranslatedTemplateScaleFactor,
 }: UseShapeDrawingHandlersProps) => {
+  // Performance optimization: Use refs to avoid unnecessary re-renders during drawing
+  const drawingStateRef = useRef({
+    isDrawing: false,
+    startCoords: null as { x: number; y: number } | null,
+    targetView: null as "original" | "translated" | "final-layout" | null,
+  });
+
+  // Performance optimization: Memoize scale factors to avoid recalculating on every move
+  const memoizedScaleFactors = useMemo(() => {
+    const baseScale = documentState.scale;
+    const templateScale =
+      getTranslatedTemplateScaleFactor?.(documentState.currentPage) || 1;
+    const effectiveScale =
+      viewState.currentView === "split" &&
+      viewState.currentWorkflowStep === "translate"
+        ? baseScale * templateScale
+        : baseScale;
+
+    return {
+      baseScale,
+      templateScale,
+      effectiveScale,
+      isSplitView: viewState.currentView === "split",
+      isTranslated: viewState.currentWorkflowStep === "translate",
+    };
+  }, [
+    documentState.scale,
+    documentState.currentPage,
+    viewState.currentView,
+    viewState.currentWorkflowStep,
+    getTranslatedTemplateScaleFactor,
+  ]);
+
+  // Performance optimization: Throttled mouse move handler using requestAnimationFrame
+  const throttledMouseMoveRef = useRef<number | null>(null);
+  const lastMouseMoveTimeRef = useRef(0);
+  const MOUSE_MOVE_THROTTLE_MS = 8; // ~120fps for smoother drawing
+  const lastStateUpdateRef = useRef(0);
+  const STATE_UPDATE_THROTTLE_MS = 16; // ~60fps for state updates
+
   // Helper function to get the correct current page based on view
   const getCurrentPageForView = useCallback(() => {
     if (viewState.currentView === "final-layout") {
@@ -106,6 +147,13 @@ export const useShapeDrawingHandlers = ({
           : undefined
       );
 
+      // Store drawing state in ref for performance
+      drawingStateRef.current = {
+        isDrawing: true,
+        startCoords: { x, y },
+        targetView,
+      };
+
       setToolState((prev) => ({
         ...prev,
         isDrawingShape: true,
@@ -132,29 +180,54 @@ export const useShapeDrawingHandlers = ({
     (e: React.MouseEvent) => {
       if (!toolState.isDrawingShape || !toolState.shapeDrawStart) return;
 
-      const rect = documentRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      // Performance optimization: Throttle mouse move events
+      const now = performance.now();
+      if (now - lastMouseMoveTimeRef.current < MOUSE_MOVE_THROTTLE_MS) {
+        return;
+      }
+      lastMouseMoveTimeRef.current = now;
 
-      // Convert screen coordinates to document coordinates
-      const { x, y } = screenToDocumentCoordinates(
-        e.clientX,
-        e.clientY,
-        rect,
-        documentState.scale,
-        toolState.shapeDrawTargetView === "final-layout"
-          ? null
-          : toolState.shapeDrawTargetView,
-        viewState.currentView,
-        documentState.pageWidth,
-        toolState.shapeDrawTargetView === "translated"
-          ? getTranslatedTemplateScaleFactor?.(documentState.currentPage)
-          : undefined
-      );
+      // Cancel any pending animation frame
+      if (throttledMouseMoveRef.current) {
+        cancelAnimationFrame(throttledMouseMoveRef.current);
+      }
 
-      setToolState((prev) => ({
-        ...prev,
-        shapeDrawEnd: { x, y },
-      }));
+      // Use requestAnimationFrame for smooth updates
+      throttledMouseMoveRef.current = requestAnimationFrame(() => {
+        const rect = documentRef.current?.getBoundingClientRect();
+        if (!rect) return;
+
+        // Convert screen coordinates to document coordinates
+        const { x, y } = screenToDocumentCoordinates(
+          e.clientX,
+          e.clientY,
+          rect,
+          documentState.scale,
+          toolState.shapeDrawTargetView === "final-layout"
+            ? null
+            : toolState.shapeDrawTargetView,
+          viewState.currentView,
+          documentState.pageWidth,
+          toolState.shapeDrawTargetView === "translated"
+            ? getTranslatedTemplateScaleFactor?.(documentState.currentPage)
+            : undefined
+        );
+
+        // Performance optimization: Throttle state updates to reduce re-renders
+        const stateUpdateNow = performance.now();
+        if (
+          stateUpdateNow - lastStateUpdateRef.current >=
+          STATE_UPDATE_THROTTLE_MS
+        ) {
+          lastStateUpdateRef.current = stateUpdateNow;
+
+          // Performance optimization: Only update the minimal state needed
+          setToolState((prev) => ({
+            ...prev,
+            shapeDrawEnd: { x, y },
+          }));
+        }
+      });
     },
     [
       toolState.isDrawingShape,
@@ -176,6 +249,19 @@ export const useShapeDrawingHandlers = ({
       !toolState.shapeDrawEnd
     )
       return;
+
+    // Clean up throttling
+    if (throttledMouseMoveRef.current) {
+      cancelAnimationFrame(throttledMouseMoveRef.current);
+      throttledMouseMoveRef.current = null;
+    }
+
+    // Reset drawing state ref
+    drawingStateRef.current = {
+      isDrawing: false,
+      startCoords: null,
+      targetView: null,
+    };
 
     if (toolState.shapeDrawingMode === "line") {
       // For lines, use direct coordinates without minimum size constraint
@@ -237,16 +323,6 @@ export const useShapeDrawingHandlers = ({
       shapeDrawEnd: null,
       shapeDrawTargetView: null,
       isDrawingInProgress: false,
-      shapeDrawingMode: null,
-    }));
-    setEditorState((prev) => ({
-      ...prev,
-      isAddTextBoxMode: false,
-      isTextSelectionMode: false,
-    }));
-    setErasureState((prev) => ({
-      ...prev,
-      isErasureMode: false,
     }));
   }, [
     toolState.isDrawingShape,
@@ -254,17 +330,25 @@ export const useShapeDrawingHandlers = ({
     toolState.shapeDrawEnd,
     toolState.shapeDrawingMode,
     toolState.shapeDrawTargetView,
-    handleAddShapeWithUndo,
-    getCurrentPageForView,
     viewState.currentView,
     setToolState,
-    setEditorState,
-    setErasureState,
+    handleAddShapeWithUndo,
+    getCurrentPageForView,
   ]);
+
+  // Cleanup function for component unmount
+  const cleanup = useCallback(() => {
+    if (throttledMouseMoveRef.current) {
+      cancelAnimationFrame(throttledMouseMoveRef.current);
+      throttledMouseMoveRef.current = null;
+    }
+  }, []);
 
   return {
     handleShapeDrawStart,
     handleShapeDrawMove,
     handleShapeDrawEnd,
+    cleanup,
+    memoizedScaleFactors,
   };
 };
