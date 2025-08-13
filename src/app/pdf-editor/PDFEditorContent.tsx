@@ -4799,6 +4799,11 @@ export const PDFEditorContent: React.FC = () => {
       );
     } else if (element.type === "shape") {
       const shape = element.element as ShapeType;
+      const isMultiSelected = editorState.multiSelection.selectedElements.some(
+        (el) => el.id === shape.id
+      );
+      const selectedElementIds =
+        editorState.multiSelection.selectedElements.map((el) => el.id);
       const isInSelectionPreview = elementsInSelectionPreview.has(shape.id);
 
       return (
@@ -4813,6 +4818,12 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleShapeSelect}
           onUpdate={updateShapeWithUndo}
           onDelete={(id) => handleDeleteShapeWithUndo(id, actualTargetView)}
+          // Multi-selection props
+          isMultiSelected={isMultiSelected}
+          selectedElementIds={selectedElementIds}
+          onMultiSelectDragStart={handleMultiSelectDragStart}
+          onMultiSelectDrag={handleMultiSelectDrag}
+          onMultiSelectDragStop={handleMultiSelectDragStop}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance
@@ -4823,6 +4834,11 @@ export const PDFEditorContent: React.FC = () => {
       );
     } else if (element.type === "image") {
       const image = element.element as ImageType;
+      const isMultiSelected = editorState.multiSelection.selectedElements.some(
+        (el) => el.id === image.id
+      );
+      const selectedElementIds =
+        editorState.multiSelection.selectedElements.map((el) => el.id);
       const isInSelectionPreview = elementsInSelectionPreview.has(image.id);
 
       return (
@@ -4837,6 +4853,12 @@ export const PDFEditorContent: React.FC = () => {
           onSelect={handleImageSelect}
           onUpdate={updateImage}
           onDelete={(id) => handleDeleteImageWithUndo(id, actualTargetView)}
+          // Multi-selection props
+          isMultiSelected={isMultiSelected}
+          selectedElementIds={selectedElementIds}
+          onMultiSelectDragStart={handleMultiSelectDragStart}
+          onMultiSelectDrag={handleMultiSelectDrag}
+          onMultiSelectDragStop={handleMultiSelectDragStop}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance
