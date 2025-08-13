@@ -8,6 +8,8 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { createBrowserClient } from '@supabase/ssr';
+import { LoadingModal } from "@/components/ui/loading-modal";
 
 // Import react-pdf CSS for text layer support
 import "react-pdf/dist/Page/TextLayer.css";
@@ -18,16 +20,47 @@ const PDFEditor: React.FC = () => {
   const router = useRouter();
   const { projects, currentUser } = useTranslationStore();
   const [project, setProject] = useState<any>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const projectId = searchParams.get("projectId");
 
+  // Check authentication status
   useEffect(() => {
-    if (projectId) {
+    const checkAuth = async () => {
+      try {
+        const supabase = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          // Redirect to login if not authenticated
+          router.push('/auth/login');
+          return;
+        }
+        
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        router.push('/auth/login');
+      } finally {
+        setIsAuthChecking(false);
+      }
+    };
+
+    checkAuth();
+  }, [router]);
+
+  useEffect(() => {
+    if (projectId && isAuthenticated) {
       const foundProject = projects.find((p) => p.id === projectId);
       if (foundProject) {
         setProject(foundProject);
       }
     }
-  }, [projectId, projects]);
+  }, [projectId, projects, isAuthenticated]);
 
   // Add keyboard shortcut for back navigation
   useEffect(() => {
@@ -64,6 +97,21 @@ const PDFEditor: React.FC = () => {
   const handleBackToDashboard = () => {
     router.push("/exp");
   };
+
+  // Show loading while checking authentication
+  if (isAuthChecking) {
+    return (
+      <LoadingModal
+        isOpen={true}
+        message="Checking authentication..."
+      />
+    );
+  }
+
+  // Only render content if authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="h-screen flex flex-col">

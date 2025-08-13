@@ -390,6 +390,12 @@ export const useProjectState = (props: UseProjectStateProps) => {
     async (projectNameOrEvent?: string | Event) => {
       if (isLoading) return null;
 
+      // Check if there's a project ID (either existing or from a URL/document)
+      if (!currentProjectId && !documentState.url) {
+        toast.error("Cannot save: No project loaded. Please upload a document first.");
+        return null;
+      }
+
       // Handle case where React event is passed instead of project name
       let projectName: string | undefined;
       if (typeof projectNameOrEvent === "string") {

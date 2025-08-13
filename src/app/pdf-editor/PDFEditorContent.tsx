@@ -5285,6 +5285,7 @@ export const PDFEditorContent: React.FC = () => {
         onWorkflowStepChange={handleWorkflowStepChange}
         onRecreateFinalLayout={createFinalLayoutWithSnapshots}
         isCapturingSnapshots={isCapturingSnapshots}
+        projectId={currentProjectId}
       />
 
       {/* Main Content */}

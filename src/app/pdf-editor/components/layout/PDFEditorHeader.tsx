@@ -43,6 +43,7 @@ interface PDFEditorHeaderProps {
   onWorkflowStepChange: (step: WorkflowStep) => void;
   onRecreateFinalLayout?: () => void;
   isCapturingSnapshots?: boolean;
+  projectId?: string | null;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -62,7 +63,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   isBulkOcrRunning,
   bulkOcrProgress,
   onCancelBulkOcr,
-  hasPages,
+  hasPages = false,
   onOpenSettings,
   onClearPageTranslation,
   isCurrentPageTranslated,
@@ -70,6 +71,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onWorkflowStepChange,
   onRecreateFinalLayout,
   isCapturingSnapshots,
+  projectId,
 }) => {
   return (
     <div className="bg-white border-b border-primary/20 shadow-sm">
@@ -241,16 +243,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               <FolderOpen className="w-4 h-4" />
             </Button>
           )}
-          <Button
-            onClick={onSaveProject}
-            variant="ghost"
-            size="sm"
-            className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
-            title="Save Project"
-          >
-            <Save className="w-4 h-4" />
-          </Button>
-          {onShareProject && (
+          {projectId && (
+            <Button
+              onClick={onSaveProject}
+              variant="ghost"
+              size="sm"
+              className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
+              title="Save Project"
+            >
+              <Save className="w-4 h-4" />
+            </Button>
+          )}
+          {onShareProject && projectId && (
             <Button
               onClick={onShareProject}
               variant="ghost"
