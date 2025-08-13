@@ -439,6 +439,218 @@ export const useMultiSelectionHandlers = ({
     ]
   );
 
+  // Selection rectangle drag handlers that use transform approach
+  const handleSelectionRectangleDragStart = useCallback(() => {
+    const selectedElements = editorState.multiSelection.selectedElements;
+    if (selectedElements.length > 0) {
+      // Store initial positions of all selected elements
+      const initial: Record<string, { x: number; y: number }> = {};
+      selectedElements.forEach((el) => {
+        const element = getElementById(el.id, el.type);
+        if (element) {
+          initial[el.id] = { x: element.x, y: element.y };
+        }
+      });
+      initialPositionsRef.current = initial;
+      
+      // Set dragging state
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          isDragging: true,
+          dragOffsets: {},
+          isMovingSelection: true,
+        },
+      }));
+
+      // Start batch operation for undo/redo
+      if (history && history.startBatch) {
+        history.startBatch();
+      }
+    }
+  }, [editorState.multiSelection.selectedElements, getElementById, setEditorState, history]);
+
+  const handleSelectionRectangleDrag = useCallback(
+    (deltaX: number, deltaY: number) => {
+      const selectedElements = editorState.multiSelection.selectedElements;
+      if (selectedElements.length > 0 && editorState.multiSelection.isDragging) {
+        // Update drag offsets for visual transform instead of actual positions
+        const newOffsets: Record<string, { x: number; y: number }> = {};
+        
+        selectedElements.forEach((el) => {
+          const initialPos = initialPositionsRef.current[el.id];
+          if (initialPos) {
+            const element = getElementById(el.id, el.type);
+            if (element) {
+              const newX = initialPos.x + deltaX;
+              const newY = initialPos.y + deltaY;
+
+              // Apply boundary constraints for visual feedback
+              const constrainedX = Math.max(
+                0,
+                Math.min(newX, documentState.pageWidth - element.width)
+              );
+              const constrainedY = Math.max(
+                0,
+                Math.min(newY, documentState.pageHeight - element.height)
+              );
+
+              // Store offset for transform
+              newOffsets[el.id] = {
+                x: constrainedX - initialPos.x,
+                y: constrainedY - initialPos.y,
+              };
+            }
+          }
+        });
+        
+        // Update drag offsets for transform-based positioning
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            dragOffsets: newOffsets,
+          },
+        }));
+      }
+    },
+    [
+      editorState.multiSelection.selectedElements,
+      editorState.multiSelection.isDragging,
+      getElementById,
+      documentState.pageWidth,
+      documentState.pageHeight,
+      setEditorState,
+    ]
+  );
+
+  const handleSelectionRectangleDragStop = useCallback(
+    (deltaX: number, deltaY: number) => {
+      const selectedElements = editorState.multiSelection.selectedElements;
+      if (selectedElements.length > 0 && editorState.multiSelection.isDragging) {
+        // Apply final positions and clear drag state
+        selectedElements.forEach((el) => {
+          const initialPos = initialPositionsRef.current[el.id];
+          if (initialPos) {
+            const element = getElementById(el.id, el.type);
+            if (element) {
+              const newX = initialPos.x + deltaX;
+              const newY = initialPos.y + deltaY;
+
+              // Apply boundary constraints
+              const constrainedX = Math.max(
+                0,
+                Math.min(newX, documentState.pageWidth - element.width)
+              );
+              const constrainedY = Math.max(
+                0,
+                Math.min(newY, documentState.pageHeight - element.height)
+              );
+
+              // Update actual positions only at the end
+              switch (el.type) {
+                case "textbox":
+                  updateTextBoxWithUndo(
+                    el.id,
+                    {
+                      x: constrainedX,
+                      y: constrainedY,
+                    },
+                    false // Final update, not ongoing
+                  );
+                  break;
+                case "shape":
+                  updateShapeWithUndo(
+                    el.id,
+                    {
+                      x: constrainedX,
+                      y: constrainedY,
+                    },
+                    false // Final update, not ongoing
+                  );
+                  break;
+                case "image":
+                  if (updateImageWithUndo) {
+                    updateImageWithUndo(
+                      el.id,
+                      {
+                        x: constrainedX,
+                        y: constrainedY,
+                      },
+                      false // Final update, not ongoing
+                    );
+                  } else {
+                    updateImage(el.id, { x: constrainedX, y: constrainedY });
+                  }
+                  break;
+              }
+            }
+          }
+        });
+        
+        // Clear drag state
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            isDragging: false,
+            dragOffsets: {},
+            isMovingSelection: false,
+          },
+        }));
+        
+        // End batch operation if there's one
+        if (history && history.endBatch) {
+          history.endBatch();
+        }
+
+        // Update original positions and recalculate bounds
+        setEditorState((prev) => {
+          const updatedElements = prev.multiSelection.selectedElements.map(
+            (el) => ({
+              ...el,
+              originalPosition: {
+                x: el.originalPosition.x + deltaX,
+                y: el.originalPosition.y + deltaY,
+              },
+            })
+          );
+
+          const newBounds = calculateSelectionBounds(
+            updatedElements,
+            getElementById
+          );
+
+          return {
+            ...prev,
+            multiSelection: {
+              ...prev.multiSelection,
+              selectedElements: updatedElements,
+              selectionBounds: newBounds,
+            },
+          };
+        });
+        
+        // Clear initial positions
+        initialPositionsRef.current = {};
+      }
+    },
+    [
+      editorState.multiSelection.selectedElements,
+      editorState.multiSelection.isDragging,
+      updateTextBoxWithUndo,
+      updateShapeWithUndo,
+      updateImage,
+      updateImageWithUndo,
+      getElementById,
+      documentState.pageWidth,
+      documentState.pageHeight,
+      setEditorState,
+      history,
+    ]
+  );
+
   // Multi-element selection mouse handlers
   const handleMultiSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -681,6 +893,9 @@ export const useMultiSelectionHandlers = ({
     handleMultiSelectDragStart,
     handleMultiSelectDrag,
     handleMultiSelectDragStop,
+    handleSelectionRectangleDragStart,
+    handleSelectionRectangleDrag,
+    handleSelectionRectangleDragStop,
     handleMultiSelectionMouseDown,
     handleMultiSelectionMouseMove,
     handleMultiSelectionMouseUp,

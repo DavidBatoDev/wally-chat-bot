@@ -1013,9 +1013,14 @@ export const PDFEditorContent: React.FC = () => {
     documentState.currentPage,
   ]);
 
-  // Handle multi-selection move events
+  // DEPRECATED: Old real-time update handlers - replaced with transform-based approach
+  // These handlers have been replaced by the new transform-based approach in useMultiSelectionHandlers
+  // which provides better performance by using CSS transforms instead of updating positions in real-time
   const handleMultiSelectionMove = useCallback(
     (event: CustomEvent) => {
+      // DEPRECATED: This handler is no longer used with the new transform-based approach
+      console.warn("handleMultiSelectionMove is deprecated and should not be called");
+      
       const { deltaX, deltaY } = event.detail;
 
       // Move all selected elements
@@ -1069,6 +1074,9 @@ export const PDFEditorContent: React.FC = () => {
   );
 
   const handleMultiSelectionMoveEnd = useCallback(() => {
+    // DEPRECATED: This handler is no longer used with the new transform-based approach
+    console.warn("handleMultiSelectionMoveEnd is deprecated and should not be called");
+    
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -1088,6 +1096,9 @@ export const PDFEditorContent: React.FC = () => {
     handleMultiSelectDragStart,
     handleMultiSelectDrag,
     handleMultiSelectDragStop,
+    handleSelectionRectangleDragStart,
+    handleSelectionRectangleDrag,
+    handleSelectionRectangleDragStop,
   } = useMultiSelectionHandlers({
     editorState,
     setEditorState,
@@ -6309,52 +6320,17 @@ export const PDFEditorContent: React.FC = () => {
                                   isMoving={
                                     editorState.multiSelection.isMovingSelection
                                   }
-                                  onDragSelection={(deltaX, deltaY) => {
-                                    moveSelectedElements(
-                                      editorState.multiSelection
-                                        .selectedElements,
-                                      deltaX,
-                                      deltaY,
-                                      (id, updates) =>
-                                        updateTextBoxWithUndo(
-                                          id,
-                                          updates,
-                                          true
-                                        ),
-                                      (id, updates) =>
-                                        updateShapeWithUndo(id, updates, true),
-                                      updateImage,
-                                      getElementById,
-                                      documentState.pageWidth,
-                                      documentState.pageHeight
-                                    );
-                                    setEditorState((prev) => {
-                                      const updatedElements =
-                                        prev.multiSelection.selectedElements.map(
-                                          (el) => ({
-                                            ...el,
-                                            originalPosition: {
-                                              x: el.originalPosition.x + deltaX,
-                                              y: el.originalPosition.y + deltaY,
-                                            },
-                                          })
-                                        );
-                                      const newBounds =
-                                        calculateSelectionBounds(
-                                          updatedElements,
-                                          getElementById
-                                        );
-                                      return {
-                                        ...prev,
-                                        multiSelection: {
-                                          ...prev.multiSelection,
-                                          selectedElements: updatedElements,
-                                          selectionBounds: newBounds,
-                                        },
-                                      };
-                                    });
-                                  }}
-                                  onDragStopSelection={handleDragStopSelection}
+                                  // New transform-based handlers
+                                  onDragStart={handleSelectionRectangleDragStart}
+                                  onDrag={handleSelectionRectangleDrag}
+                                  onDragStop={handleSelectionRectangleDragStop}
+                                  // Transform offset for smooth dragging
+                                  dragOffset={
+                                    editorState.multiSelection.isDragging &&
+                                    editorState.multiSelection.selectedElements.length > 0
+                                      ? Object.values(editorState.multiSelection.dragOffsets)[0] || null
+                                      : null
+                                  }
                                 />
                               )}
                           </div>
@@ -6655,61 +6631,16 @@ export const PDFEditorContent: React.FC = () => {
                                       editorState.multiSelection
                                         .isMovingSelection
                                     }
-                                    onDragSelection={(deltaX, deltaY) => {
-                                      moveSelectedElements(
-                                        editorState.multiSelection
-                                          .selectedElements,
-                                        deltaX,
-                                        deltaY,
-                                        (id, updates) =>
-                                          updateTextBoxWithUndo(
-                                            id,
-                                            updates,
-                                            true
-                                          ),
-                                        (id, updates) =>
-                                          updateShapeWithUndo(
-                                            id,
-                                            updates,
-                                            true
-                                          ),
-                                        updateImage,
-                                        getElementById,
-                                        documentState.pageWidth,
-                                        documentState.pageHeight
-                                      );
-                                      setEditorState((prev) => {
-                                        const updatedElements =
-                                          prev.multiSelection.selectedElements.map(
-                                            (el) => ({
-                                              ...el,
-                                              originalPosition: {
-                                                x:
-                                                  el.originalPosition.x +
-                                                  deltaX,
-                                                y:
-                                                  el.originalPosition.y +
-                                                  deltaY,
-                                              },
-                                            })
-                                          );
-                                        const newBounds =
-                                          calculateSelectionBounds(
-                                            updatedElements,
-                                            getElementById
-                                          );
-                                        return {
-                                          ...prev,
-                                          multiSelection: {
-                                            ...prev.multiSelection,
-                                            selectedElements: updatedElements,
-                                            selectionBounds: newBounds,
-                                          },
-                                        };
-                                      });
-                                    }}
-                                    onDragStopSelection={
-                                      handleDragStopSelection
+                                    // New transform-based handlers
+                                    onDragStart={handleSelectionRectangleDragStart}
+                                    onDrag={handleSelectionRectangleDrag}
+                                    onDragStop={handleSelectionRectangleDragStop}
+                                    // Transform offset for smooth dragging
+                                    dragOffset={
+                                      editorState.multiSelection.isDragging &&
+                                      editorState.multiSelection.selectedElements.length > 0
+                                        ? Object.values(editorState.multiSelection.dragOffsets)[0] || null
+                                        : null
                                     }
                                   />
                                 )}
