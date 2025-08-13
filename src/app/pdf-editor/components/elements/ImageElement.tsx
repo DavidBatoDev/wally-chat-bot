@@ -17,6 +17,8 @@ interface ImageElementProps {
   isInSelectionPreview?: boolean;
   // Element index for z-index ordering
   elementIndex?: number;
+  // Transform-based drag offset for performance optimization
+  dragOffset?: { x: number; y: number } | null;
 }
 
 export const MemoizedImage = memo(
@@ -34,6 +36,8 @@ export const MemoizedImage = memo(
     isInSelectionPreview = false,
     // Element index for z-index ordering
     elementIndex = 0,
+    // Transform-based drag offset for performance optimization
+    dragOffset,
   }: ImageElementProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -215,8 +219,11 @@ export const MemoizedImage = memo(
             : ""
         }`}
         style={{
-          transform: "none",
+          transform: dragOffset 
+            ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)` 
+            : "none",
           zIndex: isSelected ? 9999 : elementIndex,
+          willChange: dragOffset ? 'transform' : 'auto',
         }}
         onClick={handleClick}
       >

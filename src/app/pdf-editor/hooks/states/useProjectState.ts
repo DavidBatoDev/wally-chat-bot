@@ -852,6 +852,8 @@ export const useProjectState = (props: UseProjectStateProps) => {
             isMovingSelection: false,
             moveStart: null,
             targetView: null,
+            dragOffsets: {},
+            isDragging: false,
           },
         }));
 
@@ -1345,6 +1347,8 @@ export const useProjectState = (props: UseProjectStateProps) => {
             isMovingSelection: false,
             moveStart: null,
             targetView: null,
+            dragOffsets: {},
+            isDragging: false,
           },
         }));
 

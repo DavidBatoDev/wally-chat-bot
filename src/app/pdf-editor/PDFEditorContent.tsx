@@ -256,6 +256,8 @@ export const PDFEditorContent: React.FC = () => {
       isMovingSelection: false,
       moveStart: null,
       targetView: null,
+      dragOffsets: {},
+      isDragging: false,
     },
     isSelectionMode: false,
   });
@@ -492,6 +494,8 @@ export const PDFEditorContent: React.FC = () => {
         selectionEnd: null,
         isMovingSelection: false,
         moveStart: null,
+        dragOffsets: {},
+        isDragging: false,
       },
     }));
     setSelectedElementId(null);
@@ -1227,6 +1231,8 @@ export const PDFEditorContent: React.FC = () => {
           isMovingSelection: false,
           moveStart: null,
           targetView: null,
+          dragOffsets: {},
+          isDragging: false,
         },
         isSelectionMode: false,
       }));
@@ -3407,17 +3413,19 @@ export const PDFEditorContent: React.FC = () => {
           selectedFieldId: fieldId,
           isAddTextBoxMode: false,
           isSelectionMode: false, // Turn off multi-selection mode
-          // Clear multi-selection when creating a new textbox
-          multiSelection: {
-            ...prev.multiSelection,
-            selectedElements: [],
-            selectionBounds: null,
-            isDrawingSelection: false,
-            selectionStart: null,
-            selectionEnd: null,
-            isMovingSelection: false,
-            moveStart: null,
-          },
+                      // Clear multi-selection when creating a new textbox
+            multiSelection: {
+              ...prev.multiSelection,
+              selectedElements: [],
+              selectionBounds: null,
+              isDrawingSelection: false,
+              selectionStart: null,
+              selectionEnd: null,
+              isMovingSelection: false,
+              moveStart: null,
+              dragOffsets: {},
+              isDragging: false,
+            },
         }));
         setSelectedElementId(fieldId);
         setSelectedElementType("textbox");
@@ -3448,6 +3456,8 @@ export const PDFEditorContent: React.FC = () => {
               selectionEnd: null,
               isMovingSelection: false,
               moveStart: null,
+              dragOffsets: {},
+              isDragging: false,
             },
           }));
           setSelectedElementId(null);
@@ -3529,6 +3539,8 @@ export const PDFEditorContent: React.FC = () => {
         isMovingSelection: false,
         moveStart: null,
         targetView: null,
+        dragOffsets: {},
+        isDragging: false,
       },
       isSelectionMode: false,
     }));
@@ -3982,6 +3994,8 @@ export const PDFEditorContent: React.FC = () => {
           selectionEnd: null,
           isMovingSelection: false,
           moveStart: null,
+          dragOffsets: {},
+          isDragging: false,
         },
       }));
 
@@ -4765,6 +4779,10 @@ export const PDFEditorContent: React.FC = () => {
           onMultiSelectDragStop={handleMultiSelectDragStop}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
+          // Transform-based drag offset for performance
+          dragOffset={editorState.multiSelection.isDragging 
+            ? editorState.multiSelection.dragOffsets[textBox.id] || null 
+            : null}
         />
       );
     } else if (element.type === "shape") {
@@ -4785,6 +4803,10 @@ export const PDFEditorContent: React.FC = () => {
           onDelete={(id) => handleDeleteShapeWithUndo(id, actualTargetView)}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
+          // Transform-based drag offset for performance
+          dragOffset={editorState.multiSelection.isDragging 
+            ? editorState.multiSelection.dragOffsets[shape.id] || null 
+            : null}
         />
       );
     } else if (element.type === "image") {
@@ -4805,6 +4827,10 @@ export const PDFEditorContent: React.FC = () => {
           onDelete={(id) => handleDeleteImageWithUndo(id, actualTargetView)}
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
+          // Transform-based drag offset for performance
+          dragOffset={editorState.multiSelection.isDragging 
+            ? editorState.multiSelection.dragOffsets[image.id] || null 
+            : null}
         />
       );
     }

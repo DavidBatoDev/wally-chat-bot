@@ -250,16 +250,83 @@ export const useMultiSelectionHandlers = ({
           }
         });
         initialPositionsRef.current = initial;
+        
+        // Set dragging state
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            isDragging: true,
+            dragOffsets: {},
+          },
+        }));
       }
     },
-    [editorState.multiSelection.selectedElements, getElementById]
+    [editorState.multiSelection.selectedElements, getElementById, setEditorState]
   );
 
   const handleMultiSelectDrag = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1) {
-        // Move all selected elements by the same delta with boundary constraints
+      if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
+        // Update drag offsets for visual transform instead of actual positions
+        const newOffsets: Record<string, { x: number; y: number }> = {};
+        
+        selectedElements.forEach((el) => {
+          if (el.id !== id) {
+            // Skip the actively dragged element (react-rnd handles it)
+            const initialPos = initialPositionsRef.current[el.id];
+            if (initialPos) {
+              const element = getElementById(el.id, el.type);
+              if (element) {
+                const newX = initialPos.x + deltaX;
+                const newY = initialPos.y + deltaY;
+
+                // Apply boundary constraints for visual feedback
+                const constrainedX = Math.max(
+                  0,
+                  Math.min(newX, documentState.pageWidth - element.width)
+                );
+                const constrainedY = Math.max(
+                  0,
+                  Math.min(newY, documentState.pageHeight - element.height)
+                );
+
+                // Store offset for transform
+                newOffsets[el.id] = {
+                  x: constrainedX - initialPos.x,
+                  y: constrainedY - initialPos.y,
+                };
+              }
+            }
+          }
+        });
+        
+        // Update drag offsets for transform-based positioning
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            dragOffsets: newOffsets,
+          },
+        }));
+      }
+    },
+    [
+      editorState.multiSelection.selectedElements,
+      editorState.multiSelection.isDragging,
+      getElementById,
+      documentState.pageWidth,
+      documentState.pageHeight,
+      setEditorState,
+    ]
+  );
+
+  const handleMultiSelectDragStop = useCallback(
+    (id: string, deltaX: number, deltaY: number) => {
+      const selectedElements = editorState.multiSelection.selectedElements;
+      if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
+        // Apply final positions and clear drag state
         selectedElements.forEach((el) => {
           if (el.id !== id) {
             // Skip the actively dragged element (react-rnd handles it)
@@ -280,6 +347,7 @@ export const useMultiSelectionHandlers = ({
                   Math.min(newY, documentState.pageHeight - element.height)
                 );
 
+                // Update actual positions only at the end
                 switch (el.type) {
                   case "textbox":
                     updateTextBoxWithUndo(
@@ -288,8 +356,8 @@ export const useMultiSelectionHandlers = ({
                         x: constrainedX,
                         y: constrainedY,
                       },
-                      true
-                    ); // Mark as ongoing operation
+                      false // Final update, not ongoing
+                    );
                     break;
                   case "shape":
                     updateShapeWithUndo(
@@ -298,8 +366,8 @@ export const useMultiSelectionHandlers = ({
                         x: constrainedX,
                         y: constrainedY,
                       },
-                      true
-                    ); // Mark as ongoing operation
+                      false // Final update, not ongoing
+                    );
                     break;
                   case "image":
                     if (updateImageWithUndo) {
@@ -309,7 +377,7 @@ export const useMultiSelectionHandlers = ({
                           x: constrainedX,
                           y: constrainedY,
                         },
-                        true
+                        false // Final update, not ongoing
                       );
                     } else {
                       updateImage(el.id, { x: constrainedX, y: constrainedY });
@@ -320,23 +388,17 @@ export const useMultiSelectionHandlers = ({
             }
           }
         });
-      }
-    },
-    [
-      editorState.multiSelection.selectedElements,
-      updateTextBoxWithUndo,
-      updateShapeWithUndo,
-      updateImage,
-      getElementById,
-      documentState.pageWidth,
-      documentState.pageHeight,
-    ]
-  );
-
-  const handleMultiSelectDragStop = useCallback(
-    (id: string, deltaX: number, deltaY: number) => {
-      const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1) {
+        
+        // Clear drag state
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            isDragging: false,
+            dragOffsets: {},
+          },
+        }));
+        
         // End batch operation if there's one
         if (history && history.endBatch) {
           history.endBatch();
@@ -362,7 +424,19 @@ export const useMultiSelectionHandlers = ({
       // Clear initial positions
       initialPositionsRef.current = {};
     },
-    [editorState.multiSelection.selectedElements, setEditorState, history]
+    [
+      editorState.multiSelection.selectedElements,
+      editorState.multiSelection.isDragging,
+      updateTextBoxWithUndo,
+      updateShapeWithUndo,
+      updateImage,
+      updateImageWithUndo,
+      getElementById,
+      documentState.pageWidth,
+      documentState.pageHeight,
+      setEditorState,
+      history,
+    ]
   );
 
   // Multi-element selection mouse handlers
@@ -579,6 +653,8 @@ export const useMultiSelectionHandlers = ({
             isDrawingSelection: false,
             selectionStart: null,
             selectionEnd: null,
+            dragOffsets: {},
+            isDragging: false,
           },
         }));
       }
