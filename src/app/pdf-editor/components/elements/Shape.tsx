@@ -82,6 +82,7 @@ export const MemoizedShape = memo(
     return (
       <Rnd
         key={shape.id}
+        data-element-id={shape.id}
         position={{ x: shape.x * scale, y: shape.y * scale }}
         size={{ width: shape.width * scale, height: shape.height * scale }}
         bounds="parent"

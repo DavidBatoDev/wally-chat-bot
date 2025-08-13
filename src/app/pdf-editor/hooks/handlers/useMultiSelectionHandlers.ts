@@ -10,7 +10,10 @@ import {
   findElementsInSelection,
   calculateSelectionBounds,
   moveSelectedElements,
+  moveSelectedElementsOptimized,
+  batchApplyElementUpdates,
 } from "../../utils/selectionUtils";
+import { dragThrottle, BatchedUpdater } from "../../utils/performance";
 
 interface UseMultiSelectionHandlersProps {
   editorState: EditorState;
@@ -61,8 +64,10 @@ export const useMultiSelectionHandlers = ({
 }: UseMultiSelectionHandlersProps) => {
   // Multi-selection drag handlers for individual Rnd components
 
-  // Add throttling for mouse move events
+  // Enhanced throttling for mouse move events using dragThrottle
   const mouseMoveThrottleRef = useRef<number | null>(null);
+  const batchedUpdaterRef = useRef(new BatchedUpdater());
+  const pendingUpdatesRef = useRef<any[]>([]);
 
   // Helper function to get elements that would be captured in the current selection preview
   const getElementsInSelectionPreview = useCallback(() => {
@@ -163,57 +168,57 @@ export const useMultiSelectionHandlers = ({
     documentState.currentPage,
   ]);
 
-  // Handle multi-selection move events
+  // Optimized multi-selection move handler with batching
   const handleMultiSelectionMove = useCallback(
     (event: CustomEvent) => {
       const { deltaX, deltaY } = event.detail;
 
-      // Move all selected elements
-      moveSelectedElements(
+      // Use the optimized movement function for visual feedback
+      const updates = moveSelectedElementsOptimized(
         editorState.multiSelection.selectedElements,
         deltaX,
         deltaY,
-        (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
-        (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-        (id, updates) => updateImageWithUndo(id, updates, true), // Mark as ongoing operation
         getElementById,
         documentState.pageWidth,
-        documentState.pageHeight
+        documentState.pageHeight,
+        true // Use transforms for visual feedback
       );
 
-      // Update original positions for next move
-      setEditorState((prev) => {
-        const updatedElements = prev.multiSelection.selectedElements.map(
-          (el) => ({
-            ...el,
-            originalPosition: {
-              x: el.originalPosition.x + deltaX,
-              y: el.originalPosition.y + deltaY,
+      // Store updates for final application
+      pendingUpdatesRef.current = updates;
+
+      // Update original positions for next move (batched)
+      batchedUpdaterRef.current.addToBatch(() => {
+        setEditorState((prev) => {
+          const updatedElements = prev.multiSelection.selectedElements.map(
+            (el) => ({
+              ...el,
+              originalPosition: {
+                x: el.originalPosition.x + deltaX,
+                y: el.originalPosition.y + deltaY,
+              },
+            })
+          );
+
+          // Recalculate selection bounds after moving elements
+          const newBounds = calculateSelectionBounds(
+            updatedElements,
+            getElementById
+          );
+
+          return {
+            ...prev,
+            multiSelection: {
+              ...prev.multiSelection,
+              selectedElements: updatedElements,
+              selectionBounds: newBounds,
             },
-          })
-        );
-
-        // Recalculate selection bounds after moving elements
-        const newBounds = calculateSelectionBounds(
-          updatedElements,
-          getElementById
-        );
-
-        return {
-          ...prev,
-          multiSelection: {
-            ...prev.multiSelection,
-            selectedElements: updatedElements,
-            selectionBounds: newBounds,
-          },
-        };
+          };
+        });
       });
     },
     [
       editorState.multiSelection.selectedElements,
-      updateTextBoxWithUndo,
-      updateShapeWithUndo,
-      updateImageWithUndo,
       getElementById,
       documentState.pageWidth,
       documentState.pageHeight,
@@ -222,6 +227,27 @@ export const useMultiSelectionHandlers = ({
   );
 
   const handleMultiSelectionMoveEnd = useCallback(() => {
+    // Apply any pending updates
+    if (pendingUpdatesRef.current.length > 0) {
+      batchApplyElementUpdates(
+        pendingUpdatesRef.current,
+        (id, updates) => updateTextBoxWithUndo(id, updates, false),
+        (id, updates) => updateShapeWithUndo(id, updates, false),
+        (id, updates) => {
+          if (updateImageWithUndo) {
+            updateImageWithUndo(id, updates, false);
+          } else {
+            updateImage(id, updates);
+          }
+        },
+        getElementById
+      );
+      pendingUpdatesRef.current = [];
+    }
+
+    // Flush any pending batched state updates
+    batchedUpdaterRef.current.flush();
+
     // End batch operation if there's one
     if (history && history.endBatch) {
       history.endBatch();
@@ -235,7 +261,15 @@ export const useMultiSelectionHandlers = ({
         moveStart: null,
       },
     }));
-  }, [setEditorState, history]);
+  }, [
+    updateTextBoxWithUndo,
+    updateShapeWithUndo,
+    updateImage,
+    updateImageWithUndo,
+    getElementById,
+    setEditorState,
+    history
+  ]);
 
   const handleMultiSelectDragStart = useCallback(
     (id: string) => {
@@ -265,53 +299,46 @@ export const useMultiSelectionHandlers = ({
     [editorState.multiSelection.selectedElements, getElementById, setEditorState]
   );
 
-  const handleMultiSelectDrag = useCallback(
-    (id: string, deltaX: number, deltaY: number) => {
+  // Optimized drag handler using throttling and transforms
+  const throttledDrag = useCallback(
+    dragThrottle((id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
-        // Update drag offsets for visual transform instead of actual positions
-        const newOffsets: Record<string, { x: number; y: number }> = {};
-        
-        selectedElements.forEach((el) => {
-          if (el.id !== id) {
-            // Skip the actively dragged element (react-rnd handles it)
-            const initialPos = initialPositionsRef.current[el.id];
-            if (initialPos) {
-              const element = getElementById(el.id, el.type);
-              if (element) {
-                const newX = initialPos.x + deltaX;
-                const newY = initialPos.y + deltaY;
+        // Use the optimized movement function for visual feedback
+        const updates = moveSelectedElementsOptimized(
+          selectedElements.filter(el => el.id !== id), // Skip the actively dragged element
+          deltaX,
+          deltaY,
+          getElementById,
+          documentState.pageWidth,
+          documentState.pageHeight,
+          true // Use transforms for visual feedback
+        );
 
-                // Apply boundary constraints for visual feedback
-                const constrainedX = Math.max(
-                  0,
-                  Math.min(newX, documentState.pageWidth - element.width)
-                );
-                const constrainedY = Math.max(
-                  0,
-                  Math.min(newY, documentState.pageHeight - element.height)
-                );
+        // Store updates for final application
+        pendingUpdatesRef.current = updates;
 
-                // Store offset for transform
-                newOffsets[el.id] = {
-                  x: constrainedX - initialPos.x,
-                  y: constrainedY - initialPos.y,
-                };
-              }
-            }
-          }
+        // Update drag offsets for transform-based positioning (batched)
+        batchedUpdaterRef.current.addToBatch(() => {
+          const newOffsets: Record<string, { x: number; y: number }> = {};
+          
+          updates.forEach((update) => {
+            newOffsets[update.id] = {
+              x: update.constrainedX - update.originalX,
+              y: update.constrainedY - update.originalY,
+            };
+          });
+
+          setEditorState((prev) => ({
+            ...prev,
+            multiSelection: {
+              ...prev.multiSelection,
+              dragOffsets: newOffsets,
+            },
+          }));
         });
-        
-        // Update drag offsets for transform-based positioning
-        setEditorState((prev) => ({
-          ...prev,
-          multiSelection: {
-            ...prev.multiSelection,
-            dragOffsets: newOffsets,
-          },
-        }));
       }
-    },
+    }, { fps: 60, immediate: true }),
     [
       editorState.multiSelection.selectedElements,
       editorState.multiSelection.isDragging,
@@ -322,72 +349,48 @@ export const useMultiSelectionHandlers = ({
     ]
   );
 
+  const handleMultiSelectDrag = useCallback(
+    (id: string, deltaX: number, deltaY: number) => {
+      throttledDrag(id, deltaX, deltaY);
+    },
+    [throttledDrag]
+  );
+
   const handleMultiSelectDragStop = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
       if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
-        // Apply final positions and clear drag state
-        selectedElements.forEach((el) => {
-          if (el.id !== id) {
-            // Skip the actively dragged element (react-rnd handles it)
-            const initialPos = initialPositionsRef.current[el.id];
-            if (initialPos) {
-              const element = getElementById(el.id, el.type);
-              if (element) {
-                const newX = initialPos.x + deltaX;
-                const newY = initialPos.y + deltaY;
+        // Calculate final positions for non-actively dragged elements
+        const elementsToUpdate = selectedElements.filter(el => el.id !== id);
+        const updates = moveSelectedElementsOptimized(
+          elementsToUpdate,
+          deltaX,
+          deltaY,
+          getElementById,
+          documentState.pageWidth,
+          documentState.pageHeight,
+          false // Don't use transforms for final positioning
+        );
 
-                // Apply boundary constraints
-                const constrainedX = Math.max(
-                  0,
-                  Math.min(newX, documentState.pageWidth - element.width)
-                );
-                const constrainedY = Math.max(
-                  0,
-                  Math.min(newY, documentState.pageHeight - element.height)
-                );
-
-                // Update actual positions only at the end
-                switch (el.type) {
-                  case "textbox":
-                    updateTextBoxWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      false // Final update, not ongoing
-                    );
-                    break;
-                  case "shape":
-                    updateShapeWithUndo(
-                      el.id,
-                      {
-                        x: constrainedX,
-                        y: constrainedY,
-                      },
-                      false // Final update, not ongoing
-                    );
-                    break;
-                  case "image":
-                    if (updateImageWithUndo) {
-                      updateImageWithUndo(
-                        el.id,
-                        {
-                          x: constrainedX,
-                          y: constrainedY,
-                        },
-                        false // Final update, not ongoing
-                      );
-                    } else {
-                      updateImage(el.id, { x: constrainedX, y: constrainedY });
-                    }
-                    break;
-                }
+        // Apply batched position updates
+        if (updates.length > 0) {
+          batchApplyElementUpdates(
+            updates,
+            (id, updates) => updateTextBoxWithUndo(id, updates, false),
+            (id, updates) => updateShapeWithUndo(id, updates, false),
+            (id, updates) => {
+              if (updateImageWithUndo) {
+                updateImageWithUndo(id, updates, false);
+              } else {
+                updateImage(id, updates);
               }
-            }
-          }
-        });
+            },
+            getElementById
+          );
+        }
+        
+        // Flush any remaining batched updates
+        batchedUpdaterRef.current.flush();
         
         // Clear drag state
         setEditorState((prev) => ({
@@ -439,7 +442,7 @@ export const useMultiSelectionHandlers = ({
     ]
   );
 
-  // Multi-element selection mouse handlers
+  // Multi-element selection mouse handlers with optimized throttling
   const handleMultiSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (!editorState.isSelectionMode) return;
@@ -494,8 +497,9 @@ export const useMultiSelectionHandlers = ({
     ]
   );
 
-  const handleMultiSelectionMouseMove = useCallback(
-    (e: React.MouseEvent) => {
+  // Optimized mouse move handler with enhanced throttling
+  const throttledMouseMove = useCallback(
+    dragThrottle((e: React.MouseEvent) => {
       if (
         !editorState.isSelectionMode ||
         !editorState.multiSelection.isDrawingSelection ||
@@ -503,32 +507,26 @@ export const useMultiSelectionHandlers = ({
       )
         return;
 
-      // Throttle mouse move events using requestAnimationFrame
-      if (mouseMoveThrottleRef.current) {
-        return;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      if (!rect) return;
+
+      let x = (e.clientX - rect.left) / documentState.scale;
+      let y = (e.clientY - rect.top) / documentState.scale;
+
+      // Adjust coordinates for split view
+      if (
+        viewState.currentView === "split" &&
+        (editorState.multiSelection.targetView === "translated" ||
+          editorState.multiSelection.targetView === "final-layout")
+      ) {
+        const clickX = e.clientX - rect.left;
+        const singleDocWidth = documentState.pageWidth * documentState.scale;
+        const gap = 20;
+        x = (clickX - singleDocWidth - gap) / documentState.scale;
       }
 
-      mouseMoveThrottleRef.current = requestAnimationFrame(() => {
-        mouseMoveThrottleRef.current = null;
-        
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        if (!rect) return;
-
-        let x = (e.clientX - rect.left) / documentState.scale;
-        let y = (e.clientY - rect.top) / documentState.scale;
-
-        // Adjust coordinates for split view
-        if (
-          viewState.currentView === "split" &&
-          (editorState.multiSelection.targetView === "translated" ||
-            editorState.multiSelection.targetView === "final-layout")
-        ) {
-          const clickX = e.clientX - rect.left;
-          const singleDocWidth = documentState.pageWidth * documentState.scale;
-          const gap = 20;
-          x = (clickX - singleDocWidth - gap) / documentState.scale;
-        }
-
+      // Use batched updater for state changes
+      batchedUpdaterRef.current.addToBatch(() => {
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
@@ -537,7 +535,7 @@ export const useMultiSelectionHandlers = ({
           },
         }));
       });
-    },
+    }, { fps: 60, immediate: true }),
     [
       editorState.isSelectionMode,
       editorState.multiSelection.isDrawingSelection,
@@ -550,6 +548,13 @@ export const useMultiSelectionHandlers = ({
     ]
   );
 
+  const handleMultiSelectionMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      throttledMouseMove(e);
+    },
+    [throttledMouseMove]
+  );
+
   const handleMultiSelectionMouseUp = useCallback(
     (e: React.MouseEvent) => {
       // Cancel any pending animation frame
@@ -557,6 +562,9 @@ export const useMultiSelectionHandlers = ({
         cancelAnimationFrame(mouseMoveThrottleRef.current);
         mouseMoveThrottleRef.current = null;
       }
+
+      // Flush any pending batched updates
+      batchedUpdaterRef.current.flush();
 
       if (
         !editorState.isSelectionMode ||

@@ -107,6 +107,91 @@ export function getMemoryUsage(): {
   return { used: 0, total: 0, percentage: 0 };
 }
 
+// Batched update utility for multiple operations
+export class BatchedUpdater {
+  private batchQueue: (() => void)[] = [];
+  private rafId: number | null = null;
+
+  addToBatch(updateFn: () => void) {
+    this.batchQueue.push(updateFn);
+    
+    if (!this.rafId) {
+      this.rafId = requestAnimationFrame(() => {
+        this.processBatch();
+      });
+    }
+  }
+
+  private processBatch() {
+    const currentBatch = [...this.batchQueue];
+    this.batchQueue = [];
+    this.rafId = null;
+
+    // Execute all batched updates
+    currentBatch.forEach(updateFn => updateFn());
+  }
+
+  flush() {
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.processBatch();
+    }
+  }
+}
+
+// High-performance throttle specifically designed for drag operations
+export function dragThrottle<T extends (...args: any[]) => any>(
+  func: T,
+  options: { fps?: number; immediate?: boolean } = {}
+): (...args: Parameters<T>) => void {
+  const fps = options.fps || 60;
+  const interval = 1000 / fps;
+  const immediate = options.immediate ?? true;
+  
+  let lastCall = 0;
+  let rafId: number | null = null;
+  let lastArgs: Parameters<T> | null = null;
+
+  return function (this: any, ...args: Parameters<T>) {
+    lastArgs = args;
+    const now = performance.now();
+
+    if (immediate && now - lastCall >= interval) {
+      func.apply(this, args);
+      lastCall = now;
+      return;
+    }
+
+    if (rafId) return;
+
+    rafId = requestAnimationFrame(() => {
+      const currentTime = performance.now();
+      if (currentTime - lastCall >= interval && lastArgs) {
+        func.apply(this, lastArgs);
+        lastCall = currentTime;
+      }
+      rafId = null;
+    });
+  };
+}
+
+// Transform-based element positioning for smooth visual updates
+export function applyTransform(elementId: string, deltaX: number, deltaY: number, scale: number = 1) {
+  const element = document.querySelector(`[data-element-id="${elementId}"]`) as HTMLElement;
+  if (element) {
+    element.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(${scale})`;
+    element.style.zIndex = '1000'; // Ensure dragged elements appear on top
+  }
+}
+
+export function clearTransform(elementId: string) {
+  const element = document.querySelector(`[data-element-id="${elementId}"]`) as HTMLElement;
+  if (element) {
+    element.style.transform = '';
+    element.style.zIndex = '';
+  }
+}
+
 // Frame rate monitoring
 export class FrameRateMonitor {
   private frameCount: number = 0;

@@ -586,6 +586,7 @@ export const MemoizedTextBox = memo(
     return (
       <Rnd
         key={textBoxProps.id}
+        data-element-id={textBox.id}
         position={{ x: textBox.x * scale, y: textBox.y * scale }}
         size={{
           width: textBoxProps.width * scale,

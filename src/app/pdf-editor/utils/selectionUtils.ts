@@ -4,6 +4,7 @@ import {
   Image,
   SelectedElement,
 } from "../types/pdf-editor.types";
+import { applyTransform, clearTransform } from "./performance";
 
 export interface ElementBounds {
   x: number;
@@ -315,6 +316,198 @@ export const moveSelectedElements = (
       }
     } else {
       console.log("Element not found", selectedElement);
+    }
+  });
+};
+
+// Optimized version of moveSelectedElements that uses transforms for visual feedback
+// and batches actual position updates for better performance
+export const moveSelectedElementsOptimized = (
+  selectedElements: SelectedElement[],
+  deltaX: number,
+  deltaY: number,
+  getElementById: (
+    id: string,
+    type: "textbox" | "shape" | "image"
+  ) => TextField | Shape | Image | null,
+  pageWidth: number,
+  pageHeight: number,
+  useTransforms: boolean = true
+): Array<{
+  id: string;
+  type: "textbox" | "shape" | "image";
+  constrainedX: number;
+  constrainedY: number;
+  originalX: number;
+  originalY: number;
+}> => {
+  const updates: Array<{
+    id: string;
+    type: "textbox" | "shape" | "image";
+    constrainedX: number;
+    constrainedY: number;
+    originalX: number;
+    originalY: number;
+  }> = [];
+
+  // Pre-calculate all constraint updates without applying them
+  selectedElements.forEach((selectedElement) => {
+    const element = getElementById(selectedElement.id, selectedElement.type);
+    if (!element) return;
+
+    const newX = selectedElement.originalPosition.x + deltaX;
+    const newY = selectedElement.originalPosition.y + deltaY;
+
+    let constrainedX = newX;
+    let constrainedY = newY;
+
+    // Check if this is a line shape for special boundary handling
+    const isLineShape =
+      selectedElement.type === "shape" &&
+      "type" in element &&
+      (element as Shape).type === "line";
+
+    if (isLineShape) {
+      const lineShape = element as Shape;
+      if (
+        lineShape.x1 !== undefined &&
+        lineShape.y1 !== undefined &&
+        lineShape.x2 !== undefined &&
+        lineShape.y2 !== undefined
+      ) {
+        // For lines, calculate boundaries based on the entire line
+        const moveDeltaX = newX - selectedElement.originalPosition.x;
+        const moveDeltaY = newY - selectedElement.originalPosition.y;
+
+        const newX1 = lineShape.x1 + moveDeltaX;
+        const newY1 = lineShape.y1 + moveDeltaY;
+        const newX2 = lineShape.x2 + moveDeltaX;
+        const newY2 = lineShape.y2 + moveDeltaY;
+
+        // Check if any part of the line would go outside boundaries
+        const minX = Math.min(newX1, newX2);
+        const maxX = Math.max(newX1, newX2);
+        const minY = Math.min(newY1, newY2);
+        const maxY = Math.max(newY1, newY2);
+
+        // Constrain based on line bounds
+        if (minX < 0) {
+          constrainedX = newX - minX;
+        } else if (maxX > pageWidth) {
+          constrainedX = newX - (maxX - pageWidth);
+        }
+
+        if (minY < 0) {
+          constrainedY = newY - minY;
+        } else if (maxY > pageHeight) {
+          constrainedY = newY - (maxY - pageHeight);
+        }
+      }
+    } else {
+      // Regular boundary constraints for non-line elements
+      constrainedX = Math.max(
+        0,
+        Math.min(newX, pageWidth - element.width)
+      );
+      constrainedY = Math.max(
+        0,
+        Math.min(newY, pageHeight - element.height)
+      );
+    }
+
+    updates.push({
+      id: selectedElement.id,
+      type: selectedElement.type,
+      constrainedX,
+      constrainedY,
+      originalX: selectedElement.originalPosition.x,
+      originalY: selectedElement.originalPosition.y,
+    });
+
+    // Apply visual transform if requested
+    if (useTransforms) {
+      const visualDeltaX = constrainedX - selectedElement.originalPosition.x;
+      const visualDeltaY = constrainedY - selectedElement.originalPosition.y;
+      applyTransform(selectedElement.id, visualDeltaX, visualDeltaY);
+    }
+  });
+
+  return updates;
+};
+
+// Batch apply position updates for multiple elements
+export const batchApplyElementUpdates = (
+  updates: Array<{
+    id: string;
+    type: "textbox" | "shape" | "image";
+    constrainedX: number;
+    constrainedY: number;
+    originalX: number;
+    originalY: number;
+  }>,
+  updateTextBox: (id: string, updates: Partial<TextField>) => void,
+  updateShape: (id: string, updates: Partial<Shape>) => void,
+  updateImage: (id: string, updates: Partial<Image>) => void,
+  getElementById: (
+    id: string,
+    type: "textbox" | "shape" | "image"
+  ) => TextField | Shape | Image | null
+) => {
+  updates.forEach((update) => {
+    // Clear visual transforms
+    clearTransform(update.id);
+
+    const element = getElementById(update.id, update.type);
+    if (!element) return;
+
+    switch (update.type) {
+      case "textbox":
+        updateTextBox(update.id, {
+          x: update.constrainedX,
+          y: update.constrainedY,
+        });
+        break;
+      case "shape":
+        // Handle line shapes specially - they need x1,y1,x2,y2 updates
+        if ("type" in element && element.type === "line") {
+          const lineShape = element as Shape;
+          if (
+            lineShape.x1 !== undefined &&
+            lineShape.y1 !== undefined &&
+            lineShape.x2 !== undefined &&
+            lineShape.y2 !== undefined
+          ) {
+            // Calculate how much to move the line coordinates
+            const moveDeltaX = update.constrainedX - update.originalX;
+            const moveDeltaY = update.constrainedY - update.originalY;
+
+            updateShape(update.id, {
+              x1: lineShape.x1 + moveDeltaX,
+              y1: lineShape.y1 + moveDeltaY,
+              x2: lineShape.x2 + moveDeltaX,
+              y2: lineShape.y2 + moveDeltaY,
+            });
+          } else {
+            // Fallback for shapes without line coordinates
+            updateShape(update.id, {
+              x: update.constrainedX,
+              y: update.constrainedY,
+            });
+          }
+        } else {
+          // Regular shapes (rectangles, circles)
+          updateShape(update.id, {
+            x: update.constrainedX,
+            y: update.constrainedY,
+          });
+        }
+        break;
+      case "image":
+        updateImage(update.id, {
+          x: update.constrainedX,
+          y: update.constrainedY,
+        });
+        break;
     }
   });
 };

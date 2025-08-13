@@ -153,6 +153,7 @@ export const MemoizedLine = memo(
     return (
       <Rnd
         key={shape.id}
+        data-element-id={shape.id}
         position={{
           x: minX - 10,
           y: minY - 10,

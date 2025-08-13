@@ -195,6 +195,7 @@ export const MemoizedImage = memo(
     return (
       <Rnd
         key={image.id}
+        data-element-id={image.id}
         position={{ x: image.x * scale, y: image.y * scale }}
         size={{ width: image.width * scale, height: image.height * scale }}
         bounds="parent"
