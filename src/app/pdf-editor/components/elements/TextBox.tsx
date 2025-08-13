@@ -41,6 +41,8 @@ interface TextBoxProps {
   isInSelectionPreview?: boolean;
   // Element index for z-index ordering
   elementIndex?: number;
+  // Transform-based drag offset for performance optimization
+  dragOffset?: { x: number; y: number } | null;
 }
 
 // Custom comparison function for memo to prevent unnecessary rerenders
@@ -90,6 +92,17 @@ const arePropsEqual = (prevProps: TextBoxProps, nextProps: TextBoxProps) => {
     return false;
   }
 
+  // Check drag offset for transform-based dragging performance
+  const prevDragOffset = prevProps.dragOffset;
+  const nextDragOffset = nextProps.dragOffset;
+  if (
+    (prevDragOffset === null) !== (nextDragOffset === null) ||
+    (prevDragOffset && nextDragOffset && 
+     (prevDragOffset.x !== nextDragOffset.x || prevDragOffset.y !== nextDragOffset.y))
+  ) {
+    return false;
+  }
+
   // For multi-selection, only check if this specific textbox's selection state changed
   const prevIsMultiSelected =
     prevProps.selectedElementIds?.includes(prevProps.textBox.id) || false;
@@ -130,6 +143,7 @@ export const MemoizedTextBox = memo(
     isInSelectionPreview = false,
     // Element index for z-index ordering
     elementIndex = 0,
+    dragOffset,
   }: TextBoxProps) => {
     // Helper function to get padding object from textbox
     const getPadding = () => ({
@@ -639,8 +653,11 @@ export const MemoizedTextBox = memo(
             : ""
         }`}
         style={{
-          transform: "none",
+          transform: dragOffset 
+            ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)` 
+            : "none",
           zIndex: isSelected ? 9999 : elementIndex,
+          willChange: dragOffset ? 'transform' : 'auto',
         }}
         onClick={handleClick}
       >

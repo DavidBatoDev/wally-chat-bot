@@ -257,6 +257,9 @@ export interface MultiSelectionState {
   isMovingSelection: boolean;
   moveStart: { x: number; y: number } | null;
   targetView: "original" | "translated" | "final-layout" | null;
+  // Drag offsets for transform-based dragging performance optimization
+  dragOffsets: Record<string, { x: number; y: number }>;
+  isDragging: boolean;
 }
 
 // View state types
