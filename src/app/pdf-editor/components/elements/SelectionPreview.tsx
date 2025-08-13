@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 
 interface SelectionPreviewProps {
   start: { x: number; y: number } | null;
@@ -6,7 +6,7 @@ interface SelectionPreviewProps {
   scale: number;
 }
 
-export const SelectionPreview: React.FC<SelectionPreviewProps> = ({
+const SelectionPreview: React.FC<SelectionPreviewProps> = ({
   start,
   end,
   scale,
@@ -22,11 +22,17 @@ export const SelectionPreview: React.FC<SelectionPreviewProps> = ({
     <div
       className="absolute border border-blue-500 bg-blue-100 bg-opacity-30 pointer-events-none z-50"
       style={{
-        left: left * scale,
-        top: top * scale,
+        transform: `translate(${left * scale}px, ${top * scale}px)`,
         width: width * scale,
         height: height * scale,
+        willChange: 'transform',
       }}
     />
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export const MemoizedSelectionPreview = memo(SelectionPreview);
+
+// Export both for compatibility
+export { SelectionPreview };

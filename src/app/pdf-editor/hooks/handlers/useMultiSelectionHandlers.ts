@@ -61,6 +61,9 @@ export const useMultiSelectionHandlers = ({
 }: UseMultiSelectionHandlersProps) => {
   // Multi-selection drag handlers for individual Rnd components
 
+  // Add throttling for mouse move events
+  const mouseMoveThrottleRef = useRef<number | null>(null);
+
   // Helper function to get elements that would be captured in the current selection preview
   const getElementsInSelectionPreview = useCallback(() => {
     if (
@@ -426,31 +429,40 @@ export const useMultiSelectionHandlers = ({
       )
         return;
 
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      if (!rect) return;
-
-      let x = (e.clientX - rect.left) / documentState.scale;
-      let y = (e.clientY - rect.top) / documentState.scale;
-
-      // Adjust coordinates for split view
-      if (
-        viewState.currentView === "split" &&
-        (editorState.multiSelection.targetView === "translated" ||
-          editorState.multiSelection.targetView === "final-layout")
-      ) {
-        const clickX = e.clientX - rect.left;
-        const singleDocWidth = documentState.pageWidth * documentState.scale;
-        const gap = 20;
-        x = (clickX - singleDocWidth - gap) / documentState.scale;
+      // Throttle mouse move events using requestAnimationFrame
+      if (mouseMoveThrottleRef.current) {
+        return;
       }
 
-      setEditorState((prev) => ({
-        ...prev,
-        multiSelection: {
-          ...prev.multiSelection,
-          selectionEnd: { x, y },
-        },
-      }));
+      mouseMoveThrottleRef.current = requestAnimationFrame(() => {
+        mouseMoveThrottleRef.current = null;
+        
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        if (!rect) return;
+
+        let x = (e.clientX - rect.left) / documentState.scale;
+        let y = (e.clientY - rect.top) / documentState.scale;
+
+        // Adjust coordinates for split view
+        if (
+          viewState.currentView === "split" &&
+          (editorState.multiSelection.targetView === "translated" ||
+            editorState.multiSelection.targetView === "final-layout")
+        ) {
+          const clickX = e.clientX - rect.left;
+          const singleDocWidth = documentState.pageWidth * documentState.scale;
+          const gap = 20;
+          x = (clickX - singleDocWidth - gap) / documentState.scale;
+        }
+
+        setEditorState((prev) => ({
+          ...prev,
+          multiSelection: {
+            ...prev.multiSelection,
+            selectionEnd: { x, y },
+          },
+        }));
+      });
     },
     [
       editorState.isSelectionMode,
@@ -466,6 +478,12 @@ export const useMultiSelectionHandlers = ({
 
   const handleMultiSelectionMouseUp = useCallback(
     (e: React.MouseEvent) => {
+      // Cancel any pending animation frame
+      if (mouseMoveThrottleRef.current) {
+        cancelAnimationFrame(mouseMoveThrottleRef.current);
+        mouseMoveThrottleRef.current = null;
+      }
+
       if (
         !editorState.isSelectionMode ||
         !editorState.multiSelection.isDrawingSelection ||

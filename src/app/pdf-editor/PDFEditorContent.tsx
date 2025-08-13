@@ -91,7 +91,7 @@ import { MemoizedTextBox } from "./components/elements/TextBox";
 import { MemoizedShape } from "./components/elements/Shape";
 import { MemoizedImage } from "./components/elements/ImageElement";
 import DocumentPanel from "@/components/pdf-editor/DocumentPanel";
-import { SelectionPreview } from "./components/elements/SelectionPreview";
+import { MemoizedSelectionPreview as SelectionPreview } from "./components/elements/SelectionPreview";
 import { SelectionRectangle } from "./components/elements/SelectionRectangle";
 import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
