@@ -24,6 +24,7 @@ import {
   exportToPNGService,
   exportToJPEGService,
 } from "./services/pdfExportService";
+import { updateProjectShareSettings, getProjectShareSettings } from "./services/projectApiService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
 // Import types
@@ -102,6 +103,7 @@ import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighligh
 import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { ProjectSelectionModal } from "./components/ProjectSelectionModal";
+import { ShareProjectModal, ShareSettings } from "./components/ShareProjectModal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
 import {
@@ -4202,6 +4204,56 @@ export const PDFEditorContent: React.FC = () => {
     [saveProjectToStorage]
   );
 
+  // Handle share project
+  const handleShareProject = useCallback(async () => {
+    if (!currentProjectId) {
+      toast.error("Please save the project first before sharing");
+      return;
+    }
+
+    try {
+      // Get current share settings
+      const shareSettings = await getProjectShareSettings(currentProjectId);
+      setCurrentShareSettings({
+        isPublic: shareSettings.is_public,
+        shareLink: shareSettings.share_link || "",
+        shareId: shareSettings.share_id,
+        permissions: shareSettings.share_permissions || "viewer",
+        requiresAuth: shareSettings.requires_auth,
+      });
+      setShowShareModal(true);
+    } catch (error) {
+      console.error("Error fetching share settings:", error);
+      // Open modal with default settings
+      setCurrentShareSettings({
+        isPublic: false,
+        shareLink: "",
+        permissions: "viewer",
+        requiresAuth: false,
+      });
+      setShowShareModal(true);
+    }
+  }, [currentProjectId]);
+
+  // Handle updating share settings
+  const handleUpdateShareSettings = useCallback(
+    async (settings: ShareSettings) => {
+      if (!currentProjectId) {
+        throw new Error("No project ID available");
+      }
+
+      await updateProjectShareSettings(currentProjectId, {
+        is_public: settings.isPublic,
+        share_id: settings.shareId,
+        share_permissions: settings.permissions,
+        requires_auth: settings.requiresAuth,
+      });
+
+      setCurrentShareSettings(settings);
+    },
+    [currentProjectId]
+  );
+
   // Enhanced file upload handler with automatic project creation
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -5150,6 +5202,10 @@ export const PDFEditorContent: React.FC = () => {
 
   // Add state for project management modal
   const [showProjectModal, setShowProjectModal] = useState(false);
+  
+  // Add state for share project modal
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [currentShareSettings, setCurrentShareSettings] = useState<ShareSettings>();
 
   // Handler for modal continue/cancel
   const handleUntranslatedCheckContinue = useCallback(() => {
@@ -5182,6 +5238,7 @@ export const PDFEditorContent: React.FC = () => {
         onFileUpload={handleFileUploadIntercept}
         onSaveProject={saveProject}
         onProjectManagement={() => setShowProjectModal(true)}
+        onShareProject={handleShareProject}
         onExportData={exportToPDF}
         onUndo={() => {
           const now = Date.now();
@@ -7280,6 +7337,16 @@ export const PDFEditorContent: React.FC = () => {
           deleteProject as (projectId: string) => Promise<boolean>
         }
         getSavedProjects={getSavedProjects as () => Promise<any[]>}
+      />
+
+      {/* Share Project Modal */}
+      <ShareProjectModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        projectId={currentProjectId}
+        projectName={documentState.url ? `Project ${new Date().toLocaleDateString()}` : "Untitled Project"}
+        currentShareSettings={currentShareSettings}
+        onUpdateShareSettings={handleUpdateShareSettings}
       />
     </div>
   );

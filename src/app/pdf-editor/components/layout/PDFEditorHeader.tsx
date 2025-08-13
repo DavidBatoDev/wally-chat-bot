@@ -14,6 +14,7 @@ import {
   Check,
   FolderOpen,
   RefreshCw,
+  Share2,
 } from "lucide-react";
 import { WorkflowStep } from "../../types/pdf-editor.types";
 
@@ -23,6 +24,7 @@ interface PDFEditorHeaderProps {
   onFileUpload: () => void;
   onSaveProject: () => void;
   onProjectManagement?: () => void;
+  onShareProject?: () => void;
   onExportData: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -49,6 +51,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onFileUpload,
   onSaveProject,
   onProjectManagement,
+  onShareProject,
   onExportData,
   onUndo,
   onRedo,
@@ -247,6 +250,17 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
           >
             <Save className="w-4 h-4" />
           </Button>
+          {onShareProject && (
+            <Button
+              onClick={onShareProject}
+              variant="ghost"
+              size="sm"
+              className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
+              title="Share Project"
+            >
+              <Share2 className="w-4 h-4" />
+            </Button>
+          )}
           {onOpenSettings && (
             <Button
               onClick={onOpenSettings}

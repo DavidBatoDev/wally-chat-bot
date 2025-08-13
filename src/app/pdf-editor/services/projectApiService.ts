@@ -21,10 +21,13 @@ export interface CreateProjectRequest {
 export interface UpdateProjectRequest {
   name?: string;
   description?: string;
-  project_data: any; // Updated project state
+  project_data?: any; // Updated project state (now optional for share updates)
   tags?: string[];
   is_public?: boolean;
   local_version?: number;
+  share_id?: string;
+  share_permissions?: "viewer" | "editor";
+  requires_auth?: boolean;
 }
 
 export interface ProjectSummary {
@@ -445,6 +448,68 @@ export function isAuthenticated(): boolean {
     console.warn("Could not access auth store:", error);
     return false;
   }
+}
+
+/**
+ * Get a shared project by share ID
+ */
+export async function getSharedProject(shareId: string): Promise<ProjectResponse> {
+  const response = await fetch(
+    `${PROJECT_STATE_ENDPOINT}/projects/shared/${shareId}`,
+    {
+      method: "GET",
+      headers: createHeaders(),
+    }
+  );
+
+  return handleResponse<ProjectResponse>(response);
+}
+
+/**
+ * Update project sharing settings
+ */
+export async function updateProjectShareSettings(
+  projectId: string,
+  shareSettings: {
+    is_public: boolean;
+    share_id?: string;
+    share_permissions?: "viewer" | "editor";
+    requires_auth?: boolean;
+  }
+): Promise<ProjectResponse> {
+  const response = await fetch(
+    `${PROJECT_STATE_ENDPOINT}/projects/${projectId}/share`,
+    {
+      method: "PUT",
+      headers: createHeaders(),
+      body: JSON.stringify(shareSettings),
+    }
+  );
+
+  return handleResponse<ProjectResponse>(response);
+}
+
+/**
+ * Get project share settings
+ */
+export async function getProjectShareSettings(
+  projectId: string
+): Promise<{
+  is_public: boolean;
+  share_id?: string;
+  share_permissions?: "viewer" | "editor";
+  requires_auth?: boolean;
+  share_link?: string;
+}> {
+  const response = await fetch(
+    `${PROJECT_STATE_ENDPOINT}/projects/${projectId}/share`,
+    {
+      method: "GET",
+      headers: createHeaders(),
+    }
+  );
+
+  return handleResponse(response);
 }
 
 /**
