@@ -79,6 +79,9 @@ export const MemoizedShape = memo(
       );
     }
 
+    const dragOffsetX = (dragOffset?.x || 0) * scale;
+    const dragOffsetY = (dragOffset?.y || 0) * scale;
+
     return (
       <Rnd
         key={shape.id}
@@ -139,15 +142,22 @@ export const MemoizedShape = memo(
             : ""
         }`}
         style={{
-          transform: dragOffset
-            ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)`
-            : "none",
           zIndex: isSelected ? 9999 : elementIndex,
-          willChange: dragOffset ? 'transform' : 'auto',
         }}
         onClick={handleClick}
       >
-        <div className="w-full h-full relative group">
+        <div
+          className="w-full h-full relative group"
+          data-element-id={shape.id}
+          style={{
+            transform: dragOffset
+              ? dragOffsetX !== 0 || dragOffsetY !== 0
+                ? `translate(${dragOffsetX}px, ${dragOffsetY}px)`
+                : "none"
+              : `translate(var(--drag-offset-x, 0px), var(--drag-offset-y, 0px))`,
+            willChange: dragOffset ? "transform" : "auto",
+          }}
+        >
           {/* Shape Element */}
           <div
             className="w-full h-full"

@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { Rnd, DraggableData, RndDragCallback } from "react-rnd";
 import { Move } from "lucide-react";
 
@@ -28,30 +28,59 @@ export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
 }) => {
   const iconSize = 20;
   const iconOffset = 10;
+  const startXRef = useRef<number | null>(null);
+  const startYRef = useRef<number | null>(null);
+  const [localOffset, setLocalOffset] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+
+  const handleDragStart: RndDragCallback = useCallback(
+    (e, data) => {
+      startXRef.current = bounds.x * scale;
+      startYRef.current = bounds.y * scale;
+      setLocalOffset({ x: 0, y: 0 });
+    },
+    [bounds.x, bounds.y, scale]
+  );
 
   // Called during drag - update position in real time
   const handleDrag: RndDragCallback = (e, data) => {
-    const deltaX = (data.x - bounds.x * scale) / scale;
-    const deltaY = (data.y - bounds.y * scale) / scale;
+    if (startXRef.current === null || startYRef.current === null) return;
+    const deltaX = (data.x - startXRef.current) / scale;
+    const deltaY = (data.y - startYRef.current) / scale;
+    setLocalOffset({
+      x: data.x - startXRef.current,
+      y: data.y - startYRef.current,
+    });
     onDragSelection(deltaX, deltaY);
   };
 
   // Called when drag stops - only update position when drag ends, like textbox
   const handleDragStop: RndDragCallback = (e, data) => {
-    const deltaX = (data.x - bounds.x * scale) / scale;
-    const deltaY = (data.y - bounds.y * scale) / scale;
+    const effectiveStartX = startXRef.current ?? bounds.x * scale;
+    const effectiveStartY = startYRef.current ?? bounds.y * scale;
+    const deltaX = (data.x - effectiveStartX) / scale;
+    const deltaY = (data.y - effectiveStartY) / scale;
     onDragStopSelection(deltaX, deltaY);
+    // Reset for next drag
+    startXRef.current = null;
+    startYRef.current = null;
+    setLocalOffset({ x: 0, y: 0 });
   };
 
   return (
     <Rnd
-      position={{ x: bounds.x * scale, y: bounds.y * scale }}
+      position={{
+        x: bounds.x * scale + localOffset.x,
+        y: bounds.y * scale + localOffset.y,
+      }}
       size={{ width: bounds.width * scale, height: bounds.height * scale }}
       disableDragging={false}
-      dragHandleClassName="drag-handle"
       enableResizing={false}
       className="selection-rectangle-rnd"
       style={{ zIndex: 1000, pointerEvents: "none" }}
+      onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragStop={handleDragStop}
       onMouseDown={(e) => {

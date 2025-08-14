@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -247,7 +247,7 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
                   ) : (
                     <Lock className="w-4 h-4 text-gray-600" />
                   )}
-                  <Switch
+                  <Checkbox
                     checked={isPublic}
                     onCheckedChange={handlePublicToggle}
                     disabled={isLoading || !projectId}
@@ -331,7 +331,7 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
                     </div>
                     <div className="flex items-center space-x-2">
                       <Shield className="w-4 h-4 text-gray-600" />
-                      <Switch
+                      <Checkbox
                         checked={requiresAuth}
                         onCheckedChange={handleAuthToggle}
                         disabled={isLoading}

@@ -24,7 +24,10 @@ import {
   exportToPNGService,
   exportToJPEGService,
 } from "./services/pdfExportService";
-import { updateProjectShareSettings, getProjectShareSettings } from "./services/projectApiService";
+import {
+  updateProjectShareSettings,
+  getProjectShareSettings,
+} from "./services/projectApiService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
 // Import types
@@ -103,7 +106,10 @@ import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighligh
 import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { ProjectSelectionModal } from "./components/ProjectSelectionModal";
-import { ShareProjectModal, ShareSettings } from "./components/ShareProjectModal";
+import {
+  ShareProjectModal,
+  ShareSettings,
+} from "./components/ShareProjectModal";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
 import {
@@ -3161,37 +3167,197 @@ export const PDFEditorContent: React.FC = () => {
     editorState.multiSelection.isMovingSelection,
   ]);
 
-  // Handle drag stop for selection rectangle
-  const handleDragStopSelection = useCallback(
-    (deltaX: number, deltaY: number) => {
-      // Move all selected elements by the final delta
-      moveSelectedElements(
-        editorState.multiSelection.selectedElements,
-        deltaX,
-        deltaY,
-        (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
-        (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-        updateImage,
-        getElementById,
-        documentState.pageWidth,
-        documentState.pageHeight
-      );
+  // Smooth group dragging for multi-selection using transform offsets
+  const selectionDragRafRef = useRef<number | null>(null);
+  const selectionLastDeltaRef = useRef<{ x: number; y: number } | null>(null);
+  const selectionBoundsStartRef = useRef<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
-      // Update original positions and recalculate selection bounds
+  const selectionDragElementsRef = useRef<HTMLElement[]>([]);
+
+  const ensureSelectionDragInitialized = useCallback(() => {
+    if (!editorState.multiSelection.isDragging) {
+      // Initialize initial positions for all selected elements
+      const initial: Record<string, { x: number; y: number }> = {};
+      const domNodes: HTMLElement[] = [];
+      editorState.multiSelection.selectedElements.forEach((el) => {
+        const element = getElementById(el.id, el.type);
+        if (element) {
+          initial[el.id] = { x: element.x, y: element.y };
+        }
+        const node = document.querySelector(
+          `[data-element-id="${el.id}"]`
+        ) as HTMLElement | null;
+        if (node) domNodes.push(node);
+      });
+      initialPositionsRef.current = initial;
+      selectionDragElementsRef.current = domNodes;
+
+      // Snapshot selection bounds at drag start for smooth rectangle movement
+      selectionBoundsStartRef.current = editorState.multiSelection
+        .selectionBounds
+        ? { ...editorState.multiSelection.selectionBounds }
+        : null;
+
+      // Enter dragging state and reset offsets
+      setEditorState((prev) => ({
+        ...prev,
+        multiSelection: {
+          ...prev.multiSelection,
+          isDragging: true,
+          dragOffsets: {},
+        },
+      }));
+    }
+  }, [
+    editorState.multiSelection.isDragging,
+    editorState.multiSelection.selectedElements,
+    getElementById,
+    setEditorState,
+  ]);
+
+  const updateSelectionDragOffsets = useCallback(
+    (deltaX: number, deltaY: number) => {
+      ensureSelectionDragInitialized();
+
+      if (selectionDragRafRef.current) {
+        selectionLastDeltaRef.current = { x: deltaX, y: deltaY };
+        return;
+      }
+
+      selectionLastDeltaRef.current = { x: deltaX, y: deltaY };
+      selectionDragRafRef.current = requestAnimationFrame(() => {
+        selectionDragRafRef.current = null;
+        const currentDelta = selectionLastDeltaRef.current;
+        if (!currentDelta) return;
+
+        // Clamp delta based on selection bounds instead of per-element constraints
+        const startBounds = selectionBoundsStartRef.current;
+        let clampedDeltaX = currentDelta.x;
+        let clampedDeltaY = currentDelta.y;
+        if (startBounds) {
+          const proposedX = startBounds.x + currentDelta.x;
+          const proposedY = startBounds.y + currentDelta.y;
+          const clampedX = Math.max(
+            0,
+            Math.min(proposedX, documentState.pageWidth - startBounds.width)
+          );
+          const clampedY = Math.max(
+            0,
+            Math.min(proposedY, documentState.pageHeight - startBounds.height)
+          );
+          clampedDeltaX = clampedX - startBounds.x;
+          clampedDeltaY = clampedY - startBounds.y;
+        }
+
+        // Imperatively set CSS variables to avoid React re-renders during drag
+        const pxX = `${clampedDeltaX * documentState.scale}px`;
+        const pxY = `${clampedDeltaY * documentState.scale}px`;
+        const nodes = selectionDragElementsRef.current;
+        for (let i = 0; i < nodes.length; i += 1) {
+          const node = nodes[i];
+          node.style.setProperty("--drag-offset-x", pxX);
+          node.style.setProperty("--drag-offset-y", pxY);
+        }
+      });
+    },
+    [
+      documentState.pageWidth,
+      documentState.pageHeight,
+      editorState.multiSelection.selectedElements,
+      ensureSelectionDragInitialized,
+      documentState.scale,
+    ]
+  );
+
+  const commitSelectionDrag = useCallback(
+    (finalDeltaX: number, finalDeltaY: number) => {
+      if (selectionDragRafRef.current) {
+        cancelAnimationFrame(selectionDragRafRef.current);
+        selectionDragRafRef.current = null;
+      }
+
+      // Apply final positions for all selected elements
+      editorState.multiSelection.selectedElements.forEach((el) => {
+        const initialPos = initialPositionsRef.current[el.id];
+        if (!initialPos) return;
+        const element = getElementById(el.id, el.type);
+        if (!element) return;
+
+        const newX = initialPos.x + finalDeltaX;
+        const newY = initialPos.y + finalDeltaY;
+
+        const constrainedX = Math.max(
+          0,
+          Math.min(newX, documentState.pageWidth - element.width)
+        );
+        const constrainedY = Math.max(
+          0,
+          Math.min(newY, documentState.pageHeight - element.height)
+        );
+
+        switch (el.type) {
+          case "textbox":
+            updateTextBoxWithUndo(
+              el.id,
+              { x: constrainedX, y: constrainedY },
+              false
+            );
+            break;
+          case "shape":
+            updateShapeWithUndo(
+              el.id,
+              { x: constrainedX, y: constrainedY },
+              false
+            );
+            break;
+          case "image":
+            updateImage(el.id, { x: constrainedX, y: constrainedY });
+            break;
+        }
+      });
+
+      // Compute final moved selection bounds based on the snapshot at drag start
+      let movedBounds = null as null | {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      };
+      const startBounds = selectionBoundsStartRef.current;
+      if (startBounds) {
+        const proposedX = startBounds.x + finalDeltaX;
+        const proposedY = startBounds.y + finalDeltaY;
+        const clampedX = Math.max(
+          0,
+          Math.min(proposedX, documentState.pageWidth - startBounds.width)
+        );
+        const clampedY = Math.max(
+          0,
+          Math.min(proposedY, documentState.pageHeight - startBounds.height)
+        );
+        movedBounds = {
+          x: clampedX,
+          y: clampedY,
+          width: startBounds.width,
+          height: startBounds.height,
+        };
+      }
+
+      // Clear drag state and update selection metadata
       setEditorState((prev) => {
         const updatedElements = prev.multiSelection.selectedElements.map(
           (el) => ({
             ...el,
             originalPosition: {
-              x: el.originalPosition.x + deltaX,
-              y: el.originalPosition.y + deltaY,
+              x: el.originalPosition.x + finalDeltaX,
+              y: el.originalPosition.y + finalDeltaY,
             },
           })
-        );
-
-        const newBounds = calculateSelectionBounds(
-          updatedElements,
-          getElementById
         );
 
         return {
@@ -3199,20 +3365,47 @@ export const PDFEditorContent: React.FC = () => {
           multiSelection: {
             ...prev.multiSelection,
             selectedElements: updatedElements,
-            selectionBounds: newBounds,
+            selectionBounds: movedBounds || prev.multiSelection.selectionBounds,
+            isDragging: false,
             isMovingSelection: false,
             moveStart: null,
           },
         };
       });
+
+      // Reset initial positions cache
+      initialPositionsRef.current = {};
+      selectionLastDeltaRef.current = null;
+      selectionBoundsStartRef.current = null;
+
+      // Clear CSS variables set during drag
+      const nodes = selectionDragElementsRef.current;
+      for (let i = 0; i < nodes.length; i += 1) {
+        const el = nodes[i];
+        el.style.removeProperty("--drag-offset-x");
+        el.style.removeProperty("--drag-offset-y");
+      }
+      selectionDragElementsRef.current = [];
     },
     [
+      documentState.pageWidth,
+      documentState.pageHeight,
       editorState.multiSelection.selectedElements,
-      updateTextBoxWithUndo,
-      updateShape,
-      updateImage,
+      selectionBoundsStartRef.current,
       getElementById,
+      setEditorState,
+      updateImage,
+      updateShapeWithUndo,
+      updateTextBoxWithUndo,
     ]
+  );
+
+  // Handle drag stop for selection rectangle (commit positions)
+  const handleDragStopSelection = useCallback(
+    (deltaX: number, deltaY: number) => {
+      commitSelectionDrag(deltaX, deltaY);
+    },
+    [commitSelectionDrag]
   );
 
   // Move selection mouse handlers
@@ -3292,35 +3485,11 @@ export const PDFEditorContent: React.FC = () => {
       const deltaX = x - editorState.multiSelection.moveStart.x;
       const deltaY = y - editorState.multiSelection.moveStart.y;
 
-      // Move all selected elements
+      // Update transform-based offsets for smooth dragging
+      updateSelectionDragOffsets(deltaX, deltaY);
 
-      moveSelectedElements(
-        editorState.multiSelection.selectedElements,
-        deltaX,
-        deltaY,
-        (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
-        (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-        updateImage,
-        getElementById,
-        documentState.pageWidth,
-        documentState.pageHeight
-      );
-
-      // Update original positions for next move
-      setEditorState((prev) => ({
-        ...prev,
-        multiSelection: {
-          ...prev.multiSelection,
-          selectedElements: prev.multiSelection.selectedElements.map((el) => ({
-            ...el,
-            originalPosition: {
-              x: el.originalPosition.x + deltaX,
-              y: el.originalPosition.y + deltaY,
-            },
-          })),
-          moveStart: { x, y },
-        },
-      }));
+      // Track latest delta for commit on mouse up
+      selectionLastDeltaRef.current = { x: deltaX, y: deltaY };
 
       e.preventDefault();
     },
@@ -3332,10 +3501,7 @@ export const PDFEditorContent: React.FC = () => {
       documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
-      updateTextBox,
-      updateShape,
-      updateImage,
-      getElementById,
+      updateSelectionDragOffsets,
     ]
   );
 
@@ -3348,14 +3514,9 @@ export const PDFEditorContent: React.FC = () => {
       history.endBatch();
     }
 
-    setEditorState((prev) => ({
-      ...prev,
-      multiSelection: {
-        ...prev.multiSelection,
-        isMovingSelection: false,
-        moveStart: null,
-      },
-    }));
+    // Commit final positions using last tracked delta
+    const finalDelta = selectionLastDeltaRef.current || { x: 0, y: 0 };
+    commitSelectionDrag(finalDelta.x, finalDelta.y);
   }, [editorState.multiSelection.isMovingSelection, history]);
 
   // Document click handler
@@ -3427,19 +3588,19 @@ export const PDFEditorContent: React.FC = () => {
           selectedFieldId: fieldId,
           isAddTextBoxMode: false,
           isSelectionMode: false, // Turn off multi-selection mode
-                      // Clear multi-selection when creating a new textbox
-            multiSelection: {
-              ...prev.multiSelection,
-              selectedElements: [],
-              selectionBounds: null,
-              isDrawingSelection: false,
-              selectionStart: null,
-              selectionEnd: null,
-              isMovingSelection: false,
-              moveStart: null,
-              dragOffsets: {},
-              isDragging: false,
-            },
+          // Clear multi-selection when creating a new textbox
+          multiSelection: {
+            ...prev.multiSelection,
+            selectedElements: [],
+            selectionBounds: null,
+            isDrawingSelection: false,
+            selectionStart: null,
+            selectionEnd: null,
+            isMovingSelection: false,
+            moveStart: null,
+            dragOffsets: {},
+            isDragging: false,
+          },
         }));
         setSelectedElementId(fieldId);
         setSelectedElementType("textbox");
@@ -4844,9 +5005,11 @@ export const PDFEditorContent: React.FC = () => {
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance
-          dragOffset={editorState.multiSelection.isDragging 
-            ? editorState.multiSelection.dragOffsets[textBox.id] || null 
-            : null}
+          dragOffset={
+            editorState.multiSelection.isDragging
+              ? editorState.multiSelection.dragOffsets[textBox.id] || null
+              : null
+          }
         />
       );
     } else if (element.type === "shape") {
@@ -4868,9 +5031,11 @@ export const PDFEditorContent: React.FC = () => {
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance
-          dragOffset={editorState.multiSelection.isDragging 
-            ? editorState.multiSelection.dragOffsets[shape.id] || null 
-            : null}
+          dragOffset={
+            editorState.multiSelection.isDragging
+              ? editorState.multiSelection.dragOffsets[shape.id] || null
+              : null
+          }
         />
       );
     } else if (element.type === "image") {
@@ -4892,9 +5057,11 @@ export const PDFEditorContent: React.FC = () => {
           // Selection preview prop
           isInSelectionPreview={isInSelectionPreview}
           // Transform-based drag offset for performance
-          dragOffset={editorState.multiSelection.isDragging 
-            ? editorState.multiSelection.dragOffsets[image.id] || null 
-            : null}
+          dragOffset={
+            editorState.multiSelection.isDragging
+              ? editorState.multiSelection.dragOffsets[image.id] || null
+              : null
+          }
         />
       );
     }
@@ -5202,10 +5369,11 @@ export const PDFEditorContent: React.FC = () => {
 
   // Add state for project management modal
   const [showProjectModal, setShowProjectModal] = useState(false);
-  
+
   // Add state for share project modal
   const [showShareModal, setShowShareModal] = useState(false);
-  const [currentShareSettings, setCurrentShareSettings] = useState<ShareSettings>();
+  const [currentShareSettings, setCurrentShareSettings] =
+    useState<ShareSettings>();
 
   // Handler for modal continue/cancel
   const handleUntranslatedCheckContinue = useCallback(() => {
@@ -5843,43 +6011,11 @@ export const PDFEditorContent: React.FC = () => {
                         onMoveSelection={handleMoveSelection}
                         onDeleteSelection={handleDeleteSelection}
                         onDragSelection={(deltaX, deltaY) => {
-                          // Move all selected elements by delta (in real time)
-                          moveSelectedElements(
-                            editorState.multiSelection.selectedElements,
-                            deltaX,
-                            deltaY,
-                            updateTextBoxWithUndo,
-                            updateShape,
-                            updateImage,
-                            getElementById,
-                            documentState.pageWidth,
-                            documentState.pageHeight
-                          );
-                          // Update selection bounds in real time
-                          setEditorState((prev) => {
-                            const updatedElements =
-                              prev.multiSelection.selectedElements.map(
-                                (el) => ({
-                                  ...el,
-                                  originalPosition: {
-                                    x: el.originalPosition.x + deltaX,
-                                    y: el.originalPosition.y + deltaY,
-                                  },
-                                })
-                              );
-                            const newBounds = calculateSelectionBounds(
-                              updatedElements,
-                              getElementById
-                            );
-                            return {
-                              ...prev,
-                              multiSelection: {
-                                ...prev.multiSelection,
-                                selectedElements: updatedElements,
-                                selectionBounds: newBounds,
-                              },
-                            };
-                          });
+                          updateSelectionDragOffsets(deltaX, deltaY);
+                          selectionLastDeltaRef.current = {
+                            x: deltaX,
+                            y: deltaY,
+                          };
                         }}
                         onDragStopSelection={handleDragStopSelection}
                       />
@@ -5954,43 +6090,11 @@ export const PDFEditorContent: React.FC = () => {
                           onMoveSelection={handleMoveSelection}
                           onDeleteSelection={handleDeleteSelection}
                           onDragSelection={(deltaX, deltaY) => {
-                            // Move all selected elements by delta (in real time)
-                            moveSelectedElements(
-                              editorState.multiSelection.selectedElements,
-                              deltaX,
-                              deltaY,
-                              updateTextBoxWithUndo,
-                              updateShape,
-                              updateImage,
-                              getElementById,
-                              documentState.pageWidth,
-                              documentState.pageHeight
-                            );
-                            // Update selection bounds in real time
-                            setEditorState((prev) => {
-                              const updatedElements =
-                                prev.multiSelection.selectedElements.map(
-                                  (el) => ({
-                                    ...el,
-                                    originalPosition: {
-                                      x: el.originalPosition.x + deltaX,
-                                      y: el.originalPosition.y + deltaY,
-                                    },
-                                  })
-                                );
-                              const newBounds = calculateSelectionBounds(
-                                updatedElements,
-                                getElementById
-                              );
-                              return {
-                                ...prev,
-                                multiSelection: {
-                                  ...prev.multiSelection,
-                                  selectedElements: updatedElements,
-                                  selectionBounds: newBounds,
-                                },
-                              };
-                            });
+                            updateSelectionDragOffsets(deltaX, deltaY);
+                            selectionLastDeltaRef.current = {
+                              x: deltaX,
+                              y: deltaY,
+                            };
                           }}
                           onDragStopSelection={handleDragStopSelection}
                         />
@@ -6098,43 +6202,11 @@ export const PDFEditorContent: React.FC = () => {
                             onMoveSelection={handleMoveSelection}
                             onDeleteSelection={handleDeleteSelection}
                             onDragSelection={(deltaX, deltaY) => {
-                              // Move all selected elements by delta (in real time)
-                              moveSelectedElements(
-                                editorState.multiSelection.selectedElements,
-                                deltaX,
-                                deltaY,
-                                updateTextBoxWithUndo,
-                                updateShape,
-                                updateImage,
-                                getElementById,
-                                documentState.pageWidth,
-                                documentState.pageHeight
-                              );
-                              // Update selection bounds in real time
-                              setEditorState((prev) => {
-                                const updatedElements =
-                                  prev.multiSelection.selectedElements.map(
-                                    (el) => ({
-                                      ...el,
-                                      originalPosition: {
-                                        x: el.originalPosition.x + deltaX,
-                                        y: el.originalPosition.y + deltaY,
-                                      },
-                                    })
-                                  );
-                                const newBounds = calculateSelectionBounds(
-                                  updatedElements,
-                                  getElementById
-                                );
-                                return {
-                                  ...prev,
-                                  multiSelection: {
-                                    ...prev.multiSelection,
-                                    selectedElements: updatedElements,
-                                    selectionBounds: newBounds,
-                                  },
-                                };
-                              });
+                              updateSelectionDragOffsets(deltaX, deltaY);
+                              selectionLastDeltaRef.current = {
+                                x: deltaX,
+                                y: deltaY,
+                              };
                             }}
                             onDragStopSelection={handleDragStopSelection}
                           />
@@ -6367,49 +6439,11 @@ export const PDFEditorContent: React.FC = () => {
                                     editorState.multiSelection.isMovingSelection
                                   }
                                   onDragSelection={(deltaX, deltaY) => {
-                                    moveSelectedElements(
-                                      editorState.multiSelection
-                                        .selectedElements,
-                                      deltaX,
-                                      deltaY,
-                                      (id, updates) =>
-                                        updateTextBoxWithUndo(
-                                          id,
-                                          updates,
-                                          true
-                                        ),
-                                      (id, updates) =>
-                                        updateShapeWithUndo(id, updates, true),
-                                      updateImage,
-                                      getElementById,
-                                      documentState.pageWidth,
-                                      documentState.pageHeight
-                                    );
-                                    setEditorState((prev) => {
-                                      const updatedElements =
-                                        prev.multiSelection.selectedElements.map(
-                                          (el) => ({
-                                            ...el,
-                                            originalPosition: {
-                                              x: el.originalPosition.x + deltaX,
-                                              y: el.originalPosition.y + deltaY,
-                                            },
-                                          })
-                                        );
-                                      const newBounds =
-                                        calculateSelectionBounds(
-                                          updatedElements,
-                                          getElementById
-                                        );
-                                      return {
-                                        ...prev,
-                                        multiSelection: {
-                                          ...prev.multiSelection,
-                                          selectedElements: updatedElements,
-                                          selectionBounds: newBounds,
-                                        },
-                                      };
-                                    });
+                                    updateSelectionDragOffsets(deltaX, deltaY);
+                                    selectionLastDeltaRef.current = {
+                                      x: deltaX,
+                                      y: deltaY,
+                                    };
                                   }}
                                   onDragStopSelection={handleDragStopSelection}
                                 />
@@ -6526,41 +6560,11 @@ export const PDFEditorContent: React.FC = () => {
                               onMoveSelection={handleMoveSelection}
                               onDeleteSelection={handleDeleteSelection}
                               onDragSelection={(deltaX, deltaY) => {
-                                moveSelectedElements(
-                                  editorState.multiSelection.selectedElements,
-                                  deltaX,
-                                  deltaY,
-                                  updateTextBoxWithUndo,
-                                  updateShape,
-                                  updateImage,
-                                  getElementById,
-                                  documentState.pageWidth,
-                                  documentState.pageHeight
-                                );
-                                setEditorState((prev) => {
-                                  const updatedElements =
-                                    prev.multiSelection.selectedElements.map(
-                                      (el) => ({
-                                        ...el,
-                                        originalPosition: {
-                                          x: el.originalPosition.x + deltaX,
-                                          y: el.originalPosition.y + deltaY,
-                                        },
-                                      })
-                                    );
-                                  const newBounds = calculateSelectionBounds(
-                                    updatedElements,
-                                    getElementById
-                                  );
-                                  return {
-                                    ...prev,
-                                    multiSelection: {
-                                      ...prev.multiSelection,
-                                      selectedElements: updatedElements,
-                                      selectionBounds: newBounds,
-                                    },
-                                  };
-                                });
+                                updateSelectionDragOffsets(deltaX, deltaY);
+                                selectionLastDeltaRef.current = {
+                                  x: deltaX,
+                                  y: deltaY,
+                                };
                               }}
                               onDragStopSelection={handleDragStopSelection}
                               header={
@@ -6713,57 +6717,14 @@ export const PDFEditorContent: React.FC = () => {
                                         .isMovingSelection
                                     }
                                     onDragSelection={(deltaX, deltaY) => {
-                                      moveSelectedElements(
-                                        editorState.multiSelection
-                                          .selectedElements,
+                                      updateSelectionDragOffsets(
                                         deltaX,
-                                        deltaY,
-                                        (id, updates) =>
-                                          updateTextBoxWithUndo(
-                                            id,
-                                            updates,
-                                            true
-                                          ),
-                                        (id, updates) =>
-                                          updateShapeWithUndo(
-                                            id,
-                                            updates,
-                                            true
-                                          ),
-                                        updateImage,
-                                        getElementById,
-                                        documentState.pageWidth,
-                                        documentState.pageHeight
+                                        deltaY
                                       );
-                                      setEditorState((prev) => {
-                                        const updatedElements =
-                                          prev.multiSelection.selectedElements.map(
-                                            (el) => ({
-                                              ...el,
-                                              originalPosition: {
-                                                x:
-                                                  el.originalPosition.x +
-                                                  deltaX,
-                                                y:
-                                                  el.originalPosition.y +
-                                                  deltaY,
-                                              },
-                                            })
-                                          );
-                                        const newBounds =
-                                          calculateSelectionBounds(
-                                            updatedElements,
-                                            getElementById
-                                          );
-                                        return {
-                                          ...prev,
-                                          multiSelection: {
-                                            ...prev.multiSelection,
-                                            selectedElements: updatedElements,
-                                            selectionBounds: newBounds,
-                                          },
-                                        };
-                                      });
+                                      selectionLastDeltaRef.current = {
+                                        x: deltaX,
+                                        y: deltaY,
+                                      };
                                     }}
                                     onDragStopSelection={
                                       handleDragStopSelection
@@ -6898,51 +6859,11 @@ export const PDFEditorContent: React.FC = () => {
                                     editorState.multiSelection.isMovingSelection
                                   }
                                   onDragSelection={(deltaX, deltaY) => {
-                                    // Move all selected elements by delta (in real time)
-                                    moveSelectedElements(
-                                      editorState.multiSelection
-                                        .selectedElements,
-                                      deltaX,
-                                      deltaY,
-                                      (id, updates) =>
-                                        updateTextBoxWithUndo(
-                                          id,
-                                          updates,
-                                          true
-                                        ), // Mark as ongoing operation
-                                      (id, updates) =>
-                                        updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-                                      updateImage,
-                                      getElementById,
-                                      documentState.pageWidth,
-                                      documentState.pageHeight
-                                    );
-                                    // Update selection bounds in real time
-                                    setEditorState((prev) => {
-                                      const updatedElements =
-                                        prev.multiSelection.selectedElements.map(
-                                          (el) => ({
-                                            ...el,
-                                            originalPosition: {
-                                              x: el.originalPosition.x + deltaX,
-                                              y: el.originalPosition.y + deltaY,
-                                            },
-                                          })
-                                        );
-                                      const newBounds =
-                                        calculateSelectionBounds(
-                                          updatedElements,
-                                          getElementById
-                                        );
-                                      return {
-                                        ...prev,
-                                        multiSelection: {
-                                          ...prev.multiSelection,
-                                          selectedElements: updatedElements,
-                                          selectionBounds: newBounds,
-                                        },
-                                      };
-                                    });
+                                    updateSelectionDragOffsets(deltaX, deltaY);
+                                    selectionLastDeltaRef.current = {
+                                      x: deltaX,
+                                      y: deltaY,
+                                    };
                                   }}
                                   onDragStopSelection={handleDragStopSelection}
                                 />
@@ -7344,7 +7265,11 @@ export const PDFEditorContent: React.FC = () => {
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
         projectId={currentProjectId}
-        projectName={documentState.url ? `Project ${new Date().toLocaleDateString()}` : "Untitled Project"}
+        projectName={
+          documentState.url
+            ? `Project ${new Date().toLocaleDateString()}`
+            : "Untitled Project"
+        }
         currentShareSettings={currentShareSettings}
         onUpdateShareSettings={handleUpdateShareSettings}
       />

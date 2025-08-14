@@ -81,8 +81,11 @@ export const MemoizedLine = memo(
           if (isStart) {
             // Constrain start point within page boundaries
             const newX1 = Math.max(0, Math.min(pageWidth, originalX1 + deltaX));
-            const newY1 = Math.max(0, Math.min(pageHeight, originalY1 + deltaY));
-            
+            const newY1 = Math.max(
+              0,
+              Math.min(pageHeight, originalY1 + deltaY)
+            );
+
             onUpdate(
               shape.id,
               {
@@ -94,8 +97,11 @@ export const MemoizedLine = memo(
           } else {
             // Constrain end point within page boundaries
             const newX2 = Math.max(0, Math.min(pageWidth, originalX2 + deltaX));
-            const newY2 = Math.max(0, Math.min(pageHeight, originalY2 + deltaY));
-            
+            const newY2 = Math.max(
+              0,
+              Math.min(pageHeight, originalY2 + deltaY)
+            );
+
             onUpdate(
               shape.id,
               {
@@ -115,8 +121,11 @@ export const MemoizedLine = memo(
           if (isStart) {
             // Constrain start point within page boundaries
             const newX1 = Math.max(0, Math.min(pageWidth, originalX1 + deltaX));
-            const newY1 = Math.max(0, Math.min(pageHeight, originalY1 + deltaY));
-            
+            const newY1 = Math.max(
+              0,
+              Math.min(pageHeight, originalY1 + deltaY)
+            );
+
             onUpdate(
               shape.id,
               {
@@ -128,8 +137,11 @@ export const MemoizedLine = memo(
           } else {
             // Constrain end point within page boundaries
             const newX2 = Math.max(0, Math.min(pageWidth, originalX2 + deltaX));
-            const newY2 = Math.max(0, Math.min(pageHeight, originalY2 + deltaY));
-            
+            const newY2 = Math.max(
+              0,
+              Math.min(pageHeight, originalY2 + deltaY)
+            );
+
             onUpdate(
               shape.id,
               {

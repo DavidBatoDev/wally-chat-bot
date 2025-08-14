@@ -192,6 +192,9 @@ export const MemoizedImage = memo(
       [image.id, image.width, image.height, image.x, image.y, scale, onUpdate]
     );
 
+    const dragOffsetX = (dragOffset?.x || 0) * scale;
+    const dragOffsetY = (dragOffset?.y || 0) * scale;
+
     return (
       <Rnd
         key={image.id}
@@ -219,15 +222,22 @@ export const MemoizedImage = memo(
             : ""
         }`}
         style={{
-          transform: dragOffset 
-            ? `translate(${dragOffset.x * scale}px, ${dragOffset.y * scale}px)` 
-            : "none",
           zIndex: isSelected ? 9999 : elementIndex,
-          willChange: dragOffset ? 'transform' : 'auto',
         }}
         onClick={handleClick}
       >
-        <div className="w-full h-full relative group">
+        <div
+          className="w-full h-full relative group"
+          data-element-id={image.id}
+          style={{
+            transform: dragOffset
+              ? dragOffsetX !== 0 || dragOffsetY !== 0
+                ? `translate(${dragOffsetX}px, ${dragOffsetY}px)`
+                : "none"
+              : `translate(var(--drag-offset-x, 0px), var(--drag-offset-y, 0px))`,
+            willChange: dragOffset ? "transform" : "auto",
+          }}
+        >
           {/* Delete button - only show when selected and in edit mode */}
           {isEditMode && isSelected && (
             <button
