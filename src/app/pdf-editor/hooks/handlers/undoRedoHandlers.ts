@@ -57,6 +57,7 @@ export function useHandleAddTextBoxWithUndo(
         fontSize: initialProperties?.fontSize || 8,
         fontFamily: initialProperties?.fontFamily || "Arial, sans-serif",
         color: initialProperties?.color || "#000000",
+        backgroundColor: initialProperties?.backgroundColor || "#ffffff",
         bold: initialProperties?.bold || false,
         italic: initialProperties?.italic || false,
         underline: initialProperties?.underline || false,

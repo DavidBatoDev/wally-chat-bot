@@ -92,14 +92,14 @@ export const MemoizedShape = memo(
         enableResizing={
           isEditMode && isSelected
             ? {
-                top: true,
+                top: false, // Disable top resize to avoid conflict with delete button
                 right: true,
                 bottom: true,
-                left: true,
+                left: false, // Disable left resize to avoid conflict with delete button
                 topRight: true,
                 bottomRight: true,
                 bottomLeft: true,
-                topLeft: true,
+                topLeft: false, // Disable topLeft resize to avoid conflict with delete button
               }
             : false
         }
@@ -198,8 +198,13 @@ export const MemoizedShape = memo(
                   e.stopPropagation();
                   onDelete(shape.id);
                 }}
-                className="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200"
-                style={{ zIndex: 10 }}
+                className="absolute -top-2 -left-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all duration-200 shadow-lg cursor-pointer"
+                style={{
+                  zIndex: 9999,
+                  pointerEvents: "auto",
+                  position: "absolute",
+                  isolation: "isolate",
+                }}
                 title="Delete shape"
               >
                 <Trash2 size={10} />
