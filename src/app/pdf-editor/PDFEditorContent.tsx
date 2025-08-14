@@ -95,6 +95,7 @@ import { FloatingToolbar } from "./components/layout/FloatingToolbar";
 import { MemoizedTextBox } from "./components/elements/TextBox";
 import { MemoizedShape } from "./components/elements/Shape";
 import { MemoizedImage } from "./components/elements/ImageElement";
+import { MultiMoveCommand } from "./hooks/handlers/commands";
 import DocumentPanel from "@/components/pdf-editor/DocumentPanel";
 import { MemoizedSelectionPreview as SelectionPreview } from "./components/elements/SelectionPreview";
 import { SelectionRectangle } from "./components/elements/SelectionRectangle";
@@ -3281,7 +3282,25 @@ export const PDFEditorContent: React.FC = () => {
         selectionDragRafRef.current = null;
       }
 
-      // Apply final positions for all selected elements
+      // Build a single grouped move command so undo/redo is atomic
+      const moves = {
+        textBoxes: [] as {
+          id: string;
+          before: { x: number; y: number };
+          after: { x: number; y: number };
+        }[],
+        shapes: [] as {
+          id: string;
+          before: { x: number; y: number };
+          after: { x: number; y: number };
+        }[],
+        images: [] as {
+          id: string;
+          before: { x: number; y: number };
+          after: { x: number; y: number };
+        }[],
+      };
+
       editorState.multiSelection.selectedElements.forEach((el) => {
         const initialPos = initialPositionsRef.current[el.id];
         if (!initialPos) return;
@@ -3300,26 +3319,33 @@ export const PDFEditorContent: React.FC = () => {
           Math.min(newY, documentState.pageHeight - element.height)
         );
 
-        switch (el.type) {
-          case "textbox":
-            updateTextBoxWithUndo(
-              el.id,
-              { x: constrainedX, y: constrainedY },
-              false
-            );
-            break;
-          case "shape":
-            updateShapeWithUndo(
-              el.id,
-              { x: constrainedX, y: constrainedY },
-              false
-            );
-            break;
-          case "image":
-            updateImage(el.id, { x: constrainedX, y: constrainedY });
-            break;
+        const record = {
+          id: el.id,
+          before: { x: initialPos.x, y: initialPos.y },
+          after: { x: constrainedX, y: constrainedY },
+        };
+
+        if (el.type === "textbox") {
+          moves.textBoxes.push(record);
+        } else if (el.type === "shape") {
+          moves.shapes.push(record);
+        } else if (el.type === "image") {
+          moves.images.push(record);
         }
       });
+
+      if (
+        moves.textBoxes.length + moves.shapes.length + moves.images.length >
+        0
+      ) {
+        const cmd = new MultiMoveCommand(
+          updateTextBox,
+          updateShape,
+          updateImage,
+          moves
+        );
+        history.executeCommand(cmd);
+      }
 
       // Compute final moved selection bounds based on the snapshot at drag start
       let movedBounds = null as null | {
@@ -3395,8 +3421,9 @@ export const PDFEditorContent: React.FC = () => {
       getElementById,
       setEditorState,
       updateImage,
-      updateShapeWithUndo,
-      updateTextBoxWithUndo,
+      updateShape,
+      updateTextBox,
+      history,
     ]
   );
 
