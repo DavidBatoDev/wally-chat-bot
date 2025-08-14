@@ -22,10 +22,11 @@ const SelectionPreview: React.FC<SelectionPreviewProps> = ({
     <div
       className="absolute border border-blue-500 bg-blue-100 bg-opacity-30 pointer-events-none z-50"
       style={{
-        transform: `translate(${left * scale}px, ${top * scale}px)`,
-        width: width * scale,
-        height: height * scale,
-        willChange: 'transform',
+        // Use translate3d for GPU acceleration and avoid layout during drag
+        transform: `translate3d(${left * scale}px, ${top * scale}px, 0)`,
+        width: Math.max(0, width * scale),
+        height: Math.max(0, height * scale),
+        willChange: "transform, width, height",
       }}
     />
   );

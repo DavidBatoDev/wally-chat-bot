@@ -4989,7 +4989,11 @@ export const PDFEditorContent: React.FC = () => {
         : documentState.scale;
 
     // Get elements that would be captured in the current selection preview
-    const elementsInSelectionPreview = getElementsInSelectionPreview();
+    // Optimize: avoid recomputing preview set while user is drawing the selection
+    const elementsInSelectionPreview = editorState.multiSelection
+      .isDrawingSelection
+      ? new Set<string>()
+      : getElementsInSelectionPreview();
 
     if (element.type === "textbox") {
       const textBox = element.element as TextField;

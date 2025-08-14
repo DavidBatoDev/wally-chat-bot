@@ -63,6 +63,7 @@ export const useMultiSelectionHandlers = ({
 
   // Add throttling for mouse move events
   const mouseMoveThrottleRef = useRef<number | null>(null);
+  const lastMouseEventRef = useRef<{ x: number; y: number } | null>(null);
 
   // Helper function to get elements that would be captured in the current selection preview
   const getElementsInSelectionPreview = useCallback(() => {
@@ -175,7 +176,10 @@ export const useMultiSelectionHandlers = ({
         deltaY,
         (id, updates) => updateTextBoxWithUndo(id, updates, true), // Mark as ongoing operation
         (id, updates) => updateShapeWithUndo(id, updates, true), // Mark as ongoing operation
-        (id, updates) => updateImageWithUndo(id, updates, true), // Mark as ongoing operation
+        (id, updates) =>
+          updateImageWithUndo
+            ? updateImageWithUndo(id, updates, true)
+            : updateImage(id, updates), // Mark as ongoing operation
         getElementById,
         documentState.pageWidth,
         documentState.pageHeight
@@ -226,7 +230,7 @@ export const useMultiSelectionHandlers = ({
     if (history && history.endBatch) {
       history.endBatch();
     }
-    
+
     setEditorState((prev) => ({
       ...prev,
       multiSelection: {
@@ -250,7 +254,7 @@ export const useMultiSelectionHandlers = ({
           }
         });
         initialPositionsRef.current = initial;
-        
+
         // Set dragging state
         setEditorState((prev) => ({
           ...prev,
@@ -262,16 +266,23 @@ export const useMultiSelectionHandlers = ({
         }));
       }
     },
-    [editorState.multiSelection.selectedElements, getElementById, setEditorState]
+    [
+      editorState.multiSelection.selectedElements,
+      getElementById,
+      setEditorState,
+    ]
   );
 
   const handleMultiSelectDrag = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
+      if (
+        selectedElements.length > 1 &&
+        editorState.multiSelection.isDragging
+      ) {
         // Update drag offsets for visual transform instead of actual positions
         const newOffsets: Record<string, { x: number; y: number }> = {};
-        
+
         selectedElements.forEach((el) => {
           if (el.id !== id) {
             // Skip the actively dragged element (react-rnd handles it)
@@ -301,7 +312,7 @@ export const useMultiSelectionHandlers = ({
             }
           }
         });
-        
+
         // Update drag offsets for transform-based positioning
         setEditorState((prev) => ({
           ...prev,
@@ -325,7 +336,10 @@ export const useMultiSelectionHandlers = ({
   const handleMultiSelectDragStop = useCallback(
     (id: string, deltaX: number, deltaY: number) => {
       const selectedElements = editorState.multiSelection.selectedElements;
-      if (selectedElements.length > 1 && editorState.multiSelection.isDragging) {
+      if (
+        selectedElements.length > 1 &&
+        editorState.multiSelection.isDragging
+      ) {
         // Apply final positions and clear drag state
         selectedElements.forEach((el) => {
           if (el.id !== id) {
@@ -388,7 +402,7 @@ export const useMultiSelectionHandlers = ({
             }
           }
         });
-        
+
         // Clear drag state
         setEditorState((prev) => ({
           ...prev,
@@ -398,12 +412,12 @@ export const useMultiSelectionHandlers = ({
             dragOffsets: {},
           },
         }));
-        
+
         // End batch operation if there's one
         if (history && history.endBatch) {
           history.endBatch();
         }
-        
+
         // Update original positions for next drag
         setEditorState((prev) => ({
           ...prev,
@@ -503,6 +517,9 @@ export const useMultiSelectionHandlers = ({
       )
         return;
 
+      // Save latest event
+      lastMouseEventRef.current = { x: e.clientX, y: e.clientY };
+
       // Throttle mouse move events using requestAnimationFrame
       if (mouseMoveThrottleRef.current) {
         return;
@@ -510,12 +527,15 @@ export const useMultiSelectionHandlers = ({
 
       mouseMoveThrottleRef.current = requestAnimationFrame(() => {
         mouseMoveThrottleRef.current = null;
-        
+
+        const last = lastMouseEventRef.current;
+        if (!last) return;
+
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         if (!rect) return;
 
-        let x = (e.clientX - rect.left) / documentState.scale;
-        let y = (e.clientY - rect.top) / documentState.scale;
+        let x = (last.x - rect.left) / documentState.scale;
+        let y = (last.y - rect.top) / documentState.scale;
 
         // Adjust coordinates for split view
         if (
@@ -523,12 +543,24 @@ export const useMultiSelectionHandlers = ({
           (editorState.multiSelection.targetView === "translated" ||
             editorState.multiSelection.targetView === "final-layout")
         ) {
-          const clickX = e.clientX - rect.left;
+          const clickX = last.x - rect.left;
           const singleDocWidth = documentState.pageWidth * documentState.scale;
           const gap = 20;
           x = (clickX - singleDocWidth - gap) / documentState.scale;
         }
 
+        // Imperatively update a CSS variable for the preview to avoid state churn
+        const container = e.currentTarget as HTMLElement;
+        container.style.setProperty(
+          "--selection-end-x",
+          `${x * documentState.scale}px`
+        );
+        container.style.setProperty(
+          "--selection-end-y",
+          `${y * documentState.scale}px`
+        );
+
+        // Update React state less frequently (every RAF) which we're already inside
         setEditorState((prev) => ({
           ...prev,
           multiSelection: {
@@ -557,6 +589,7 @@ export const useMultiSelectionHandlers = ({
         cancelAnimationFrame(mouseMoveThrottleRef.current);
         mouseMoveThrottleRef.current = null;
       }
+      lastMouseEventRef.current = null;
 
       if (
         !editorState.isSelectionMode ||
