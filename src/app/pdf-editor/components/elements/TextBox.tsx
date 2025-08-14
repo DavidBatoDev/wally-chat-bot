@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
   startTransition,
 } from "react";
 import { Rnd } from "react-rnd";
@@ -201,35 +202,100 @@ export const MemoizedTextBox = memo(
     const lastResizeRequestRef = useRef<number>(0);
     const isTypingFastRef = useRef<boolean>(false);
     const fastTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const commitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const finalizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isFocusedRef = useRef<boolean>(false);
+    const isComposingRef = useRef<boolean>(false);
+    const lowPowerRef = useRef<boolean>(false);
+
+    // Local value to decouple typing from global state re-renders
+    const [localValue, setLocalValue] = useState<string>(textBox.value);
+    const localValueRef = useRef<string>(textBox.value);
+
+    // Detect low power to increase debounce
+    useEffect(() => {
+      const navAny: any = navigator as any;
+      if (navAny && typeof navAny.getBattery === "function") {
+        navAny.getBattery().then((b: any) => {
+          const update = () => {
+            lowPowerRef.current =
+              (!b.charging && b.level <= 0.3) || b.dischargingTime < 900;
+          };
+          update();
+          b.addEventListener("levelchange", update);
+          b.addEventListener("chargingchange", update);
+        });
+      }
+    }, []);
+
+    // Keep local value in sync when not actively editing
+    useEffect(() => {
+      if (!isFocusedRef.current && localValueRef.current !== textBox.value) {
+        localValueRef.current = textBox.value;
+        setLocalValue(textBox.value);
+      }
+    }, [textBox.id, textBox.value]);
+
+    const doCommit = useCallback(
+      (ongoing: boolean) => {
+        const val = localValueRef.current;
+        onUpdate(textBoxProps.id, { value: val }, ongoing);
+      },
+      [onUpdate, textBoxProps.id]
+    );
+
+    const scheduleCommit = useCallback(
+      (finalize: boolean = false) => {
+        if (commitTimeoutRef.current) {
+          clearTimeout(commitTimeoutRef.current);
+        }
+        const base = lowPowerRef.current ? 200 : 100;
+        const delay = isTypingFastRef.current ? base * 3 : base;
+        if (finalize) {
+          doCommit(false);
+          return;
+        }
+        commitTimeoutRef.current = setTimeout(() => doCommit(true), delay);
+
+        // Schedule batch finalization after idle period
+        if (finalizeTimeoutRef.current) {
+          clearTimeout(finalizeTimeoutRef.current);
+        }
+        const idleDelay = isTypingFastRef.current ? 800 : 400;
+        finalizeTimeoutRef.current = setTimeout(() => {
+          if (!isComposingRef.current) {
+            doCommit(false);
+          }
+        }, idleDelay);
+      },
+      [doCommit]
+    );
 
     // Immediate text change handler (for responsive typing)
     const handleTextChangeImmediate = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
-
-        // Always update the text value immediately for responsive typing
-        onUpdate(textBoxProps.id, { value: newValue }, true);
+        localValueRef.current = newValue;
+        setLocalValue(newValue);
 
         // Detect fast typing
         const now = Date.now();
         const timeSinceLastResize = now - lastResizeRequestRef.current;
-
         if (timeSinceLastResize < 100) {
-          // Less than 100ms between keystrokes = fast typing
           isTypingFastRef.current = true;
-
-          // Reset fast typing flag after user stops typing
           if (fastTypingTimeoutRef.current) {
             clearTimeout(fastTypingTimeoutRef.current);
           }
           fastTypingTimeoutRef.current = setTimeout(() => {
             isTypingFastRef.current = false;
-          }, 500); // 500ms of no typing to reset fast typing flag
+          }, 500);
         }
-
         lastResizeRequestRef.current = now;
+
+        // Schedule commit of value (throttled) and batch finalization (idle)
+        scheduleCommit(false);
       },
-      [onUpdate, textBoxProps.id]
+      [scheduleCommit]
     );
 
     // Debounced resize handler (for expensive operations)
@@ -404,6 +470,7 @@ export const MemoizedTextBox = memo(
     );
 
     const handleFocus = useCallback(() => {
+      isFocusedRef.current = true;
       console.log(`TextBox focused: ${textBoxProps.id}`, {
         textBoxId: textBoxProps.id,
         value: textBox.value,
@@ -430,6 +497,12 @@ export const MemoizedTextBox = memo(
       textBoxProps.height,
       textBox.page,
     ]);
+
+    const handleBlur = useCallback(() => {
+      isFocusedRef.current = false;
+      // Finalize batch and ensure final value is committed
+      scheduleCommit(true);
+    }, [scheduleCommit]);
 
     // Multi-selection drag handlers
     const handleDragStart = useCallback(
@@ -828,13 +901,21 @@ export const MemoizedTextBox = memo(
           >
             <textarea
               value={
-                isEditMode || (textBox.value && textBox.value.trim() !== "")
-                  ? textBox.value
+                isEditMode || (localValue && localValue.trim() !== "")
+                  ? localValue
                   : ""
               }
               onChange={handleTextChange}
               onClick={handleClick}
               onFocus={handleFocus}
+              onBlur={handleBlur}
+              onCompositionStart={() => {
+                isComposingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                isComposingRef.current = false;
+                scheduleCommit(false);
+              }}
               placeholder={
                 isEditMode ? textBox.placeholder || "Enter Text..." : ""
               }
@@ -912,6 +993,11 @@ export const MemoizedTextBox = memo(
                 whiteSpace: "pre-wrap",
                 wordWrap: "break-word",
               }}
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              autoComplete="off"
+              inputMode="text"
             />
 
             {/* Padding Visual Indicator - only show when padding popup is open and this textbox is selected */}

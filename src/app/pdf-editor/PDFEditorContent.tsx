@@ -2164,6 +2164,7 @@ export const PDFEditorContent: React.FC = () => {
     documentState,
     actions,
     containerRef,
+    documentRef,
   });
 
   // Format handlers (extracted to custom hook)
