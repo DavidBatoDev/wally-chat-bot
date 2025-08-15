@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useTextFormat } from "@/components/editor/ElementFormatContext";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { useRouter, useSearchParams } from "next/navigation";
 
 // Import services
 import { performPageOcr, performBulkOcr } from "./services/ocrService";
@@ -27,6 +28,7 @@ import {
 import {
   updateProjectShareSettings,
   getProjectShareSettings,
+  createProjectFromUpload,
 } from "./services/projectApiService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
 
@@ -179,7 +181,12 @@ const getPdfPageCount = async (pdfUrl: string): Promise<number> => {
   }
 };
 
-export const PDFEditorContent: React.FC = () => {
+export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
+  projectId,
+}) => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const {
     isDrawerOpen,
     setIsDrawerOpen,
@@ -4340,7 +4347,7 @@ export const PDFEditorContent: React.FC = () => {
 
   // Automatic project creation on document upload
   const {
-    projectId: currentProjectId,
+    projectId: createdProjectId,
     isCreatingProject,
     projectCreationError,
     handleFileUploadWithProjectCreation,
@@ -4366,6 +4373,7 @@ export const PDFEditorContent: React.FC = () => {
     getSavedProjects,
     deleteProject,
     setCurrentProjectId,
+    currentProjectId,
   } = useProjectState({
     documentState,
     setDocumentState,
@@ -4384,6 +4392,14 @@ export const PDFEditorContent: React.FC = () => {
     finalLayoutSettings,
     setFinalLayoutSettings,
   });
+
+  // Auto-load project when projectId prop is provided
+  useEffect(() => {
+    if (projectId && !currentProjectId) {
+      console.log("Auto-loading project with ID:", projectId);
+      loadProject(projectId);
+    }
+  }, [projectId, currentProjectId, loadProject]);
 
   // Keep backward compatibility for existing save project calls
   const saveProject = useCallback(
@@ -4461,14 +4477,133 @@ export const PDFEditorContent: React.FC = () => {
         // Clear all elements and state when uploading a new document
         clearAllElementsAndState();
 
-        // Process the file upload
-        if (fileType === "image") {
-          // For images, create a blank PDF and add the image as an interactive element
-          createBlankPdfAndAddImage(file);
+        // Store the file for later processing - don't load it yet
+        // We'll wait for the project to be created first
+        if (isUserAuthenticated) {
+          // Store file reference for project creation
+          lastUploadedFileRef.current = file;
+
+          // Show loading message
+          toast.info("Uploading document and creating project...");
+
+          // First upload the file to get the URL, then create project
+          const triggerProjectCreation = async () => {
+            try {
+              // First, upload the file to get the URL
+              const uploadResult = await uploadFileWithFallback(file);
+
+              // Update document state with the uploaded file URL
+              const updatedDocumentState = {
+                ...documentState,
+                url: uploadResult.url,
+                fileType,
+                isLoading: false,
+                supabaseFilePath: uploadResult.filePath,
+                isSupabaseUrl: uploadResult.isSupabaseUrl,
+              };
+
+              console.log("Updated document state:", updatedDocumentState);
+
+              setDocumentState(updatedDocumentState);
+
+              // Now create the project with the document URL
+              // We need to create the project manually since createProjectOnUpload uses stale documentState
+              const project = await createProjectFromUpload(
+                file,
+                {
+                  url: uploadResult.url,
+                  fileType,
+                  isLoading: false,
+                  supabaseFilePath: uploadResult.filePath,
+                  isSupabaseUrl: uploadResult.isSupabaseUrl,
+                  isDocumentLoaded: false,
+                  currentPage: 1,
+                  numPages: 0,
+                  pages: [],
+                  deletedPages: new Set(),
+                  error: "",
+                  isTransforming: false,
+                  finalLayoutUrl: "",
+                  finalLayoutCurrentPage: 1,
+                  finalLayoutNumPages: 0,
+                  finalLayoutDeletedPages: new Set(),
+                },
+                {
+                  viewState,
+                  elementCollections,
+                  layerState,
+                  editorState,
+                  sourceLanguage,
+                  desiredLanguage,
+                }
+              );
+
+              if (project && project.id) {
+                const projectId = project.id;
+
+                console.log("Project created successfully:", {
+                  projectId,
+                  project,
+                });
+
+                // Update the URL to trigger project loading
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("projectId", projectId);
+                const newUrl = `/pdf-editor?${params.toString()}`;
+                window.history.replaceState({}, "", newUrl);
+
+                // Set the current project ID
+                setCurrentProjectId(projectId);
+
+                // Now load the document
+                if (fileType === "image") {
+                  createBlankPdfAndAddImage(file);
+                } else {
+                  actions.loadDocument(file);
+                  setViewState((prev) => ({
+                    ...prev,
+                    activeSidebarTab: "pages",
+                  }));
+                }
+
+                // Clear the file reference
+                lastUploadedFileRef.current = null;
+
+                toast.success(
+                  `Project created and document loaded: ${projectId}`
+                );
+              }
+            } catch (error) {
+              console.error("Error creating project:", error);
+              toast.error(
+                "Failed to create project, loading document directly"
+              );
+
+              // Fallback: load document directly if project creation fails
+              if (fileType === "image") {
+                createBlankPdfAndAddImage(file);
+              } else {
+                actions.loadDocument(file);
+                setViewState((prev) => ({
+                  ...prev,
+                  activeSidebarTab: "pages",
+                }));
+              }
+
+              lastUploadedFileRef.current = null;
+            }
+          };
+
+          // Start project creation
+          triggerProjectCreation();
         } else {
-          // For PDFs, load normally
-          actions.loadDocument(file);
-          setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+          // For unauthenticated users, load the document normally
+          if (fileType === "image") {
+            createBlankPdfAndAddImage(file);
+          } else {
+            actions.loadDocument(file);
+            setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+          }
         }
 
         // Note: Automatic project creation will happen when document is fully loaded
@@ -4504,6 +4639,11 @@ export const PDFEditorContent: React.FC = () => {
       actions,
       clearAllElementsAndState,
       isUserAuthenticated,
+      setViewState,
+      searchParams,
+      setCurrentProjectId,
+      uploadFileWithFallback,
+      setDocumentState,
     ]
   );
 
@@ -4854,60 +4994,8 @@ export const PDFEditorContent: React.FC = () => {
     setViewState,
   ]);
 
-  // Automatic project creation when document is fully loaded
+  // Automatic project creation is now handled manually in handleFileUpload
   const lastUploadedFileRef = useRef<File | null>(null);
-  const hasCreatedProjectForCurrentDocumentRef = useRef(false);
-
-  useEffect(() => {
-    const createProjectAfterDocumentLoad = async () => {
-      // Only create project if:
-      // 1. User is authenticated
-      // 2. Document is loaded
-      // 3. We have a valid document URL
-      // 4. We haven't already created a project for this document
-      // 5. We have a reference to the uploaded file
-      if (
-        isUserAuthenticated &&
-        documentState.isDocumentLoaded &&
-        documentState.url &&
-        !hasCreatedProjectForCurrentDocumentRef.current &&
-        lastUploadedFileRef.current
-      ) {
-        hasCreatedProjectForCurrentDocumentRef.current = true;
-
-        try {
-          console.log("DEBUG: Creating project after document load", {
-            documentState,
-            file: lastUploadedFileRef.current,
-          });
-
-          const projectId = await createProjectOnUpload(
-            lastUploadedFileRef.current
-          );
-          if (projectId) {
-            // Set the current project ID so future saves will update this project
-            setCurrentProjectId(projectId);
-            console.log(
-              "DEBUG: Set current project ID after auto-creation:",
-              projectId
-            );
-          }
-          toast.success("Project created automatically!");
-        } catch (error) {
-          console.error("Failed to create project after document load:", error);
-          hasCreatedProjectForCurrentDocumentRef.current = false; // Allow retry
-        }
-      }
-    };
-
-    createProjectAfterDocumentLoad();
-  }, [
-    isUserAuthenticated,
-    documentState.isDocumentLoaded,
-    documentState.url,
-    documentState.numPages, // Include numPages to ensure document is fully processed
-    createProjectOnUpload,
-  ]);
 
   // Cleanup effect for blob URLs
   useEffect(() => {
@@ -4934,12 +5022,7 @@ export const PDFEditorContent: React.FC = () => {
     documentState.isSupabaseUrl,
   ]);
 
-  // Reset project creation flag when a new document is uploaded
-  useEffect(() => {
-    if (!documentState.isDocumentLoaded) {
-      hasCreatedProjectForCurrentDocumentRef.current = false;
-    }
-  }, [documentState.isDocumentLoaded]);
+  // Project creation is now handled manually in handleFileUpload
 
   // Clear upload loading state on document error
   useEffect(() => {
@@ -5382,6 +5465,9 @@ export const PDFEditorContent: React.FC = () => {
     }
   }, [pendingTemplateExport, templateCanvas, performExport]);
 
+  // Handle project creation and document loading after upload
+  // Project creation and document loading is now handled directly in handleFileUpload
+
   // Add state for untranslated check modal
   const [showUntranslatedCheckModal, setShowUntranslatedCheckModal] =
     useState(false);
@@ -5398,6 +5484,8 @@ export const PDFEditorContent: React.FC = () => {
 
   // Add state for file upload loading
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+
+  // Project creation is now handled automatically by the useProjectCreation hook
 
   // Add state for project management modal
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -5795,7 +5883,7 @@ export const PDFEditorContent: React.FC = () => {
                             </div>
                           )}
 
-                          {currentProjectId && !isCreatingProject && (
+                          {createdProjectId && !isCreatingProject && (
                             <div className="flex items-center text-green-600">
                               <svg
                                 className="w-4 h-4 mr-2"

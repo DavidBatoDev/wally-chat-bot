@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Response, Form, Query
 from fastapi.responses import JSONResponse
-from typing import List, Union
-from db.supabase_client import supabase
+from typing import List, Union, Dict, Any, Optional
+from db.supabase_client import supabase, db_service
 from models.project import Project, ProjectCreate
 from models.template_ocr import TemplateOCRResponse, TemplateOCRError
 from dependencies.auth import get_current_user
@@ -11,67 +11,250 @@ from datetime import datetime
 from google.cloud import documentai_v1 as documentai
 from services.ocr_service import process_document_for_layout, create_styled_json_from_layout, convert_image_to_pdf
 from services.template_ocr_service import process_document_with_template, process_document_with_pdf_template
+from services.project_service import get_project_service
 import base64
 import io
 import traceback
+import logging
 from core.config import settings
+from pydantic import BaseModel, Field
 
 date_now = datetime.now().isoformat()
+logger = logging.getLogger(__name__)
 router = APIRouter()
+project_service = get_project_service()
 
-@router.post("/", response_model=Project, status_code=status.HTTP_201_CREATED)
-async def create_project(title: str, current_user: User = Depends(get_current_user)):
+# Pydantic models for project CRUD (aligned with project_state router)
+class ProjectStateCreate(BaseModel):
+    """Model for creating a new project state."""
+    client_name: str
+    desired_language: str
+    source_language: str
+    deadline: datetime
+    delivery_date: datetime
+    description: Optional[str] = Field(None, description="Project description")
+    project_data: Dict[str, Any] = Field(..., description="Complete project state data")
+    tags: Optional[List[str]] = Field(default_factory=list, description="Project tags")
+    is_public: Optional[bool] = Field(False, description="Whether project is public")
+
+class ProjectStateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    project_data: Dict[str, Any] = Field(..., description="Updated project state data")
+    tags: Optional[List[str]] = None
+    is_public: Optional[bool] = None
+    local_version: Optional[int] = Field(None, description="Local version for sync")
+
+class ProjectStateResponse(BaseModel):
+    """Model for project state response."""
+    id: str
+    name: str
+    project_code: Optional[str] = None
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    created_by: str
+    project_data: Dict[str, Any]
+    current_page: int
+    num_pages: int
+    current_workflow_step: str
+    source_language: str
+    desired_language: str
+    tags: List[str]
+    is_public: bool
+    sync_status: str
+    local_version: int
+    server_version: int
+
+class ProjectSummaryResponse(BaseModel):
+    """Model for project summary (list view)."""
+    id: str
+    name: str
+    project_code: Optional[str] = None
+    description: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    current_page: int
+    num_pages: int
+    current_workflow_step: str
+    current_project_step: Optional[str] = None
+    source_language: str
+    desired_language: str
+    tags: List[str]
+    is_public: bool
+    sync_status: str
+    server_version: int
+    # Metadata from JSONB
+    document_url: Optional[str]
+    file_type: Optional[str]
+    text_boxes_count: int
+    images_count: int
+
+@router.post("/", response_model=ProjectStateResponse, status_code=status.HTTP_201_CREATED)
+async def create_project(
+    project: ProjectStateCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Create a new project state.
+    This replaces saving to localStorage with database persistence.
+    """
+
+    if current_user["role"] != "project_manager":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to create a project"
+        )
 
     try:
-        project_data = {
-            'title': title,
-            'user_id': str(current_user.id),
-            'collaborator': None,
-            'created_at': date_now,
-            'updated_at': date_now
-        }
-        print("project_data")
-        print(project_data)
-        response = supabase.table('projects').insert(project_data).execute()
+        # Generating project code
+        project_code = db_service.generate_project_code()
+        if not project_code:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to generate project code")
         
-        if response.data is None and response.error is not None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response.error.message)
-            
-        return response.data[0]
+        # Build persisted project_data from request
+        project_data = project.project_data.copy()
+        project_data.update({
+            'name': project_code,
+            'project_code': project_code,
+            'description': project.description,
+            'tags': project.tags,
+            'isPublic': project.is_public,
+            'createdAt': datetime.utcnow().isoformat(),
+            'updatedAt': datetime.utcnow().isoformat(),
+        })
+
+        # Ensure initial backend step is text_ocr for tracking across sessions
+        project_data['currentProjectStep'] = 'text_ocr'
+        result = project_service.create_project(current_user["id"], project_data)
+        return ProjectStateResponse(**result)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(f"Error creating project: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to create project: {str(e)}")
 
-
-@router.get("/", response_model=List[Project])
-async def get_projects(current_user: User = Depends(get_current_user)):
+# Get projects endpoint from project_state
+@router.get("/", response_model=List[ProjectSummaryResponse])
+async def get_projects(
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of projects to return"),
+    offset: int = Query(0, ge=0, description="Number of projects to skip"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List user's project states.
+    This replaces getting saved projects from localStorage.
+    """
     try:
-        response = supabase.table('projects').select('*').eq('user_id', str(current_user.id)).execute()
+        projects = project_service.list_user_projects(current_user["id"], limit, offset)
+        return projects
         
-        if response.data is None and response.error is not None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response.error.message)
-
-        return response.data
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(f"Error listing project states: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list projects: {str(e)}"
+        )
 
-@router.get("/{project_id}", response_model=Project)
-async def get_project(project_id: uuid.UUID, current_user: User = Depends(get_current_user)):
+@router.get("/{project_id}", response_model=ProjectStateResponse)
+async def get_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get a specific project state by ID.
+    This replaces loading from localStorage.
+    """
     try:
-        response = supabase.table('projects').select('*').eq('id', str(project_id)).eq('user_id', str(current_user.id)).single().execute()
+        project = project_service.get_project(project_id, current_user["id"]) 
         
-        if response.data is None and response.error is not None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-
-        return response.data
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        return ProjectStateResponse(**project)
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        logger.error(f"Error getting project state {project_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get project: {str(e)}"
+        )
+
+@router.put("/{project_id}", response_model=ProjectStateResponse)
+async def update_project(
+    project_id: str,
+    project_update: ProjectStateUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update an existing project's JSONB state and metadata."""
+    try:
+        project_data = project_update.project_data.copy()
+        if project_update.name:
+            project_data['name'] = project_update.name
+        if project_update.description is not None:
+            project_data['description'] = project_update.description
+        if project_update.tags is not None:
+            project_data['tags'] = project_update.tags
+        if project_update.is_public is not None:
+            project_data['isPublic'] = project_update.is_public
+        if project_update.local_version is not None:
+            project_data['localVersion'] = project_update.local_version
+        project_data['updatedAt'] = datetime.utcnow().isoformat()
+
+        result = project_service.update_project(project_id, current_user["id"], project_data)
+        return ProjectStateResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating project {project_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to update project: {str(e)}")
+
+# Delete project endpoint
+@router.delete("/{project_id}")
+async def delete_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a project.
+    """
+    try:
+        result = project_service.delete_project(project_id, current_user["id"])
+        
+        return {"success": result, "message": "Project deleted successfully"}
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except PermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error deleting project {project_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete project: {str(e)}"
+        )
+
 
 
 @router.post("/{project_id}/files", response_model=Project)
 async def upload_project_file(project_id: uuid.UUID, file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     try:
+        user_id = current_user["id"]
         # First verify project ownership
-        project_response = supabase.table('projects').select('*').eq('id', str(project_id)).eq('user_id', str(current_user.id)).single().execute()
+        project_response = supabase.table('projects').select('*').eq('id', str(project_id)).eq('created_by', str(current_user["id"])).single().execute()
         if project_response.data is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found or access denied")
 
@@ -85,12 +268,12 @@ async def upload_project_file(project_id: uuid.UUID, file: UploadFile = File(...
         # Create a unique file name
         unique_filename = f"{uuid.uuid4()}_{file.filename}"
         # Create the full path in the storage bucket
-        storage_path = f"{str(current_user.id)}/{str(project_id)}/{unique_filename}"
+        storage_path = f"{str(user_id)}/{str(project_id)}/{unique_filename}"
         
         try:
             # Upload to storage bucket
             storage_response = supabase.storage \
-                .from_('pdfs') \
+                .from_('project-uploads') \
                 .upload(
                     path=storage_path,
                     file=file_content,
@@ -406,6 +589,8 @@ async def process_file_with_template_ocr(
             mime_type=mime_type
         )
 
+        print("OCR finished")
+
         # Check if processing was successful
         if not result.get("success", False):
             raise HTTPException(
@@ -537,4 +722,478 @@ async def process_file_with_pdf_template_ocr(
         )
     finally:
         await document_file.seek(0)
-        await template_pdf.seek(0) 
+        await template_pdf.seek(0)
+
+# New Workflow Step 1 Endpoints
+
+@router.post("/template-detection")
+async def detect_document_template(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Step 1: Detect document template from uploaded file.
+    Performs initial OCR to identify template type and language.
+    """
+    try:
+        # Read the file content
+        file_content = await file.read()
+        if not file_content:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
+
+        # Store the file temporarily for processing
+        temp_file_path = f"/tmp/{file.filename}"
+        with open(temp_file_path, "wb") as temp_file:
+            temp_file.write(file_content)
+
+        # Use the existing process_file OCR service for template detection
+        from services.ocr_service import process_file, OCRError
+        
+        try:
+            # Call the existing OCR service
+            ocr_result = await process_file(
+                file_content=file_content,
+                filename=file.filename,
+                page_number=1,
+                frontend_page_width=595,  # A4 default
+                frontend_page_height=842,  # A4 default
+                frontend_scale=1.0
+            )
+            
+            # Extract template information from OCR result
+            detected_template = None
+            detected_language = "English"  # Default
+            confidence = 0.0
+            doc_type = "general"
+            
+            # Try to match with existing templates based on OCR results
+            if ocr_result and 'layout' in ocr_result:
+                try:
+                    templates = db_service.get_records('templates', limit=20)
+                    
+                    # Analyze OCR structure to match templates
+                    if templates:
+                        # Simple template matching based on number of entities and layout
+                        layout = ocr_result.get('layout', {})
+                        pages = layout.get('pages', [])
+                        
+                        if pages:
+                            entities = pages[0].get('entities', [])
+                            entity_count = len(entities)
+                            
+                            # Match based on entity count and document structure
+                            best_match = None
+                            best_score = 0.0
+                            
+                            for template in templates:
+                                template_info = template.get('info_json', {})
+                                expected_fields = len(template_info.get('fields', []))
+                                
+                                # Score based on similarity of field count
+                                if expected_fields > 0:
+                                    score = min(entity_count, expected_fields) / max(entity_count, expected_fields)
+                                    if score > best_score:
+                                        best_score = score
+                                        best_match = template
+                            
+                            if best_match and best_score > 0.3:
+                                detected_template = best_match
+                                confidence = best_score
+                                doc_type = detected_template.get('doc_type', 'general')
+                    
+                    # Language detection from OCR text
+                    if pages and pages[0].get('entities'):
+                        # Extract sample text for language detection
+                        sample_texts = []
+                        for entity in pages[0]['entities'][:5]:  # First 5 entities
+                            if entity.get('text'):
+                                sample_texts.append(entity['text'])
+                        
+                        if sample_texts:
+                            combined_text = ' '.join(sample_texts).lower()
+                            # Simple language detection based on common words
+                            if any(word in combined_text for word in ['el', 'la', 'de', 'y', 'es', 'en', 'un', 'una']):
+                                detected_language = "Spanish"
+                            elif any(word in combined_text for word in ['le', 'la', 'de', 'et', 'est', 'un', 'une', 'les']):
+                                detected_language = "French"
+                            elif any(word in combined_text for word in ['der', 'die', 'das', 'und', 'ist', 'ein', 'eine']):
+                                detected_language = "German"
+                            elif any(word in combined_text for word in ['the', 'and', 'or', 'is', 'are', 'was', 'were']):
+                                detected_language = "English"
+                
+                except Exception as template_error:
+                    logger.warning(f"Template matching error: {template_error}")
+                    # Use fallback values
+                    pass
+            
+            result = {
+                "success": True,
+                "template_id": detected_template['id'] if detected_template else 'unknown',
+                "doc_type": doc_type,
+                "variation": detected_template.get('variation', 'standard') if detected_template else 'standard',
+                "confidence": confidence,
+                "detected_language": detected_language,
+                "message": "Template detection completed successfully",
+                "ocr_preview": {
+                    "entities_found": len(ocr_result.get('layout', {}).get('pages', [{}])[0].get('entities', [])) if ocr_result else 0,
+                    "has_text": bool(ocr_result)
+                }
+            }
+            
+            return result
+            
+        except OCRError as ocr_error:
+            logger.error(f"OCR processing error: {ocr_error}")
+            # Return fallback result when OCR fails
+            return {
+                "success": True,
+                "template_id": 'fallback_template',
+                "doc_type": 'general',
+                "variation": 'standard',
+                "confidence": 0.3,
+                "detected_language": "English",
+                "message": "Template detection completed with limited analysis"
+            }
+        
+        finally:
+            # Clean up temp file
+            import os
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Template detection error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to detect template: {str(e)}"
+        )
+    finally:
+        await file.seek(0)
+
+@router.post("/{project_id}/confirm-and-ocr")
+async def confirm_project_and_perform_ocr(
+    project_id: str,
+    confirmation_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Step 2: Confirm project details and perform full OCR.
+    Updates project with confirmed details and triggers full text extraction.
+    """
+    try:
+        # Verify project exists and user has permission
+        project = project_service.get_project(project_id, current_user["id"])
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found or access denied"
+            )
+
+        # Only creator or PM can confirm
+        if project['created_by'] != current_user["id"]:
+            # Check if user is a PM
+            user_profile = db_service.get_record('profiles', current_user["id"])
+            if not user_profile or user_profile.get('role') != 'project_manager':
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only project creator or PM can confirm project details"
+                )
+
+        # Get the current project_data structure
+        current_project_data = project.get('project_data', {})
+
+        # Update the project_data structure to match PDF editor format
+        updated_project_data = current_project_data.copy()
+
+        # Update languages in the project_data structure (both top-level and nested)
+        if confirmation_data.get('source_language'):
+            updated_project_data['sourceLanguage'] = confirmation_data.get('source_language')
+        if confirmation_data.get('desired_language'):
+            updated_project_data['desiredLanguage'] = confirmation_data.get('desired_language')
+
+        # Ensure documentState exists
+        document_state = updated_project_data.get('documentState') or {}
+        updated_project_data['documentState'] = document_state
+
+        # Use provided num_pages and page dimensions if available
+        styled_layout = confirmation_data.get('styled_layout') or {}
+        doc_info = (styled_layout.get('document_info') or {}) if isinstance(styled_layout, dict) else {}
+        page_width = doc_info.get('page_width') or document_state.get('pageWidth') or 595
+        page_height = doc_info.get('page_height') or document_state.get('pageHeight') or 842
+        num_pages = (
+            confirmation_data.get('num_pages')
+            or doc_info.get('total_pages')
+            or document_state.get('numPages')
+            or 1
+        )
+        document_state['pageWidth'] = page_width
+        document_state['pageHeight'] = page_height
+        document_state['numPages'] = num_pages
+        document_state['currentPage'] = 1
+        document_state.setdefault('scale', 1)
+        document_state.setdefault('isLoading', False)
+        document_state.setdefault('error', "")
+        document_state.setdefault('fileType', document_state.get('fileType') or 'pdf')
+        document_state.setdefault('imageDimensions', None)
+        document_state['isDocumentLoaded'] = True
+        document_state.setdefault('isPageLoading', False)
+        document_state.setdefault('isScaleChanging', False)
+        document_state.setdefault('pdfBackgroundColor', 'rgb(255, 255, 255)')
+        document_state.setdefault('detectedPageBackgrounds', {})
+        document_state.setdefault('deletedPages', [])
+        document_state.setdefault('finalLayoutNumPages', 0)
+        document_state.setdefault('finalLayoutCurrentPage', 1)
+        document_state.setdefault('finalLayoutDeletedPages', [])
+        document_state.setdefault('isTransforming', False)
+
+        # Ensure pages array exists and is sized appropriately
+        pages = document_state.get('pages') or []
+        if not isinstance(pages, list):
+            pages = []
+        # Resize/initialize pages
+        while len(pages) < num_pages:
+            pages.append({
+                'pageNumber': len(pages) + 1,
+                'isTranslated': False,
+                'elements': [],
+            })
+        document_state['pages'] = pages
+
+        # Ensure elementCollections exists
+        element_collections = updated_project_data.get('elementCollections') or {}
+        element_collections.setdefault('originalTextBoxes', [])
+        element_collections.setdefault('translatedTextBoxes', [])
+        element_collections.setdefault('originalImages', [])
+        element_collections.setdefault('translatedImages', [])
+        element_collections.setdefault('originalShapes', [])
+        element_collections.setdefault('translatedShapes', [])
+        element_collections.setdefault('originalDeletionRectangles', [])
+        element_collections.setdefault('translatedDeletionRectangles', [])
+        element_collections.setdefault('untranslatedTexts', [])
+        element_collections.setdefault('finalLayoutTextboxes', [])
+        element_collections.setdefault('finalLayoutShapes', [])
+        element_collections.setdefault('finalLayoutDeletionRectangles', [])
+        element_collections.setdefault('finalLayoutImages', [])
+        updated_project_data['elementCollections'] = element_collections
+
+        # If styled layout is provided, map it into PDF editor structures
+        if styled_layout and isinstance(styled_layout, dict):
+            try:
+                def to_px(val: float, dim: float) -> float:
+                    try:
+                        return float(val) * float(dim)
+                    except Exception:
+                        return 0.0
+
+                def color_to_hex(rgb_arr: Any) -> str:
+                    try:
+                        r = int((rgb_arr[0] if len(rgb_arr) > 0 else 0) * 255)
+                        g = int((rgb_arr[1] if len(rgb_arr) > 1 else 0) * 255)
+                        b = int((rgb_arr[2] if len(rgb_arr) > 2 else 0) * 255)
+                        return f"#{r:02x}{g:02x}{b:02x}"
+                    except Exception:
+                        return "#000000"
+
+                translated_textboxes: list = []
+                untranslated_list: list = []
+                # Iterate through pages from styled_layout
+                styled_pages = styled_layout.get('pages') or []
+                if not styled_pages and styled_layout.get('entities'):
+                    # Backward compat: single-page structure
+                    styled_pages = [{
+                        'page_number': 1,
+                        'entities': styled_layout.get('entities')
+                    }]
+
+                for sp in styled_pages:
+                    page_num = int(sp.get('page_number') or 1)
+                    ents = sp.get('entities') or []
+                    page_elements: list = []
+                    for ent in ents:
+                        verts = (((ent or {}).get('bounding_poly') or {}).get('vertices') or [])
+                        if len(verts) >= 2:
+                            min_x = min(v.get('x', 0) for v in verts)
+                            min_y = min(v.get('y', 0) for v in verts)
+                            max_x = max(v.get('x', 0) for v in verts)
+                            max_y = max(v.get('y', 0) for v in verts)
+                        else:
+                            min_x = min_y = 0
+                            max_x = max_y = 0
+
+                        x = to_px(min_x, page_width)
+                        y = to_px(min_y, page_height)
+                        width = to_px(max_x - min_x, page_width)
+                        height = to_px(max_y - min_y, page_height)
+
+                        style = (ent.get('styling') or ent.get('style') or {})
+                        colors = (style.get('colors') or {})
+                        text_color = colors.get('fill_color') or colors.get('text_color')
+                        if isinstance(text_color, dict):
+                            rgb = [text_color.get('r', 0), text_color.get('g', 0), text_color.get('b', 0)]
+                        else:
+                            rgb = []
+                        color = color_to_hex(rgb)
+                        pad = style.get('text_padding') or 0
+                        border_radius = (
+                            (style.get('background') or {}).get('border_radius')
+                            or style.get('border_radius')
+                            or 0
+                        )
+                        bg = colors.get('background_color')
+                        bg_hex = color_to_hex(bg) if isinstance(bg, list) or isinstance(bg, dict) else '#00000000'
+                        border_col = colors.get('border_color')
+                        border_hex = color_to_hex(border_col) if border_col else '#000000'
+                        has_border = 1 if border_col else 0
+
+                        textbox = {
+                            'id': str(uuid.uuid4()),
+                            'x': x,
+                            'y': y,
+                            'width': width,
+                            'height': height,
+                            'value': ent.get('text', ''),
+                            'placeholder': (ent.get('placeholder') or 'Enter Text...'),
+                            'fontSize': style.get('font_size') or 12,
+                            'fontFamily': style.get('font_family') or 'Helvetica',
+                            'page': page_num,
+                            'type': ent.get('type') or 'text',
+                            'color': color,
+                            'bold': True if (style.get('font_family') == 'Helvetica-Bold' or style.get('font_weight') == 'bold') else False,
+                            'italic': bool(style.get('italic', False)),
+                            'underline': bool(style.get('underline', False)),
+                            'textAlign': (style.get('text_alignment') or style.get('alignment') or 'left'),
+                            'letterSpacing': style.get('letter_spacing') or 0,
+                            'lineHeight': style.get('line_height') or 1.2,
+                            'rotation': style.get('rotation') or 0,
+                            'backgroundColor': bg_hex if bg else 'transparent',
+                            'backgroundOpacity': (bg.get('a', 1) if isinstance(bg, dict) else (bg[3] if isinstance(bg, list) and len(bg) > 3 else 1)),
+                            'borderColor': border_hex,
+                            'borderWidth': has_border,
+                            'borderRadius': border_radius,
+                            'borderTopLeftRadius': border_radius,
+                            'borderTopRightRadius': border_radius,
+                            'borderBottomLeftRadius': border_radius,
+                            'borderBottomRightRadius': border_radius,
+                            'paddingTop': pad,
+                            'paddingRight': pad,
+                            'paddingBottom': pad,
+                            'paddingLeft': pad,
+                            'isEditing': False,
+                        }
+                        translated_textboxes.append(textbox)
+                        page_elements.append({ **{k:v for k,v in textbox.items() if k not in ['placeholder','isEditing']}, 'type': 'textbox' })
+
+                        # Record untranslated text linkage similar to editor
+                        if textbox['value'] and textbox['value'].strip():
+                            untranslated_list.append({
+                                'id': str(uuid.uuid4()),
+                                'translatedTextboxId': textbox['id'],
+                                'originalText': textbox['value'],
+                                'page': page_num,
+                                'x': x,
+                                'y': y,
+                                'width': width,
+                                'height': height,
+                                'isCustomTextbox': False,
+                                'status': 'needsChecking'
+                            })
+
+                    # Ensure page exists and attach elements
+                    page_index = page_num - 1
+                    while len(pages) <= page_index:
+                        pages.append({
+                            'pageNumber': len(pages) + 1,
+                            'isTranslated': False,
+                            'elements': []
+                        })
+                    pages[page_index]['elements'] = page_elements
+
+                # Persist element collections
+                element_collections['translatedTextBoxes'] = translated_textboxes
+                if untranslated_list:
+                    element_collections['untranslatedTexts'] = untranslated_list
+                updated_project_data['elementCollections'] = element_collections
+            except Exception as map_err:
+                logger.warning(f"Failed to map styled_layout to project_data: {map_err}")
+        
+        # Update metadata fields for indexing
+        update_metadata = {
+            'source_language': confirmation_data.get('source_language'),
+            'desired_language': confirmation_data.get('desired_language'),
+            'current_project_step': 'text_ocr',
+            'template_id': confirmation_data.get('template_id'),
+            'pm_notes': confirmation_data.get('pm_notes', ''),
+            'confirmed_at': datetime.utcnow().isoformat(),
+            'confirmed_by': current_user["id"]
+        }
+
+        # First update - confirm the details
+        updated_project = project_service.update_project(
+            project_id, 
+            current_user["id"], 
+            updated_project_data
+        )
+
+        # Perform full OCR processing using the orchestrator service
+        try:
+            from services.ocr_orchestrator import get_ocr_orchestrator
+            
+            # Initialize OCR orchestrator
+            ocr_orchestrator = get_ocr_orchestrator(project_service, db_service)
+            
+            # Process documents with appropriate OCR services
+            ocr_result = await ocr_orchestrator.process_project_documents(
+                project_id=project_id,
+                user_id=current_user["id"],
+                confirmation_data=confirmation_data
+            )
+            
+            logger.info(f"OCR orchestration completed: {ocr_result}")
+            
+            # The orchestrator has already updated the project data and state
+            # Return success response with OCR results
+            return {
+                "success": True,
+                "project_id": project_id,
+                "status": "ocr_completed",
+                "message": ocr_result.get('message', 'OCR completed successfully'),
+                "next_step": "assigning_translator",
+                "pages_processed": ocr_result.get('pages_processed', 1),
+                "entities_extracted": ocr_result.get('entities_extracted', 0),
+                "project_data": {
+                    "source_language": confirmation_data.get('source_language'),
+                    "desired_language": confirmation_data.get('desired_language'),
+                    "template_id": confirmation_data.get('template_id'),
+                    "current_step": "assigning_translator",
+                    "ocr_completed": True
+                }
+            }
+            
+        except Exception as ocr_error:
+            logger.error(f"OCR processing error: {ocr_error}")
+            # Even if OCR fails, we can still proceed with the confirmed details
+            return {
+                "success": True,
+                "project_id": project_id,
+                "status": "ocr_partial",
+                "message": "Project confirmed but OCR encountered issues",
+                "next_step": "manual_processing",
+                "project_data": {
+                    "source_language": confirmation_data.get('source_language'),
+                    "desired_language": confirmation_data.get('desired_language'),
+                    "template_id": confirmation_data.get('template_id'),
+                    "current_step": "manual_processing",
+                    "ocr_completed": False
+                }
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming project and performing OCR: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to confirm project and perform OCR: {str(e)}"
+        ) 

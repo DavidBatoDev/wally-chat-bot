@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, Download, FolderOpen, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface SavedProject {
   id: string;
@@ -40,6 +41,8 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   onDeleteProject,
   getSavedProjects,
 }) => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
   const [exportProjectName, setExportProjectName] = useState("");
@@ -66,12 +69,20 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
 
   const handleLoadProject = async (projectId: string) => {
     try {
-      const success = await onLoadProject(projectId);
-      if (success) {
-        onOpenChange(false);
-      }
+      // Create new URLSearchParams with the new projectId
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("projectId", projectId);
+
+      // Navigate to the same page with the new projectId parameter
+      router.push(`/pdf-editor?${params.toString()}`);
+
+      // Close the modal
+      onOpenChange(false);
+
+      toast.success(`Loading project: ${projectId}`);
     } catch (error) {
-      console.error("Failed to load project:", error);
+      console.error("Failed to change project:", error);
+      toast.error("Failed to change project");
     }
   };
 

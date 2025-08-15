@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, List
 import logging
 from datetime import datetime
 import json
-from .db_service import SupabaseService
+from db.supabase_client import SupabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,10 @@ class ProjectService:
                 'description': project_data.get('description', ''),
                 'created_by': user_id,
                 'project_data': project_data,
+                # New: persist project_code if provided
+                'project_code': project_data.get('project_code', ""),
+                 # New: initialize backend-controlled project step
+                 'current_project_step': 'text_ocr',
                 
                 # Extracted fields for indexing
                 'current_page': document_state.get('currentPage', 1),
@@ -127,6 +131,9 @@ class ProjectService:
                 'local_version': project_data.get('localVersion', 1) + 1,
                 'sync_status': 'pending'  # Mark as pending sync
             }
+            # Never allow changing project_code via update
+            if 'project_code' in update_data:
+                update_data.pop('project_code')
             
             # Remove None values
             update_data = {k: v for k, v in update_data.items() if v is not None}
@@ -177,14 +184,38 @@ class ProjectService:
             List of project records
         """
         try:
-            # Use the project_summary view for efficient listing
-            query = self.db.client.table('project_summary').select('*')
+            # Read directly from projects table to include complete columns
+            query = self.db.client.table('projects').select('*')
             query = query.eq('created_by', user_id)
             query = query.order('updated_at', desc=True)
             query = query.range(offset, offset + limit - 1)
-            
+
             result = query.execute()
-            return result.data or []
+            rows = result.data or []
+
+            # Enrich with summary fields expected by API consumers
+            enriched: List[Dict[str, Any]] = []
+            for row in rows:
+                proj_data = (row.get('project_data') or {})
+                doc_state = proj_data.get('documentState') or {}
+                elem = proj_data.get('elementCollections') or {}
+
+                document_url = doc_state.get('url')
+                file_type = doc_state.get('fileType')
+                text_boxes_count = len(elem.get('originalTextBoxes') or [])
+                images_count = len(elem.get('originalImages') or [])
+
+                enriched.append({
+                    **row,
+                    'document_url': document_url,
+                    'file_type': file_type,
+                    'text_boxes_count': text_boxes_count,
+                    'images_count': images_count,
+                    # Normalize enum/current_project_step to plain string
+                    'current_project_step': (row.get('current_project_step') or ''),
+                })
+
+            return enriched
             
         except Exception as e:
             logger.error(f"Error listing projects for user {user_id}: {e}")
