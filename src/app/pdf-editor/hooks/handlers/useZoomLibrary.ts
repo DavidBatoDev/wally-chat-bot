@@ -1,5 +1,4 @@
 import { useEffect, useRef, useCallback } from "react";
-import Panzoom, { PanzoomObject, PanzoomOptions } from "@panzoom/panzoom";
 import { ViewState } from "../../types/pdf-editor.types";
 
 interface UseZoomLibraryProps {
@@ -25,120 +24,166 @@ export const useZoomLibrary = ({
   containerRef,
   documentRef,
 }: UseZoomLibraryProps) => {
-  const panzoomRef = useRef<PanzoomObject | null>(null);
-  const isInitializedRef = useRef(false);
+  // Since the existing codebase applies scale manually to all elements,
+  // we'll keep using the existing scale state management but enhance it
+  // with better zoom controls and animations
+  
+  const currentScaleRef = useRef(documentState.scale);
+  const targetScaleRef = useRef(documentState.scale);
+  const animationFrameRef = useRef<number | null>(null);
+  const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize Panzoom
   useEffect(() => {
-    const element = documentRef.current;
-    const container = containerRef.current;
-    
-    if (!element || !container || isInitializedRef.current) return;
+    currentScaleRef.current = documentState.scale;
+  }, [documentState.scale]);
 
-    const options: PanzoomOptions = {
-      // Basic options
-      minScale: 0.1,
-      maxScale: 5,
-      startScale: documentState.scale,
+  // Smooth zoom animation
+  const animateZoom = useCallback((targetScale: number, duration: number = 200) => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const startScale = currentScaleRef.current;
+    const startTime = performance.now();
+    targetScaleRef.current = targetScale;
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
       
-      // Disable pan - we only want zoom
-      disablePan: true,
+      // Easing function for smooth animation
+      const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+      const easedProgress = easeOutCubic(progress);
       
-      // Smooth transitions
-      animate: true,
-      duration: 200,
+      const newScale = startScale + (targetScale - startScale) * easedProgress;
       
-      // Canvas mode for better performance
-      canvas: false,
-      
-      // Use transform origin center
-      origin: "center center",
-      
-      // Contain within parent
-      contain: "outside",
-      
-      // Only zoom with ctrl/cmd + wheel
-      noBind: true, // We'll bind our own events
+      actions.updateScaleWithoutRerender(newScale);
+      currentScaleRef.current = newScale;
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        animationFrameRef.current = null;
+        // Mark scale as settled after animation
+        if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
+        zoomTimeoutRef.current = setTimeout(() => {
+          actions.resetScaleChanging();
+          zoomTimeoutRef.current = null;
+        }, 50);
+      }
     };
 
-    // Create panzoom instance
-    panzoomRef.current = Panzoom(element, options);
-    isInitializedRef.current = true;
+    animationFrameRef.current = requestAnimationFrame(animate);
+  }, [actions]);
 
-    // Handle zoom events
-    element.addEventListener('panzoomzoom', (e: any) => {
-      const scale = e.detail.scale;
-      // Update our scale state without re-rendering
-      actions.updateScaleWithoutRerender(scale);
-    });
+  // Enhanced wheel zoom handler
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    element.addEventListener('panzoomend', () => {
-      // Mark scale as settled after zoom ends
-      actions.resetScaleChanging();
-    });
+    let accumulatedDelta = 0;
+    let wheelTimeout: NodeJS.Timeout | null = null;
 
-    // Custom wheel handler for ctrl/cmd + wheel zoom
     const handleWheel = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         e.stopPropagation();
         
-        const delta = e.deltaY > 0 ? 0.9 : 1.1; // Zoom factor
-        panzoomRef.current?.zoom(delta, {
-          animate: false, // No animation for wheel zoom for smoother experience
-        });
+        // Accumulate wheel delta for smoother zooming
+        accumulatedDelta += e.deltaY;
         
-        setViewState((prev) => ({ ...prev, zoomMode: "page" }));
+        // Clear previous timeout
+        if (wheelTimeout) clearTimeout(wheelTimeout);
+        
+        // Debounce wheel events
+        wheelTimeout = setTimeout(() => {
+          const zoomFactor = 0.002; // Smaller factor for smoother zoom
+          const delta = -accumulatedDelta * zoomFactor;
+          const currentScale = targetScaleRef.current || currentScaleRef.current;
+          const newScale = Math.max(0.1, Math.min(5.0, currentScale * (1 + delta)));
+          
+          // Round to nearest 0.05 for cleaner values
+          const roundedScale = Math.round(newScale * 20) / 20;
+          
+          if (roundedScale !== currentScale) {
+            animateZoom(roundedScale, 100); // Faster animation for wheel zoom
+            setViewState((prev) => ({ ...prev, zoomMode: "page" }));
+          }
+          
+          accumulatedDelta = 0;
+          wheelTimeout = null;
+        }, 10);
       }
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // Also add to document for better capture
+    const documentHandler = (e: WheelEvent) => {
+      if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
+        handleWheel(e);
+      }
+    };
+    
+    document.addEventListener('wheel', documentHandler, { passive: false, capture: true });
 
     return () => {
       container.removeEventListener('wheel', handleWheel);
-      element.removeEventListener('panzoomzoom', () => {});
-      element.removeEventListener('panzoomend', () => {});
-      panzoomRef.current?.destroy();
-      panzoomRef.current = null;
-      isInitializedRef.current = false;
+      document.removeEventListener('wheel', documentHandler, { capture: true });
+      if (wheelTimeout) clearTimeout(wheelTimeout);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      if (zoomTimeoutRef.current) clearTimeout(zoomTimeoutRef.current);
     };
-  }, [documentRef, containerRef, actions, setViewState]);
+  }, [containerRef, setViewState, animateZoom]);
 
-  // Update zoom when scale changes from external sources (like status bar controls)
-  useEffect(() => {
-    if (panzoomRef.current && documentState.scale !== panzoomRef.current.getScale()) {
-      panzoomRef.current.zoom(documentState.scale, {
-        animate: true,
-        force: true,
-      });
-    }
-  }, [documentState.scale]);
-
-  // Expose zoom control methods
+  // Zoom control methods with smooth animations
   const zoomIn = useCallback(() => {
-    panzoomRef.current?.zoomIn({ animate: true });
-  }, []);
+    const currentScale = targetScaleRef.current || currentScaleRef.current;
+    const newScale = Math.min(5.0, Math.round((currentScale + 0.1) * 10) / 10);
+    animateZoom(newScale);
+  }, [animateZoom]);
 
   const zoomOut = useCallback(() => {
-    panzoomRef.current?.zoomOut({ animate: true });
-  }, []);
+    const currentScale = targetScaleRef.current || currentScaleRef.current;
+    const newScale = Math.max(0.1, Math.round((currentScale - 0.1) * 10) / 10);
+    animateZoom(newScale);
+  }, [animateZoom]);
 
   const zoomReset = useCallback(() => {
-    panzoomRef.current?.reset({ animate: true });
-  }, []);
+    animateZoom(1.0);
+  }, [animateZoom]);
 
   const setZoom = useCallback((scale: number) => {
-    panzoomRef.current?.zoom(scale, {
-      animate: true,
-      force: true,
-    });
-  }, []);
+    const clampedScale = Math.max(0.1, Math.min(5.0, scale));
+    animateZoom(clampedScale);
+  }, [animateZoom]);
+
+  // Keyboard shortcuts for zoom
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === '=' || e.key === '+') {
+          e.preventDefault();
+          zoomIn();
+        } else if (e.key === '-') {
+          e.preventDefault();
+          zoomOut();
+        } else if (e.key === '0') {
+          e.preventDefault();
+          zoomReset();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [zoomIn, zoomOut, zoomReset]);
 
   return {
     zoomIn,
     zoomOut,
     zoomReset,
     setZoom,
-    panzoomInstance: panzoomRef.current,
+    currentScale: currentScaleRef.current,
   };
 };

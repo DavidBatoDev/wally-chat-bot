@@ -1,70 +1,104 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
-import Panzoom from "@panzoom/panzoom";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 
 export default function ZoomTestPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const elementRef = useRef<HTMLDivElement>(null);
-  const panzoomRef = useRef<any>(null);
   const [scale, setScale] = useState(1);
+  const animationFrameRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (elementRef.current && containerRef.current) {
-      // Initialize Panzoom
-      panzoomRef.current = Panzoom(elementRef.current, {
-        minScale: 0.5,
-        maxScale: 3,
-        startScale: 1,
-        disablePan: false,
-        contain: "outside",
-        animate: true,
-        duration: 200,
-      });
-
-      // Listen to zoom events
-      elementRef.current.addEventListener("panzoomzoom", (e: any) => {
-        setScale(e.detail.scale);
-      });
-
-      // Handle wheel zoom with ctrl/cmd
-      const handleWheel = (e: WheelEvent) => {
-        if (e.ctrlKey || e.metaKey) {
-          e.preventDefault();
-          const delta = e.deltaY > 0 ? 0.9 : 1.1;
-          panzoomRef.current?.zoom(delta, {
-            animate: false,
-          });
-        }
-      };
-
-      containerRef.current.addEventListener("wheel", handleWheel, {
-        passive: false,
-      });
-
-      return () => {
-        panzoomRef.current?.destroy();
-      };
+  // Smooth zoom animation
+  const animateZoom = useCallback((targetScale: number, duration: number = 200) => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
     }
-  }, []);
+
+    const startScale = scale;
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function for smooth animation
+      const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+      const easedProgress = easeOutCubic(progress);
+      
+      const newScale = startScale + (targetScale - startScale) * easedProgress;
+      
+      setScale(newScale);
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        animationFrameRef.current = null;
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+  }, [scale]);
+
+  // Handle wheel zoom with ctrl/cmd
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let accumulatedDelta = 0;
+    let wheelTimeout: NodeJS.Timeout | null = null;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Accumulate wheel delta for smoother zooming
+        accumulatedDelta += e.deltaY;
+        
+        // Clear previous timeout
+        if (wheelTimeout) clearTimeout(wheelTimeout);
+        
+        // Debounce wheel events
+        wheelTimeout = setTimeout(() => {
+          const zoomFactor = 0.002;
+          const delta = -accumulatedDelta * zoomFactor;
+          const newScale = Math.max(0.5, Math.min(3, scale * (1 + delta)));
+          
+          animateZoom(newScale, 100);
+          
+          accumulatedDelta = 0;
+          wheelTimeout = null;
+        }, 10);
+      }
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+      if (wheelTimeout) clearTimeout(wheelTimeout);
+    };
+  }, [scale, animateZoom]);
 
   const handleZoomIn = () => {
-    panzoomRef.current?.zoomIn({ animate: true });
+    const newScale = Math.min(3, scale * 1.2);
+    animateZoom(newScale);
   };
 
   const handleZoomOut = () => {
-    panzoomRef.current?.zoomOut({ animate: true });
+    const newScale = Math.max(0.5, scale / 1.2);
+    animateZoom(newScale);
   };
 
   const handleReset = () => {
-    panzoomRef.current?.reset({ animate: true });
+    animateZoom(1);
   };
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-4">Panzoom Library Test</h1>
+        <h1 className="text-3xl font-bold mb-4">Enhanced Zoom Control Test</h1>
         
         {/* Controls */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-4">
@@ -85,10 +119,7 @@ export default function ZoomTestPage() {
                 value={scale * 100}
                 onChange={(e) => {
                   const newScale = parseInt(e.target.value) / 100;
-                  panzoomRef.current?.zoom(newScale, {
-                    animate: true,
-                    force: true,
-                  });
+                  animateZoom(newScale);
                 }}
                 className="w-32"
               />
@@ -134,6 +165,9 @@ export default function ZoomTestPage() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              transform: `scale(${scale})`,
+              transformOrigin: "center center",
+              transition: "none",
             }}
           >
             <div className="text-center">
@@ -142,7 +176,7 @@ export default function ZoomTestPage() {
                   Zoomable Content Area
                 </h2>
                 <p className="mb-4">
-                  This content can be zoomed and panned using the panzoom library.
+                  This content can be zoomed using our enhanced zoom controls with smooth animations.
                 </p>
                 <div className="grid grid-cols-3 gap-4 mt-6">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
@@ -161,9 +195,9 @@ export default function ZoomTestPage() {
                 <ul className="text-left text-sm space-y-1">
                   <li>✓ Zoom with buttons or slider</li>
                   <li>✓ Zoom with Ctrl/Cmd + Mouse Wheel</li>
-                  <li>✓ Pan by dragging</li>
+                  <li>✓ Smooth zoom animations with easing</li>
                   <li>✓ Reset to original size</li>
-                  <li>✓ Smooth animations</li>
+                  <li>✓ Debounced wheel zoom for better performance</li>
                 </ul>
               </div>
             </div>
