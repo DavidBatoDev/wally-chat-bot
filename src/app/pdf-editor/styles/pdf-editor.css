@@ -907,8 +907,8 @@ body.resizing-element {
 }
 
 .edit-mode-unselected:hover {
-  border-color: rgba(156, 163, 175, 0.5) !important;
-  box-shadow: 0 0 0 1px rgba(156, 163, 175, 0.4) !important;
+  border-color: rgba(0, 94, 255, 0.5) !important;
+  box-shadow: 0 0 0 1px rgba(0, 94, 255, 0.4) !important;
 }
 
 /* Textarea scrollbar styling */

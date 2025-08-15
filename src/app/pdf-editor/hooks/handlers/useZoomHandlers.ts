@@ -51,9 +51,11 @@ export const useZoomHandlers = ({
         const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor;
         // Always accumulate from the last committed target, not stale prop
         const base = targetScale ?? currentScaleRef.current;
-        const nextTarget = Math.max(1.0, base + delta); // Prevent below 100%
-        if (nextTarget !== targetScale) {
-          targetScale = nextTarget;
+        const nextTarget = Math.max(0.1, base + delta); // Allow zooming down to 10%
+        // Round to nearest 0.1 (10%) to ensure divisible by 10
+        const roundedTarget = Math.round(nextTarget * 10) / 10;
+        if (roundedTarget !== targetScale) {
+          targetScale = roundedTarget;
           if (rafId) cancelAnimationFrame(rafId);
           rafId = requestAnimationFrame(() => {
             // Smooth, non-re-rendering scale update

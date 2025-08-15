@@ -182,7 +182,7 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
             <div className="flex items-center space-x-2">
               <input
                 type="range"
-                min="100"
+                min="10"
                 max="500"
                 step="10"
                 value={Math.round(documentState.scale * 100)}

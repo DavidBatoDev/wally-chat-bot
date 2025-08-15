@@ -7203,16 +7203,18 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           isTransforming: documentState.isTransforming,
         }}
         onZoomChange={(scale) =>
-          actions.updateScaleWithoutRerender(Math.max(1.0, scale))
+          actions.updateScaleWithoutRerender(
+            Math.max(0.1, Math.round(scale * 10) / 10)
+          )
         }
         onZoomIn={() =>
           actions.updateScaleWithoutRerender(
-            Math.min(5.0, documentState.scale + 0.1)
+            Math.min(5.0, Math.round((documentState.scale + 0.1) * 10) / 10)
           )
         }
         onZoomOut={() =>
           actions.updateScaleWithoutRerender(
-            Math.max(1.0, documentState.scale - 0.1)
+            Math.max(0.1, Math.round((documentState.scale - 0.1) * 10) / 10)
           )
         }
         onZoomReset={() => actions.updateScaleWithoutRerender(1.0)}
