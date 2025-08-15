@@ -48,32 +48,22 @@ const PDFEditor: React.FC = () => {
           console.log("DEBUG: Fetching project from database...");
           console.log("DEBUG: User authentication status:", !!user, !!session);
 
-          // Check if user is authenticated before making the API call
-          if (!user || !session) {
-            console.log("DEBUG: User not authenticated, setting auth error");
-            setAuthError(true);
-            setIsLoading(false);
-            return;
-          }
-
+          // Try to fetch project regardless of auth; backend should allow public projects
           const projectData = await getProject(projectId);
 
-          if (projectData) {
-            console.log("DEBUG: Project found in database:", projectData);
-            console.log("DEBUG: Project structure:", {
-              id: projectData.id,
-              name: projectData.name,
-              project_data: projectData.project_data,
-              source_language: projectData.source_language,
-              desired_language: projectData.desired_language,
-              created_by: projectData.created_by,
-              is_public: projectData.is_public,
-            });
-            console.log("DEBUG: Complete project object:", projectData);
-            console.log("DEBUG: Project keys:", Object.keys(projectData));
-            setProject(projectData);
-            setProjectNotFound(false);
-          } else {
+                     if (projectData) {
+             console.log("DEBUG: Project found in database:", projectData);
+             // If project is public, cache state in localStorage to allow unauth users to load editor
+             try {
+               if (projectData.is_public && projectData.project_data) {
+                 const storageKey = `pdf-editor-project-${projectData.id}`;
+                 localStorage.setItem(storageKey, JSON.stringify(projectData.project_data));
+                 localStorage.setItem("pdf-editor-current-project", storageKey);
+               }
+             } catch {}
+             setProject(projectData);
+             setProjectNotFound(false);
+           } else {
             console.log("DEBUG: Project not found in database");
             setProjectNotFound(true);
           }
@@ -329,64 +319,7 @@ const PDFEditor: React.FC = () => {
     );
   }
 
-  // Show authentication error page
-  if (projectId && authError) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md mx-auto px-6">
-          <div className="mb-8">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 mb-4">
-              <svg
-                className="h-8 w-8 text-amber-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Authentication Required
-            </h1>
-            <p className="text-gray-600 mb-6">
-              You need to sign in to access this project. Please authenticate to
-              continue.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <Button
-              onClick={() => router.push("/auth/login")}
-              className="w-full"
-              size="lg"
-            >
-              Sign In
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.back()}
-              className="w-full"
-              size="lg"
-            >
-              Go Back
-            </Button>
-          </div>
-
-          <div className="mt-8 text-sm text-gray-500">
-            <p>Project ID: {projectId}</p>
-            <p className="mt-2 text-amber-600">
-              This project requires authentication to access
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Auth error block removed to allow public project viewing by link
 
   return (
     <div className="h-screen flex flex-col">

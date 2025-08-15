@@ -75,17 +75,16 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
     Array<{ email: string; role: "viewer" | "editor"; addedAt: Date }>
   >([]);
 
-  // Generate share link
+  // Generate share link (public link using projectId query param)
   useEffect(() => {
     if (projectId && isPublic) {
       const baseUrl = window.location.origin;
-      const shareId = currentShareSettings?.shareId || generateShareId();
-      const link = `${baseUrl}/pdf-editor/shared/${shareId}`;
+      const link = `${baseUrl}/pdf-editor?projectId=${projectId}`;
       setShareLink(link);
     } else {
       setShareLink("");
     }
-  }, [projectId, isPublic, currentShareSettings?.shareId]);
+  }, [projectId, isPublic]);
 
   // Generate a unique share ID
   const generateShareId = () => {
@@ -114,7 +113,7 @@ export const ShareProjectModal: React.FC<ShareProjectModalProps> = ({
       const newSettings: ShareSettings = {
         isPublic: checked,
         shareLink: checked ? shareLink : "",
-        shareId: checked ? (currentShareSettings?.shareId || generateShareId()) : undefined,
+        shareId: undefined,
         permissions,
         requiresAuth,
       };
