@@ -938,3 +938,31 @@ body.resizing-element {
 .rnd textarea::-webkit-scrollbar-corner {
   background: transparent !important;
 }
+
+/* Panzoom Library Styles */
+.panzoom-parent {
+  overflow: hidden;
+  position: relative;
+}
+
+.panzoom-element {
+  transform-origin: center center;
+  transition: none; /* Panzoom handles its own transitions */
+}
+
+/* Override panzoom transitions during zoom */
+.panzoom-element.panzoom-transitioning {
+  transition: transform 200ms ease-out;
+}
+
+/* Ensure document container works with panzoom */
+.document-container {
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Smooth zoom animations */
+.document-container.zooming {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}

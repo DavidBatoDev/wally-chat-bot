@@ -21,6 +21,11 @@ interface UseKeyboardHandlersProps {
     updateScale: (scale: number) => void;
     resetScaleChanging: () => void;
   };
+  zoomControls?: {
+    zoomIn: () => void;
+    zoomOut: () => void;
+    zoomReset: () => void;
+  };
   erasureState: {
     erasureSettings: {
       opacity: number;
@@ -60,6 +65,7 @@ export const useKeyboardHandlers = ({
   setViewState,
   documentState,
   actions,
+  zoomControls,
   erasureState,
   currentPageTextBoxes,
   handleAddDeletionRectangleWithUndo,
@@ -85,40 +91,34 @@ export const useKeyboardHandlers = ({
         setViewState((prev) => ({ ...prev, isCtrlPressed: true }));
 
         // Ctrl+0 to reset zoom
-        if (e.key === "0") {
+        if (e.key === "0" && zoomControls) {
           e.preventDefault();
-          actions.updateScale(1.0);
+          zoomControls.zoomReset();
           setViewState((prev) => ({
             ...prev,
             zoomMode: "page",
-            transformOrigin: "center center",
           }));
-          actions.resetScaleChanging();
           toast.success("Zoom reset to 100%");
         }
 
         // Ctrl+= or Ctrl++ to zoom in
-        if (e.key === "=" || e.key === "+") {
+        if ((e.key === "=" || e.key === "+") && zoomControls) {
           e.preventDefault();
+          zoomControls.zoomIn();
           setViewState((prev) => ({
             ...prev,
-            transformOrigin: "center center",
             zoomMode: "page",
           }));
-          actions.updateScale(Math.min(5.0, documentState.scale + 0.1));
-          actions.resetScaleChanging();
         }
 
         // Ctrl+- to zoom out
-        if (e.key === "-") {
+        if (e.key === "-" && zoomControls) {
           e.preventDefault();
+          zoomControls.zoomOut();
           setViewState((prev) => ({
             ...prev,
-            transformOrigin: "center center",
             zoomMode: "page",
           }));
-          actions.updateScale(Math.max(1.0, documentState.scale - 0.1)); // Prevent below 100%
-          actions.resetScaleChanging();
         }
 
         // Ctrl+D to create deletion rectangle from selected text boxes

@@ -87,7 +87,7 @@ import { ShapePreview } from "./components/elements/ShapePreview";
 import { useDocumentMouseHandlers } from "./hooks/handlers/useDocumentMouseHandlers";
 import { useFormatHandlers } from "./hooks/handlers/useFormatHandlers";
 import { useKeyboardHandlers } from "./hooks/handlers/useKeyboardHandlers";
-import { useZoomHandlers } from "./hooks/handlers/useZoomHandlers";
+import { useZoomLibrary } from "./hooks/handlers/useZoomLibrary";
 
 // Import components
 import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";
@@ -2164,8 +2164,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     setAutoFocusTextBoxId,
   });
 
-  // Zoom functionality (extracted to custom hook)
-  useZoomHandlers({
+  // Zoom functionality using panzoom library
+  const { zoomIn, zoomOut, zoomReset, setZoom } = useZoomLibrary({
     viewState,
     setViewState,
     documentState,
@@ -2743,6 +2743,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     setViewState,
     documentState,
     actions,
+    zoomControls: { zoomIn, zoomOut, zoomReset },
     erasureState,
     currentPageTextBoxes,
     handleAddDeletionRectangleWithUndo,
@@ -7202,22 +7203,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           ),
           isTransforming: documentState.isTransforming,
         }}
-        onZoomChange={(scale) =>
-          actions.updateScaleWithoutRerender(
-            Math.max(0.1, Math.round(scale * 10) / 10)
-          )
-        }
-        onZoomIn={() =>
-          actions.updateScaleWithoutRerender(
-            Math.min(5.0, Math.round((documentState.scale + 0.1) * 10) / 10)
-          )
-        }
-        onZoomOut={() =>
-          actions.updateScaleWithoutRerender(
-            Math.max(0.1, Math.round((documentState.scale - 0.1) * 10) / 10)
-          )
-        }
-        onZoomReset={() => actions.updateScaleWithoutRerender(1.0)}
+        onZoomChange={(scale) => setZoom(scale)}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onZoomReset={zoomReset}
       />
 
       {/* Confirmation Modal */}
