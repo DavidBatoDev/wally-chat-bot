@@ -69,17 +69,23 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
 
   const handleLoadProject = async (projectId: string) => {
     try {
-      // Create new URLSearchParams with the new projectId
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("projectId", projectId);
-
-      // Navigate to the same page with the new projectId parameter
-      router.push(`/pdf-editor?${params.toString()}`);
-
-      // Close the modal
+      // Close the modal first
       onOpenChange(false);
 
-      toast.success(`Loading project: ${projectId}`);
+      // Call the onLoadProject callback to load the project internally
+      const success = await onLoadProject(projectId);
+
+      if (success) {
+        // Update the URL after successful project load
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("projectId", projectId);
+        const newUrl = `/pdf-editor?${params.toString()}`;
+        window.history.replaceState({}, "", newUrl);
+
+        toast.success(`Project loaded successfully: ${projectId}`);
+      } else {
+        toast.error("Failed to load project");
+      }
     } catch (error) {
       console.error("Failed to change project:", error);
       toast.error("Failed to change project");

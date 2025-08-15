@@ -4401,6 +4401,26 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     }
   }, [projectId, currentProjectId, loadProject]);
 
+  // Handle manual project loading from modal
+  const handleManualProjectLoad = useCallback(
+    async (projectId?: string): Promise<boolean> => {
+      if (!projectId) {
+        console.error("No project ID provided");
+        return false;
+      }
+
+      try {
+        console.log("Manually loading project with ID:", projectId);
+        const success = await loadProject(projectId);
+        return success;
+      } catch (error) {
+        console.error("Failed to manually load project:", error);
+        return false;
+      }
+    },
+    [loadProject]
+  );
+
   // Keep backward compatibility for existing save project calls
   const saveProject = useCallback(
     (projectName?: string) => {
@@ -7370,7 +7390,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       <ProjectSelectionModal
         open={showProjectModal}
         onOpenChange={setShowProjectModal}
-        onLoadProject={loadProject as (projectId?: string) => Promise<boolean>}
+        onLoadProject={handleManualProjectLoad}
         onSaveProject={saveProject as (projectName?: string) => Promise<any>}
         onExportToJson={exportToJson}
         onImportFromJson={importFromJson}
