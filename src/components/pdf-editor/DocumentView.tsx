@@ -222,7 +222,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
       style={{
         width: pageWidth * scale,
         height: pageHeight * scale,
-        overflow: 'hidden', // Prevent overflow from the transform
+        // overflow: 'hidden', // Prevent overflow from the transform
       }}
     >
       {/* Header */}

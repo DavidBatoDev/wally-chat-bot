@@ -138,7 +138,7 @@ export async function exportPdfDocument(
   const originalSelectedShape = editorState.selectedShapeId;
   const originalEditMode = editorState.isEditMode;
 
-  const loadingToast = toast.loading("Generating PDF...");
+  const loadingToast = toast.loading("Generating PDF from final layout...");
 
   try {
     // Set up for export - hide UI elements and set optimal scale
@@ -158,6 +158,12 @@ export async function exportPdfDocument(
     // Wait for zoom to update
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
+    // Switch to final-layout view for export
+    setViewState((prev) => ({ ...prev, currentView: "final-layout" }));
+
+    // Wait for view to update
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     // Create PDF document
     const pdfDoc = await PDFDocument.create();
 
@@ -166,7 +172,7 @@ export async function exportPdfDocument(
       await addTemplatePage(pdfDoc, templateCanvas);
     }
 
-    // Capture all non-deleted pages
+    // Capture all non-deleted pages in final-layout view
     const { captures, nonDeletedPages } = await captureAllPagesWithDomToImage(
       documentRef,
       documentState,
@@ -188,7 +194,7 @@ export async function exportPdfDocument(
     await createPdfPagesFromCaptures(pdfDoc, captures);
 
     // Save and download the PDF
-    await downloadPdf(pdfDoc, "pdf-editor-export-all-pages.pdf");
+    await downloadPdf(pdfDoc, "final-layout-export.pdf");
 
     // Restore original state
     restoreOriginalState(
@@ -203,7 +209,7 @@ export async function exportPdfDocument(
     );
 
     toast.dismiss(loadingToast);
-    toast.success("PDF exported successfully!");
+    toast.success("Final layout PDF exported successfully!");
   } catch (error) {
     console.error("Error exporting PDF:", error);
     toast.dismiss(loadingToast);
@@ -788,8 +794,10 @@ async function captureAllPagesWithDomToImage(
   setEditorState: (updater: (prev: any) => any) => void,
   editorState: any
 ): Promise<{ captures: any[]; nonDeletedPages: number[] }> {
-  const totalPages = documentState.numPages;
-  const deletedPages = pageState.deletedPages;
+  const totalPages =
+    documentState.finalLayoutNumPages || documentState.numPages;
+  const deletedPages =
+    documentState.finalLayoutDeletedPages || pageState.deletedPages;
   const allCaptures = [];
 
   // Get all non-deleted page numbers
@@ -800,16 +808,29 @@ async function captureAllPagesWithDomToImage(
     }
   }
 
-  // Function to capture view as image for a specific page using DOM-to-image
-  const captureViewAsImage = async (
-    viewType: "original" | "translated",
-    pageNumber: number
-  ) => {
-    // Set view to the target type
-    setViewState((prev) => ({ ...prev, currentView: viewType }));
+  // Function to capture final-layout view as image for a specific page using DOM-to-image
+  const captureFinalLayoutView = async (pageNumber: number) => {
+    console.log(`Setting up capture for final-layout page ${pageNumber}`);
 
-    // Set page number
-    setDocumentState((prev) => ({ ...prev, currentPage: pageNumber }));
+    // Set view to final-layout
+    setViewState((prev) => ({ ...prev, currentView: "final-layout" }));
+
+    // Set final layout page number (use finalLayoutCurrentPage for final layout navigation)
+    setDocumentState((prev) => ({
+      ...prev,
+      finalLayoutCurrentPage: pageNumber,
+      currentPage: pageNumber, // Also update currentPage for compatibility
+    }));
+
+    // Force a re-render by updating the page loading state
+    setDocumentState((prev) => ({
+      ...prev,
+      isPageLoading: true,
+    }));
+
+    console.log(
+      `Set final-layout page to ${pageNumber}, waiting for update...`
+    );
 
     // Temporarily disable text rendering for export
     const originalAddTextBoxMode = editorState.isAddTextBoxMode;
@@ -818,14 +839,50 @@ async function captureAllPagesWithDomToImage(
     // Wait for view and page to update
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
+    console.log(`Starting DOM capture for final-layout page ${pageNumber}`);
+
+    // Additional wait to ensure PDF.js has time to re-render the new page
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Wait for page loading to complete
+    let attempts = 0;
+    while (documentState.isPageLoading && attempts < 10) {
+      console.log(
+        `Waiting for page ${pageNumber} to finish loading... (attempt ${
+          attempts + 1
+        })`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      attempts++;
+    }
+
+    // Verify that the page actually changed
+    console.log(
+      `Current final-layout page after update: ${documentState.finalLayoutCurrentPage}`
+    );
+    console.log(
+      `Current regular page after update: ${documentState.currentPage}`
+    );
+
     // Use the entire document ref
     const documentContainer = documentRef.current;
 
     if (!documentContainer) {
       throw new Error(
-        `Document container not found for ${viewType} view page ${pageNumber}`
+        `Document container not found for final-layout view page ${pageNumber}`
       );
     }
+
+    // Log the current page number in the DOM to verify it changed
+    const pageElements =
+      documentContainer.querySelectorAll("[data-page-number]");
+    console.log(`Found ${pageElements.length} page elements in DOM`);
+    pageElements.forEach((el, index) => {
+      console.log(
+        `Page element ${index}:`,
+        el.getAttribute("data-page-number")
+      );
+    });
 
     try {
       // Use DOM-to-image to capture the element
@@ -881,7 +938,7 @@ async function captureAllPagesWithDomToImage(
       });
     } catch (error) {
       console.error(
-        `Error capturing ${viewType} view for page ${pageNumber}:`,
+        `Error capturing final-layout view for page ${pageNumber}:`,
         error
       );
       // Fallback: create an error canvas
@@ -911,76 +968,65 @@ async function captureAllPagesWithDomToImage(
     }
   };
 
-  // Process non-deleted pages in pairs (2 pages per PDF page)
-  for (let i = 0; i < nonDeletedPages.length; i += 2) {
-    const page1 = nonDeletedPages[i];
-    const page2 = nonDeletedPages[i + 1];
-    const hasPage2 = page2 !== undefined;
+  // Process non-deleted pages - capture each page in final-layout view
+  console.log(
+    `Starting capture of ${nonDeletedPages.length} final layout pages:`,
+    nonDeletedPages
+  );
 
-    const pageCaptures = [];
+  for (let i = 0; i < nonDeletedPages.length; i++) {
+    const pageNumber = nonDeletedPages[i];
+    console.log(
+      `Capturing final-layout page ${pageNumber} (${i + 1}/${
+        nonDeletedPages.length
+      })`
+    );
+    console.log(
+      `Before capture - finalLayoutCurrentPage: ${documentState.finalLayoutCurrentPage}, currentPage: ${documentState.currentPage}`
+    );
 
     try {
-      // Page 1 - Original view
-      pageCaptures.push({
-        canvas: await captureViewAsImage("original", page1),
-        type: "original",
-        page: page1,
-        position: "top-left",
+      // Capture the page in final-layout view
+      const canvas = await captureFinalLayoutView(pageNumber);
+
+      allCaptures.push({
+        pageNumber: i + 1,
+        captures: [
+          {
+            canvas: canvas,
+            type: "final-layout",
+            page: pageNumber,
+            position: "full-page",
+          },
+        ],
+        page1: pageNumber,
+        page2: null,
       });
 
-      // Page 1 - Translated view
-      pageCaptures.push({
-        canvas: await captureViewAsImage("translated", page1),
-        type: "translated",
-        page: page1,
-        position: "top-right",
-      });
-
-      if (hasPage2) {
-        // Page 2 - Original view
-        pageCaptures.push({
-          canvas: await captureViewAsImage("original", page2),
-          type: "original",
-          page: page2,
-          position: "bottom-left",
-        });
-
-        // Page 2 - Translated view
-        pageCaptures.push({
-          canvas: await captureViewAsImage("translated", page2),
-          type: "translated",
-          page: page2,
-          position: "bottom-right",
-        });
-      }
-    } catch (error) {
-      console.error(
-        `Error capturing pages ${page1}${hasPage2 ? ` and ${page2}` : ""}:`,
-        error
+      console.log(`Successfully captured final-layout page ${pageNumber}`);
+      console.log(
+        `After capture - finalLayoutCurrentPage: ${documentState.finalLayoutCurrentPage}, currentPage: ${documentState.currentPage}`
       );
+    } catch (error) {
+      console.error(`Error capturing final-layout page ${pageNumber}:`, error);
       // Continue with what we have
     }
-
-    allCaptures.push({
-      pageNumber: Math.floor(i / 2) + 1,
-      captures: pageCaptures,
-      page1,
-      page2: hasPage2 ? page2 : null,
-    });
   }
+
+  console.log(`Capture complete. Total captures: ${allCaptures.length}`);
 
   return { captures: allCaptures, nonDeletedPages };
 }
 
 /**
- * Creates PDF pages from captured images
+ * Creates PDF pages from captured final-layout images
  */
 async function createPdfPagesFromCaptures(
   pdfDoc: PDFDocument,
   captures: any[]
 ): Promise<void> {
   for (const pageData of captures) {
-    const { pageNumber, captures: pageCaptures, page1, page2 } = pageData;
+    const { pageNumber, captures: pageCaptures } = pageData;
 
     // Convert captures to images and embed in PDF
     const embeddedImages = [];
@@ -996,126 +1042,40 @@ async function createPdfPagesFromCaptures(
       });
     }
 
-    // Create a new page for this pair
+    // Create a new page for each final-layout page
     const page = pdfDoc.addPage([612, 792]); // Letter size
     const { width: pageWidth, height: pageHeight } = page.getSize();
 
-    // Embed fonts
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-    // Add section labels
-    const labelFontSize = 20;
-    const originalLabel = "ORIGINAL";
-    const translatedLabel = "TRANSLATED";
-
-    // Calculate label widths for centering
-    const halfWidth = pageWidth / 2;
-    const originalLabelWidth = font.widthOfTextAtSize(
-      originalLabel,
-      labelFontSize
-    );
-    const translatedLabelWidth = font.widthOfTextAtSize(
-      translatedLabel,
-      labelFontSize
-    );
-
-    // Center labels in their respective halves
-    const originalX = (halfWidth - originalLabelWidth) / 2;
-    page.drawText(originalLabel, {
-      x: originalX,
-      y: pageHeight - 60,
-      size: labelFontSize,
-      font: font,
-      color: rgb(0, 0, 0),
-    });
-
-    const translatedX = halfWidth + (halfWidth - translatedLabelWidth) / 2;
-    page.drawText(translatedLabel, {
-      x: translatedX,
-      y: pageHeight - 60,
-      size: labelFontSize,
-      font: font,
-      color: rgb(0, 0, 0),
-    });
-
-    // Calculate grid layout
-    const gridMargin = 10;
-    const gridSpacing = 8;
-    const labelSpace = 15;
-    const availableWidth = pageWidth - gridMargin * 2;
-    const availableHeight = pageHeight - gridMargin * 2 - labelSpace;
-
-    const quadrantWidth = (availableWidth - gridSpacing) / 2;
-    const quadrantHeight = (availableHeight - gridSpacing) / 2;
-
-    // Draw each image in its grid position
+    // Draw the final-layout page image centered on the PDF page
     for (const imageData of embeddedImages) {
-      const { image, dims, position } = imageData;
+      const { image, dims } = imageData;
 
-      // Calculate scaling to fit in quadrant
-      const scaleX = quadrantWidth / dims.width;
-      const scaleY = quadrantHeight / dims.height;
+      // Calculate scaling to fit the page with margins
+      const margin = 20;
+      const availableWidth = pageWidth - margin * 2;
+      const availableHeight = pageHeight - margin * 2;
+
+      const scaleX = availableWidth / dims.width;
+      const scaleY = availableHeight / dims.height;
       const imageScale = Math.min(scaleX, scaleY);
 
       const scaledWidth = dims.width * imageScale;
       const scaledHeight = dims.height * imageScale;
 
-      // Calculate position based on grid layout
-      let x, y;
-      switch (position) {
-        case "top-left":
-          x = gridMargin;
-          y = pageHeight - labelSpace - quadrantHeight;
-          break;
-        case "top-right":
-          x = gridMargin + quadrantWidth + gridSpacing;
-          y = pageHeight - labelSpace - quadrantHeight;
-          break;
-        case "bottom-left":
-          x = gridMargin;
-          y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
-          break;
-        case "bottom-right":
-          x = gridMargin + quadrantWidth + gridSpacing;
-          y = pageHeight - labelSpace - quadrantHeight * 2 - gridSpacing;
-          break;
-        default:
-          x = gridMargin;
-          y = pageHeight - labelSpace - quadrantHeight;
-      }
+      // Center the image on the page
+      const x = (pageWidth - scaledWidth) / 2;
+      const y = (pageHeight - scaledHeight) / 2;
 
-      // Center the image in its quadrant
-      x += (quadrantWidth - scaledWidth) / 2;
-      y += (quadrantHeight - scaledHeight) / 2;
-
-      // Draw the image
+      // Draw the final-layout page image
       page.drawImage(image, {
         x: x,
         y: y,
         width: scaledWidth,
         height: scaledHeight,
       });
+
+      console.log(`Added final-layout page ${pageNumber} to PDF`);
     }
-
-    // Add grid separator lines
-    const centerX = gridMargin + quadrantWidth + gridSpacing / 2;
-    const centerY = pageHeight - labelSpace - quadrantHeight - gridSpacing / 2;
-
-    // Vertical line
-    page.drawLine({
-      start: { x: centerX, y: gridMargin },
-      end: { x: centerX, y: pageHeight - labelSpace },
-      thickness: 1,
-      color: rgb(0.8, 0.8, 0.8),
-    });
-
-    // Horizontal line
-    page.drawLine({
-      start: { x: gridMargin, y: centerY },
-      end: { x: pageWidth - gridMargin, y: centerY },
-      thickness: 1,
-      color: rgb(0.8, 0.8, 0.8),
-    });
   }
 }
 
@@ -1511,13 +1471,18 @@ export async function exportToPDFService({
     toast.error("Document not loaded");
     return;
   }
+
   const originalScale = documentState.scale;
   const originalView = viewState.currentView;
+  const originalCurrentPage = documentState.currentPage;
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
   const originalEditMode = editorState.isEditMode;
-  const loadingToast = toast.loading("Generating PDF...");
+
+  const loadingToast = toast.loading("Generating PDF from final layout...");
+
   try {
+    // Set up for export - hide UI elements and set optimal scale
     setEditorState((prev: any) => ({
       ...prev,
       selectedFieldId: null,
@@ -1527,35 +1492,86 @@ export async function exportToPDFService({
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
+
+    // Set zoom to 300% for high quality
     setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
+
+    // Wait for zoom to update
     await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Switch to final-layout view
+    setViewState((prev: any) => ({ ...prev, currentView: "final-layout" }));
+
+    // Wait for view to update
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Create PDF document
     const pdfDoc = await PDFDocument.create();
-    const totalPages = documentState.numPages;
-    const deletedPages = documentState.deletedPages;
+
+    // Get all non-deleted pages from final layout
+    const totalPages =
+      documentState.finalLayoutNumPages || documentState.numPages;
+    const deletedPages =
+      documentState.finalLayoutDeletedPages || documentState.deletedPages;
     const nonDeletedPages = [];
+
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
         nonDeletedPages.push(pageNumber);
       }
     }
+
     if (nonDeletedPages.length === 0) {
       toast.error(
         "No pages available for export. All pages have been deleted."
       );
       return;
     }
-    setViewState((prev: any) => ({ ...prev, currentView: "original" }));
+
+    // Temporarily disable text rendering for export
     setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
+
+    // Wait for editor state to update
     await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Capture each page in final-layout view
     for (const pageNumber of nonDeletedPages) {
-      setDocumentState((prev: any) => ({ ...prev, currentPage: pageNumber }));
+      // Set final layout page number (use finalLayoutCurrentPage for final layout navigation)
+      setDocumentState((prev: any) => ({
+        ...prev,
+        finalLayoutCurrentPage: pageNumber,
+        currentPage: pageNumber, // Also update currentPage for compatibility
+      }));
+
+      // Force a re-render by updating the page loading state
+      setDocumentState((prev: any) => ({
+        ...prev,
+        isPageLoading: true,
+      }));
+
+      // Wait for page to update
       await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // Wait for page loading to complete
+      let attempts = 0;
+      while (documentState.isPageLoading && attempts < 10) {
+        console.log(
+          `Waiting for page ${pageNumber} to finish loading... (attempt ${
+            attempts + 1
+          })`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts++;
+      }
+
       const documentContainer = documentRef.current;
       if (!documentContainer) {
         console.warn(`Document container not found for page ${pageNumber}`);
         continue;
       }
+
       try {
+        // Use DOM-to-image to capture the final-layout view
         const dataUrl = await domtoimage.toPng(documentContainer, {
           quality: 1.0,
           bgcolor: "#ffffff",
@@ -1566,8 +1582,11 @@ export async function exportToPDFService({
             transformOrigin: "top left",
           },
           filter: (node: Node): boolean => {
+            // Filter out unwanted elements
             if (node.nodeType === Node.ELEMENT_NODE) {
               const element = node as HTMLElement;
+
+              // Skip interactive UI elements
               if (
                 element.classList.contains("drag-handle") ||
                 element.tagName === "BUTTON" ||
@@ -1586,50 +1605,69 @@ export async function exportToPDFService({
             return true;
           },
         });
+
+        // Convert data URL to image and embed in PDF
         const imageBytes = await fetch(dataUrl).then((res) =>
           res.arrayBuffer()
         );
         const embeddedImage = await pdfDoc.embedPng(imageBytes);
-        const page = pdfDoc.addPage([612, 792]);
+
+        // Create a new page for this final-layout page
+        const page = pdfDoc.addPage([612, 792]); // Letter size
         const { width: pageWidth, height: pageHeight } = page.getSize();
+
+        // Calculate image scaling to fit the page
         const imageDims = embeddedImage.scale(1);
         const scaleX = pageWidth / imageDims.width;
         const scaleY = pageHeight / imageDims.height;
         const imageScale = Math.min(scaleX, scaleY);
+
+        // Calculate centered position
         const scaledWidth = imageDims.width * imageScale;
         const scaledHeight = imageDims.height * imageScale;
         const x = (pageWidth - scaledWidth) / 2;
         const y = (pageHeight - scaledHeight) / 2;
+
+        // Draw the final-layout page image
         page.drawImage(embeddedImage, {
           x: x,
           y: y,
           width: scaledWidth,
           height: scaledHeight,
         });
+
+        console.log(`Successfully captured final-layout page ${pageNumber}`);
       } catch (pageError) {
-        console.error(`Error capturing page ${pageNumber}:`, pageError);
+        console.error(
+          `Error capturing final-layout page ${pageNumber}:`,
+          pageError
+        );
         continue;
       }
     }
+
+    // Save and download the PDF
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "exported-document.pdf";
+    link.download = "final-layout-export.pdf";
     link.click();
     URL.revokeObjectURL(url);
+
     toast.dismiss(loadingToast);
-    toast.success("PDF exported successfully!");
+    toast.success("Final layout PDF exported successfully!");
   } catch (error) {
-    console.error("Error exporting PDF:", error);
+    console.error("Error exporting final layout PDF:", error);
     toast.dismiss(loadingToast);
-    toast.error("Failed to export PDF");
+    toast.error("Failed to export final layout PDF");
   } finally {
+    // Restore original state
     setDocumentState((prev: any) => ({
       ...prev,
       scale: originalScale,
-      currentPage: documentState.currentPage,
+      currentPage: originalCurrentPage,
     }));
     setViewState((prev: any) => ({ ...prev, currentView: originalView }));
     setEditorState((prev: any) => ({
@@ -1669,7 +1707,9 @@ export async function exportToPNGService({
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
   const originalEditMode = editorState.isEditMode;
-  const loadingToast = toast.loading("Generating PNG images...");
+  const loadingToast = toast.loading(
+    "Generating PNG images from final layout..."
+  );
   try {
     setEditorState((prev: any) => ({
       ...prev,
@@ -1682,8 +1722,16 @@ export async function exportToPNGService({
     }));
     setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const totalPages = documentState.numPages;
-    const deletedPages = documentState.deletedPages;
+
+    // Switch to final-layout view
+    setViewState((prev: any) => ({ ...prev, currentView: "final-layout" }));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Get all non-deleted pages from final layout
+    const totalPages =
+      documentState.finalLayoutNumPages || documentState.numPages;
+    const deletedPages =
+      documentState.finalLayoutDeletedPages || documentState.deletedPages;
     const nonDeletedPages = [];
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
@@ -1691,16 +1739,44 @@ export async function exportToPNGService({
       }
     }
     if (nonDeletedPages.length === 0) {
-      toast.error("No pages available for export");
+      toast.error("No final layout pages available for export");
       return;
     }
-    setViewState((prev: any) => ({ ...prev, currentView: "original" }));
+
     setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
     await new Promise((resolve) => setTimeout(resolve, 500));
     const images = [];
+    console.log(
+      `Starting capture of ${nonDeletedPages.length} final layout pages for PNG export:`,
+      nonDeletedPages
+    );
+
     for (const pageNumber of nonDeletedPages) {
-      setDocumentState((prev: any) => ({ ...prev, currentPage: pageNumber }));
+      console.log(`Capturing final-layout page ${pageNumber} for PNG export`);
+
+      // Set final layout page number
+      setDocumentState((prev: any) => ({
+        ...prev,
+        finalLayoutCurrentPage: pageNumber,
+        currentPage: pageNumber,
+        isPageLoading: true,
+      }));
+
+      // Wait for page to update
       await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // Wait for page loading to complete
+      let attempts = 0;
+      while (documentState.isPageLoading && attempts < 10) {
+        console.log(
+          `Waiting for page ${pageNumber} to finish loading for PNG export... (attempt ${
+            attempts + 1
+          })`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts++;
+      }
+
       const documentContainer = documentRef.current;
       if (!documentContainer) {
         console.warn(`Document container not found for page ${pageNumber}`);
@@ -1749,21 +1825,24 @@ export async function exportToPNGService({
         ctx?.drawImage(img, 0, 0);
         images.push({
           canvas,
-          filename: `page-${pageNumber}`,
-          viewType: "original",
+          filename: `final-layout-page-${pageNumber}`,
+          viewType: "final-layout",
         });
       } catch (pageError) {
-        console.error(`Error capturing page ${pageNumber}:`, pageError);
+        console.error(
+          `Error capturing final-layout page ${pageNumber}:`,
+          pageError
+        );
         continue;
       }
     }
-    await downloadImagesAsZip(images, "png", "exported-pages.zip");
+    await downloadImagesAsZip(images, "png", "final-layout-export.zip");
     toast.dismiss(loadingToast);
-    toast.success(`${images.length} PNG images exported as ZIP!`);
+    toast.success(`${images.length} final layout PNG images exported as ZIP!`);
   } catch (error) {
-    console.error("Error exporting PNG images:", error);
+    console.error("Error exporting final layout PNG images:", error);
     toast.dismiss(loadingToast);
-    toast.error("Failed to export PNG images");
+    toast.error("Failed to export final layout PNG images");
   } finally {
     setDocumentState((prev: any) => ({
       ...prev,
@@ -1808,7 +1887,9 @@ export async function exportToJPEGService({
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
   const originalEditMode = editorState.isEditMode;
-  const loadingToast = toast.loading("Generating JPEG images...");
+  const loadingToast = toast.loading(
+    "Generating JPEG images from final layout..."
+  );
   try {
     setEditorState((prev: any) => ({
       ...prev,
@@ -1821,8 +1902,16 @@ export async function exportToJPEGService({
     }));
     setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const totalPages = documentState.numPages;
-    const deletedPages = documentState.deletedPages;
+
+    // Switch to final-layout view
+    setViewState((prev: any) => ({ ...prev, currentView: "final-layout" }));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Get all non-deleted pages from final layout
+    const totalPages =
+      documentState.finalLayoutNumPages || documentState.numPages;
+    const deletedPages =
+      documentState.finalLayoutDeletedPages || documentState.deletedPages;
     const nonDeletedPages = [];
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
@@ -1830,16 +1919,44 @@ export async function exportToJPEGService({
       }
     }
     if (nonDeletedPages.length === 0) {
-      toast.error("No pages available for export");
+      toast.error("No final layout pages available for export");
       return;
     }
-    setViewState((prev: any) => ({ ...prev, currentView: "original" }));
+
     setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
     await new Promise((resolve) => setTimeout(resolve, 500));
     const images = [];
+    console.log(
+      `Starting capture of ${nonDeletedPages.length} final layout pages for JPEG export:`,
+      nonDeletedPages
+    );
+
     for (const pageNumber of nonDeletedPages) {
-      setDocumentState((prev: any) => ({ ...prev, currentPage: pageNumber }));
+      console.log(`Capturing final-layout page ${pageNumber} for JPEG export`);
+
+      // Set final layout page number
+      setDocumentState((prev: any) => ({
+        ...prev,
+        finalLayoutCurrentPage: pageNumber,
+        currentPage: pageNumber,
+        isPageLoading: true,
+      }));
+
+      // Wait for page to update
       await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // Wait for page loading to complete
+      let attempts = 0;
+      while (documentState.isPageLoading && attempts < 10) {
+        console.log(
+          `Waiting for page ${pageNumber} to finish loading for JPEG export... (attempt ${
+            attempts + 1
+          })`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts++;
+      }
+
       const documentContainer = documentRef.current;
       if (!documentContainer) {
         console.warn(`Document container not found for page ${pageNumber}`);
@@ -1888,21 +2005,24 @@ export async function exportToJPEGService({
         ctx?.drawImage(img, 0, 0);
         images.push({
           canvas,
-          filename: `page-${pageNumber}`,
-          viewType: "original",
+          filename: `final-layout-page-${pageNumber}`,
+          viewType: "final-layout",
         });
       } catch (pageError) {
-        console.error(`Error capturing page ${pageNumber}:`, pageError);
+        console.error(
+          `Error capturing final-layout page ${pageNumber}:`,
+          pageError
+        );
         continue;
       }
     }
-    await downloadImagesAsZip(images, "jpeg", "exported-pages-jpeg.zip");
+    await downloadImagesAsZip(images, "jpeg", "final-layout-export-jpeg.zip");
     toast.dismiss(loadingToast);
-    toast.success(`${images.length} JPEG images exported as ZIP!`);
+    toast.success(`${images.length} final layout JPEG images exported as ZIP!`);
   } catch (error) {
-    console.error("Error exporting JPEG images:", error);
+    console.error("Error exporting final layout JPEG images:", error);
     toast.dismiss(loadingToast);
-    toast.error("Failed to export JPEG images");
+    toast.error("Failed to export final layout JPEG images");
   } finally {
     setDocumentState((prev: any) => ({
       ...prev,
