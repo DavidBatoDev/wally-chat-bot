@@ -16,7 +16,8 @@ import {
   User,
   Globe,
   Lock,
-  Eye
+  Eye,
+  Upload
 } from "lucide-react";
 import { 
   DropdownMenu,
@@ -25,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useProjectState } from "./hooks/states/useProjectState";
+import { useProjectCreation } from "./hooks/useProjectCreation";
 import { getProject } from "./services/projectApiService";
 import { TextFormatProvider } from "@/components/editor/ElementFormatContext";
 import { PDFEditorContent } from "./PDFEditorContent";
@@ -56,6 +58,7 @@ const PDFEditorDashboard: React.FC = () => {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectPreviews, setProjectPreviews] = useState<Record<string, any>>({});
   const [previewsLoading, setPreviewsLoading] = useState<Record<string, boolean>>({});
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Minimal project state setup just for getting saved projects
   const { getSavedProjects, deleteProject, loadProject } = useProjectState({
@@ -154,6 +157,100 @@ const PDFEditorDashboard: React.FC = () => {
     setDesiredLanguage: () => {},
   });
 
+  // Project creation hook for handling file uploads
+  const {
+    isCreatingProject: isCreatingProjectFromUpload,
+    createProjectOnUpload,
+    projectCreationError
+  } = useProjectCreation({
+    documentState: {
+      url: "",
+      currentPage: 1,
+      numPages: 0,
+      scale: 1,
+      pageWidth: 600,
+      pageHeight: 800,
+      isDocumentLoaded: false,
+      isTransforming: false,
+      fileType: null,
+      deletedPages: new Set(),
+      pdfBackgroundColor: "#ffffff",
+      pdfRenderScale: 1,
+      pages: [],
+      isSupabaseUrl: false,
+      finalLayoutUrl: undefined,
+      finalLayoutCurrentPage: 1,
+      finalLayoutNumPages: 0,
+      finalLayoutDeletedPages: new Set(),
+      isLoading: false,
+      error: "",
+      imageDimensions: null,
+      isPageLoading: false,
+      isScaleChanging: false,
+      detectedPageBackgrounds: new Map(),
+      supabaseFilePath: undefined,
+    },
+    viewState: {
+      currentView: "original",
+      currentWorkflowStep: "translate",
+      activeSidebarTab: "pages",
+      isSidebarCollapsed: false,
+      isCtrlPressed: false,
+      zoomMode: "page",
+      containerWidth: 1200,
+      transformOrigin: "center",
+    },
+    elementCollections: {
+      originalTextBoxes: [],
+      originalShapes: [],
+      originalDeletionRectangles: [],
+      originalImages: [],
+      translatedTextBoxes: [],
+      translatedShapes: [],
+      translatedDeletionRectangles: [],
+      translatedImages: [],
+      untranslatedTexts: [],
+      finalLayoutTextboxes: [],
+      finalLayoutShapes: [],
+      finalLayoutDeletionRectangles: [],
+      finalLayoutImages: [],
+    },
+    layerState: {
+      originalLayerOrder: [],
+      translatedLayerOrder: [],
+      finalLayoutLayerOrder: [],
+    },
+    editorState: {
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isAddTextBoxMode: false,
+      isTextSelectionMode: false,
+      showDeletionRectangles: false,
+      isImageUploadMode: false,
+      selectedTextBoxes: { textBoxIds: [] },
+      isDrawingSelection: false,
+      selectionStart: null,
+      selectionEnd: null,
+      selectionRect: null,
+      multiSelection: {
+        selectedElements: [],
+        selectionBounds: null,
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        isMovingSelection: false,
+        moveStart: null,
+        targetView: null,
+        dragOffsets: {},
+        isDragging: false,
+      },
+      isSelectionMode: false,
+    },
+    sourceLanguage: "auto",
+    desiredLanguage: "en",
+  });
+
   // Load projects on component mount
   useEffect(() => {
     const loadProjects = async () => {
@@ -221,10 +318,41 @@ const PDFEditorDashboard: React.FC = () => {
     }
   };
 
-  const handleCreateProject = () => {
+  const handleUploadNewFile = () => {
+    // Trigger the hidden file input
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
     setIsCreatingProject(true);
-    // Navigate to PDF editor without project ID to create new project
-    router.push("/pdf-editor/new");
+    
+    try {
+      // Wait for the complete upload process to Supabase before redirecting
+      const projectId = await createProjectOnUpload(file);
+      if (projectId) {
+        // Refresh projects list to show the new project
+        const savedProjects = await getSavedProjects();
+        setProjects(savedProjects);
+        
+        // Navigate to the new project only after successful upload
+        router.push(`/pdf-editor/${projectId}`);
+      } else {
+        // If projectId is null, the upload failed or user is not authenticated
+        console.warn("Project creation failed - no project ID returned");
+      }
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      // Don't redirect on error - let the user retry or handle the error
+    } finally {
+      setIsCreatingProject(false);
+      // Reset file input
+      if (event.target) {
+        event.target.value = '';
+      }
+    }
   };
 
   const handleOpenProject = (projectId: string) => {
@@ -287,12 +415,12 @@ const PDFEditorDashboard: React.FC = () => {
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center space-x-4">
             <Button
-              onClick={handleCreateProject}
-              disabled={isCreatingProject}
+              onClick={handleUploadNewFile}
+              disabled={isCreatingProject || isCreatingProjectFromUpload}
               className="flex items-center space-x-2"
             >
-              <Plus className="h-4 w-4" />
-              <span>Create New Project</span>
+              <Upload className="h-4 w-4" />
+              <span>{isCreatingProject || isCreatingProjectFromUpload ? "Uploading..." : "Upload New File"}</span>
             </Button>
           </div>
           
@@ -331,11 +459,11 @@ const PDFEditorDashboard: React.FC = () => {
               No projects yet
             </h3>
             <p className="text-gray-600 mb-6">
-              Get started by creating your first PDF editing project.
+              Get started by uploading your first document.
             </p>
-            <Button onClick={handleCreateProject} disabled={isCreatingProject}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create New Project
+            <Button onClick={handleUploadNewFile} disabled={isCreatingProject || isCreatingProjectFromUpload}>
+              <Upload className="h-4 w-4 mr-2" />
+              {isCreatingProject || isCreatingProjectFromUpload ? "Uploading..." : "Upload New File"}
             </Button>
           </div>
         )}
@@ -348,7 +476,7 @@ const PDFEditorDashboard: React.FC = () => {
               No projects found
             </h3>
             <p className="text-gray-600 mb-6">
-              Try adjusting your search terms or create a new project.
+              Try adjusting your search terms or upload a new file.
             </p>
             <Button onClick={() => setSearchQuery("")} variant="outline">
               Clear Search
@@ -465,6 +593,15 @@ const PDFEditorDashboard: React.FC = () => {
             ))}
           </div>
         )}
+
+        {/* Hidden file input for uploading files */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg"
+          onChange={handleFileUpload}
+          style={{ display: 'none' }}
+        />
       </div>
     </div>
   );

@@ -4,7 +4,7 @@
 
 import { ProjectState } from "../hooks/states/useProjectState";
 import { API_CONFIG, getApiUrl } from "../../../config/api";
-import { isSupabaseUrl, extractFilePathFromUrl } from "./fileUploadService";
+import { isSupabaseUrl, extractFilePathFromUrl, uploadFileToSupabase } from "./fileUploadService";
 
 // API configuration
 const PROJECT_STATE_ENDPOINT = getApiUrl(API_CONFIG.PROJECT_STATE.BASE);
@@ -320,6 +320,9 @@ export async function createProjectFromUpload(
     desiredLanguage: string;
   }
 ): Promise<ProjectResponse> {
+  // First, upload the file to Supabase storage
+  const uploadResult = await uploadFileToSupabase(file, "project-uploads");
+  
   // Generate a project name based on the file
   const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
   const projectName = `${fileName} - ${new Date().toLocaleDateString()}`;
@@ -333,6 +336,10 @@ export async function createProjectFromUpload(
     version: "1.0.0",
     documentState: {
       ...documentState,
+      // Set the URL to the uploaded file URL from Supabase
+      url: uploadResult.publicUrl,
+      isSupabaseUrl: true,
+      supabaseFilePath: uploadResult.filePath,
       // Convert Map and Set to serializable formats
       detectedPageBackgrounds: Object.fromEntries(
         documentState.detectedPageBackgrounds || new Map()
@@ -371,6 +378,7 @@ export async function createProjectFromUpload(
   console.log("DEBUG: Auto-creation - Project data being created:", {
     projectData,
     documentStateKeys: Object.keys(projectData.documentState),
+    uploadResult,
     hasRequiredFields: {
       url: !!projectData.documentState.url,
       isDocumentLoaded: projectData.documentState.isDocumentLoaded,
