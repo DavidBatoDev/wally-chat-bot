@@ -127,6 +127,18 @@ interface UseProjectStateProps {
   setSourceLanguage: (lang: string) => void;
   desiredLanguage: string;
   setDesiredLanguage: (lang: string) => void;
+  // Document actions for loading documents from URLs
+  documentActions?: {
+    loadDocumentFromUrl: (
+      url: string,
+      fileType: "pdf" | "image" | null,
+      supabaseFilePath?: string
+    ) => Promise<void>;
+    loadFinalLayoutFromUrl: (
+      finalLayoutUrl: string,
+      finalLayoutNumPages?: number
+    ) => Promise<void>;
+  };
   // Final layout settings
   finalLayoutSettings?: {
     exportSettings: {
@@ -188,6 +200,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
     setSourceLanguage,
     desiredLanguage,
     setDesiredLanguage,
+    documentActions,
   } = props;
 
   // Auth store for checking authentication status
@@ -196,6 +209,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
 
   // State for tracking current project (no localStorage persistence)
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
 
   // Debug: Log when currentProjectId changes
   useEffect(() => {
@@ -207,6 +221,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
     if (!isUserAuthenticated) {
       console.log("User logged out, clearing current project ID");
       setCurrentProjectId(null);
+      setCurrentProjectName(null);
     }
   }, [isUserAuthenticated]);
 
@@ -674,6 +689,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
                   apiProject.id
                 );
                 setCurrentProjectId(apiProject.id);
+                setCurrentProjectName(projectState.name);
 
                 console.log(
                   "DEBUG: Current project ID after setting:",
@@ -706,6 +722,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
                     apiProject.id
                   );
                   setCurrentProjectId(apiProject.id);
+                  setCurrentProjectName(projectState.name);
 
                   console.log(
                     "DEBUG: Current project ID after setting (most recent):",
@@ -799,6 +816,37 @@ export const useProjectState = (props: UseProjectStateProps) => {
           isLoading: false, // Ensure loading state is false
           error: "", // Clear any errors
         }));
+
+        // Actually load the document into the PDF viewer if URL exists
+        if (projectState.documentState.url && documentActions?.loadDocumentFromUrl) {
+          console.log("DEBUG: Loading document from URL:", projectState.documentState.url);
+          try {
+            await documentActions.loadDocumentFromUrl(
+              projectState.documentState.url,
+              projectState.documentState.fileType as "pdf" | "image" | null,
+              projectState.documentState.supabaseFilePath
+            );
+            console.log("DEBUG: Document loaded successfully into PDF viewer");
+          } catch (error) {
+            console.error("DEBUG: Failed to load document into PDF viewer:", error);
+            // Don't fail the entire project load if document loading fails
+          }
+        }
+
+        // Load final layout if it exists
+        if (projectState.documentState.finalLayoutUrl && documentActions?.loadFinalLayoutFromUrl) {
+          console.log("DEBUG: Loading final layout from URL:", projectState.documentState.finalLayoutUrl);
+          try {
+            await documentActions.loadFinalLayoutFromUrl(
+              projectState.documentState.finalLayoutUrl,
+              projectState.documentState.finalLayoutNumPages
+            );
+            console.log("DEBUG: Final layout loaded successfully");
+          } catch (error) {
+            console.error("DEBUG: Failed to load final layout:", error);
+            // Don't fail the entire project load if final layout loading fails
+          }
+        }
 
         // Restore view state with proper type validation (similar to importFromJson)
         setViewState((prev) => ({
@@ -933,6 +981,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
       setSourceLanguage,
       setDesiredLanguage,
       setCurrentProjectId,
+      documentActions,
     ]
   );
 
@@ -1408,6 +1457,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
     // New state values
     currentProjectId,
     setCurrentProjectId,
+    currentProjectName,
     isLoading,
     isAuthenticated: isUserAuthenticated,
   };

@@ -38,7 +38,6 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   onPageDelete,
   onFileUpload,
   onAppendDocument,
-  onSidebarToggle,
   onTabChange,
   documentRef,
   sourceLanguage,
@@ -409,6 +408,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         }`}
         style={{ display: viewState.isSidebarCollapsed ? "none" : "flex" }}
       >
+        
         {/* Tab Navigation */}
         <div className="flex border-b border-primary/20 mb-4">
           <button

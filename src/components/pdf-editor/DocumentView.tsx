@@ -1,6 +1,11 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { Document, Page } from "react-pdf";
 
+// Configure PDF.js worker
+import { pdfjs } from 'react-pdf';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 interface DocumentViewProps {
   viewType: "original" | "translated" | "final-layout";
   documentUrl: string;

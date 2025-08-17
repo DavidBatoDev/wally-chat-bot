@@ -1,403 +1,478 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useAuthStore } from "@/lib/store/AuthStore";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Plus, 
+  FileText, 
+  Search, 
+  Filter, 
+  MoreVertical,
+  Calendar,
+  User,
+  Globe,
+  Lock,
+  Eye
+} from "lucide-react";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useProjectState } from "./hooks/states/useProjectState";
+import { getProject } from "./services/projectApiService";
 import { TextFormatProvider } from "@/components/editor/ElementFormatContext";
 import { PDFEditorContent } from "./PDFEditorContent";
-import { useAuthStore } from "@/lib/store/AuthStore";
-import { useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { getProject } from "./services/projectApiService";
+import ProjectPreview from "./components/ProjectPreview";
 
 // Import react-pdf CSS for text layer support
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 
-const PDFEditor: React.FC = () => {
-  const searchParams = useSearchParams();
+// Configure PDF.js worker
+import { pdfjs } from 'react-pdf';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+interface Project {
+  id: string;
+  name: string;
+  createdAt: string;
+  storageKey: string;
+  source: "database" | "localStorage";
+}
+
+const PDFEditorDashboard: React.FC = () => {
   const router = useRouter();
   const { user, session } = useAuthStore();
-  const [project, setProject] = useState<any>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [projectNotFound, setProjectNotFound] = useState(false);
-  const [authError, setAuthError] = useState(false);
-  const projectId = searchParams.get("projectId");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [projectPreviews, setProjectPreviews] = useState<Record<string, any>>({});
+  const [previewsLoading, setPreviewsLoading] = useState<Record<string, boolean>>({});
 
+  // Minimal project state setup just for getting saved projects
+  const { getSavedProjects, deleteProject, loadProject } = useProjectState({
+    documentState: {
+      url: "",
+      currentPage: 1,
+      numPages: 0,
+      scale: 1,
+      pageWidth: 600,
+      pageHeight: 800,
+      isDocumentLoaded: false,
+      isTransforming: false,
+      fileType: null,
+      deletedPages: new Set(),
+      pdfBackgroundColor: "#ffffff",
+      pdfRenderScale: 1,
+      pages: [],
+      isSupabaseUrl: false,
+      finalLayoutUrl: undefined,
+      finalLayoutCurrentPage: 1,
+      finalLayoutNumPages: 0,
+      finalLayoutDeletedPages: new Set(),
+      isLoading: false,
+      error: "",
+      imageDimensions: null,
+      isPageLoading: false,
+      isScaleChanging: false,
+      detectedPageBackgrounds: new Map(),
+      supabaseFilePath: undefined,
+    },
+    setDocumentState: () => {},
+    elementCollections: {
+      originalTextBoxes: [],
+      originalShapes: [],
+      originalDeletionRectangles: [],
+      originalImages: [],
+      translatedTextBoxes: [],
+      translatedShapes: [],
+      translatedDeletionRectangles: [],
+      translatedImages: [],
+      untranslatedTexts: [],
+      finalLayoutTextboxes: [],
+      finalLayoutShapes: [],
+      finalLayoutDeletionRectangles: [],
+      finalLayoutImages: [],
+    },
+    setElementCollections: () => {},
+    layerState: {
+      originalLayerOrder: [],
+      translatedLayerOrder: [],
+      finalLayoutLayerOrder: [],
+    },
+    setLayerState: () => {},
+    viewState: {
+      currentView: "original",
+      currentWorkflowStep: "translate",
+      activeSidebarTab: "pages",
+      isSidebarCollapsed: false,
+      isCtrlPressed: false,
+      zoomMode: "page",
+      containerWidth: 1200,
+      transformOrigin: "center",
+    },
+    setViewState: () => {},
+    editorState: {
+      selectedFieldId: null,
+      selectedShapeId: null,
+      isEditMode: false,
+      isAddTextBoxMode: false,
+      isTextSelectionMode: false,
+      showDeletionRectangles: false,
+      isImageUploadMode: false,
+      selectedTextBoxes: { textBoxIds: [] },
+      isDrawingSelection: false,
+      selectionStart: null,
+      selectionEnd: null,
+      selectionRect: null,
+      multiSelection: {
+        selectedElements: [],
+        selectionBounds: null,
+        isDrawingSelection: false,
+        selectionStart: null,
+        selectionEnd: null,
+        isMovingSelection: false,
+        moveStart: null,
+        targetView: null,
+        dragOffsets: {},
+        isDragging: false,
+      },
+      isSelectionMode: false,
+    },
+    setEditorState: () => {},
+    sourceLanguage: "auto",
+    setSourceLanguage: () => {},
+    desiredLanguage: "en",
+    setDesiredLanguage: () => {},
+  });
+
+  // Load projects on component mount
   useEffect(() => {
-    if (projectId) {
-      // Reset error states
-      setProjectNotFound(false);
-      setAuthError(false);
-
-      // Validate projectId format (basic check)
-      if (!projectId.match(/^[a-zA-Z0-9-_]+$/)) {
-        console.error("Invalid project ID format:", projectId);
-        setProjectNotFound(true);
+    const loadProjects = async () => {
+      try {
+        setIsLoading(true);
+        const savedProjects = await getSavedProjects();
+        setProjects(savedProjects);
+      } catch (error) {
+        console.error("Error loading projects:", error);
+      } finally {
         setIsLoading(false);
-        return;
-      }
-
-      // Debug logging
-      console.log("DEBUG: Looking for project with ID:", projectId);
-      console.log("DEBUG: Current user:", user);
-
-      // Fetch project directly from database
-      const fetchProject = async () => {
-        try {
-          console.log("DEBUG: Fetching project from database...");
-          console.log("DEBUG: User authentication status:", !!user, !!session);
-
-          // Check if user is authenticated before making the API call
-          if (!user || !session) {
-            console.log("DEBUG: User not authenticated, setting auth error");
-            setAuthError(true);
-            setIsLoading(false);
-            return;
-          }
-
-          const projectData = await getProject(projectId);
-
-          if (projectData) {
-            console.log("DEBUG: Project found in database:", projectData);
-            console.log("DEBUG: Project structure:", {
-              id: projectData.id,
-              name: projectData.name,
-              project_data: projectData.project_data,
-              source_language: projectData.source_language,
-              desired_language: projectData.desired_language,
-              created_by: projectData.created_by,
-              is_public: projectData.is_public,
-            });
-            console.log("DEBUG: Complete project object:", projectData);
-            console.log("DEBUG: Project keys:", Object.keys(projectData));
-            setProject(projectData);
-            setProjectNotFound(false);
-          } else {
-            console.log("DEBUG: Project not found in database");
-            setProjectNotFound(true);
-          }
-        } catch (error) {
-          console.error("DEBUG: Error fetching project:", error);
-
-          // Handle different types of errors
-          if (error instanceof Error) {
-            if (
-              error.message.includes("401") ||
-              error.message.includes("Unauthorized") ||
-              error.message.includes("Not authenticated")
-            ) {
-              console.log("DEBUG: Authentication required");
-              setAuthError(true);
-              // Don't set projectNotFound for auth issues, let the user see the auth message
-            } else if (
-              error.message.includes("404") ||
-              error.message.includes("Not Found")
-            ) {
-              console.log("DEBUG: Project not found");
-              setProjectNotFound(true);
-            } else if (
-              error.message.includes("Network") ||
-              error.message.includes("fetch")
-            ) {
-              console.log("DEBUG: Network error");
-              setProjectNotFound(true);
-            } else if (
-              error.message.includes("403") ||
-              error.message.includes("Forbidden")
-            ) {
-              console.log(
-                "DEBUG: Access forbidden - project exists but user lacks permission"
-              );
-              setProjectNotFound(true);
-            } else {
-              console.log("DEBUG: Other error, treating as not found");
-              setProjectNotFound(true);
-            }
-          } else {
-            setProjectNotFound(false);
-          }
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      fetchProject();
-    } else {
-      // No projectId provided, allow editor to work without a specific project
-      setProjectNotFound(false);
-      setAuthError(false);
-      setIsLoading(false);
-    }
-  }, [projectId, user]);
-
-  // Add timeout to prevent infinite loading
-  useEffect(() => {
-    if (projectId && isLoading) {
-      const timeout = setTimeout(() => {
-        if (isLoading) {
-          console.warn("Project loading timeout, forcing completion");
-          setIsLoading(false);
-          // If we still don't have a project after timeout, show 404
-          if (!project) {
-            setProjectNotFound(true);
-          }
-        }
-      }, 10000); // 10 second timeout
-
-      return () => clearTimeout(timeout);
-    }
-  }, [projectId, isLoading, project]);
-
-  // Watch for authentication changes and retry fetching project if needed
-  useEffect(() => {
-    if (
-      projectId &&
-      user &&
-      session &&
-      !project &&
-      !isLoading &&
-      !projectNotFound &&
-      !authError
-    ) {
-      console.log("DEBUG: User became authenticated, retrying project fetch");
-      // Reset states and retry
-      setProjectNotFound(false);
-      setAuthError(false);
-      setIsLoading(true);
-
-      const fetchProject = async () => {
-        try {
-          console.log("DEBUG: Retrying project fetch after authentication...");
-          const projectData = await getProject(projectId);
-
-          if (projectData) {
-            console.log("DEBUG: Project found on retry:", projectData);
-            setProject(projectData);
-            setProjectNotFound(false);
-          } else {
-            console.log("DEBUG: Project still not found on retry");
-            setProjectNotFound(true);
-          }
-        } catch (error) {
-          console.error("DEBUG: Error on retry:", error);
-          setProjectNotFound(true);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      fetchProject();
-    }
-  }, [
-    projectId,
-    user,
-    session,
-    project,
-    isLoading,
-    projectNotFound,
-    authError,
-  ]);
-
-  // Add keyboard shortcut for back navigation
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        handleBackToProject();
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [project]);
+    loadProjects();
+  }, [getSavedProjects]);
 
-  const handleBackToProject = () => {
-    if (project) {
-      // Try to determine route based on project metadata if available
-      // The project_data field might contain additional metadata
-      const projectData = project.project_data;
-
-      if (projectData && projectData.assignedTranslator) {
-        console.log("Routing to translator dashboard");
-        router.push("/exp/translator");
-      } else if (projectData && projectData.projectType === "translation") {
-        console.log("Routing to translator dashboard");
-        router.push("/exp/translator");
-      } else {
-        console.log("Routing to project manager dashboard");
-        router.push("/exp/project-manager");
+  // Load previews for database projects automatically
+  useEffect(() => {
+    const loadAllPreviews = async () => {
+      const databaseProjects = projects.filter(p => p.source === "database");
+      
+      // Load previews for first few projects to avoid overwhelming the API
+      const projectsToLoad = databaseProjects.slice(0, 6);
+      
+      for (const project of projectsToLoad) {
+        if (!projectPreviews[project.id] && !previewsLoading[project.id]) {
+          loadProjectPreview(project.id);
+          // Add a small delay between requests to avoid overwhelming the server
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
-    } else {
-      // Fallback to main dashboard
-      console.log("Routing to main dashboard");
-      router.push("/exp");
+    };
+
+    if (projects.length > 0) {
+      loadAllPreviews();
+    }
+  }, [projects]);
+
+  // Filter projects based on search query
+  const filteredProjects = projects.filter(project =>
+    project.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Load project preview data
+  const loadProjectPreview = async (projectId: string) => {
+    if (projectPreviews[projectId] || previewsLoading[projectId]) {
+      return; // Already loaded or loading
+    }
+
+    setPreviewsLoading(prev => ({ ...prev, [projectId]: true }));
+    
+    try {
+      const project = await getProject(projectId);
+      if (project?.project_data) {
+        setProjectPreviews(prev => ({
+          ...prev,
+          [projectId]: project.project_data
+        }));
+      }
+    } catch (error) {
+      console.error("Error loading project preview:", error);
+    } finally {
+      setPreviewsLoading(prev => ({ ...prev, [projectId]: false }));
     }
   };
 
-  const handleBackToDashboard = () => {
-    router.push("/exp");
+  const handleCreateProject = () => {
+    setIsCreatingProject(true);
+    // Navigate to PDF editor without project ID to create new project
+    router.push("/pdf-editor/new");
   };
 
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">
-            {projectId ? "Loading project..." : "Loading..."}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const handleOpenProject = (projectId: string) => {
+    router.push(`/pdf-editor/${projectId}`);
+  };
 
-  // Show 404 page when project is not found
-  if (projectId && projectNotFound) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md mx-auto px-6">
-          <div className="mb-8">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-              <svg
-                className="h-8 w-8 text-red-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Project Not Found
-            </h1>
-            <p className="text-gray-600 mb-6">
-              {!user
-                ? "Please sign in to access this project, or the project doesn't exist."
-                : "The project you're looking for doesn't exist, you don't have access to it, or it may have been deleted."}
-            </p>
-          </div>
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    if (window.confirm(`Are you sure you want to delete "${projectName}"?`)) {
+      try {
+        await deleteProject(projectId);
+        // Refresh projects list
+        const savedProjects = await getSavedProjects();
+        setProjects(savedProjects);
+      } catch (error) {
+        console.error("Error deleting project:", error);
+      }
+    }
+  };
 
-          <div className="space-y-3">
-            {!user ? (
-              <Button
-                onClick={() => router.push("/auth/login")}
-                className="w-full"
-                size="lg"
-              >
-                Sign In
-              </Button>
-            ) : (
-              <Button
-                onClick={handleBackToDashboard}
-                className="w-full"
-                size="lg"
-              >
-                Go to Dashboard
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              onClick={() => router.back()}
-              className="w-full"
-              size="lg"
-            >
-              Go Back
-            </Button>
-          </div>
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-          <div className="mt-8 text-sm text-gray-500">
-            <p>Project ID: {projectId}</p>
-            {!user && (
-              <p className="mt-2 text-amber-600">
-                You may need to sign in to access this project
-              </p>
-            )}
-            {user && (
-              <p className="mt-2 text-blue-600">
-                Try refreshing the page or check if the project ID is correct
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Show authentication error page
-  if (projectId && authError) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md mx-auto px-6">
-          <div className="mb-8">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 mb-4">
-              <svg
-                className="h-8 w-8 text-amber-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Authentication Required
-            </h1>
-            <p className="text-gray-600 mb-6">
-              You need to sign in to access this project. Please authenticate to
-              continue.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <Button
-              onClick={() => router.push("/auth/login")}
-              className="w-full"
-              size="lg"
-            >
-              Sign In
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.back()}
-              className="w-full"
-              size="lg"
-            >
-              Go Back
-            </Button>
-          </div>
-
-          <div className="mt-8 text-sm text-gray-500">
-            <p>Project ID: {projectId}</p>
-            <p className="mt-2 text-amber-600">
-              This project requires authentication to access
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    if (diffDays === 1) {
+      return "Yesterday";
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  };
 
   return (
-    <div className="h-screen flex flex-col">
-      {/* PDF Editor Content */}
-      <div className="flex-1">
-        <TextFormatProvider>
-          <PDFEditorContent projectId={projectId || undefined} />
-        </TextFormatProvider>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-2xl font-bold text-gray-900">PDF Editor</h1>
+              <Badge variant="secondary">Documents</Badge>
+            </div>
+            <div className="flex items-center space-x-4">
+              {user && (
+                <div className="flex items-center space-x-2">
+                  <User className="h-4 w-4 text-gray-500" />
+                  <span className="text-sm text-gray-700">{user.email}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Actions Bar */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <Button
+              onClick={handleCreateProject}
+              disabled={isCreatingProject}
+              className="flex items-center space-x-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create New Project</span>
+            </Button>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search projects..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-64"
+              />
+            </div>
+            <Button variant="outline" size="sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Filter
+            </Button>
+          </div>
+        </div>
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading your projects...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && filteredProjects.length === 0 && searchQuery === "" && (
+          <div className="text-center py-12">
+            <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No projects yet
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Get started by creating your first PDF editing project.
+            </p>
+            <Button onClick={handleCreateProject} disabled={isCreatingProject}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create New Project
+            </Button>
+          </div>
+        )}
+
+        {/* No Search Results */}
+        {!isLoading && filteredProjects.length === 0 && searchQuery !== "" && (
+          <div className="text-center py-12">
+            <Search className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No projects found
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Try adjusting your search terms or create a new project.
+            </p>
+            <Button onClick={() => setSearchQuery("")} variant="outline">
+              Clear Search
+            </Button>
+          </div>
+        )}
+
+        {/* Projects Grid */}
+        {!isLoading && filteredProjects.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {filteredProjects.map((project) => (
+              <div
+                key={project.id}
+                className="group cursor-pointer"
+                onClick={() => handleOpenProject(project.id)}
+              >
+                {/* Document Preview Card */}
+                <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group-hover:border-blue-300">
+                  {/* Document Preview */}
+                  <div className="aspect-[8.5/11] p-3">
+                    {project.source === "database" ? (
+                      previewsLoading[project.id] ? (
+                        <div className="w-full h-full bg-gray-100 rounded border flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                        </div>
+                      ) : projectPreviews[project.id] ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ProjectPreview
+                            projectData={projectPreviews[project.id]}
+                            scale={0.25}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-full bg-gray-50 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-sm">
+                          <div className="text-center">
+                            <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                            <span className="text-xs">Loading Preview...</span>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <div className="w-full h-full bg-gray-50 rounded border flex items-center justify-center text-gray-400">
+                        <div className="text-center">
+                          <Lock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                          <span className="text-xs">Local File</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Actions Menu */}
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-3 w-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenProject(project.id);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Open
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteProject(project.id, project.name);
+                          }}
+                          className="text-red-600"
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  {/* File Type Badge */}
+                  <div className="absolute top-2 left-2">
+                    {project.source === "database" ? (
+                      <Badge variant="default" className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 border-blue-200">
+                        <Globe className="h-2.5 w-2.5 mr-1" />
+                        Cloud
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs px-1.5 py-0.5">
+                        <Lock className="h-2.5 w-2.5 mr-1" />
+                        Local
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Document Info */}
+                <div className="mt-2 px-1">
+                  <h3 className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                    {project.name}
+                  </h3>
+                  <div className="flex items-center mt-1 text-xs text-gray-500">
+                    <Calendar className="h-3 w-3 mr-1" />
+                    <span>{formatDate(project.createdAt)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
+};
+
+const PDFEditor: React.FC = () => {
+  return <PDFEditorDashboard />;
 };
 
 export default PDFEditor;

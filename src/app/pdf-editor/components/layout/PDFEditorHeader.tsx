@@ -15,12 +15,12 @@ import {
   FolderOpen,
   RefreshCw,
   Share2,
+  ArrowLeft,
+  Menu,
 } from "lucide-react";
 import { WorkflowStep } from "../../types/pdf-editor.types";
 
 interface PDFEditorHeaderProps {
-  isSidebarCollapsed: boolean;
-  onSidebarToggle: () => void;
   onFileUpload: () => void;
   onSaveProject: () => void;
   onProjectManagement?: () => void;
@@ -43,11 +43,12 @@ interface PDFEditorHeaderProps {
   onWorkflowStepChange: (step: WorkflowStep) => void;
   onRecreateFinalLayout?: () => void;
   isCapturingSnapshots?: boolean;
+  // New props for project name and navigation
+  projectName?: string | null;
+  onBackToDashboard?: () => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
-  isSidebarCollapsed,
-  onSidebarToggle,
   onFileUpload,
   onSaveProject,
   onProjectManagement,
@@ -70,38 +71,41 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onWorkflowStepChange,
   onRecreateFinalLayout,
   isCapturingSnapshots,
+  projectName,
+  onBackToDashboard,
 }) => {
   return (
     <div className="bg-white border-b border-primary/20 shadow-sm">
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center space-x-4">
-          <Button
-            onClick={onSidebarToggle}
-            variant="ghost"
-            size="sm"
-            className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors w-10 h-10 p-0"
-            title={isSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+          {/* Wally Logo and Project Name */}
+          <div 
+            className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={onBackToDashboard}
+            title="Back to Dashboard"
           >
-            {isSidebarCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronLeft className="w-4 h-4" />
-            )}
-          </Button>
-
-          {/* Wally Logo and Title (added back) */}
-          <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center shadow-md">
               <span className="text-white font-bold text-lg">W</span>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900 leading-tight">
-                Wally
-              </h1>
-              <p className="text-sm text-primary font-medium">
-                Multimodal Translation
-              </p>
-            </div>
+            {projectName ? (
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 leading-tight">
+                  {projectName}
+                </h1>
+                <p className="text-sm text-primary font-medium">
+                  Project Document
+                </p>
+              </div>
+            ) : (
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 leading-tight">
+                  Wally
+                </h1>
+                <p className="text-sm text-primary font-medium">
+                  Multimodal Translation
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Undo/Redo Buttons (left) */}

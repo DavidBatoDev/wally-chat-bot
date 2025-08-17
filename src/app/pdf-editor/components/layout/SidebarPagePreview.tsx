@@ -4,6 +4,11 @@ import { TextField, Shape, Image } from "../../types/pdf-editor.types";
 import { colorToRgba } from "../../utils/colors";
 import { isPdfFile } from "../../utils/measurements";
 
+// Configure PDF.js worker
+import { pdfjs } from 'react-pdf';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
 interface SidebarPagePreviewProps {
   pageNum: number;
   pageWidth: number;
