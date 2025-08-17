@@ -236,6 +236,18 @@ export const useDocumentState = () => {
       // Upload file to Supabase or use blob URL as fallback
       const uploadResult = await uploadFileWithFallback(file);
 
+      // Only proceed if the file was successfully uploaded to cloud storage
+      if (!uploadResult.isSupabaseUrl) {
+        setDocumentState((prev) => ({
+          ...prev,
+          error: "Failed to upload document to cloud storage",
+          isLoading: false,
+          isDocumentLoaded: false,
+        }));
+        toast.error("Failed to upload document to cloud storage. Please try again.");
+        return;
+      }
+
       setDocumentState((prev) => ({
         ...prev,
         url: uploadResult.url,
@@ -246,18 +258,16 @@ export const useDocumentState = () => {
         isSupabaseUrl: uploadResult.isSupabaseUrl,
       }));
 
-      if (uploadResult.isSupabaseUrl) {
-        toast.success("Document uploaded to cloud storage successfully!");
-      }
+      toast.success("Document uploaded to cloud storage successfully!");
     } catch (error) {
       console.error("Error loading document:", error);
       setDocumentState((prev) => ({
         ...prev,
-        error: "Failed to load document",
+        error: "Failed to upload document to cloud storage",
         isLoading: false,
         isDocumentLoaded: false,
       }));
-      toast.error("Failed to load document");
+      toast.error("Failed to upload document to cloud storage. Please try again.");
     }
   }, []);
 

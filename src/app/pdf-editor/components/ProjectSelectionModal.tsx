@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, Download, FolderOpen, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 interface SavedProject {
   id: string;
@@ -42,7 +42,6 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
   getSavedProjects,
 }) => {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
   const [newProjectName, setNewProjectName] = useState("");
   const [exportProjectName, setExportProjectName] = useState("");
@@ -76,12 +75,8 @@ export const ProjectSelectionModal: React.FC<ProjectSelectionModalProps> = ({
       const success = await onLoadProject(projectId);
 
       if (success) {
-        // Update the URL after successful project load
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("projectId", projectId);
-        const newUrl = `/pdf-editor?${params.toString()}`;
-        window.history.replaceState({}, "", newUrl);
-
+        // Don't update the URL to avoid page reloads or re-renders
+        // The project state is managed internally
         toast.success(`Project loaded successfully: ${projectId}`);
       } else {
         toast.error("Failed to load project");

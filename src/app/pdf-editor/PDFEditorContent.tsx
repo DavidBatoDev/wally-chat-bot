@@ -9,18 +9,12 @@ import { Document, Page, pdfjs } from "react-pdf";
 import { toast } from "sonner";
 import { useTextFormat } from "@/components/editor/ElementFormatContext";
 import { ElementFormatDrawer } from "@/components/editor/ElementFormatDrawer";
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { useRouter, useSearchParams } from "next/navigation";
 
 // Import services
 import { performPageOcr, performBulkOcr } from "./services/ocrService";
 import {
   exportPdfDocument,
-  // handleFileUpload as handleFileUploadService,
-  // handleAppendDocument,
-  // createBlankPdfAndAddImage as createBlankPdfAndAddImageService,
-  // appendImageAsNewPage as appendImageAsNewPageService,
-  // appendPdfDocument as appendPdfDocumentService,
   exportToPDFService,
   exportToPNGService,
   exportToJPEGService,
@@ -3844,7 +3838,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         const pdfBytes = await pdfDoc.save();
 
         // Create a blob URL for the blank PDF
-        const pdfBlob = new Blob([pdfBytes], { type: "application/pdf" });
+        const pdfBlob = new Blob([new Uint8Array(pdfBytes)], {
+          type: "application/pdf",
+        });
 
         // Convert Blob to File object
         const pdfFile = new File([pdfBlob], "blank-document.pdf", {
@@ -3864,6 +3860,12 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload image to Supabase or use blob URL as fallback
         const imageUploadResult = await uploadFileWithFallback(imageFile);
+
+        // Only proceed if the image was successfully uploaded to cloud storage
+        if (!imageUploadResult.isSupabaseUrl) {
+          toast.error("Failed to upload image to cloud storage. Please try again.");
+          return;
+        }
 
         // Helper function to get the correct current page based on view
         const getCurrentPageForView = () => {
@@ -3932,7 +3934,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Save the updated PDF as a new blob
         const updatedPdfBytes = await currentPdfDoc.save();
-        const updatedBlob = new Blob([updatedPdfBytes], {
+        const updatedBlob = new Blob([new Uint8Array(updatedPdfBytes)], {
           type: "application/pdf",
         });
 
@@ -3943,6 +3945,13 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload to Supabase or create blob URL
         const uploadResult = await uploadFileWithFallback(updatedFile);
+        
+        // Only proceed if the PDF was successfully uploaded to cloud storage
+        if (!uploadResult.isSupabaseUrl) {
+          toast.error("Failed to upload updated document to cloud storage. Please try again.");
+          return;
+        }
+        
         const newUrl = uploadResult.url;
         const newPageNumber = currentPdfDoc.getPageCount();
 
@@ -3984,6 +3993,12 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload image to Supabase or use blob URL as fallback
         const imageUploadResult = await uploadFileWithFallback(imageFile);
+
+        // Only proceed if the image was successfully uploaded to cloud storage
+        if (!imageUploadResult.isSupabaseUrl) {
+          toast.error("Failed to upload image to cloud storage. Please try again.");
+          return;
+        }
 
         // Use setTimeout to ensure the document state is updated before adding the image
         setTimeout(() => {
@@ -4059,7 +4074,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Save the merged PDF as a new blob
         const mergedPdfBytes = await currentPdfDoc.save();
-        const mergedBlob = new Blob([mergedPdfBytes], {
+        const mergedBlob = new Blob([new Uint8Array(mergedPdfBytes)], {
           type: "application/pdf",
         });
 
@@ -4070,6 +4085,13 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload merged PDF to Supabase or use blob URL as fallback
         const uploadResult = await uploadFileWithFallback(mergedFile);
+        
+        // Only proceed if the merged PDF was successfully uploaded to cloud storage
+        if (!uploadResult.isSupabaseUrl) {
+          toast.error("Failed to upload merged document to cloud storage. Please try again.");
+          return;
+        }
+        
         const newUrl = uploadResult.url;
         const totalPages = currentPdfDoc.getPageCount();
         const addedPagesCount = newPages.length;
@@ -4128,6 +4150,13 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         try {
           // Upload image to Supabase or use blob URL as fallback
           const uploadResult = await uploadFileWithFallback(file);
+          
+          // Only proceed if the image was successfully uploaded to cloud storage
+          if (!uploadResult.isSupabaseUrl) {
+            toast.error("Failed to upload image to cloud storage. Please try again.");
+            return;
+          }
+          
           const url = uploadResult.url;
 
           // Load the image to get its natural dimensions
@@ -4437,12 +4466,12 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   });
 
   // Auto-load project when projectId prop is provided
-  useEffect(() => {
-    if (projectId && !currentProjectId) {
-      console.log("Auto-loading project with ID:", projectId);
-      loadProject(projectId);
-    }
-  }, [projectId, currentProjectId, loadProject]);
+  // useEffect(() => {
+  //   if (projectId && !currentProjectId) {
+  //     console.log("Auto-loading project with ID:", projectId);
+  //     loadProject(projectId);
+  //   }
+  // }, [projectId, currentProjectId, loadProject]);
 
   // Handle manual project loading from modal
   const handleManualProjectLoad = useCallback(
@@ -4555,6 +4584,13 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
               // First, upload the file to get the URL
               const uploadResult = await uploadFileWithFallback(file);
 
+              // Only proceed if the file was successfully uploaded to cloud storage
+              if (!uploadResult.isSupabaseUrl) {
+                toast.error("Failed to upload document to cloud storage. Please try again.");
+                setIsUploadingFile(false);
+                return;
+              }
+
               // Update document state with the uploaded file URL
               const updatedDocumentState = {
                 ...documentState,
@@ -4609,13 +4645,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                   project,
                 });
 
-                // Update the URL to trigger project loading
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("projectId", projectId);
-                const newUrl = `/pdf-editor?${params.toString()}`;
-                window.history.replaceState({}, "", newUrl);
-
-                // Set the current project ID
+                // Set the current project ID without changing the URL
+                // This avoids any potential re-rendering or state reset issues
                 setCurrentProjectId(projectId);
 
                 // Now load the document
@@ -4637,21 +4668,12 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                 );
               }
             } catch (error) {
-              console.error("Error creating project:", error);
+              console.error("Error during upload and project creation:", error);
               toast.error(
-                "Failed to create project, loading document directly"
+                "Failed to upload document to cloud storage or create project. Please try again."
               );
-
-              // Fallback: load document directly if project creation fails
-              if (fileType === "image") {
-                createBlankPdfAndAddImage(file);
-              } else {
-                actions.loadDocument(file);
-                setViewState((prev) => ({
-                  ...prev,
-                  activeSidebarTab: "pages",
-                }));
-              }
+              setIsUploadingFile(false);
+              lastUploadedFileRef.current = null;
 
               lastUploadedFileRef.current = null;
             }
@@ -4703,7 +4725,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       clearAllElementsAndState,
       isUserAuthenticated,
       setViewState,
-      searchParams,
       setCurrentProjectId,
       uploadFileWithFallback,
       setDocumentState,
