@@ -4,7 +4,6 @@ import React, { useEffect, useState } from "react";
 import { useAuthStore } from "@/lib/store/AuthStore";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -367,9 +366,9 @@ const PDFEditorDashboard: React.FC = () => {
                 onClick={() => handleOpenProject(project.id)}
               >
                 {/* Document Preview Card */}
-                <div className="relative bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-all duration-200 group-hover:border-blue-300">
+                <div className="relative border border-gray-300 rounded-tl-lg rounded-tr-lg  bg-gray-100 shadow-sm hover:shadow-md transition-all duration-200 group-hover:border-blue-300">
                   {/* Document Preview */}
-                  <div className="aspect-[8.5/11] p-3">
+                  <div className="aspect-[8.5/11]">
                     {project.source === "database" ? (
                       previewsLoading[project.id] ? (
                         <div className="w-full h-full bg-gray-100 rounded border flex items-center justify-center">
@@ -453,7 +452,7 @@ const PDFEditorDashboard: React.FC = () => {
                 </div>
 
                 {/* Document Info */}
-                <div className="mt-2 px-1">
+                <div className="p-3 border border-gray-300 rounded-bl-lg rounded-br-lg">
                   <h3 className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
                     {project.name}
                   </h3>

@@ -151,10 +151,8 @@ const renderDeletionRectangle = (rect: any, scale: number) => (
       height: rect.height * scale,
       background: rect.background ? rect.background : "rgba(255,0,0,0.15)",
       opacity: rect.opacity ?? 0.5,
-      border: rect.borderColor
-        ? `${rect.borderWidth || 1}px solid ${rect.borderColor}`
-        : "1px dashed #f00",
-      zIndex: 10,
+      border: "none",
+      zIndex: 0,
       pointerEvents: "none",
     }}
     title="Deletion Rectangle"
@@ -189,12 +187,12 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
       zIndex: number;
     }> = [];
 
-    // Add deletion rectangles with lowest zIndex
+    // Add deletion rectangles with lowest zIndex (rendered first, behind everything)
     firstPageDeletions.forEach((rect) => {
       allElements.push({
         type: "deletion",
         element: rect,
-        zIndex: rect.zIndex || 1,
+        zIndex: rect.zIndex || 0,
       });
     });
 
