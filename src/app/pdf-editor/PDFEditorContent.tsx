@@ -2206,7 +2206,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     setAutoFocusTextBoxId,
   });
 
-  // Zoom functionality (extracted to custom hook)
+  // Zoom functionality (optimized)
   useZoomHandlers({
     viewState,
     setViewState,
@@ -5700,7 +5700,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
               className="flex-1 document-viewer document-container"
               ref={containerRef}
               style={{
-                scrollBehavior: "smooth",
+                scrollBehavior: documentState.isScaleChanging ? "auto" : "smooth",
                 overflow: "auto",
                 paddingTop: "64px",
               }}

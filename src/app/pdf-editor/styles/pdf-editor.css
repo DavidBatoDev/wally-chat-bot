@@ -365,14 +365,25 @@ body.resizing-element {
   cursor: zoom-in !important;
 }
 
-/* Smooth zoom transitions */
-.zoom-transition {
-  transition: transform 0.1s ease-out, transform-origin 0.05s ease-out;
+/* GPU acceleration for PDF content */
+.pdf-container {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: subpixel-antialiased;
 }
 
-/* Document page styling */
+.pdf-content {
+  will-change: transform;
+  transform-origin: top left;
+  backface-visibility: hidden;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+/* Disable transitions during zoom for better performance */
 .document-page {
-  transition: width 0.05s ease-out, height 0.05s ease-out;
+  /* Remove transitions for smoother zooming */
 }
 
 .document-page .loading-overlay {

@@ -7,6 +7,8 @@ interface UseZoomHandlersProps {
   documentState: {
     scale: number;
     pdfRenderScale: number;
+    pageWidth: number;
+    pageHeight: number;
   };
   actions: {
     updateScale: (scale: number) => void;
@@ -25,50 +27,120 @@ export const useZoomHandlers = ({
   containerRef,
   documentRef,
 }: UseZoomHandlersProps) => {
-  // Simple direct zoom without complex throttling
+  // Store the current scale in a ref for immediate access
+  const currentScaleRef = useRef<number>(documentState.scale);
+  
+  // Update ref when documentState.scale changes
+  useEffect(() => {
+    currentScaleRef.current = documentState.scale;
+  }, [documentState.scale]);
+
+  // Store pending scroll position
+  const pendingScrollRef = useRef<{ left: number; top: number } | null>(null);
+
+  // Apply pending scroll after scale changes
+  useEffect(() => {
+    if (pendingScrollRef.current && containerRef.current) {
+      const { left, top } = pendingScrollRef.current;
+      containerRef.current.scrollLeft = left;
+      containerRef.current.scrollTop = top;
+      pendingScrollRef.current = null;
+    }
+  }, [documentState.scale, containerRef]);
+
+  // Main zoom handler with correct zoom-to-cursor
   const handleWheel = useCallback((e: WheelEvent) => {
-    // Check for ctrl/cmd key
+    // Only zoom if CTRL or CMD is pressed
     if (!e.ctrlKey && !e.metaKey) return;
     
+    // CRITICAL: Prevent default scrolling behavior
     e.preventDefault();
     e.stopPropagation();
     
-    // Calculate new scale with smaller increments for smoother zoom
-    const delta = e.deltaY;
-    const zoomSpeed = 0.001; // Reduced for smoother zoom
-    const zoomFactor = 1 - delta * zoomSpeed;
-    const newScale = Math.max(0.1, Math.min(5.0, documentState.scale * zoomFactor));
+    const container = containerRef.current;
+    if (!container) return;
     
-    // Update scale directly for immediate response
+    // Get the current scale
+    const oldScale = currentScaleRef.current;
+    
+    // Calculate zoom factor
+    const delta = e.deltaY;
+    const zoomSpeed = 0.001;
+    const zoomFactor = 1 - (delta * zoomSpeed);
+    const newScale = Math.max(0.1, Math.min(5.0, oldScale * zoomFactor));
+    
+    // If scale hasn't changed, skip
+    if (Math.abs(newScale - oldScale) < 0.0001) return;
+    
+    // Get container rect for mouse position
+    const containerRect = container.getBoundingClientRect();
+    
+    // Mouse position relative to container viewport
+    const mouseX = e.clientX - containerRect.left;
+    const mouseY = e.clientY - containerRect.top;
+    
+    // Current scroll position
+    const oldScrollLeft = container.scrollLeft;
+    const oldScrollTop = container.scrollTop;
+    
+    // Calculate the document point under the cursor
+    // Since the container is scaled (width = pageWidth * scale),
+    // we need to unscale to get the actual document coordinates
+    const docX = (oldScrollLeft + mouseX) / oldScale;
+    const docY = (oldScrollTop + mouseY) / oldScale;
+    
+    // Calculate new scroll position to keep the document point under the cursor
+    const newScrollLeft = Math.max(0, (docX * newScale) - mouseX);
+    const newScrollTop = Math.max(0, (docY * newScale) - mouseY);
+    
+    // Store the pending scroll position
+    pendingScrollRef.current = { left: newScrollLeft, top: newScrollTop };
+    
+    // Update scale (this will trigger the useEffect to apply scroll)
+    currentScaleRef.current = newScale;
     actions.updateScale(newScale);
-  }, [documentState.scale, actions]);
+    
+  }, [containerRef, actions]);
 
   // Set up event listeners
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Add wheel listener to container with capture
-    const containerHandler = (e: WheelEvent) => {
-      handleWheel(e);
-    };
-    
-    container.addEventListener('wheel', containerHandler, { passive: false, capture: true });
-    
-    // Also add to window as backup
-    const windowHandler = (e: WheelEvent) => {
-      if (container.contains(e.target as Node)) {
+    // Window-level handler to catch all events early
+    const windowWheelHandler = (e: WheelEvent) => {
+      if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
         handleWheel(e);
       }
     };
-    
-    window.addEventListener('wheel', windowHandler, { passive: false, capture: true });
 
-    return () => {
-      container.removeEventListener('wheel', containerHandler);
-      window.removeEventListener('wheel', windowHandler);
+    // Add listeners
+    window.addEventListener('wheel', windowWheelHandler, { 
+      passive: false, 
+      capture: true 
+    });
+    
+    container.addEventListener('wheel', handleWheel, { 
+      passive: false,
+      capture: false 
+    });
+    
+    // Prevent browser zoom
+    const preventBrowserZoom = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '0')) {
+        e.preventDefault();
+      }
     };
-  }, [handleWheel, containerRef]);
+    
+    document.addEventListener('keydown', preventBrowserZoom, { passive: false });
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('wheel', windowWheelHandler, { capture: true });
+      container.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('keydown', preventBrowserZoom);
+    };
+  }, [handleWheel]);
 
   return {};
 };

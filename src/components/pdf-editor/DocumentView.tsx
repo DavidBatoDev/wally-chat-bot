@@ -67,7 +67,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
     if (isPdfFile(documentUrl)) {
       return (
         <div 
-          className="relative"
+          className="pdf-container relative"
           style={{
             width: pageWidth * scale,
             height: pageHeight * scale,
@@ -75,6 +75,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
           }}
         >
           <div
+            className="pdf-content"
             style={{
               transform: `scale(${scale})`,
               transformOrigin: 'top left',
@@ -196,7 +197,6 @@ const DocumentView: React.FC<DocumentViewProps> = ({
       style={{
         width: pageWidth * scale,
         height: pageHeight * scale,
-        // overflow: 'hidden', // Prevent overflow from the transform
       }}
     >
       {/* Header */}
