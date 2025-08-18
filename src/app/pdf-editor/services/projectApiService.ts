@@ -4,7 +4,11 @@
 
 import { ProjectState } from "../hooks/states/useProjectState";
 import { API_CONFIG, getApiUrl } from "../../../config/api";
-import { isSupabaseUrl, extractFilePathFromUrl, uploadFileToSupabase } from "./fileUploadService";
+import {
+  isSupabaseUrl,
+  extractFilePathFromUrl,
+  uploadFileToSupabase,
+} from "./fileUploadService";
 
 // API configuration
 const PROJECT_STATE_ENDPOINT = getApiUrl(API_CONFIG.PROJECT_STATE.BASE);
@@ -92,7 +96,7 @@ function getAuthToken(): string | null {
 
   // Import the auth store dynamically to avoid SSR issues
   try {
-    const { useAuthStore } = require("../../../lib/store/AuthStore");
+    const { useAuthStore } = require("@/lib/store/AuthStore");
     const getToken = useAuthStore.getState().getAuthToken;
     return getToken();
   } catch (error) {
@@ -190,12 +194,29 @@ export async function listProjects(
 /**
  * Get a specific project by ID
  */
-export async function getProject(projectId: string): Promise<ProjectResponse> {
+export async function getProject(
+  projectId: string,
+  authToken?: string | null
+): Promise<ProjectResponse> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  } else {
+    // Fallback to the old method
+    const token = getAuthToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+
   const response = await fetch(
     `${PROJECT_STATE_ENDPOINT}/projects/${projectId}`,
     {
       method: "GET",
-      headers: createHeaders(),
+      headers,
     }
   );
 
@@ -322,7 +343,7 @@ export async function createProjectFromUpload(
 ): Promise<ProjectResponse> {
   // First, upload the file to Supabase storage
   const uploadResult = await uploadFileToSupabase(file, "project-uploads");
-  
+
   // Generate a project name based on the file
   const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
   const projectName = `${fileName} - ${new Date().toLocaleDateString()}`;
@@ -461,7 +482,9 @@ export function isAuthenticated(): boolean {
 /**
  * Get a shared project by share ID
  */
-export async function getSharedProject(shareId: string): Promise<ProjectResponse> {
+export async function getSharedProject(
+  shareId: string
+): Promise<ProjectResponse> {
   const response = await fetch(
     `${PROJECT_STATE_ENDPOINT}/projects/shared/${shareId}`,
     {
@@ -500,9 +523,7 @@ export async function updateProjectShareSettings(
 /**
  * Get project share settings
  */
-export async function getProjectShareSettings(
-  projectId: string
-): Promise<{
+export async function getProjectShareSettings(projectId: string): Promise<{
   is_public: boolean;
   share_id?: string;
   share_permissions?: "viewer" | "editor";
