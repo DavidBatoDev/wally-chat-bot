@@ -2095,21 +2095,21 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     ]
   );
 
-  // Ensure view is always split when in layout step
+  // Set default view to split when entering layout step, but allow manual changes
   useEffect(() => {
     if (
       viewState.currentWorkflowStep === "layout" &&
-      viewState.currentView !== "split"
+      viewState.currentView === "final-layout" // Only change if coming from final-layout
     ) {
       console.log(
-        `Layout step detected but view is ${viewState.currentView}, forcing to split`
+        `Entering layout step from final-layout, setting default view to split`
       );
       setViewState((prevState) => ({
         ...prevState,
         currentView: "split",
       }));
     }
-  }, [viewState.currentWorkflowStep, viewState.currentView, setViewState]);
+  }, [viewState.currentWorkflowStep, setViewState]);
 
   // Text span handling hook
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
