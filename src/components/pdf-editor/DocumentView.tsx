@@ -62,64 +62,51 @@ const DocumentView: React.FC<DocumentViewProps> = ({
   children,
   onTemplateLoadSuccess,
 }) => {
-  // Determine if we need to re-render PDF at higher resolution
-  const shouldUpdatePdfRenderScale = useMemo(() => {
-    // Only update render scale if current scale significantly exceeds our render scale
-    // This prevents constant re-rendering while maintaining quality
-    return scale > pdfRenderScale * 0.9; // Re-render if zoom exceeds 90% of render scale
-  }, [scale, pdfRenderScale]);
-  
-  // Update PDF render scale when necessary (this will cause a re-render, but only when needed)
-  React.useEffect(() => {
-    if (shouldUpdatePdfRenderScale) {
-      const newRenderScale = Math.min(5.0, Math.max(2.0, Math.ceil(scale * 1.2))); // 20% buffer
-      if (newRenderScale !== pdfRenderScale) {
-        actions.updatePdfRenderScale(newRenderScale);
-      }
-    }
-  }, [shouldUpdatePdfRenderScale, scale, pdfRenderScale, actions]);
   const renderDocumentContent = () => {
-    // Use the state-managed PDF render scale for high quality rendering
-    // Visual scale adjusts the CSS transform to match the desired zoom level
-    const baseScale = pdfRenderScale;
-    const visualScale = scale / baseScale;
     
     if (isPdfFile(documentUrl)) {
       return (
-        <div className="relative w-full h-full">
-          <Document
-            key={`${documentUrl}-${pdfRenderScale}`} // Force re-render when render scale changes
-            file={documentUrl}
-            onLoadSuccess={
-              // Only the original document should trigger main load success
-              viewType === "original"
-                ? handlers.handleDocumentLoadSuccess
-                : () => {}
-            }
-            onLoadError={
-              // Avoid mutating main doc error state from final-layout/translated loads
-              viewType === "original"
-                ? handlers.handleDocumentLoadError
-                : () => {}
-            }
-            loading={null}
+        <div 
+          className="relative"
+          style={{
+            width: pageWidth * scale,
+            height: pageHeight * scale,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              width: pageWidth,
+              height: pageHeight,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+            }}
           >
-            <div
-              style={{
-                transform: `scale(${visualScale})`,
-                transformOrigin: 'top left',
-                width: pageWidth * baseScale,
-                height: pageHeight * baseScale,
-                transition: isScaleChanging ? 'none' : 'transform 0.1s ease-out',
-              }}
+            <Document
+              key={documentUrl}
+              file={documentUrl}
+              onLoadSuccess={
+                viewType === "original"
+                  ? handlers.handleDocumentLoadSuccess
+                  : () => {}
+              }
+              onLoadError={
+                viewType === "original"
+                  ? handlers.handleDocumentLoadError
+                  : () => {}
+              }
+              loading={null}
             >
               <Page
                 pageNumber={currentPage}
+                scale={1.0} // Render at base scale
                 onLoadSuccess={(page) => {
                   if (viewType === "original") {
                     handlers.handlePageLoadSuccess(page);
                   } else if (viewType === "translated" && onTemplateLoadSuccess) {
-                    // For translated view, update template dimensions
                     const viewport = page.getViewport({ scale: 1 });
                     onTemplateLoadSuccess(
                       currentPage,
@@ -127,7 +114,6 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                       viewport.height
                     );
                   } else if (viewType === "final-layout") {
-                    // For final-layout view, handle page load success (page size only)
                     handlers.handlePageLoadSuccess(page);
                   }
                 }}
@@ -156,8 +142,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                   <div
                     className="flex items-center justify-center bg-gray-50"
                     style={{
-                      width: pageWidth * baseScale,
-                      height: pageHeight * baseScale,
+                      width: pageWidth,
+                      height: pageHeight,
                     }}
                   >
                     <div className="text-center">
@@ -168,37 +154,20 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                     </div>
                   </div>
                 }
-                width={pageWidth * baseScale}
+                width={pageWidth}
               />
-            </div>
-          </Document>
-
-          {/* Loading overlay during scale changes */}
-          {isScaleChanging && (
-            <div
-              className="absolute inset-0 bg-gray-50 bg-opacity-50 flex items-center justify-center z-50"
-              style={{
-                width: pageWidth * visualScale,
-                height: pageHeight * visualScale,
-              }}
-            >
-              <div className="bg-white rounded-lg shadow-md p-3 flex items-center space-x-2">
-                <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm text-gray-600">Adjusting zoom...</span>
-              </div>
-            </div>
-          )}
+            </Document>
+          </div>
         </div>
       );
     } else {
       return (
         <div
           style={{
-            transform: `scale(${scale})`,
-            transformOrigin: 'top left',
-            width: pageWidth,
-            height: pageHeight,
-            transition: isScaleChanging ? 'none' : 'transform 0.1s ease-out',
+            width: pageWidth * scale,
+            height: pageHeight * scale,
+            overflow: 'hidden',
+            position: 'relative',
           }}
         >
           <img
@@ -209,8 +178,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
             onLoad={handlers.handleImageLoadSuccess}
             onError={handlers.handleImageLoadError}
             style={{
-              width: pageWidth,
-              height: pageHeight,
+              width: pageWidth * scale,
+              height: pageHeight * scale,
               maxWidth: "none",
               display: "block",
             }}

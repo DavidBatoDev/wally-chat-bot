@@ -6,6 +6,7 @@ interface UseZoomHandlersProps {
   setViewState: React.Dispatch<React.SetStateAction<ViewState>>;
   documentState: {
     scale: number;
+    pdfRenderScale: number;
   };
   actions: {
     updateScale: (scale: number) => void;
@@ -24,93 +25,50 @@ export const useZoomHandlers = ({
   containerRef,
   documentRef,
 }: UseZoomHandlersProps) => {
-  // Track latest scale without resubscribing listeners
-  const currentScaleRef = useRef(documentState.scale);
-  useEffect(() => {
-    currentScaleRef.current = documentState.scale;
-  }, [documentState.scale]);
+  // Simple direct zoom without complex throttling
+  const handleWheel = useCallback((e: WheelEvent) => {
+    // Check for ctrl/cmd key
+    if (!e.ctrlKey && !e.metaKey) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Calculate new scale with smaller increments for smoother zoom
+    const delta = e.deltaY;
+    const zoomSpeed = 0.001; // Reduced for smoother zoom
+    const zoomFactor = 1 - delta * zoomSpeed;
+    const newScale = Math.max(0.1, Math.min(5.0, documentState.scale * zoomFactor));
+    
+    // Update scale directly for immediate response
+    actions.updateScale(newScale);
+  }, [documentState.scale, actions]);
 
-  // Zoom functionality
+  // Set up event listeners
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    let targetScale = currentScaleRef.current;
-    let rafId: number | null = null;
-    let idleTimer: number | null = null;
 
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-
-        // Always zoom to center
-        setViewState((prev) => ({ ...prev, transformOrigin: "center center" }));
-
-        const zoomFactor = 0.12;
-        const delta = e.deltaY > 0 ? -zoomFactor : zoomFactor;
-        // Always accumulate from the last committed target, not stale prop
-        const base = targetScale ?? currentScaleRef.current;
-        const nextTarget = Math.max(0.1, base + delta); // Allow zooming down to 10%
-        // Round to nearest 0.1 (10%) to ensure divisible by 10
-        const roundedTarget = Math.round(nextTarget * 10) / 10;
-        if (roundedTarget !== targetScale) {
-          targetScale = roundedTarget;
-          if (rafId) cancelAnimationFrame(rafId);
-          rafId = requestAnimationFrame(() => {
-            // Smooth, non-re-rendering scale update
-            actions.updateScaleWithoutRerender(targetScale);
-          });
-        }
-        setViewState((prev) => ({ ...prev, zoomMode: "page" }));
-
-        // Debounced commit
-        if (idleTimer) window.clearTimeout(idleTimer);
-        idleTimer = window.setTimeout(() => {
-          // Mark scale settled to allow quality re-render if any listeners care
-          actions.resetScaleChanging();
-          rafId = null;
-          idleTimer = null;
-        }, 120);
-        return false;
-      }
+    // Add wheel listener to container with capture
+    const containerHandler = (e: WheelEvent) => {
+      handleWheel(e);
     };
-
-    // Add the event listener with aggressive options
-    container.addEventListener("wheel", handleWheel, {
-      passive: false,
-      capture: true,
-    });
-
-    // Also try adding to document as backup
-    const documentHandler = (e: WheelEvent) => {
-      if ((e.ctrlKey || e.metaKey) && container.contains(e.target as Node)) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
+    
+    container.addEventListener('wheel', containerHandler, { passive: false, capture: true });
+    
+    // Also add to window as backup
+    const windowHandler = (e: WheelEvent) => {
+      if (container.contains(e.target as Node)) {
         handleWheel(e);
       }
     };
-
-    document.addEventListener("wheel", documentHandler, {
-      passive: false,
-      capture: true,
-    });
+    
+    window.addEventListener('wheel', windowHandler, { passive: false, capture: true });
 
     return () => {
-      container.removeEventListener("wheel", handleWheel, { capture: true });
-      document.removeEventListener("wheel", documentHandler, { capture: true });
-      if (rafId) cancelAnimationFrame(rafId);
-      if (idleTimer) window.clearTimeout(idleTimer);
+      container.removeEventListener('wheel', containerHandler);
+      window.removeEventListener('wheel', windowHandler);
     };
-    // Depend only on stable references to avoid reattaching listeners mid-zoom
-  }, [
-    actions,
-    setViewState,
-    containerRef,
-    documentRef,
-    viewState.transformOrigin,
-  ]);
+  }, [handleWheel, containerRef]);
 
   return {};
 };

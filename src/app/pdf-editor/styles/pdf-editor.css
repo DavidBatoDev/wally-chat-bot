@@ -384,7 +384,8 @@ body.resizing-element {
 .document-viewer {
   scrollbar-width: thin;
   scrollbar-color: #c1c1c1 #f1f1f1;
-  overflow: hidden
+  overflow: auto;
+  pointer-events: auto !important;
 }
 
 .document-viewer::-webkit-scrollbar {
@@ -424,6 +425,7 @@ body.resizing-element {
 .document-container {
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
   position: relative;
+  pointer-events: auto !important;
 }
 
 .document-container::before {
@@ -450,6 +452,7 @@ body.resizing-element {
 .document-wrapper {
   position: relative;
   z-index: 2;
+  pointer-events: auto !important;
 }
 
 /* Smooth scrolling */
