@@ -2095,14 +2095,14 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     ]
   );
 
-  // Set default view to split when entering layout step, but allow manual changes
+  // Ensure view is always split when in layout step
   useEffect(() => {
     if (
       viewState.currentWorkflowStep === "layout" &&
-      viewState.currentView === "final-layout" // Only change if coming from final-layout
+      viewState.currentView !== "split"
     ) {
       console.log(
-        `Entering layout step from final-layout, setting default view to split`
+        `Layout step detected but view is ${viewState.currentView}, forcing to split`
       );
       setViewState((prevState) => ({
         ...prevState,
@@ -6152,7 +6152,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         className="flex relative"
                         style={{
                           width:
-                            documentState.pageWidth * documentState.scale * 2 +
+                            documentState.pageWidth * documentState.scale +
                             20, // Double width plus gap
                           height:
                             documentState.pageHeight * documentState.scale,

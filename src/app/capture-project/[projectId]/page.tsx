@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useState, use, useRef, useCallback } from "react";
 import { Document, Page } from "react-pdf";
 import {
   TextField,
@@ -281,9 +281,27 @@ const PageView: React.FC<{
   const shouldShowFinalLayout = finalLayoutUrl && isPdfFile(finalLayoutUrl);
 
   return (
-    <div className={className} style={{ marginBottom: "20px" }}>
+    <div
+      className={className}
+      style={{
+        marginBottom: "20px",
+        display: "flex",
+        justifyContent: "center",
+      }}
+    >
       {title && <h3 className="text-lg font-semibold mb-2">{title}</h3>}
       <div
+        data-page-number={pageNum}
+        data-page-width={pageWidth}
+        data-page-height={pageHeight}
+        data-view-type={
+          translatedTemplateURL
+            ? "translated"
+            : finalLayoutUrl
+            ? "final-layout"
+            : "original"
+        }
+        className="react-pdf__Page"
         style={{
           position: "relative",
           width: pageWidth,
@@ -291,7 +309,7 @@ const PageView: React.FC<{
           background: pdfBackgroundColor,
           border: "2px solid #e5e7eb",
           borderRadius: 8,
-          overflow: "hidden",
+          overflow: finalLayoutUrl ? "visible" : "hidden",
           boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
         }}
       >
@@ -312,6 +330,7 @@ const PageView: React.FC<{
               <Page
                 pageNumber={pageNum}
                 width={pageWidth}
+                scale={1}
                 renderAnnotationLayer={false}
                 renderTextLayer={false}
                 loading={null}
@@ -335,6 +354,7 @@ const PageView: React.FC<{
               <Page
                 pageNumber={pageNum}
                 width={pageWidth}
+                scale={1}
                 renderAnnotationLayer={false}
                 renderTextLayer={false}
                 loading={null}
@@ -358,6 +378,7 @@ const PageView: React.FC<{
               <Page
                 pageNumber={pageNum}
                 width={pageWidth}
+                scale={1}
                 renderAnnotationLayer={false}
                 renderTextLayer={false}
                 loading={null}
@@ -418,6 +439,9 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
 
   const { user, session } = useAuthStore();
   const isUserAuthenticated = !!(user && session);
+
+  // Ref for OCR service to find pages
+  const documentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -636,6 +660,101 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
     }
   }, [unwrappedParams.projectId, user, session, isUserAuthenticated]);
 
+  // Function to get current page dimensions for OCR service
+  const getCurrentPageDimensions = useCallback(
+    (pageNumber: number) => {
+      if (documentRef.current) {
+        // Get original page dimensions - look for the inner page div with data attributes
+        const originalPageElement = documentRef.current.querySelector(
+          `.original-page-container [data-page-number="${pageNumber}"]`
+        ) as HTMLElement;
+
+        // Get translated page dimensions - look for the inner page div with data attributes
+        const translatedPageElement = documentRef.current.querySelector(
+          `.translated-page-container [data-page-number="${pageNumber}"]`
+        ) as HTMLElement;
+
+        console.log(`📐 Page ${pageNumber} - Original View:`, {
+          storedWidth: originalPageElement
+            ? parseInt(
+                originalPageElement.getAttribute("data-page-width") || "0"
+              )
+            : "N/A",
+          storedHeight: originalPageElement
+            ? parseInt(
+                originalPageElement.getAttribute("data-page-height") || "0"
+              )
+            : "N/A",
+          renderedWidth: originalPageElement
+            ? originalPageElement.getBoundingClientRect().width
+            : "N/A",
+          renderedHeight: originalPageElement
+            ? originalPageElement.getBoundingClientRect().height
+            : "N/A",
+        });
+
+        console.log(`📐 Page ${pageNumber} - Translated View:`, {
+          storedWidth: translatedPageElement
+            ? parseInt(
+                translatedPageElement.getAttribute("data-page-width") || "0"
+              )
+            : "N/A",
+          storedHeight: translatedPageElement
+            ? parseInt(
+                translatedPageElement.getAttribute("data-page-height") || "0"
+              )
+            : "N/A",
+          renderedWidth: translatedPageElement
+            ? translatedPageElement.getBoundingClientRect().width
+            : "N/A",
+          renderedHeight: translatedPageElement
+            ? translatedPageElement.getBoundingClientRect().height
+            : "N/A",
+        });
+
+        // Use original page element for main dimensions (or first available)
+        const pageElement = originalPageElement || translatedPageElement;
+
+        if (pageElement) {
+          const rect = pageElement.getBoundingClientRect();
+          const pageWidth = parseInt(
+            pageElement.getAttribute("data-page-width") || "0"
+          );
+          const pageHeight = parseInt(
+            pageElement.getAttribute("data-page-height") || "0"
+          );
+
+          return {
+            width: pageWidth || rect.width,
+            height: pageHeight || rect.height,
+            renderedWidth: rect.width,
+            renderedHeight: rect.height,
+          };
+        }
+      }
+
+      // Fallback to document state dimensions
+      return {
+        width: project?.documentState.pageWidth || 800,
+        height: project?.documentState.pageHeight || 1000,
+        renderedWidth: project?.documentState.pageWidth || 800,
+        renderedHeight: project?.documentState.pageHeight || 1000,
+      };
+    },
+    [project]
+  );
+
+  // Expose function globally for OCR service to access
+  useEffect(() => {
+    if (project) {
+      (window as any).getCaptureProjectPageDimensions =
+        getCurrentPageDimensions;
+      console.log(
+        "🔧 OCR service can now access page dimensions via window.getCaptureProjectPageDimensions(pageNumber)"
+      );
+    }
+  }, [project, getCurrentPageDimensions]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -684,158 +803,253 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
             Project ID: {project.id} | Pages: {numPages} | Source:{" "}
             {project.sourceLanguage} → Target: {project.desiredLanguage}
           </p>
-        </div>
 
-        {/* Original and Translated Pages - Paired Side by Side */}
-        <div className="space-y-8 mb-12">
-          <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2">
-            Original vs Translated Pages
-          </h2>
-          {Array.from({ length: numPages }, (_, i) => {
-            const pageNum = i + 1;
+          {/* Debug: Test page dimensions */}
+          <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+            <h3 className="text-sm font-medium text-blue-800 mb-2">
+              OCR Service Integration
+            </h3>
+            <p className="text-sm text-blue-700 mb-3">
+              Each page now has proper data attributes for OCR service to find
+              correct dimensions.
+            </p>
+            <button
+              onClick={() => {
+                console.log("🧪 Testing page dimensions...");
+                console.log("📊 Document State Dimensions:", {
+                  pageWidth: project?.documentState.pageWidth,
+                  pageHeight: project?.documentState.pageHeight,
+                  numPages: project?.documentState.numPages,
+                });
 
-            // Original page elements
-            const originalPageElements = {
-              deletions: elementCollections.originalDeletionRectangles.filter(
-                (r: any) => r.page === pageNum
-              ),
-              shapes: elementCollections.originalShapes.filter(
-                (s: Shape) => s.page === pageNum
-              ),
-              images: elementCollections.originalImages.filter(
-                (img: Image) => img.page === pageNum
-              ),
-              textboxes: elementCollections.originalTextBoxes.filter(
-                (tb: TextField) => tb.page === pageNum
-              ),
-            };
+                // Debug: Check what's actually loaded for each page
+                console.log(
+                  "🔍 Page Data from API:",
+                  project?.documentState.pages
+                );
+                console.log(
+                  "🔍 Final Layout URL:",
+                  project?.documentState.finalLayoutUrl
+                );
 
-            // Translated page elements
-            const translatedPageElements = {
-              deletions: elementCollections.translatedDeletionRectangles.filter(
-                (r: any) => r.page === pageNum
-              ),
-              shapes: elementCollections.translatedShapes.filter(
-                (s: Shape) => s.page === pageNum
-              ),
-              images: elementCollections.translatedImages.filter(
-                (img: Image) => img.page === pageNum
-              ),
-              textboxes: elementCollections.translatedTextBoxes.filter(
-                (tb: TextField) => tb.page === pageNum
-              ),
-            };
+                // Check each page's translated template data
+                for (let i = 1; i <= numPages; i++) {
+                  const pageData = project?.documentState.pages?.[i - 1];
+                  if (pageData) {
+                    console.log(`📄 Page ${i} Data:`, {
+                      pageNumber: pageData.pageNumber,
+                      isTranslated: pageData.isTranslated,
+                      pageType: pageData.pageType,
+                      translatedTemplateURL: pageData.translatedTemplateURL,
+                      translatedTemplateWidth: pageData.translatedTemplateWidth,
+                      translatedTemplateHeight:
+                        pageData.translatedTemplateHeight,
+                      birthCertTemplate: pageData.birthCertTemplate,
+                      birthCertType: pageData.birthCertType,
+                    });
 
-            return (
-              <div
-                key={`page-${pageNum}`}
-                className="border rounded-lg p-6 bg-white shadow-sm"
-              >
-                <h3 className="text-xl font-semibold text-gray-800 mb-4 text-center">
-                  Page {pageNum}
-                </h3>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Original View */}
-                  <div>
-                    <h4 className="text-lg font-medium text-gray-700 mb-3 text-center">
-                      Original
-                    </h4>
-                    <PageView
-                      pageNum={pageNum}
-                      pageWidth={documentState.pageWidth}
-                      pageHeight={documentState.pageHeight}
-                      pdfUrl={documentState.url}
-                      pdfBackgroundColor={documentState.pdfBackgroundColor}
-                      elements={originalPageElements}
-                      className="original-page-container"
-                      title=""
-                      showPdfBackground={true}
-                    />
-                  </div>
-
-                  {/* Translated View */}
-                  <div>
-                    <h4 className="text-lg font-medium text-gray-700 mb-3 text-center">
-                      Translated
-                    </h4>
-                    <PageView
-                      pageNum={pageNum}
-                      pageWidth={documentState.pageWidth}
-                      pageHeight={documentState.pageHeight}
-                      pdfUrl={documentState.url}
-                      pdfBackgroundColor={documentState.pdfBackgroundColor}
-                      elements={translatedPageElements}
-                      className="translated-page-container"
-                      title=""
-                      showPdfBackground={false}
-                      translatedTemplateURL={
-                        project.documentState.pages?.[pageNum - 1]
-                          ?.translatedTemplateURL
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Final Layout Pages - Separate Section */}
-        <div className="space-y-6">
-          <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2">
-            Final Layout Pages
-          </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {Array.from(
-              { length: documentState.finalLayoutNumPages || numPages },
-              (_, i) => {
-                const pageNum = i + 1;
-
-                // Skip deleted pages in final layout
-                if (documentState.finalLayoutDeletedPages) {
-                  if (Array.isArray(documentState.finalLayoutDeletedPages)) {
-                    if (
-                      documentState.finalLayoutDeletedPages.includes(pageNum)
-                    ) {
-                      return null;
-                    }
-                  } else if (
-                    (documentState.finalLayoutDeletedPages as Set<number>).has(
-                      pageNum
-                    )
-                  ) {
-                    return null;
+                    // Log what dimensions will be used for each view
+                    console.log(`📏 Page ${i} View Dimensions:`, {
+                      original: {
+                        width: project.documentState.pageWidth,
+                        height: project.documentState.pageHeight,
+                      },
+                      translated: {
+                        width:
+                          pageData.translatedTemplateWidth ||
+                          project.documentState.pageWidth,
+                        height:
+                          pageData.translatedTemplateHeight ||
+                          project.documentState.pageHeight,
+                        hasTemplate: !!pageData.translatedTemplateURL,
+                      },
+                    });
                   }
                 }
 
-                const pageElements = {
-                  deletions:
-                    elementCollections.finalLayoutDeletionRectangles.filter(
-                      (r: any) => r.page === pageNum
-                    ),
-                  shapes: elementCollections.finalLayoutShapes.filter(
-                    (s: Shape) => s.page === pageNum
-                  ),
-                  images: elementCollections.finalLayoutImages.filter(
-                    (img: Image) => img.page === pageNum
-                  ),
-                  textboxes: elementCollections.finalLayoutTextboxes.filter(
-                    (tb: TextField) => tb.page === pageNum
-                  ),
-                };
+                for (let i = 1; i <= numPages; i++) {
+                  getCurrentPageDimensions(i);
+                }
 
-                return (
-                  <div
-                    key={`final-${pageNum}`}
-                    className="bg-white rounded-lg p-4 shadow-sm"
-                  >
-                    <h3 className="text-lg font-semibold text-gray-800 mb-3 text-center">
-                      Final Layout - Page {pageNum}
-                    </h3>
+                console.log(
+                  "✅ Dimension test complete. Check above for each page's original and translated view dimensions."
+                );
+              }}
+              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+            >
+              Test Page Dimensions
+            </button>
+            <p className="text-xs text-blue-600 mt-2">
+              Check console for dimension details. OCR service can access via:
+              window.getCaptureProjectPageDimensions(pageNumber)
+            </p>
+          </div>
+        </div>
+
+        <div className="document-wrapper flex justify-center" ref={documentRef}>
+          {/* Original and Translated Pages - Paired Side by Side */}
+          <div className="space-y-8 mb-12 max-w-6xl">
+            <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2">
+              Original vs Translated Pages
+            </h2>
+            {Array.from({ length: numPages }, (_, i) => {
+              const pageNum = i + 1;
+
+              // Original page elements
+              const originalPageElements = {
+                deletions: elementCollections.originalDeletionRectangles.filter(
+                  (r: any) => r.page === pageNum
+                ),
+                shapes: elementCollections.originalShapes.filter(
+                  (s: Shape) => s.page === pageNum
+                ),
+                images: elementCollections.originalImages.filter(
+                  (img: Image) => img.page === pageNum
+                ),
+                textboxes: elementCollections.originalTextBoxes.filter(
+                  (tb: TextField) => tb.page === pageNum
+                ),
+              };
+
+              // Translated page elements
+              const translatedPageElements = {
+                deletions:
+                  elementCollections.translatedDeletionRectangles.filter(
+                    (r: any) => r.page === pageNum
+                  ),
+                shapes: elementCollections.translatedShapes.filter(
+                  (s: Shape) => s.page === pageNum
+                ),
+                images: elementCollections.translatedImages.filter(
+                  (img: Image) => img.page === pageNum
+                ),
+                textboxes: elementCollections.translatedTextBoxes.filter(
+                  (tb: TextField) => tb.page === pageNum
+                ),
+              };
+
+              return (
+                <div
+                  key={`page-${pageNum}`}
+                  className="border rounded-lg p-6 bg-white shadow-sm flex flex-col items-center"
+                >
+                  <h3 className="text-xl font-semibold text-gray-800 mb-4 text-center">
+                    Page {pageNum}
+                  </h3>
+                  <div className="space-y-6 w-full">
+                    {/* Original View */}
+                    <div className="flex flex-col items-center">
+                      <h4 className="text-lg font-medium text-gray-700 mb-3 text-center">
+                        Original
+                      </h4>
+                      <PageView
+                        pageNum={pageNum}
+                        pageWidth={documentState.pageWidth}
+                        pageHeight={documentState.pageHeight}
+                        pdfUrl={documentState.url}
+                        pdfBackgroundColor={documentState.pdfBackgroundColor}
+                        elements={originalPageElements}
+                        className="original-page-container"
+                        title=""
+                        showPdfBackground={true}
+                      />
+                    </div>
+
+                    {/* Translated View */}
+                    <div className="flex flex-col items-center">
+                      <h4 className="text-lg font-medium text-gray-700 mb-3 text-center">
+                        Translated
+                      </h4>
+                      <PageView
+                        pageNum={pageNum}
+                        pageWidth={
+                          project.documentState.pages?.[pageNum - 1]
+                            ?.translatedTemplateWidth || documentState.pageWidth
+                        }
+                        pageHeight={
+                          project.documentState.pages?.[pageNum - 1]
+                            ?.translatedTemplateHeight ||
+                          documentState.pageHeight
+                        }
+                        pdfUrl={documentState.url}
+                        pdfBackgroundColor={documentState.pdfBackgroundColor}
+                        elements={translatedPageElements}
+                        className="translated-page-container"
+                        title=""
+                        showPdfBackground={false}
+                        translatedTemplateURL={
+                          project.documentState.pages?.[pageNum - 1]
+                            ?.translatedTemplateURL
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Final Layout Pages - Bottom Section */}
+        <div className="mt-12 max-w-6xl mx-auto">
+          <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">
+            Final Layout Pages
+          </h2>
+          {Array.from(
+            { length: documentState.finalLayoutNumPages || numPages },
+            (_, i) => {
+              const pageNum = i + 1;
+
+              // Skip deleted pages in final layout
+              if (documentState.finalLayoutDeletedPages) {
+                if (Array.isArray(documentState.finalLayoutDeletedPages)) {
+                  if (documentState.finalLayoutDeletedPages.includes(pageNum)) {
+                    return null;
+                  }
+                } else if (
+                  (documentState.finalLayoutDeletedPages as Set<number>).has(
+                    pageNum
+                  )
+                ) {
+                  return null;
+                }
+              }
+
+              const pageElements = {
+                deletions:
+                  elementCollections.finalLayoutDeletionRectangles.filter(
+                    (r: any) => r.page === pageNum
+                  ),
+                shapes: elementCollections.finalLayoutShapes.filter(
+                  (s: Shape) => s.page === pageNum
+                ),
+                images: elementCollections.finalLayoutImages.filter(
+                  (img: Image) => img.page === pageNum
+                ),
+                textboxes: elementCollections.finalLayoutTextboxes.filter(
+                  (tb: TextField) => tb.page === pageNum
+                ),
+              };
+
+              return (
+                <div
+                  key={`final-${pageNum}`}
+                  className="border rounded-lg p-6 bg-white shadow-sm flex flex-col items-center mb-8"
+                >
+                  <h3 className="text-xl font-semibold text-gray-800 mb-4 text-center">
+                    Final Layout - Page {pageNum}
+                  </h3>
+                  <div className="flex flex-col items-center w-full overflow-visible">
                     <PageView
                       pageNum={pageNum}
-                      pageWidth={documentState.pageWidth}
-                      pageHeight={documentState.pageHeight}
+                      pageWidth={
+                        project.documentState.pages?.[pageNum - 1]
+                          ?.finalLayoutWidth || documentState.pageWidth
+                      }
+                      pageHeight={
+                        project.documentState.pages?.[pageNum - 1]
+                          ?.finalLayoutHeight || documentState.pageHeight
+                      }
                       pdfUrl={documentState.finalLayoutUrl || documentState.url}
                       pdfBackgroundColor={documentState.pdfBackgroundColor}
                       elements={pageElements}
@@ -845,10 +1059,10 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
                       finalLayoutUrl={documentState.finalLayoutUrl}
                     />
                   </div>
-                );
-              }
-            ).filter(Boolean)}
-          </div>
+                </div>
+              );
+            }
+          ).filter(Boolean)}
         </div>
       </div>
     </div>
