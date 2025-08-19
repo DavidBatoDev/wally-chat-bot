@@ -11,7 +11,7 @@ import {
 import { ProjectState } from "../../pdf-editor/hooks/states/useProjectState";
 import { colorToRgba } from "../../pdf-editor/utils/colors";
 import { isPdfFile } from "../../pdf-editor/utils/measurements";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, Download } from "lucide-react";
 import { getProject } from "../../pdf-editor/services/projectApiService";
 import { useAuthStore } from "@/lib/store/AuthStore";
 
@@ -19,6 +19,11 @@ import { useAuthStore } from "@/lib/store/AuthStore";
 import { pdfjs } from "react-pdf";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+// Add these imports at the top
+import JSZip from "jszip";
+import domtoimage from "dom-to-image";
+import { PDFDocument } from "pdf-lib";
 
 interface ProjectPageViewProps {
   params: Promise<{
@@ -437,6 +442,11 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Add new state for download functionality
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isPdfDownloading, setIsPdfDownloading] = useState(false);
+
   const { user, session } = useAuthStore();
   const isUserAuthenticated = !!(user && session);
 
@@ -458,14 +468,6 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
           authToken = session.access_token;
         }
 
-        console.log(
-          "Auth token retrieved:",
-          authToken ? "Token exists" : "No token"
-        );
-        console.log("Auth token value:", authToken);
-        console.log("User and session state:", { user, session });
-        console.log("Session access token:", session?.access_token);
-
         // Ensure we have an auth token before proceeding
         if (!authToken) {
           console.error("No auth token available");
@@ -479,18 +481,6 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
           unwrappedParams.projectId,
           authToken
         );
-
-        console.log("API Response:", apiResponse);
-        console.log("Project Data:", apiResponse.project_data);
-        console.log("Document State:", apiResponse.project_data?.documentState);
-        console.log("Final Layout Fields:", {
-          finalLayoutUrl:
-            apiResponse.project_data?.documentState?.finalLayoutUrl,
-          finalLayoutNumPages:
-            apiResponse.project_data?.documentState?.finalLayoutNumPages,
-          finalLayoutDeletedPages:
-            apiResponse.project_data?.documentState?.finalLayoutDeletedPages,
-        });
 
         // Transform API response to ProjectState format
         const projectState: ProjectState = {
@@ -612,14 +602,6 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
         };
 
         setProject(projectState);
-
-        console.log("Transformed Project State:", projectState);
-        console.log("Final Layout in Project State:", {
-          finalLayoutUrl: projectState.documentState.finalLayoutUrl,
-          finalLayoutNumPages: projectState.documentState.finalLayoutNumPages,
-          finalLayoutDeletedPages:
-            projectState.documentState.finalLayoutDeletedPages,
-        });
       } catch (err) {
         console.error("Error fetching project:", err);
 
@@ -674,44 +656,6 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
           `.translated-page-container [data-page-number="${pageNumber}"]`
         ) as HTMLElement;
 
-        console.log(`📐 Page ${pageNumber} - Original View:`, {
-          storedWidth: originalPageElement
-            ? parseInt(
-                originalPageElement.getAttribute("data-page-width") || "0"
-              )
-            : "N/A",
-          storedHeight: originalPageElement
-            ? parseInt(
-                originalPageElement.getAttribute("data-page-height") || "0"
-              )
-            : "N/A",
-          renderedWidth: originalPageElement
-            ? originalPageElement.getBoundingClientRect().width
-            : "N/A",
-          renderedHeight: originalPageElement
-            ? originalPageElement.getBoundingClientRect().height
-            : "N/A",
-        });
-
-        console.log(`📐 Page ${pageNumber} - Translated View:`, {
-          storedWidth: translatedPageElement
-            ? parseInt(
-                translatedPageElement.getAttribute("data-page-width") || "0"
-              )
-            : "N/A",
-          storedHeight: translatedPageElement
-            ? parseInt(
-                translatedPageElement.getAttribute("data-page-height") || "0"
-              )
-            : "N/A",
-          renderedWidth: translatedPageElement
-            ? translatedPageElement.getBoundingClientRect().width
-            : "N/A",
-          renderedHeight: translatedPageElement
-            ? translatedPageElement.getBoundingClientRect().height
-            : "N/A",
-        });
-
         // Use original page element for main dimensions (or first available)
         const pageElement = originalPageElement || translatedPageElement;
 
@@ -749,11 +693,476 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
     if (project) {
       (window as any).getCaptureProjectPageDimensions =
         getCurrentPageDimensions;
-      console.log(
-        "🔧 OCR service can now access page dimensions via window.getCaptureProjectPageDimensions(pageNumber)"
-      );
     }
   }, [project, getCurrentPageDimensions]);
+
+  // Add the image capture and download function
+  const captureAndDownloadAllImages = useCallback(async () => {
+    if (!project || !documentRef.current) return;
+
+    try {
+      setIsDownloading(true);
+      setDownloadProgress(0);
+
+      const zip = new JSZip();
+      const totalPages = project.documentState.numPages;
+      const finalLayoutUrl = project.documentState.finalLayoutUrl;
+      const finalLayoutNumPages = project.documentState.finalLayoutNumPages;
+
+      // Wait for all pages to render and set optimal scale for high quality
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Capture original pages with high resolution
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        setDownloadProgress(((pageNum - 1) / (totalPages * 2)) * 100);
+
+        // Find the original page element (react-pdf__Page) for this page
+        const originalPageElement = documentRef.current!.querySelector(
+          `.original-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+        ) as HTMLElement;
+
+        if (originalPageElement) {
+          // Capture original page with high resolution settings
+          const originalImage = await domtoimage.toPng(originalPageElement, {
+            quality: 1.0,
+            bgcolor: "#ffffff",
+            width:
+              (originalPageElement.scrollWidth ||
+                originalPageElement.offsetWidth) * 2, // 2x scale for high resolution
+            height:
+              (originalPageElement.scrollHeight ||
+                originalPageElement.offsetHeight) * 2, // 2x scale for high resolution
+            style: {
+              transform: "scale(2)", // Scale up for higher resolution
+              transformOrigin: "top left",
+            },
+            filter: (node: Node): boolean => {
+              // Filter out UI elements that shouldn't be captured
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node as HTMLElement;
+                if (
+                  element.classList.contains("drag-handle") ||
+                  element.tagName === "BUTTON" ||
+                  element.classList.contains("settings-popup") ||
+                  element.classList.contains("text-selection-popup") ||
+                  element.classList.contains("fixed") ||
+                  element.closest(".fixed") !== null
+                ) {
+                  return false;
+                }
+              }
+              return true;
+            },
+          });
+
+          // Add to zip
+          zip.file(
+            `original-page-${pageNum}.png`,
+            originalImage.split(",")[1],
+            { base64: true }
+          );
+        } else {
+          console.warn(`Original page element not found for page ${pageNum}`);
+        }
+      }
+
+      // Capture translated pages with high resolution
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        setDownloadProgress(
+          ((totalPages + pageNum - 1) / (totalPages * 2)) * 100
+        );
+
+        // Find the translated page element (react-pdf__Page) for this page
+        const translatedPageElement = documentRef.current!.querySelector(
+          `.translated-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+        ) as HTMLElement;
+
+        if (translatedPageElement) {
+          // Capture translated page with high resolution settings
+          const translatedImage = await domtoimage.toPng(
+            translatedPageElement,
+            {
+              quality: 1.0,
+              bgcolor: "#ffffff",
+              width:
+                (translatedPageElement.scrollWidth ||
+                  translatedPageElement.offsetWidth) * 2, // 2x scale for high resolution
+              height:
+                (translatedPageElement.scrollHeight ||
+                  translatedPageElement.offsetHeight) * 2, // 2x scale for high resolution
+              style: {
+                transform: "scale(2)", // Scale up for higher resolution
+                transformOrigin: "top left",
+              },
+              filter: (node: Node): boolean => {
+                // Filter out UI elements that shouldn't be captured
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                  const element = node as HTMLElement;
+                  if (
+                    element.classList.contains("drag-handle") ||
+                    element.tagName === "BUTTON" ||
+                    element.classList.contains("settings-popup") ||
+                    element.classList.contains("text-selection-popup") ||
+                    element.classList.contains("fixed") ||
+                    element.closest(".fixed") !== null
+                  ) {
+                    return false;
+                  }
+                }
+                return true;
+              },
+            }
+          );
+
+          // Add to zip
+          zip.file(
+            `translated-page-${pageNum}.png`,
+            translatedImage.split(",")[1],
+            { base64: true }
+          );
+        } else {
+          console.warn(`Translated page element not found for page ${pageNum}`);
+        }
+      }
+
+      // Capture final layout pages if available with high resolution
+      if (finalLayoutUrl && finalLayoutNumPages && finalLayoutNumPages > 0) {
+        // Wait a bit more for final layout pages to fully render
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        for (let pageNum = 1; pageNum <= finalLayoutNumPages; pageNum++) {
+          setDownloadProgress(
+            ((totalPages * 2 + pageNum - 1) /
+              (totalPages * 2 + finalLayoutNumPages)) *
+              100
+          );
+
+          // Try multiple selectors to find the final layout page element (react-pdf__Page)
+          let finalLayoutPageElement: HTMLElement | null = null;
+
+          // First try: direct selector for react-pdf__Page
+          finalLayoutPageElement = documentRef.current!.querySelector(
+            `.final-view-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+          ) as HTMLElement;
+
+          if (!finalLayoutPageElement) {
+            // Second try: alternative selector for react-pdf__Page
+            finalLayoutPageElement = documentRef.current!.querySelector(
+              `.react-pdf__Page[data-page-number="${pageNum}"][data-view-type="final-layout"]`
+            ) as HTMLElement;
+          }
+
+          if (!finalLayoutPageElement) {
+            // Third try: search for any react-pdf__Page with the page number in final layout section
+            const finalLayoutSection = documentRef.current!.querySelector(
+              ".final-view-page-container"
+            );
+            if (finalLayoutSection) {
+              finalLayoutPageElement = finalLayoutSection.querySelector(
+                `.react-pdf__Page[data-page-number="${pageNum}"]`
+              ) as HTMLElement;
+            }
+          }
+
+          if (!finalLayoutPageElement) {
+            // Fourth try: manual search through all react-pdf__Page elements
+            const allPageElements =
+              documentRef.current!.querySelectorAll(".react-pdf__Page");
+            for (const element of allPageElements) {
+              const elementPageNum = element.getAttribute("data-page-number");
+              const elementViewType = element.getAttribute("data-view-type");
+              if (
+                elementPageNum === pageNum.toString() &&
+                elementViewType === "final-layout"
+              ) {
+                finalLayoutPageElement = element as HTMLElement;
+                break;
+              }
+            }
+          }
+
+          if (finalLayoutPageElement) {
+            try {
+              // Capture final layout page with high resolution settings
+              const finalLayoutImage = await domtoimage.toPng(
+                finalLayoutPageElement,
+                {
+                  quality: 1.0,
+                  bgcolor: "#ffffff",
+                  width:
+                    (finalLayoutPageElement.scrollWidth ||
+                      finalLayoutPageElement.offsetWidth) * 2, // 2x scale for high resolution
+                  height:
+                    (finalLayoutPageElement.scrollHeight ||
+                      finalLayoutPageElement.offsetHeight) * 2, // 2x scale for high resolution
+                  style: {
+                    transform: "scale(2)", // Scale up for higher resolution
+                    transformOrigin: "top left",
+                  },
+                  filter: (node: Node): boolean => {
+                    // Filter out UI elements that shouldn't be captured
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                      const element = node as HTMLElement;
+                      if (
+                        element.classList.contains("drag-handle") ||
+                        element.tagName === "BUTTON" ||
+                        element.classList.contains("settings-popup") ||
+                        element.classList.contains("text-selection-popup") ||
+                        element.classList.contains("fixed") ||
+                        element.closest(".fixed") !== null
+                      ) {
+                        return false;
+                      }
+                    }
+                    return true;
+                  },
+                }
+              );
+
+              // Add to zip
+              zip.file(
+                `final-layout-page-${pageNum}.png`,
+                finalLayoutImage.split(",")[1],
+                { base64: true }
+              );
+            } catch (captureError) {
+              console.error(
+                `Error capturing final layout page ${pageNum}:`,
+                captureError
+              );
+            }
+          } else {
+            console.warn(
+              `Final layout page element not found for page ${pageNum}`
+            );
+          }
+        }
+      }
+
+      // Generate and download zip file
+      setDownloadProgress(95);
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+
+      // Create download link
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${project.name}-all-pages-images.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Cleanup
+      URL.revokeObjectURL(url);
+      setDownloadProgress(100);
+    } catch (error) {
+      console.error("Error capturing images:", error);
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(0);
+    }
+  }, [project]);
+
+  const generateFinalLayoutPdf = useCallback(async () => {
+    if (!project?.documentState.finalLayoutUrl || !documentRef.current) {
+      console.warn(
+        "No final layout PDF URL available or document ref not ready"
+      );
+      return;
+    }
+
+    try {
+      setIsPdfDownloading(true);
+
+      // Wait for final layout pages to render
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const finalLayoutNumPages = project.documentState.finalLayoutNumPages;
+      if (!finalLayoutNumPages || finalLayoutNumPages <= 0) {
+        throw new Error("No final layout pages available");
+      }
+
+      // Capture all final layout pages using dom-to-image
+      const capturedImages: string[] = [];
+
+      for (let pageNum = 1; pageNum <= finalLayoutNumPages; pageNum++) {
+        // Try multiple selectors to find the final layout page element
+        let finalLayoutPageElement: HTMLElement | null = null;
+
+        // First try: direct selector for react-pdf__Page
+        finalLayoutPageElement = documentRef.current!.querySelector(
+          `.final-view-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+        ) as HTMLElement;
+
+        if (!finalLayoutPageElement) {
+          // Second try: alternative selector for react-pdf__Page
+          finalLayoutPageElement = documentRef.current!.querySelector(
+            `.react-pdf__Page[data-page-number="${pageNum}"][data-view-type="final-layout"]`
+          ) as HTMLElement;
+        }
+
+        if (!finalLayoutPageElement) {
+          // Third try: search for any react-pdf__Page with the page number in final layout section
+          const finalLayoutSection = documentRef.current!.querySelector(
+            ".final-view-page-container"
+          );
+          if (finalLayoutSection) {
+            finalLayoutPageElement = finalLayoutSection.querySelector(
+              `.react-pdf__Page[data-page-number="${pageNum}"]`
+            ) as HTMLElement;
+          }
+        }
+
+        if (!finalLayoutPageElement) {
+          // Fourth try: manual search through all react-pdf__Page elements
+          const allPageElements =
+            documentRef.current!.querySelectorAll(".react-pdf__Page");
+          for (const element of allPageElements) {
+            const elementPageNum = element.getAttribute("data-page-number");
+            const elementViewType = element.getAttribute("data-view-type");
+            if (
+              elementPageNum === pageNum.toString() &&
+              elementViewType === "final-layout"
+            ) {
+              finalLayoutPageElement = element as HTMLElement;
+              break;
+            }
+          }
+        }
+
+        if (finalLayoutPageElement) {
+          try {
+            // Capture final layout page with high resolution settings
+            const finalLayoutImage = await domtoimage.toPng(
+              finalLayoutPageElement,
+              {
+                quality: 1.0,
+                bgcolor: "#ffffff",
+                width:
+                  (finalLayoutPageElement.scrollWidth ||
+                    finalLayoutPageElement.offsetWidth) * 2, // 2x scale for high resolution
+                height:
+                  (finalLayoutPageElement.scrollHeight ||
+                    finalLayoutPageElement.offsetHeight) * 2, // 2x scale for high resolution
+                style: {
+                  transform: "scale(2)", // Scale up for higher resolution
+                  transformOrigin: "top left",
+                },
+                filter: (node: Node): boolean => {
+                  // Filter out UI elements that shouldn't be captured
+                  if (node.nodeType === Node.ELEMENT_NODE) {
+                    const element = node as HTMLElement;
+                    if (
+                      element.classList.contains("drag-handle") ||
+                      element.tagName === "BUTTON" ||
+                      element.classList.contains("settings-popup") ||
+                      element.classList.contains("text-selection-popup") ||
+                      element.classList.contains("fixed") ||
+                      element.closest(".fixed") !== null
+                    ) {
+                      return false;
+                    }
+                  }
+                  return true;
+                },
+              }
+            );
+
+            capturedImages.push(finalLayoutImage);
+          } catch (captureError) {
+            console.error(
+              `Error capturing final layout page ${pageNum}:`,
+              captureError
+            );
+            throw new Error(`Failed to capture page ${pageNum}`);
+          }
+        } else {
+          throw new Error(
+            `Final layout page element not found for page ${pageNum}`
+          );
+        }
+      }
+
+      if (capturedImages.length === 0) {
+        throw new Error("No images were captured");
+      }
+
+      // Convert captured images to a PDF
+      const pdfDoc = await PDFDocument.create();
+
+      // Add each captured image as a page
+      for (let i = 0; i < capturedImages.length; i++) {
+        const imageDataUrl = capturedImages[i];
+        const pageNumber = i + 1;
+
+        try {
+          // Convert data URL to array buffer
+          const imageBytes = await fetch(imageDataUrl).then((res) =>
+            res.arrayBuffer()
+          );
+
+          // Embed the PNG image
+          const embeddedImage = await pdfDoc.embedPng(imageBytes);
+          const imageDims = embeddedImage.scale(1);
+
+          // Create a new page (Letter size: 612 x 792 points)
+          const page = pdfDoc.addPage([612, 792]);
+          const { width: pageWidth, height: pageHeight } = page.getSize();
+
+          // Calculate scaling to fit the page with margins
+          const margin = 20;
+          const availableWidth = pageWidth - margin * 2;
+          const availableHeight = pageHeight - margin * 2;
+
+          const scaleX = availableWidth / imageDims.width;
+          const scaleY = availableHeight / imageDims.height;
+          const imageScale = Math.min(scaleX, scaleY);
+
+          // Calculate centered position
+          const scaledWidth = imageDims.width * imageScale;
+          const scaledHeight = imageDims.height * imageScale;
+          const x = (pageWidth - scaledWidth) / 2;
+          const y = (pageHeight - scaledHeight) / 2;
+
+          // Draw the final-layout page image
+          page.drawImage(embeddedImage, {
+            x: x,
+            y: y,
+            width: scaledWidth,
+            height: scaledHeight,
+          });
+
+          console.log(
+            `Successfully added final-layout page ${pageNumber} to PDF`
+          );
+        } catch (imageError) {
+          console.error(
+            `Error processing image for page ${pageNumber}:`,
+            imageError
+          );
+        }
+      }
+
+      // Save and download the PDF
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${project.name}-final-layout-captured.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      console.log(
+        `Successfully captured ${capturedImages.length} final layout pages`
+      );
+    } catch (error) {
+      console.error("Error capturing final layout pages:", error);
+    } finally {
+      setIsPdfDownloading(false);
+    }
+  }, [project]);
 
   if (loading) {
     return (
@@ -813,77 +1222,89 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
               Each page now has proper data attributes for OCR service to find
               correct dimensions.
             </p>
-            <button
-              onClick={() => {
-                console.log("🧪 Testing page dimensions...");
-                console.log("📊 Document State Dimensions:", {
-                  pageWidth: project?.documentState.pageWidth,
-                  pageHeight: project?.documentState.pageHeight,
-                  numPages: project?.documentState.numPages,
-                });
-
-                // Debug: Check what's actually loaded for each page
-                console.log(
-                  "🔍 Page Data from API:",
-                  project?.documentState.pages
-                );
-                console.log(
-                  "🔍 Final Layout URL:",
-                  project?.documentState.finalLayoutUrl
-                );
-
-                // Check each page's translated template data
-                for (let i = 1; i <= numPages; i++) {
-                  const pageData = project?.documentState.pages?.[i - 1];
-                  if (pageData) {
-                    console.log(`📄 Page ${i} Data:`, {
-                      pageNumber: pageData.pageNumber,
-                      isTranslated: pageData.isTranslated,
-                      pageType: pageData.pageType,
-                      translatedTemplateURL: pageData.translatedTemplateURL,
-                      translatedTemplateWidth: pageData.translatedTemplateWidth,
-                      translatedTemplateHeight:
-                        pageData.translatedTemplateHeight,
-                      birthCertTemplate: pageData.birthCertTemplate,
-                      birthCertType: pageData.birthCertType,
-                    });
-
-                    // Log what dimensions will be used for each view
-                    console.log(`📏 Page ${i} View Dimensions:`, {
-                      original: {
-                        width: project.documentState.pageWidth,
-                        height: project.documentState.pageHeight,
-                      },
-                      translated: {
-                        width:
-                          pageData.translatedTemplateWidth ||
-                          project.documentState.pageWidth,
-                        height:
-                          pageData.translatedTemplateHeight ||
-                          project.documentState.pageHeight,
-                        hasTemplate: !!pageData.translatedTemplateURL,
-                      },
-                    });
-                  }
-                }
-
-                for (let i = 1; i <= numPages; i++) {
-                  getCurrentPageDimensions(i);
-                }
-
-                console.log(
-                  "✅ Dimension test complete. Check above for each page's original and translated view dimensions."
-                );
-              }}
-              className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-            >
-              Test Page Dimensions
-            </button>
             <p className="text-xs text-blue-600 mt-2">
-              Check console for dimension details. OCR service can access via:
+              OCR service can access page dimensions via:
               window.getCaptureProjectPageDimensions(pageNumber)
             </p>
           </div>
+
+          {/* Image Capture and Download Section */}
+          <div className="mt-4 p-4 bg-green-50 rounded-lg">
+            <h3 className="text-sm font-medium text-green-800 mb-2">
+              High-Resolution Image Capture & Download
+            </h3>
+            <p className="text-sm text-green-700 mb-3">
+              Capture all pages from original, translated, and final layout
+              views in high resolution (2x scale) for optimal OCR processing.
+            </p>
+
+            {isDownloading && (
+              <div className="mb-3">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Loader2 className="animate-spin w-4 h-4" />
+                  <span className="text-sm text-green-700">
+                    Capturing images... {Math.round(downloadProgress)}%
+                  </span>
+                </div>
+                <div className="w-full bg-green-200 rounded-full h-2">
+                  <div
+                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={captureAndDownloadAllImages}
+              disabled={isDownloading}
+              className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>
+                {isDownloading ? "Capturing..." : "Download All Page Images"}
+              </span>
+            </button>
+
+            <p className="text-xs text-green-600 mt-2">
+              Downloads a ZIP file containing: original-page-X.png,
+              translated-page-X.png, final-layout-page-X.png
+            </p>
+          </div>
+
+          {/* Final Layout PDF Download Section */}
+          {project?.documentState.finalLayoutUrl && (
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+              <h3 className="text-sm font-medium text-blue-800 mb-2">
+                Final Layout PDF Generation
+              </h3>
+              <p className="text-sm text-blue-700 mb-3">
+                Capture all final layout pages using dom-to-image and generate a
+                PDF file.
+              </p>
+
+              <button
+                onClick={generateFinalLayoutPdf}
+                disabled={isPdfDownloading}
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+              >
+                {isPdfDownloading ? (
+                  <Loader2 className="animate-spin w-4 h-4" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                <span>
+                  {isPdfDownloading
+                    ? "Generating PDF..."
+                    : "Generate Final Layout PDF"}
+                </span>
+              </button>
+
+              <p className="text-xs text-blue-600 mt-2">
+                Downloads: {project.name}-final-layout-captured.pdf
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="document-wrapper flex justify-center" ref={documentRef}>
@@ -988,81 +1409,128 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
               );
             })}
           </div>
-        </div>
 
-        {/* Final Layout Pages - Bottom Section */}
-        <div className="mt-12 max-w-6xl mx-auto">
-          <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">
-            Final Layout Pages
-          </h2>
-          {Array.from(
-            { length: documentState.finalLayoutNumPages || numPages },
-            (_, i) => {
-              const pageNum = i + 1;
-
-              // Skip deleted pages in final layout
-              if (documentState.finalLayoutDeletedPages) {
-                if (Array.isArray(documentState.finalLayoutDeletedPages)) {
-                  if (documentState.finalLayoutDeletedPages.includes(pageNum)) {
-                    return null;
-                  }
-                } else if (
-                  (documentState.finalLayoutDeletedPages as Set<number>).has(
-                    pageNum
-                  )
-                ) {
-                  return null;
-                }
+          {/* Final Layout Pages - Now Inside document-wrapper */}
+          <div className="blmt-12 max-w-6xl">
+            <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2 mb-6">
+              Final Layout Pages
+            </h2>
+            {(() => {
+              // Only render if we actually have final layout data
+              if (
+                !documentState.finalLayoutUrl ||
+                !documentState.finalLayoutNumPages ||
+                documentState.finalLayoutNumPages <= 0
+              ) {
+                return (
+                  <div className="text-center text-gray-500 py-8">
+                    <p>No final layout pages available for this project.</p>
+                    <p className="text-sm mt-2">
+                      Final Layout URL:{" "}
+                      {documentState.finalLayoutUrl
+                        ? "✅ Available"
+                        : "❌ Not Available"}{" "}
+                      | Final Layout Pages:{" "}
+                      {documentState.finalLayoutNumPages || 0}
+                    </p>
+                  </div>
+                );
               }
 
-              const pageElements = {
-                deletions:
-                  elementCollections.finalLayoutDeletionRectangles.filter(
-                    (r: any) => r.page === pageNum
-                  ),
-                shapes: elementCollections.finalLayoutShapes.filter(
-                  (s: Shape) => s.page === pageNum
-                ),
-                images: elementCollections.finalLayoutImages.filter(
-                  (img: Image) => img.page === pageNum
-                ),
-                textboxes: elementCollections.finalLayoutTextboxes.filter(
-                  (tb: TextField) => tb.page === pageNum
-                ),
-              };
+              try {
+                const pagesToRender = Array.from(
+                  { length: documentState.finalLayoutNumPages },
+                  (_, i) => {
+                    const pageNum = i + 1;
 
-              return (
-                <div
-                  key={`final-${pageNum}`}
-                  className="border rounded-lg p-6 bg-white shadow-sm flex flex-col items-center mb-8"
-                >
-                  <h3 className="text-xl font-semibold text-gray-800 mb-4 text-center">
-                    Final Layout - Page {pageNum}
-                  </h3>
-                  <div className="flex flex-col items-center w-full overflow-visible">
-                    <PageView
-                      pageNum={pageNum}
-                      pageWidth={
-                        project.documentState.pages?.[pageNum - 1]
-                          ?.finalLayoutWidth || documentState.pageWidth
+                    // Skip deleted pages in final layout
+                    if (documentState.finalLayoutDeletedPages) {
+                      if (
+                        Array.isArray(documentState.finalLayoutDeletedPages)
+                      ) {
+                        if (
+                          documentState.finalLayoutDeletedPages.includes(
+                            pageNum
+                          )
+                        ) {
+                          return null;
+                        }
+                      } else if (
+                        (
+                          documentState.finalLayoutDeletedPages as Set<number>
+                        ).has(pageNum)
+                      ) {
+                        return null;
                       }
-                      pageHeight={
-                        project.documentState.pages?.[pageNum - 1]
-                          ?.finalLayoutHeight || documentState.pageHeight
-                      }
-                      pdfUrl={documentState.finalLayoutUrl || documentState.url}
-                      pdfBackgroundColor={documentState.pdfBackgroundColor}
-                      elements={pageElements}
-                      className="final-view-page-container"
-                      title=""
-                      showPdfBackground={false}
-                      finalLayoutUrl={documentState.finalLayoutUrl}
-                    />
+                    }
+
+                    const pageElements = {
+                      deletions:
+                        elementCollections.finalLayoutDeletionRectangles.filter(
+                          (r: any) => r.page === pageNum
+                        ),
+                      shapes: elementCollections.finalLayoutShapes.filter(
+                        (s: Shape) => s.page === pageNum
+                      ),
+                      images: elementCollections.finalLayoutImages.filter(
+                        (img: Image) => img.page === pageNum
+                      ),
+                      textboxes: elementCollections.finalLayoutTextboxes.filter(
+                        (tb: TextField) => tb.page === pageNum
+                      ),
+                    };
+
+                    return (
+                      <div
+                        key={`final-${pageNum}`}
+                        className="border rounded-lg p-6 bg-white shadow-sm flex flex-col items-center mb-8"
+                      >
+                        <h3 className="text-xl font-semibold text-gray-800 mb-4 text-center">
+                          Final Layout - Page {pageNum}
+                        </h3>
+                        <div className="flex flex-col items-center w-full overflow-visible">
+                          <PageView
+                            pageNum={pageNum}
+                            pageWidth={
+                              project.documentState.pages?.[pageNum - 1]
+                                ?.finalLayoutWidth || documentState.pageWidth
+                            }
+                            pageHeight={
+                              project.documentState.pages?.[pageNum - 1]
+                                ?.finalLayoutHeight || documentState.pageHeight
+                            }
+                            pdfUrl={
+                              documentState.finalLayoutUrl || documentState.url
+                            }
+                            pdfBackgroundColor={
+                              documentState.pdfBackgroundColor
+                            }
+                            elements={pageElements}
+                            className="final-view-page-container"
+                            title=""
+                            showPdfBackground={false}
+                            finalLayoutUrl={documentState.finalLayoutUrl}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                ).filter(Boolean);
+
+                return pagesToRender;
+              } catch (error) {
+                console.error("❌ Error rendering final layout pages:", error);
+                return (
+                  <div className="text-center text-red-500 py-8">
+                    <p>Error rendering final layout pages:</p>
+                    <p className="text-sm mt-2">
+                      {error instanceof Error ? error.message : String(error)}
+                    </p>
                   </div>
-                </div>
-              );
-            }
-          ).filter(Boolean)}
+                );
+              }
+            })()}
+          </div>
         </div>
       </div>
     </div>
