@@ -224,6 +224,25 @@ export async function getProject(
 }
 
 /**
+ * Get a specific project by ID without authentication (public access)
+ */
+export async function getPublicProject(
+  projectId: string
+): Promise<ProjectResponse> {
+  const response = await fetch(
+    `${PROJECT_STATE_ENDPOINT}/projects/${projectId}/public`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  return handleResponse<ProjectResponse>(response);
+}
+
+/**
  * Update a project
  */
 export async function updateProject(

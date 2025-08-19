@@ -12,8 +12,7 @@ import { ProjectState } from "../../pdf-editor/hooks/states/useProjectState";
 import { colorToRgba } from "../../pdf-editor/utils/colors";
 import { isPdfFile } from "../../pdf-editor/utils/measurements";
 import { FileText, Loader2, Download } from "lucide-react";
-import { getProject } from "../../pdf-editor/services/projectApiService";
-import { useAuthStore } from "@/lib/store/AuthStore";
+import { getPublicProject } from "../../pdf-editor/services/projectApiService";
 
 // Configure PDF.js worker
 import { pdfjs } from "react-pdf";
@@ -447,9 +446,6 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isPdfDownloading, setIsPdfDownloading] = useState(false);
 
-  const { user, session } = useAuthStore();
-  const isUserAuthenticated = !!(user && session);
-
   // Ref for OCR service to find pages
   const documentRef = useRef<HTMLDivElement>(null);
 
@@ -458,29 +454,8 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
       try {
         setLoading(true);
 
-        // Try to fetch project - let the API handle authentication
-
-        // Get auth token directly from the store
-        let authToken = useAuthStore.getState().getAuthToken();
-
-        // Fallback: try to get token from session if store method fails
-        if (!authToken && session?.access_token) {
-          authToken = session.access_token;
-        }
-
-        // Ensure we have an auth token before proceeding
-        if (!authToken) {
-          console.error("No auth token available");
-          setError("Authentication required. Please log in again.");
-          setLoading(false);
-          return;
-        }
-
-        // Fetch project from API with auth token
-        const apiResponse = await getProject(
-          unwrappedParams.projectId,
-          authToken
-        );
+        // Always try to fetch project - no authentication required
+        const apiResponse = await getPublicProject(unwrappedParams.projectId);
 
         // Transform API response to ProjectState format
         const projectState: ProjectState = {
@@ -605,19 +580,9 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
       } catch (err) {
         console.error("Error fetching project:", err);
 
-        // Handle specific authentication errors
+        // Handle specific errors
         if (err instanceof Error) {
           if (
-            err.message.includes("401") ||
-            err.message.includes("Unauthorized")
-          ) {
-            setError("Please log in to view this project");
-          } else if (
-            err.message.includes("403") ||
-            err.message.includes("Forbidden")
-          ) {
-            setError("You don't have permission to view this project");
-          } else if (
             err.message.includes("404") ||
             err.message.includes("Not found")
           ) {
@@ -633,14 +598,9 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
       }
     };
 
-    // Only fetch if we have auth data
-    if (user && session) {
-      fetchProject();
-    } else {
-      console.log("Waiting for auth data to be available");
-      setLoading(false);
-    }
-  }, [unwrappedParams.projectId, user, session, isUserAuthenticated]);
+    // Always fetch project - no authentication required
+    fetchProject();
+  }, [unwrappedParams.projectId]);
 
   // Function to get current page dimensions for OCR service
   const getCurrentPageDimensions = useCallback(
@@ -1175,24 +1135,18 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
     );
   }
 
-  // Show loading state while waiting for auth
-  if (!user || !session) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="animate-spin" />
-          <span>Loading authentication...</span>
-        </div>
-      </div>
-    );
-  }
-
   if (error || !project) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
           <p className="text-gray-600">{error || "Project not found"}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -1209,8 +1163,7 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
             {project.name}
           </h1>
           <p className="text-gray-600">
-            Project ID: {project.id} | Pages: {numPages} | Source:{" "}
-            {project.sourceLanguage} → Target: {project.desiredLanguage}
+            Project ID: {project.id} | Pages: {numPages} | Public Project View
           </p>
 
           {/* Debug: Test page dimensions */}

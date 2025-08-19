@@ -40,6 +40,11 @@ export async function middleware(request: NextRequest) {
 
   // If user is not signed in and the current path is not /auth/*, redirect to /auth/login
   if (!session && !request.nextUrl.pathname.startsWith("/auth")) {
+    // Allow public access to capture-project pages
+    if (request.nextUrl.pathname.startsWith("/capture-project")) {
+      return response;
+    }
+
     return NextResponse.redirect(new URL("/auth/login", request.url));
   }
 
