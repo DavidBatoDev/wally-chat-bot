@@ -1997,18 +1997,21 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           isEditMode: true,
         }));
 
-        // Always set view to split for layout step, regardless of previous view
-        setViewState((prevState) => {
-          console.log(
-            `Changing view from ${prevState.currentView} to split for layout step`
-          );
-          return {
-            ...prevState,
-            currentView: "split",
-          };
-        });
+        // Set initial view to split for layout step (but allow changing it)
+        // Only set to split if coming from a different step, not when already in layout
+        if (prev !== "layout") {
+          setViewState((prevState) => {
+            console.log(
+              `Setting initial view to split for layout step (was ${prevState.currentView})`
+            );
+            return {
+              ...prevState,
+              currentView: "split",
+            };
+          });
+        }
 
-        console.log("Layout step: View set to split");
+        console.log("Layout step: Initialized");
       }
 
       // Handle entering final-layout step
@@ -2065,19 +2068,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         currentWorkflowStep: step,
       }));
 
-      // Then ensure view is correct for the new step
-      if (step === "layout") {
-        // Double-check that view is set to split for layout step
-        setTimeout(() => {
-          if (viewState.currentView !== "split") {
-            console.log("Layout step: Double-checking view is split");
-            setViewState((prevState) => ({
-              ...prevState,
-              currentView: "split",
-            }));
-          }
-        }, 0);
-      }
+      // Layout step allows free view switching, so don't enforce split view
     },
     [
       viewState.currentWorkflowStep,
@@ -2095,21 +2086,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     ]
   );
 
-  // Ensure view is always split when in layout step
-  useEffect(() => {
-    if (
-      viewState.currentWorkflowStep === "layout" &&
-      viewState.currentView !== "split"
-    ) {
-      console.log(
-        `Layout step detected but view is ${viewState.currentView}, forcing to split`
-      );
-      setViewState((prevState) => ({
-        ...prevState,
-        currentView: "split",
-      }));
-    }
-  }, [viewState.currentWorkflowStep, viewState.currentView, setViewState]);
+  // Layout step no longer forces split view - users can switch freely between views
 
   // Text span handling hook
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
