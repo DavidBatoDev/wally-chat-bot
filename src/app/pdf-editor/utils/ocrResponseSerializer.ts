@@ -1,5 +1,5 @@
 import { TextField } from "../types/pdf-editor.types";
-import { generateUUID } from "./measurements";
+import { generateUUID, measureText } from "./measurements";
 
 // Types for the OCR response structure
 export interface OcrEntity {
@@ -168,13 +168,37 @@ export function serializeOcrEntities(
       ? rgbToHex(colors.fill_color)
       : "#000000";
 
-    // Create TextField object
+    // Use measureText utility to calculate optimal dimensions based on text content and font properties
+    const measuredDimensions = measureText(
+      entity.text,
+      styling.font_size,
+      styling.font_family || "Arial, sans-serif",
+      0, // characterSpacing
+      undefined, // No maxWidth constraint
+      {
+        top: styling.text_padding || 0,
+        right: styling.text_padding || 0,
+        bottom: styling.text_padding || 0,
+        left: styling.text_padding || 0,
+      }
+    );
+
+    // Log the dimension optimization for debugging
+    console.log(
+      `🔍 [OCR Serializer] Text: "${entity.text}" - Original: ${
+        dimensions.box_width
+      }x${dimensions.box_height}, Measured: ${measuredDimensions.width}x${
+        measuredDimensions.height
+      }, Font: ${styling.font_size}px ${styling.font_family || "Arial"}`
+    );
+
+    // Create TextField object with optimized dimensions
     const textBox: TextField = {
       id: generateUUID(),
       x: dimensions.box_x,
       y: dimensions.box_y,
-      width: dimensions.box_width,
-      height: dimensions.box_height,
+      width: Math.max(dimensions.box_width, measuredDimensions.width),
+      height: Math.max(dimensions.box_height, measuredDimensions.height),
       value: entity.text,
       placeholder: "Enter Text...",
       fontSize: styling.font_size,
@@ -234,6 +258,21 @@ export function serializeOcrResponse(ocrResponse: OcrResponse): {
   ocrResponse.data.results.forEach((pageResult) => {
     const { pageNumber, viewType, ocrResult, captureInfo } = pageResult;
 
+    console.log(`🔍 [OCR Serializer] Processing page ${pageNumber}:`, {
+      hasOcrResult: !!ocrResult,
+      hasStyledLayout: !!ocrResult?.styled_layout,
+      styledLayoutPages: ocrResult?.styled_layout?.pages?.length || 0,
+      pageNumbers:
+        ocrResult?.styled_layout?.pages?.map((p) => p.page_number) || [],
+      hasEntities: !!ocrResult?.styled_layout?.pages?.find(
+        (p) => p.page_number === pageNumber
+      )?.entities,
+      entityCount:
+        ocrResult?.styled_layout?.pages?.find(
+          (p) => p.page_number === pageNumber
+        )?.entities?.length || 0,
+    });
+
     // Store page dimensions
     if (captureInfo) {
       pageDimensions.set(pageNumber, {
@@ -251,9 +290,36 @@ export function serializeOcrResponse(ocrResponse: OcrResponse): {
 
     // Process entities for this page and view
     if (ocrResult?.styled_layout?.pages) {
-      const pageData = ocrResult.styled_layout.pages.find(
+      // Try to find the page data in styled_layout.pages first
+      let pageData = ocrResult.styled_layout.pages.find(
         (p) => p.page_number === pageNumber
       );
+
+      console.log(
+        `🔍 [OCR Serializer] Page ${pageNumber} data from styled_layout.pages:`,
+        {
+          found: !!pageData,
+          pageNumber: pageData?.page_number,
+          entityCount: pageData?.entities?.length || 0,
+          hasEntities: !!pageData?.entities,
+        }
+      );
+
+      // If no page data found in styled_layout.pages, check if this is a single-page response
+      if (!pageData && ocrResult.styled_layout.pages.length === 1) {
+        console.log(
+          `🔍 [OCR Serializer] Page ${pageNumber}: Single-page OCR response detected`
+        );
+        const singlePage = ocrResult.styled_layout.pages[0];
+
+        // Check if this single page has entities and if it matches our page number
+        if (singlePage?.entities && singlePage.entities.length > 0) {
+          console.log(
+            `🔍 [OCR Serializer] Page ${pageNumber}: Using single page entities (${singlePage.entities.length} entities)`
+          );
+          pageData = singlePage;
+        }
+      }
 
       if (pageData?.entities) {
         const textBoxes = serializeOcrEntities(
@@ -269,7 +335,74 @@ export function serializeOcrResponse(ocrResponse: OcrResponse): {
         console.log(
           `Page ${pageNumber} (${viewType}): ${textBoxes.length} textboxes created`
         );
+      } else {
+        console.log(
+          `⚠️ [OCR Serializer] Page ${pageNumber} has no entities or page data not found`
+        );
+
+        // Additional debugging: Check what's actually in the OCR result
+        console.log(
+          `🔍 [OCR Serializer] OCR result structure for page ${pageNumber}:`,
+          {
+            hasStyledLayout: !!ocrResult.styled_layout,
+            styledLayoutKeys: Object.keys(ocrResult.styled_layout || {}),
+            pagesLength: ocrResult.styled_layout?.pages?.length || 0,
+            firstPageKeys: ocrResult.styled_layout?.pages?.[0]
+              ? Object.keys(ocrResult.styled_layout.pages[0])
+              : [],
+            hasDocumentInfo: !!ocrResult.styled_layout?.document_info,
+            totalPages: ocrResult.styled_layout?.document_info?.total_pages,
+          }
+        );
+
+        // Try alternative entity locations
+        let alternativeEntities: OcrEntity[] | null = null;
+
+        // Check if entities are in the first page of styled_layout.pages (fallback for single-page responses)
+        if (ocrResult.styled_layout?.pages?.[0]?.entities) {
+          console.log(
+            `🔍 [OCR Serializer] Found entities in first page: ${ocrResult.styled_layout.pages[0].entities.length} entities`
+          );
+          alternativeEntities = ocrResult.styled_layout.pages[0].entities;
+        }
+
+        // Use alternative entities if found
+        if (alternativeEntities && alternativeEntities.length > 0) {
+          console.log(
+            `🔍 [OCR Serializer] Using alternative entities for page ${pageNumber}: ${alternativeEntities.length} entities`
+          );
+          const textBoxes = serializeOcrEntities(
+            alternativeEntities,
+            pageNumber,
+            captureInfo?.width || 0,
+            captureInfo?.height || 0
+          );
+
+          pageMap.set(viewType, textBoxes);
+          totalTextBoxes += textBoxes.length;
+
+          console.log(
+            `Page ${pageNumber} (${viewType}): ${textBoxes.length} textboxes created from alternative source`
+          );
+        }
       }
+    } else {
+      console.log(
+        `⚠️ [OCR Serializer] Page ${pageNumber} has no styled_layout.pages`
+      );
+
+      // Additional debugging: Check what's in the OCR result
+      console.log(
+        `🔍 [OCR Serializer] OCR result structure for page ${pageNumber}:`,
+        {
+          hasOcrResult: !!ocrResult,
+          ocrResultKeys: Object.keys(ocrResult || {}),
+          hasStyledLayout: !!ocrResult?.styled_layout,
+          styledLayoutKeys: ocrResult?.styled_layout
+            ? Object.keys(ocrResult.styled_layout)
+            : [],
+        }
+      );
     }
   });
 

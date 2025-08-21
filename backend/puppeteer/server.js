@@ -523,6 +523,42 @@ app.post(
         await page.waitForSelector(".document-wrapper", { timeout: 30000 });
         console.log(`✅ Document wrapper found and loaded`);
 
+        // Wait for PDF viewer to be ready
+        console.log(`   Looking for PDF viewer...`);
+        await page.waitForSelector(".react-pdf__Document", { timeout: 30000 });
+        console.log(`✅ PDF viewer found and loaded`);
+
+        // Wait for initial page to load
+        console.log(`   Waiting for initial page to load...`);
+        await page.waitForSelector(".react-pdf__Page", { timeout: 30000 });
+        console.log(`✅ Initial page loaded`);
+
+        // Wait for all pages to be available in the DOM
+        console.log(`   Waiting for all pages to be available...`);
+        await page.waitForFunction(
+          () => {
+            const pageElements = document.querySelectorAll(".react-pdf__Page");
+            const totalPages = pageElements.length;
+            console.log(`Found ${totalPages} page elements in DOM`);
+            return totalPages > 0;
+          },
+          { timeout: 30000 }
+        );
+
+        // Get total pages count
+        const totalPagesInViewer = await page.evaluate(() => {
+          const pageElements = document.querySelectorAll(".react-pdf__Page");
+          return pageElements.length;
+        });
+        console.log(`✅ PDF viewer has ${totalPagesInViewer} pages available`);
+
+        // Verify we have all the pages we need
+        if (totalPagesInViewer < pagesToProcess.length) {
+          console.log(
+            `⚠️ Warning: PDF viewer has ${totalPagesInViewer} pages, but we need to process ${pagesToProcess.length} pages`
+          );
+        }
+
         // Process each page and view combination
         console.log(
           `\n🔄 [${new Date().toISOString()}] Starting page capture and OCR processing...`
@@ -543,12 +579,42 @@ app.post(
                 )}%`
               );
 
+              // Debug: Check what pages are currently visible
+              console.log(`      🔍 Checking visible pages before capture...`);
+              const visiblePages = await page.evaluate(() => {
+                const pageElements =
+                  document.querySelectorAll(".react-pdf__Page");
+                return Array.from(pageElements).map((el) => ({
+                  pageNumber: el.getAttribute("data-page-number"),
+                  visible: el.offsetParent !== null,
+                  rect: el.getBoundingClientRect(),
+                }));
+              });
+              console.log(`      📊 Visible pages:`, visiblePages);
+
+              console.log(
+                `      🎯 [${new Date().toISOString()}] Starting capture for page ${pageNum}...`
+              );
+
               const captureResult = await capturePageView(
                 page,
                 pageNum,
                 viewType,
                 currentOperation,
                 totalOperations
+              );
+
+              console.log(
+                `      📊 [${new Date().toISOString()}] Capture result for page ${pageNum}:`,
+                {
+                  success: captureResult.success,
+                  hasImageBuffer: !!captureResult.imageBuffer,
+                  imageSize: captureResult.imageBuffer?.length || 0,
+                  dimensions: captureResult.success
+                    ? `${captureResult.pageWidth}x${captureResult.pageHeight}`
+                    : "N/A",
+                  error: captureResult.error || "None",
+                }
               );
 
               if (captureResult.success) {
@@ -626,6 +692,14 @@ app.post(
 
                 // Send captured image to OCR service
                 console.log(`   📤 Sending to OCR service...`);
+                console.log(`   📋 OCR request details:`, {
+                  pageNumber: pageNum,
+                  viewType,
+                  imageSize: captureResult.imageBuffer.length,
+                  dimensions: `${captureResult.pageWidth}x${captureResult.pageHeight}`,
+                  projectId,
+                });
+
                 const ocrResult = await sendToOcrService(
                   captureResult.imageBuffer,
                   ocrApiUrl,
@@ -639,6 +713,12 @@ app.post(
                     dataUrl: captureResult.dataUrl, // Pass data URL for validation
                   }
                 );
+
+                console.log(`   📊 OCR result for page ${pageNum}:`, {
+                  success: ocrResult.success,
+                  hasData: !!ocrResult.data,
+                  error: ocrResult.error || "None",
+                });
 
                 if (ocrResult.success) {
                   const operationDuration = Date.now() - operationStartTime;
@@ -917,6 +997,99 @@ async function capturePageView(
       throw new Error("Page is closed or invalid");
     }
 
+    // Navigate to the specific page if needed
+    console.log(`      🧭 Navigating to page ${pageNumber}...`);
+
+    try {
+      // First, try to find the page element
+      let pageElement = await page.$(
+        `.react-pdf__Page[data-page-number="${pageNumber}"]`
+      );
+
+      console.log(`      🔍 Page ${pageNumber} element found:`, !!pageElement);
+
+      if (!pageElement) {
+        console.log(
+          `      ⚠️ Page ${pageNumber} not visible, attempting to navigate...`
+        );
+
+        // Try multiple navigation strategies
+        let navigationSuccess = false;
+
+        // Strategy 1: Try to click on page navigation if available
+        try {
+          const pageNavButton = await page.$(
+            `[data-page-number="${pageNumber}"]`
+          );
+          if (pageNavButton) {
+            console.log(
+              `      🖱️ Clicking page navigation for page ${pageNumber}...`
+            );
+            await pageNavButton.click();
+            await new Promise((resolve) => setTimeout(resolve, 1500)); // Wait for page change
+            navigationSuccess = true;
+          }
+        } catch (clickError) {
+          console.log(
+            `      ⚠️ Click navigation failed: ${clickError.message}`
+          );
+        }
+
+        // Strategy 2: Try to scroll to the page if it exists but is not visible
+        if (!navigationSuccess) {
+          try {
+            console.log(
+              `      📜 Attempting to scroll to page ${pageNumber}...`
+            );
+            await page.evaluate((pageNum) => {
+              const pageElement = document.querySelector(
+                `.react-pdf__Page[data-page-number="${pageNum}"]`
+              );
+              if (pageElement) {
+                pageElement.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              }
+            }, pageNumber);
+            await new Promise((resolve) => setTimeout(resolve, 1500)); // Wait for scroll
+            navigationSuccess = true;
+          } catch (scrollError) {
+            console.log(
+              `      ⚠️ Scroll navigation failed: ${scrollError.message}`
+            );
+          }
+        }
+
+        // Strategy 3: Try to use keyboard navigation
+        if (!navigationSuccess) {
+          try {
+            console.log(
+              `      ⌨️ Attempting keyboard navigation to page ${pageNumber}...`
+            );
+            // Press Page Down multiple times to navigate
+            for (let i = 1; i < pageNumber; i++) {
+              await page.keyboard.press("PageDown");
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            navigationSuccess = true;
+          } catch (keyboardError) {
+            console.log(
+              `      ⚠️ Keyboard navigation failed: ${keyboardError.message}`
+            );
+          }
+        }
+
+        if (!navigationSuccess) {
+          console.log(
+            `      ⚠️ All navigation strategies failed for page ${pageNumber}`
+          );
+        }
+      }
+    } catch (navError) {
+      console.log(`      ⚠️ Navigation attempt failed: ${navError.message}`);
+    }
+
     // Wait for the specific page to be visible with retry logic
     console.log(
       `      ⏳ Waiting for page element with data-page-number="${pageNumber}"...`
@@ -927,7 +1100,7 @@ async function capturePageView(
       try {
         await page.waitForSelector(
           `.react-pdf__Page[data-page-number="${pageNumber}"]`,
-          { timeout: 10000 }
+          { timeout: 15000 } // Increased timeout for page navigation
         );
         pageElementFound = true;
         break;
