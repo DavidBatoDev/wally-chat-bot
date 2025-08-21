@@ -137,8 +137,8 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
         if (pageResult.ocrResult?.styled_layout?.pages) {
           const pageData = pageResult.ocrResult.styled_layout.pages.find(
             (p: any) => p.page_number === pageResult.pageNumber
-        );
-        console.log(
+          );
+          console.log(
             `   - OCR entities found: ${pageData?.entities?.length || 0}`
           );
         }
@@ -161,7 +161,7 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
         // Process each page and create textboxes
         textBoxesByPage.forEach((pageMap, pageNumber) => {
           pageMap.forEach((textBoxes, viewType) => {
-        console.log(
+            console.log(
               `📝 [OCR Service] Creating ${textBoxes.length} textboxes for page ${pageNumber} (${viewType})`
             );
 
@@ -177,7 +177,7 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
 
                 translatedTextBoxesToAdd.push(translatedTextBox);
 
-        console.log(
+                console.log(
                   `✅ [OCR Service] Prepared textbox for translated page: ${translatedTextBox.id} at (${textBox.x}, ${textBox.y})`
                 );
               } catch (error) {
@@ -190,77 +190,85 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
           });
         });
 
-                 // Add all translated textboxes at once
-         if (translatedTextBoxesToAdd.length > 0) {
-           options.setElementCollections((prev: any) => ({
-             ...prev,
-             translatedTextBoxes: [
-               ...prev.translatedTextBoxes,
-               ...translatedTextBoxesToAdd,
-             ],
-           }));
-           console.log(
-             `✅ [OCR Service] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
-           );
-           
-           // Now apply measureText utility to optimize dimensions of all textboxes
-           console.log("🔍 [OCR Service] Applying measureText utility to optimize textbox dimensions...");
-           
-           // Get the updated state to access the newly added textboxes
-           options.setElementCollections((prev: any) => {
-             const updatedTextBoxes = prev.translatedTextBoxes.map((textBox: any) => {
-               try {
-                 console.log(
-                   `🔍 [OCR Service] Measuring text: "${textBox.value}" with font: ${textBox.fontSize || 16}px ${textBox.fontFamily || "Arial"}`
-                 );
-                 
-                 const measured = measureText(
-                   textBox.value,
-                   textBox.fontSize || 16,
-                   textBox.fontFamily || "Arial, sans-serif",
-                   textBox.letterSpacing || 0,
-                   undefined, // No maxWidth constraint
-                   {
-                     top: textBox.paddingTop || 0,
-                     right: textBox.paddingRight || 0,
-                     bottom: textBox.paddingBottom || 0,
-                     left: textBox.paddingLeft || 0,
-                   }
-                 );
-                 
-                 console.log(
-                   `📏 [OCR Service] Measured textbox dimensions: ${measured.width}x${measured.height} for text: "${textBox.value}" (original: ${textBox.width}x${textBox.height})`
-                 );
-                 
-                 return {
-                   ...textBox,
-                   width: measured.width,
-                   height: measured.height,
-                 };
-               } catch (error) {
-                 console.warn(
-                   `⚠️ [OCR Service] Failed to measure text dimensions for "${textBox.value}", keeping original:`,
-                   error
-                 );
-                 return textBox;
-               }
-             });
-             
-             return {
-               ...prev,
-               translatedTextBoxes: updatedTextBoxes,
-             };
-           });
-         }
-
+        // Add all translated textboxes at once
+        if (translatedTextBoxesToAdd.length > 0) {
+          options.setElementCollections((prev: any) => ({
+            ...prev,
+            translatedTextBoxes: [
+              ...prev.translatedTextBoxes,
+              ...translatedTextBoxesToAdd,
+            ],
+          }));
           console.log(
-          `🎉 [OCR Service] Successfully created ${translatedTextBoxesToAdd.length} translated textboxes in frontend`
+            `✅ [OCR Service] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
           );
-      } else {
-            console.log(
-          "ℹ️ [OCR Service] No textboxes to create or handlers not provided"
+
+          // Now apply measureText utility to optimize dimensions of all textboxes
+          console.log(
+            "🔍 [OCR Service] Applying measureText utility to optimize textbox dimensions..."
+          );
+
+          // Get the updated state to access the newly added textboxes
+          options.setElementCollections((prev: any) => {
+            const updatedTextBoxes = prev.translatedTextBoxes.map(
+              (textBox: any) => {
+                try {
+                  console.log(
+                    `🔍 [OCR Service] Measuring text: "${
+                      textBox.value
+                    }" with font: ${textBox.fontSize || 16}px ${
+                      textBox.fontFamily || "Arial"
+                    }`
+                  );
+
+                  const measured = measureText(
+                    textBox.value,
+                    textBox.fontSize || 16,
+                    textBox.fontFamily || "Arial, sans-serif",
+                    textBox.letterSpacing || 0,
+                    undefined, // No maxWidth constraint
+                    {
+                      top: textBox.paddingTop || 0,
+                      right: textBox.paddingRight || 0,
+                      bottom: textBox.paddingBottom || 0,
+                      left: textBox.paddingLeft || 0,
+                    }
+                  );
+
+                  console.log(
+                    `📏 [OCR Service] Measured textbox dimensions: ${measured.width}x${measured.height} for text: "${textBox.value}" (original: ${textBox.width}x${textBox.height})`
+                  );
+
+                  return {
+                    ...textBox,
+                    width: measured.width,
+                    height: measured.height,
+                  };
+                } catch (error) {
+                  console.warn(
+                    `⚠️ [OCR Service] Failed to measure text dimensions for "${textBox.value}", keeping original:`,
+                    error
+                  );
+                  return textBox;
+                }
+              }
             );
-          }
+
+            return {
+              ...prev,
+              translatedTextBoxes: updatedTextBoxes,
+            };
+          });
+        }
+
+        console.log(
+          `🎉 [OCR Service] Successfully created ${translatedTextBoxesToAdd.length} translated textboxes in frontend`
+        );
+      } else {
+        console.log(
+          "ℹ️ [OCR Service] No textboxes to create or handlers not provided"
+        );
+      }
     } else {
       console.log("⚠️ [OCR Service] OCR completed but no results data found");
       console.log("📝 Response structure:", result);
@@ -441,68 +449,66 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
             });
           });
 
-                     // Add all translated textboxes at once
-           if (translatedTextBoxesToAdd.length > 0) {
-             options.setElementCollections((prev: any) => ({
-               ...prev,
-               translatedTextBoxes: [
-                 ...prev.translatedTextBoxes,
-                 ...translatedTextBoxesToAdd,
-               ],
-             }));
-             console.log(
-               `✅ [Bulk OCR] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
-             );
-             
-             // Now apply measureText utility to optimize dimensions of all textboxes
-             console.log("🔍 [Bulk OCR] Applying measureText utility to optimize textbox dimensions...");
-             
-             // Get the updated state to access the newly added textboxes
-             options.setElementCollections((prev: any) => {
-               const updatedTextBoxes = prev.translatedTextBoxes.map((textBox: any) => {
-                 try {
-                   console.log(
-                     `🔍 [Bulk OCR] Measuring text: "${textBox.value}" with font: ${textBox.fontSize || 16}px ${textBox.fontFamily || "Arial"}`
-                   );
-                   
-                   const measured = measureText(
-                     textBox.value,
-                     textBox.fontSize || 16,
-                     textBox.fontFamily || "Arial, sans-serif",
-                     textBox.letterSpacing || 0,
-                     undefined, // No maxWidth constraint
-                     {
-                       top: textBox.paddingTop || 0,
-                       right: textBox.paddingRight || 0,
-                       bottom: textBox.paddingBottom || 0,
-                       left: textBox.paddingLeft || 0,
-                     }
-                   );
-                   
-                   console.log(
-                     `📏 [Bulk OCR] Measured textbox dimensions: ${measured.width}x${measured.height} for text: "${textBox.value}" (original: ${textBox.width}x${textBox.height})`
-                   );
-                   
-                   return {
-                     ...textBox,
-                     width: measured.width,
-                     height: measured.height,
-                   };
-                 } catch (error) {
-                   console.warn(
-                     `⚠️ [Bulk OCR] Failed to measure text dimensions for "${textBox.value}", keeping original:`,
-                     error
-                   );
-                   return textBox;
-                 }
-               });
-               
-               return {
-                 ...prev,
-                 translatedTextBoxes: updatedTextBoxes,
-               };
-             });
-           }
+          // Add all translated textboxes at once
+          if (translatedTextBoxesToAdd.length > 0) {
+            options.setElementCollections((prev: any) => ({
+              ...prev,
+              translatedTextBoxes: [
+                ...prev.translatedTextBoxes,
+                ...translatedTextBoxesToAdd,
+              ],
+            }));
+            console.log(
+              `✅ [Bulk OCR] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
+            );
+
+            // Now apply comprehensive textbox optimization using the new utility
+            console.log(
+              "🔍 [Bulk OCR] Applying comprehensive textbox optimization..."
+            );
+
+            // Import the optimization utility
+            const { comprehensivelyOptimizeTextbox } = await import(
+              "../utils/textboxOptimizer"
+            );
+
+            // Get the updated state to access the newly added textboxes
+            options.setElementCollections((prev: any) => {
+              const updatedTextBoxes = prev.translatedTextBoxes.map(
+                (textBox: any) => {
+                  try {
+                    console.log(
+                      `🔍 [Bulk OCR] Optimizing textbox: "${
+                        textBox.value
+                      }" with font: ${textBox.fontSize || 16}px ${
+                        textBox.fontFamily || "Arial"
+                      }`
+                    );
+
+                    // Apply comprehensive optimization
+                    const optimized = comprehensivelyOptimizeTextbox(textBox);
+
+                    console.log(
+                      `📏 [Bulk OCR] Textbox optimization completed: "${textBox.value}" - Original: ${textBox.width}x${textBox.height}, Optimized: ${optimized.width}x${optimized.height}`
+                    );
+
+                    return optimized;
+                  } catch (error) {
+                    console.warn(
+                      `⚠️ [Bulk OCR] Failed to optimize textbox "${textBox.value}", keeping original:`,
+                      error
+                    );
+                    return textBox;
+                  }
+                }
+              );
+
+              return {
+                ...prev,
+                translatedTextBoxes: updatedTextBoxes,
+              };
+            });
+          }
 
           console.log(
             `🎉 [Bulk OCR] Successfully created ${translatedTextBoxesToAdd.length} translated textboxes in frontend`
