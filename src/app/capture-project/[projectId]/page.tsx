@@ -449,212 +449,181 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
   // Ref for OCR service to find pages
   const documentRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const fetchProject = async () => {
+  // Function to download a single page from a specific view type
+  const downloadSinglePage = useCallback(
+    async (viewType: string, pageNum: number) => {
+      if (!project || !documentRef.current) return;
+
       try {
-        setLoading(true);
+        setIsDownloading(true);
+        setDownloadProgress(0);
 
-        // Always try to fetch project - no authentication required
-        const apiResponse = await getPublicProject(unwrappedParams.projectId);
-
-        // Transform API response to ProjectState format
-        const projectState: ProjectState = {
-          id: apiResponse.id,
-          name: apiResponse.name,
-          createdAt: apiResponse.created_at,
-          updatedAt: apiResponse.updated_at,
-          version: "1.0.0", // Default version
-          documentState: {
-            url: apiResponse.project_data?.documentState?.url || "",
-            currentPage: apiResponse.current_page || 1,
-            numPages: apiResponse.num_pages || 1,
-            scale: apiResponse.project_data?.documentState?.scale || 1,
-            pageWidth:
-              apiResponse.project_data?.documentState?.pageWidth || 800,
-            pageHeight:
-              apiResponse.project_data?.documentState?.pageHeight || 1000,
-            isLoading: false,
-            error: "",
-            fileType:
-              apiResponse.project_data?.documentState?.fileType || "pdf",
-            imageDimensions:
-              apiResponse.project_data?.documentState?.imageDimensions || null,
-            isDocumentLoaded: true,
-            isPageLoading: false,
-            isScaleChanging: false,
-            pdfBackgroundColor:
-              apiResponse.project_data?.documentState?.pdfBackgroundColor ||
-              "#ffffff",
-            detectedPageBackgrounds:
-              apiResponse.project_data?.documentState
-                ?.detectedPageBackgrounds || {},
-            pages: apiResponse.project_data?.documentState?.pages || [],
-            deletedPages:
-              apiResponse.project_data?.documentState?.deletedPages || [],
-            isTransforming: false,
-            // Final layout fields
-            finalLayoutUrl:
-              apiResponse.project_data?.documentState?.finalLayoutUrl ||
-              undefined,
-            finalLayoutCurrentPage:
-              apiResponse.project_data?.documentState?.finalLayoutCurrentPage ||
-              undefined,
-            finalLayoutNumPages:
-              apiResponse.project_data?.documentState?.finalLayoutNumPages ||
-              undefined,
-            finalLayoutDeletedPages:
-              apiResponse.project_data?.documentState
-                ?.finalLayoutDeletedPages || undefined,
-          },
-          viewState: {
-            currentView: "original",
-            currentWorkflowStep: apiResponse.current_workflow_step || "capture",
-            activeSidebarTab: "elements",
-            isSidebarCollapsed: false,
-            isCtrlPressed: false,
-          },
-          elementCollections: {
-            originalTextBoxes:
-              apiResponse.project_data?.elementCollections?.originalTextBoxes ||
-              [],
-            originalShapes:
-              apiResponse.project_data?.elementCollections?.originalShapes ||
-              [],
-            originalDeletionRectangles:
-              apiResponse.project_data?.elementCollections
-                ?.originalDeletionRectangles || [],
-            originalImages:
-              apiResponse.project_data?.elementCollections?.originalImages ||
-              [],
-            translatedTextBoxes:
-              apiResponse.project_data?.elementCollections
-                ?.translatedTextBoxes || [],
-            translatedShapes:
-              apiResponse.project_data?.elementCollections?.translatedShapes ||
-              [],
-            translatedDeletionRectangles:
-              apiResponse.project_data?.elementCollections
-                ?.translatedDeletionRectangles || [],
-            translatedImages:
-              apiResponse.project_data?.elementCollections?.translatedImages ||
-              [],
-            untranslatedTexts:
-              apiResponse.project_data?.elementCollections?.untranslatedTexts ||
-              [],
-            finalLayoutTextboxes:
-              apiResponse.project_data?.elementCollections
-                ?.finalLayoutTextboxes || [],
-            finalLayoutShapes:
-              apiResponse.project_data?.elementCollections?.finalLayoutShapes ||
-              [],
-            finalLayoutDeletionRectangles:
-              apiResponse.project_data?.elementCollections
-                ?.finalLayoutDeletionRectangles || [],
-            finalLayoutImages:
-              apiResponse.project_data?.elementCollections?.finalLayoutImages ||
-              [],
-          },
-          layerState: {
-            originalLayerOrder:
-              apiResponse.project_data?.layerState?.originalLayerOrder || [],
-            translatedLayerOrder:
-              apiResponse.project_data?.layerState?.translatedLayerOrder || [],
-            finalLayoutLayerOrder:
-              apiResponse.project_data?.layerState?.finalLayoutLayerOrder || [],
-          },
-          editorState: {
-            selectedFieldId: null,
-            selectedShapeId: null,
-            isEditMode: false,
-            isAddTextBoxMode: false,
-            isTextSelectionMode: false,
-            showDeletionRectangles: false,
-            isImageUploadMode: false,
-            isSelectionMode: false,
-          },
-          sourceLanguage: apiResponse.source_language || "en",
-          desiredLanguage: apiResponse.desired_language || "es",
+        let pageElement: HTMLElement | null = null;
+        let pageWidth: number;
+        let pageHeight: number;
+        let pdfUrl: string;
+        let pdfBackgroundColor: string;
+        let elements: {
+          deletions: any[];
+          shapes: Shape[];
+          images: Image[];
+          textboxes: TextField[];
         };
+        let title: string;
+        let showPdfBackground: boolean;
+        let translatedTemplateURL: string | undefined;
+        let finalLayoutUrl: string | undefined;
 
-        setProject(projectState);
-      } catch (err) {
-        console.error("Error fetching project:", err);
-
-        // Handle specific errors
-        if (err instanceof Error) {
-          if (
-            err.message.includes("404") ||
-            err.message.includes("Not found")
-          ) {
-            setError("Project not found");
-          } else {
-            setError(err.message || "Failed to fetch project");
-          }
-        } else {
-          setError("Failed to fetch project");
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Always fetch project - no authentication required
-    fetchProject();
-  }, [unwrappedParams.projectId]);
-
-  // Function to get current page dimensions for OCR service
-  const getCurrentPageDimensions = useCallback(
-    (pageNumber: number) => {
-      if (documentRef.current) {
-        // Get original page dimensions - look for the inner page div with data attributes
-        const originalPageElement = documentRef.current.querySelector(
-          `.original-page-container [data-page-number="${pageNumber}"]`
-        ) as HTMLElement;
-
-        // Get translated page dimensions - look for the inner page div with data attributes
-        const translatedPageElement = documentRef.current.querySelector(
-          `.translated-page-container [data-page-number="${pageNumber}"]`
-        ) as HTMLElement;
-
-        // Use original page element for main dimensions (or first available)
-        const pageElement = originalPageElement || translatedPageElement;
-
-        if (pageElement) {
-          const rect = pageElement.getBoundingClientRect();
-          const pageWidth = parseInt(
-            pageElement.getAttribute("data-page-width") || "0"
-          );
-          const pageHeight = parseInt(
-            pageElement.getAttribute("data-page-height") || "0"
-          );
-
-          return {
-            width: pageWidth || rect.width,
-            height: pageHeight || rect.height,
-            renderedWidth: rect.width,
-            renderedHeight: rect.height,
+        if (viewType === "original") {
+          pageElement = documentRef.current!.querySelector(
+            `.original-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+          ) as HTMLElement;
+          pageWidth = project.documentState.pageWidth;
+          pageHeight = project.documentState.pageHeight;
+          pdfUrl = project.documentState.url;
+          pdfBackgroundColor = project.documentState.pdfBackgroundColor;
+          elements = {
+            deletions:
+              project.elementCollections.originalDeletionRectangles.filter(
+                (r: any) => r.page === pageNum
+              ),
+            shapes: project.elementCollections.originalShapes.filter(
+              (s: Shape) => s.page === pageNum
+            ),
+            images: project.elementCollections.originalImages.filter(
+              (img: Image) => img.page === pageNum
+            ),
+            textboxes: project.elementCollections.originalTextBoxes.filter(
+              (tb: TextField) => tb.page === pageNum
+            ),
           };
+          title = `Original View - Page ${pageNum}`;
+          showPdfBackground = true;
+          translatedTemplateURL = undefined;
+          finalLayoutUrl = undefined;
+        } else if (viewType === "translated") {
+          pageElement = documentRef.current!.querySelector(
+            `.translated-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+          ) as HTMLElement;
+          pageWidth =
+            project.documentState.pages?.[pageNum - 1]
+              ?.translatedTemplateWidth || project.documentState.pageWidth;
+          pageHeight =
+            project.documentState.pages?.[pageNum - 1]
+              ?.translatedTemplateHeight || project.documentState.pageHeight;
+          pdfUrl = project.documentState.url;
+          pdfBackgroundColor = project.documentState.pdfBackgroundColor;
+          elements = {
+            deletions:
+              project.elementCollections.translatedDeletionRectangles.filter(
+                (r: any) => r.page === pageNum
+              ),
+            shapes: project.elementCollections.translatedShapes.filter(
+              (s: Shape) => s.page === pageNum
+            ),
+            images: project.elementCollections.translatedImages.filter(
+              (img: Image) => img.page === pageNum
+            ),
+            textboxes: project.elementCollections.translatedTextBoxes.filter(
+              (tb: TextField) => tb.page === pageNum
+            ),
+          };
+          title = `Translated View - Page ${pageNum}`;
+          showPdfBackground = false;
+          translatedTemplateURL =
+            project.documentState.pages?.[pageNum - 1]?.translatedTemplateURL;
+          finalLayoutUrl = undefined;
+        } else if (viewType === "final-layout") {
+          pageElement = documentRef.current!.querySelector(
+            `.final-view-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+          ) as HTMLElement;
+          pageWidth =
+            project.documentState.pages?.[pageNum - 1]?.finalLayoutWidth ||
+            project.documentState.pageWidth;
+          pageHeight =
+            project.documentState.pages?.[pageNum - 1]?.finalLayoutHeight ||
+            project.documentState.pageHeight;
+          pdfUrl =
+            project.documentState.finalLayoutUrl || project.documentState.url;
+          pdfBackgroundColor = project.documentState.pdfBackgroundColor;
+          elements = {
+            deletions:
+              project.elementCollections.finalLayoutDeletionRectangles.filter(
+                (r: any) => r.page === pageNum
+              ),
+            shapes: project.elementCollections.finalLayoutShapes.filter(
+              (s: Shape) => s.page === pageNum
+            ),
+            images: project.elementCollections.finalLayoutImages.filter(
+              (img: Image) => img.page === pageNum
+            ),
+            textboxes: project.elementCollections.finalLayoutTextboxes.filter(
+              (tb: TextField) => tb.page === pageNum
+            ),
+          };
+          title = `Final Layout View - Page ${pageNum}`;
+          showPdfBackground = false;
+          translatedTemplateURL = undefined;
+          finalLayoutUrl = project.documentState.finalLayoutUrl;
+        } else {
+          return;
         }
-      }
 
-      // Fallback to document state dimensions
-      return {
-        width: project?.documentState.pageWidth || 800,
-        height: project?.documentState.pageHeight || 1000,
-        renderedWidth: project?.documentState.pageWidth || 800,
-        renderedHeight: project?.documentState.pageHeight || 1000,
-      };
+        if (!pageElement) {
+          alert(
+            `Page element for view type "${viewType}" and page ${pageNum} not found.`
+          );
+          return;
+        }
+
+        const image = await domtoimage.toPng(pageElement, {
+          quality: 1.0,
+          bgcolor: "#ffffff",
+          width: (pageElement.scrollWidth || pageElement.offsetWidth) * 2, // 2x scale for high resolution
+          height: (pageElement.scrollHeight || pageElement.offsetHeight) * 2, // 2x scale for high resolution
+          style: {
+            transform: "scale(2)", // Scale up for higher resolution
+            transformOrigin: "top left",
+          },
+          filter: (node: Node): boolean => {
+            // Filter out UI elements that shouldn't be captured
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = node as HTMLElement;
+              if (
+                element.classList.contains("drag-handle") ||
+                element.tagName === "BUTTON" ||
+                element.classList.contains("settings-popup") ||
+                element.classList.contains("text-selection-popup") ||
+                element.classList.contains("fixed") ||
+                element.closest(".fixed") !== null
+              ) {
+                return false;
+              }
+            }
+            return true;
+          },
+        });
+
+        const imageBlob = await fetch(image).then((res) => res.blob());
+        const url = URL.createObjectURL(imageBlob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${project.name}-${viewType}-page-${pageNum}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setDownloadProgress(100);
+      } catch (error) {
+        console.error("Error downloading single page:", error);
+      } finally {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+      }
     },
     [project]
   );
-
-  // Expose function globally for OCR service to access
-  useEffect(() => {
-    if (project) {
-      (window as any).getCaptureProjectPageDimensions =
-        getCurrentPageDimensions;
-    }
-  }, [project, getCurrentPageDimensions]);
 
   // Add the image capture and download function
   const captureAndDownloadAllImages = useCallback(async () => {
@@ -1124,6 +1093,213 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
     }
   }, [project]);
 
+  useEffect(() => {
+    const fetchProject = async () => {
+      try {
+        setLoading(true);
+
+        // Always try to fetch project - no authentication required
+        const apiResponse = await getPublicProject(unwrappedParams.projectId);
+
+        // Transform API response to ProjectState format
+        const projectState: ProjectState = {
+          id: apiResponse.id,
+          name: apiResponse.name,
+          createdAt: apiResponse.created_at,
+          updatedAt: apiResponse.updated_at,
+          version: "1.0.0", // Default version
+          documentState: {
+            url: apiResponse.project_data?.documentState?.url || "",
+            currentPage: apiResponse.current_page || 1,
+            numPages: apiResponse.num_pages || 1,
+            scale: apiResponse.project_data?.documentState?.scale || 1,
+            pageWidth:
+              apiResponse.project_data?.documentState?.pageWidth || 800,
+            pageHeight:
+              apiResponse.project_data?.documentState?.pageHeight || 1000,
+            isLoading: false,
+            error: "",
+            fileType:
+              apiResponse.project_data?.documentState?.fileType || "pdf",
+            imageDimensions:
+              apiResponse.project_data?.documentState?.imageDimensions || null,
+            isDocumentLoaded: true,
+            isPageLoading: false,
+            isScaleChanging: false,
+            pdfBackgroundColor:
+              apiResponse.project_data?.documentState?.pdfBackgroundColor ||
+              "#ffffff",
+            detectedPageBackgrounds:
+              apiResponse.project_data?.documentState
+                ?.detectedPageBackgrounds || {},
+            pages: apiResponse.project_data?.documentState?.pages || [],
+            deletedPages:
+              apiResponse.project_data?.documentState?.deletedPages || [],
+            isTransforming: false,
+            // Final layout fields
+            finalLayoutUrl:
+              apiResponse.project_data?.documentState?.finalLayoutUrl ||
+              undefined,
+            finalLayoutCurrentPage:
+              apiResponse.project_data?.documentState?.finalLayoutCurrentPage ||
+              undefined,
+            finalLayoutNumPages:
+              apiResponse.project_data?.documentState?.finalLayoutNumPages ||
+              undefined,
+            finalLayoutDeletedPages:
+              apiResponse.project_data?.documentState
+                ?.finalLayoutDeletedPages || undefined,
+          },
+          viewState: {
+            currentView: "original",
+            currentWorkflowStep: apiResponse.current_workflow_step || "capture",
+            activeSidebarTab: "elements",
+            isSidebarCollapsed: false,
+            isCtrlPressed: false,
+          },
+          elementCollections: {
+            originalTextBoxes:
+              apiResponse.project_data?.elementCollections?.originalTextBoxes ||
+              [],
+            originalShapes:
+              apiResponse.project_data?.elementCollections?.originalShapes ||
+              [],
+            originalDeletionRectangles:
+              apiResponse.project_data?.elementCollections
+                ?.originalDeletionRectangles || [],
+            originalImages:
+              apiResponse.project_data?.elementCollections?.originalImages ||
+              [],
+            translatedTextBoxes:
+              apiResponse.project_data?.elementCollections
+                ?.translatedTextBoxes || [],
+            translatedShapes:
+              apiResponse.project_data?.elementCollections?.translatedShapes ||
+              [],
+            translatedDeletionRectangles:
+              apiResponse.project_data?.elementCollections
+                ?.translatedDeletionRectangles || [],
+            translatedImages:
+              apiResponse.project_data?.elementCollections?.translatedImages ||
+              [],
+            untranslatedTexts:
+              apiResponse.project_data?.elementCollections?.untranslatedTexts ||
+              [],
+            finalLayoutTextboxes:
+              apiResponse.project_data?.elementCollections
+                ?.finalLayoutTextboxes || [],
+            finalLayoutShapes:
+              apiResponse.project_data?.elementCollections?.finalLayoutShapes ||
+              [],
+            finalLayoutDeletionRectangles:
+              apiResponse.project_data?.elementCollections
+                ?.finalLayoutDeletionRectangles || [],
+            finalLayoutImages:
+              apiResponse.project_data?.elementCollections?.finalLayoutImages ||
+              [],
+          },
+          layerState: {
+            originalLayerOrder:
+              apiResponse.project_data?.layerState?.originalLayerOrder || [],
+            translatedLayerOrder:
+              apiResponse.project_data?.layerState?.translatedLayerOrder || [],
+            finalLayoutLayerOrder:
+              apiResponse.project_data?.layerState?.finalLayoutLayerOrder || [],
+          },
+          editorState: {
+            selectedFieldId: null,
+            selectedShapeId: null,
+            isEditMode: false,
+            isAddTextBoxMode: false,
+            isTextSelectionMode: false,
+            showDeletionRectangles: false,
+            isImageUploadMode: false,
+            isSelectionMode: false,
+          },
+          sourceLanguage: apiResponse.source_language || "en",
+          desiredLanguage: apiResponse.desired_language || "es",
+        };
+
+        setProject(projectState);
+      } catch (err) {
+        console.error("Error fetching project:", err);
+
+        // Handle specific errors
+        if (err instanceof Error) {
+          if (
+            err.message.includes("404") ||
+            err.message.includes("Not found")
+          ) {
+            setError("Project not found");
+          } else {
+            setError(err.message || "Failed to fetch project");
+          }
+        } else {
+          setError("Failed to fetch project");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Always fetch project - no authentication required
+    fetchProject();
+  }, [unwrappedParams.projectId]);
+
+  // Function to get current page dimensions for OCR service
+  const getCurrentPageDimensions = useCallback(
+    (pageNumber: number) => {
+      if (documentRef.current) {
+        // Get original page dimensions - look for the inner page div with data attributes
+        const originalPageElement = documentRef.current.querySelector(
+          `.original-page-container [data-page-number="${pageNumber}"]`
+        ) as HTMLElement;
+
+        // Get translated page dimensions - look for the inner page div with data attributes
+        const translatedPageElement = documentRef.current.querySelector(
+          `.translated-page-container [data-page-number="${pageNumber}"]`
+        ) as HTMLElement;
+
+        // Use original page element for main dimensions (or first available)
+        const pageElement = originalPageElement || translatedPageElement;
+
+        if (pageElement) {
+          const rect = pageElement.getBoundingClientRect();
+          const pageWidth = parseInt(
+            pageElement.getAttribute("data-page-width") || "0"
+          );
+          const pageHeight = parseInt(
+            pageElement.getAttribute("data-page-height") || "0"
+          );
+
+          return {
+            width: pageWidth || rect.width,
+            height: pageHeight || rect.height,
+            renderedWidth: rect.width,
+            renderedHeight: rect.height,
+          };
+        }
+      }
+
+      // Fallback to document state dimensions
+      return {
+        width: project?.documentState.pageWidth || 800,
+        height: project?.documentState.pageHeight || 1000,
+        renderedWidth: project?.documentState.pageWidth || 800,
+        renderedHeight: project?.documentState.pageHeight || 1000,
+      };
+    },
+    [project]
+  );
+
+  // Expose function globally for OCR service to access
+  useEffect(() => {
+    if (project) {
+      (window as any).getCaptureProjectPageDimensions =
+        getCurrentPageDimensions;
+    }
+  }, [project, getCurrentPageDimensions]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1181,47 +1357,135 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
             </p>
           </div>
 
-          {/* Image Capture and Download Section */}
+          {/* Individual Page Download Section */}
           <div className="mt-4 p-4 bg-green-50 rounded-lg">
             <h3 className="text-sm font-medium text-green-800 mb-2">
-              High-Resolution Image Capture & Download
+              Individual Page Downloads
             </h3>
             <p className="text-sm text-green-700 mb-3">
-              Capture all pages from original, translated, and final layout
-              views in high resolution (2x scale) for optimal OCR processing.
+              Download specific pages from each view type. Enter a page number
+              and click download.
             </p>
 
-            {isDownloading && (
-              <div className="mb-3">
-                <div className="flex items-center space-x-2 mb-2">
-                  <Loader2 className="animate-spin w-4 h-4" />
-                  <span className="text-sm text-green-700">
-                    Capturing images... {Math.round(downloadProgress)}%
-                  </span>
-                </div>
-                <div className="w-full bg-green-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${downloadProgress}%` }}
-                  ></div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Original View Download */}
+              <div className="p-3 bg-white rounded border">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  Original View
+                </h4>
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max={numPages}
+                    placeholder="Page #"
+                    className="flex-1 px-2 py-1 text-sm border rounded"
+                    id="original-page-input"
+                  />
+                  <button
+                    onClick={() => {
+                      const pageInput = document.getElementById(
+                        "original-page-input"
+                      ) as HTMLInputElement;
+                      const pageNum = parseInt(pageInput.value);
+                      if (pageNum >= 1 && pageNum <= numPages) {
+                        downloadSinglePage("original", pageNum);
+                      } else {
+                        alert(
+                          `Please enter a valid page number between 1 and ${numPages}`
+                        );
+                      }
+                    }}
+                    className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                  >
+                    Download
+                  </button>
                 </div>
               </div>
-            )}
 
-            <button
-              onClick={captureAndDownloadAllImages}
-              disabled={isDownloading}
-              className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-            >
-              <Download className="w-4 h-4" />
-              <span>
-                {isDownloading ? "Capturing..." : "Download All Page Images"}
-              </span>
-            </button>
+              {/* Translated View Download */}
+              <div className="p-3 bg-white rounded border">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  Translated View
+                </h4>
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max={numPages}
+                    placeholder="Page #"
+                    className="flex-1 px-2 py-1 text-sm border rounded"
+                    id="translated-page-input"
+                  />
+                  <button
+                    onClick={() => {
+                      const pageInput = document.getElementById(
+                        "translated-page-input"
+                      ) as HTMLInputElement;
+                      const pageNum = parseInt(pageInput.value);
+                      if (pageNum >= 1 && pageNum <= numPages) {
+                        downloadSinglePage("translated", pageNum);
+                      } else {
+                        alert(
+                          `Please enter a valid page number between 1 and ${numPages}`
+                        );
+                      }
+                    }}
+                    className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+
+              {/* Final Layout View Download */}
+              <div className="p-3 bg-white rounded border">
+                <h4 className="text-sm font-medium text-gray-800 mb-2">
+                  Final Layout View
+                </h4>
+                <div className="flex space-x-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max={documentState.finalLayoutNumPages || numPages}
+                    placeholder="Page #"
+                    className="flex-1 px-2 py-1 text-sm border rounded"
+                    id="final-layout-page-input"
+                    disabled={!documentState.finalLayoutUrl}
+                  />
+                  <button
+                    onClick={() => {
+                      const pageInput = document.getElementById(
+                        "final-layout-page-input"
+                      ) as HTMLInputElement;
+                      const pageNum = parseInt(pageInput.value);
+                      const maxPages =
+                        documentState.finalLayoutNumPages || numPages;
+                      if (pageNum >= 1 && pageNum <= maxPages) {
+                        downloadSinglePage("final-layout", pageNum);
+                      } else {
+                        alert(
+                          `Please enter a valid page number between 1 and ${maxPages}`
+                        );
+                      }
+                    }}
+                    disabled={!documentState.finalLayoutUrl}
+                    className="px-3 py-1 bg-purple-600 text-white text-xs rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Download
+                  </button>
+                </div>
+                {!documentState.finalLayoutUrl && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Final layout not available
+                  </p>
+                )}
+              </div>
+            </div>
 
             <p className="text-xs text-green-600 mt-2">
-              Downloads a ZIP file containing: original-page-X.png,
-              translated-page-X.png, final-layout-page-X.png
+              Downloads a single PNG image of the specified page from the
+              selected view.
             </p>
           </div>
 
