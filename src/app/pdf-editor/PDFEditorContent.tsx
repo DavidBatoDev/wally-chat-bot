@@ -3868,7 +3868,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Only proceed if the image was successfully uploaded to cloud storage
         if (!imageUploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload image to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload image to cloud storage. Please try again."
+          );
           return;
         }
 
@@ -3950,13 +3952,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload to Supabase or create blob URL
         const uploadResult = await uploadFileWithFallback(updatedFile);
-        
+
         // Only proceed if the PDF was successfully uploaded to cloud storage
         if (!uploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload updated document to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload updated document to cloud storage. Please try again."
+          );
           return;
         }
-        
+
         const newUrl = uploadResult.url;
         const newPageNumber = currentPdfDoc.getPageCount();
 
@@ -4001,7 +4005,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Only proceed if the image was successfully uploaded to cloud storage
         if (!imageUploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload image to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload image to cloud storage. Please try again."
+          );
           return;
         }
 
@@ -4090,13 +4096,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload merged PDF to Supabase or use blob URL as fallback
         const uploadResult = await uploadFileWithFallback(mergedFile);
-        
+
         // Only proceed if the merged PDF was successfully uploaded to cloud storage
         if (!uploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload merged document to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload merged document to cloud storage. Please try again."
+          );
           return;
         }
-        
+
         const newUrl = uploadResult.url;
         const totalPages = currentPdfDoc.getPageCount();
         const addedPagesCount = newPages.length;
@@ -4155,13 +4163,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         try {
           // Upload image to Supabase or use blob URL as fallback
           const uploadResult = await uploadFileWithFallback(file);
-          
+
           // Only proceed if the image was successfully uploaded to cloud storage
           if (!uploadResult.isSupabaseUrl) {
-            toast.error("Failed to upload image to cloud storage. Please try again.");
+            toast.error(
+              "Failed to upload image to cloud storage. Please try again."
+            );
             return;
           }
-          
+
           const url = uploadResult.url;
 
           // Load the image to get its natural dimensions
@@ -4313,73 +4323,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     [pageActions, viewState.currentView]
   );
 
-  // Transform page to textbox functionality
-  const handleTransformPageToTextbox = useCallback(
-    async (pageNumber: number) => {
-      try {
-        // Create a compatibility wrapper for setPageState
-        const setPageStateCompat = (updater: (prev: any) => any) => {
-          const prev = {
-            isTransforming: documentState.isTransforming,
-            deletedPages: documentState.deletedPages,
-            isPageTranslated: new Map(
-              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
-            ),
-          };
-          const newState = updater(prev);
-
-          if (newState.isTransforming !== undefined) {
-            pageActions.setIsTransforming(newState.isTransforming);
-          }
-        };
-
-        // Get page information for birth certificate detection
-        const page = documentState.pages.find(
-          (p) => p.pageNumber === pageNumber
-        );
-        const pageType = page?.pageType;
-        const birthCertTemplateId = page?.birthCertTemplate?.id;
-
-        await performPageOcr({
-          pageNumber,
-          documentRef,
-          containerRef,
-          documentState,
-          viewState,
-          editorState,
-          setPageState: setPageStateCompat,
-          setViewState,
-          setEditorState,
-          actions,
-          sourceLanguage,
-          desiredLanguage,
-          handleAddTextBoxWithUndo,
-          setIsTranslating,
-          addUntranslatedText,
-          pageType,
-          birthCertTemplateId,
-        });
-      } catch (error) {
-        console.error("Error in handleTransformPageToTextbox:", error);
-        toast.error("Failed to transform page to textboxes");
-      }
-    },
-    [
-      documentRef,
-      containerRef,
-      documentState,
-      viewState,
-      editorState,
-      pageActions,
-      setViewState,
-      setEditorState,
-      actions,
-      sourceLanguage,
-      desiredLanguage,
-      handleAddTextBoxWithUndo,
-      setIsTranslating,
-    ]
-  );
+  // Transform page to textbox functionality - will be defined after useProjectState hook
 
   // Clear translation for a single page
   const handleClearPageTranslation = useCallback(
@@ -5179,32 +5123,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
     try {
       const result = await performBulkOcr({
-        documentRef,
-        containerRef,
-        documentState,
-        editorState,
-        viewState,
-        actions,
-        setEditorState,
-        setViewState,
-        setPageState: (updater: (prev: any) => any) => {
-          // Compatibility wrapper for bulk OCR
-          const prev = {
-            isTransforming: documentState.isTransforming,
-            deletedPages: documentState.deletedPages,
-            isPageTranslated: new Map(
-              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
-            ),
-          };
-          const newState = updater(prev);
-
-          if (newState.isTransforming !== undefined) {
-            pageActions.setIsTransforming(newState.isTransforming);
-          }
-        },
         sourceLanguage,
         desiredLanguage,
-        handleAddTextBoxWithUndo,
+        addTextBox,
+        setElementCollections,
         setIsTranslating,
         totalPages: documentState.numPages,
         deletedPages: documentState.deletedPages,
@@ -5217,6 +5139,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         },
         cancelRef: bulkOcrCancelRef,
         addUntranslatedText,
+        // Add required parameters for background OCR service
+        projectId: currentProjectId || `bulk-ocr-${Date.now()}`,
+        captureUrl: "http://localhost:3000/capture-project/", // Point to capture-project page
+        ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
       });
 
       if (result.success) {
@@ -5236,20 +5162,79 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     }
   }, [
     isBulkOcrRunning,
-    documentRef,
-    containerRef,
     documentState,
-    editorState,
-    viewState,
     pageActions,
     actions,
-    setEditorState,
-    setViewState,
     sourceLanguage,
     desiredLanguage,
-    handleAddTextBoxWithUndo,
+    addTextBox,
+    setElementCollections,
     setIsTranslating,
+    currentProjectId, // Add currentProjectId to dependencies
   ]);
+
+  // Transform page to textbox functionality - defined after useProjectState hook
+  const handleTransformPageToTextbox = useCallback(
+    async (pageNumber: number) => {
+      try {
+        // Create a compatibility wrapper for setPageState
+        const setPageStateCompat = (updater: (prev: any) => any) => {
+          const prev = {
+            isTransforming: documentState.isTransforming,
+            deletedPages: documentState.deletedPages,
+            isPageTranslated: new Map(
+              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
+            ),
+          };
+          const newState = updater(prev);
+
+          if (newState.isTransforming !== undefined) {
+            pageActions.setIsTransforming(newState.isTransforming);
+          }
+        };
+
+        // Get page information for birth certificate detection
+        const page = documentState.pages.find(
+          (p) => p.pageNumber === pageNumber
+        );
+        const pageType = page?.pageType;
+        const birthCertTemplateId = page?.birthCertTemplate?.id;
+
+        await performPageOcr({
+          pageNumber,
+          sourceLanguage,
+          desiredLanguage,
+          projectId: currentProjectId || undefined, // Handle null case
+          setIsTranslating,
+          addTextBox,
+          setElementCollections,
+          addUntranslatedText,
+          pageType,
+          birthCertTemplateId,
+        });
+      } catch (error) {
+        console.error("Error in handleTransformPageToTextbox:", error);
+        toast.error("Failed to transform page to textboxes");
+      }
+    },
+    [
+      documentRef,
+      containerRef,
+      documentState,
+      viewState,
+      editorState,
+      pageActions,
+      setViewState,
+      setEditorState,
+      actions,
+      sourceLanguage,
+      desiredLanguage,
+      addTextBox,
+      setElementCollections,
+      setIsTranslating,
+      currentProjectId, // Add currentProjectId to dependencies
+    ]
+  );
 
   // Wrapper function to check language states before running OCR
   const checkLanguageAndRunOcr = useCallback(
@@ -5535,7 +5520,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         >
           <Menu className="w-4 h-4" />
         </Button>
-        
+
         {/* Hidden file inputs */}
         <input
           type="file"
@@ -5745,10 +5730,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
                     {/* Description */}
                     <p className="text-gray-600 leading-relaxed">
-                      {projectId 
+                      {projectId
                         ? "Loading your project and document content..."
-                        : "Preparing the PDF editor..."
-                      }
+                        : "Preparing the PDF editor..."}
                     </p>
                   </div>
                 </div>
@@ -6152,8 +6136,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         className="flex relative"
                         style={{
                           width:
-                            documentState.pageWidth * documentState.scale +
-                            20, // Double width plus gap
+                            documentState.pageWidth * documentState.scale + 20, // Double width plus gap
                           height:
                             documentState.pageHeight * documentState.scale,
                         }}
