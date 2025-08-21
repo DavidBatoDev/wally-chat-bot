@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+require("dotenv").config();
+
 const express = require("express");
 const puppeteer = require("puppeteer");
 const multer = require("multer");
@@ -6,6 +9,43 @@ const cors = require("cors");
 const FormData = require("form-data");
 const path = require("path");
 const fs = require("fs");
+
+// Translation service configuration
+const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
+const GOOGLE_TRANSLATE_BASE_URL =
+  "https://translation.googleapis.com/language/translate/v2";
+
+// Debug environment variable loading
+// console.log(`🔍 [ENV DEBUG] Environment variable check:`);
+// console.log(
+//   `   - process.env.GOOGLE_TRANSLATE_API_KEY: ${
+//     process.env.GOOGLE_TRANSLATE_API_KEY ? "SET" : "NOT SET"
+//   }`
+// );
+// console.log(
+//   `   - process.env keys containing GOOGLE: ${Object.keys(process.env)
+//     .filter((key) => key.includes("GOOGLE"))
+//     .join(", ")}`
+// );
+// console.log(
+//   `   - All process.env keys: ${Object.keys(process.env).join(", ")}`
+// );
+
+// Log translation service status on startup
+console.log(`🌐 [TRANSLATION] Service status:`);
+console.log(
+  `   - GOOGLE_TRANSLATE_API_KEY: ${
+    GOOGLE_TRANSLATE_API_KEY ? "SET" : "NOT SET"
+  }`
+);
+console.log(`   - GOOGLE_TRANSLATE_BASE_URL: ${GOOGLE_TRANSLATE_BASE_URL}`);
+if (!GOOGLE_TRANSLATE_API_KEY) {
+  console.log(
+    `   ⚠️  Translation will be disabled until GOOGLE_TRANSLATE_API_KEY is set`
+  );
+} else {
+  console.log(`   ✅ Translation service ready`);
+}
 
 const app = express();
 const PORT = process.env.OCR_CAPTURE_PORT || 3001;
@@ -39,6 +79,241 @@ let browser;
 let browserRestartCount = 0;
 const MAX_BROWSER_RESTARTS = 5;
 const BROWSER_RESTART_DELAY = 2000; // 2 seconds
+
+// Translation service functions
+async function translateText(text, targetLanguage, sourceLanguage = "auto") {
+  try {
+    if (!GOOGLE_TRANSLATE_API_KEY) {
+      console.warn(
+        "⚠️ [TRANSLATION] Google Translate API key not configured, skipping translation"
+      );
+      return text;
+    }
+
+    if (!text || !text.trim()) {
+      return text;
+    }
+
+    console.log(`🌐 [TRANSLATION] Translating: "${text}" to ${targetLanguage}`);
+
+    const params = new URLSearchParams({
+      key: GOOGLE_TRANSLATE_API_KEY,
+      q: text.trim(),
+      target: targetLanguage,
+      format: "text",
+    });
+
+    if (sourceLanguage && sourceLanguage !== "auto") {
+      params.append("source", sourceLanguage);
+    }
+
+    console.log(
+      `🔍 [TRANSLATION] API Request URL: ${GOOGLE_TRANSLATE_BASE_URL}?${params
+        .toString()
+        .replace(GOOGLE_TRANSLATE_API_KEY, "API_KEY_HIDDEN")}`
+    );
+
+    const response = await axios.post(
+      `${GOOGLE_TRANSLATE_BASE_URL}?${params.toString()}`
+    );
+
+    console.log(`🔍 [TRANSLATION] API Response status: ${response.status}`);
+    console.log(
+      `🔍 [TRANSLATION] API Response data:`,
+      JSON.stringify(response.data, null, 2)
+    );
+
+    if (
+      response.data &&
+      response.data.data &&
+      response.data.data.translations &&
+      response.data.data.translations.length > 0
+    ) {
+      const translatedText = response.data.data.translations[0].translatedText;
+      console.log(
+        `✅ [TRANSLATION] Translated: "${text}" → "${translatedText}"`
+      );
+      return translatedText;
+    } else {
+      console.warn(`⚠️ [TRANSLATION] No translation result for: "${text}"`);
+      console.warn(`🔍 [TRANSLATION] Response structure:`, response.data);
+      return text;
+    }
+  } catch (error) {
+    console.error(
+      `❌ [TRANSLATION] Failed to translate "${text}":`,
+      error.message
+    );
+    return text; // Return original text if translation fails
+  }
+}
+
+async function translateMultipleTexts(
+  texts,
+  targetLanguage,
+  sourceLanguage = "auto"
+) {
+  try {
+    if (!GOOGLE_TRANSLATE_API_KEY) {
+      console.warn(
+        "⚠️ [TRANSLATION] Google Translate API key not configured, skipping translation"
+      );
+      return texts;
+    }
+
+    if (!texts || texts.length === 0) {
+      return texts;
+    }
+
+    console.log(
+      `🌐 [TRANSLATION] Translating ${texts.length} texts to ${targetLanguage}`
+    );
+    console.log(`🔍 [TRANSLATION] Source language: ${sourceLanguage}`);
+    console.log(`🔍 [TRANSLATION] Target language: ${targetLanguage}`);
+    console.log(
+      `🔍 [TRANSLATE] API Key length: ${
+        GOOGLE_TRANSLATE_API_KEY ? GOOGLE_TRANSLATE_API_KEY.length : 0
+      }`
+    );
+    console.log(
+      `🔍 [TRANSLATE] API Key preview: ${
+        GOOGLE_TRANSLATE_API_KEY
+          ? GOOGLE_TRANSLATE_API_KEY.substring(0, 10) + "..."
+          : "NOT SET"
+      }`
+    );
+    console.log(
+      `🔍 [TRANSLATE] API Key ends with: ${
+        GOOGLE_TRANSLATE_API_KEY
+          ? "..." +
+            GOOGLE_TRANSLATE_API_KEY.substring(
+              GOOGLE_TRANSLATE_API_KEY.length - 4
+            )
+          : "NOT SET"
+      }`
+    );
+    console.log(
+      `🔍 [TRANSLATE] API Key contains spaces: ${
+        GOOGLE_TRANSLATE_API_KEY
+          ? GOOGLE_TRANSLATE_API_KEY.includes(" ")
+          : "NOT SET"
+      }`
+    );
+    console.log(
+      `🔍 [TRANSLATE] API Key contains quotes: ${
+        GOOGLE_TRANSLATE_API_KEY
+          ? GOOGLE_TRANSLATE_API_KEY.includes('"') ||
+            GOOGLE_TRANSLATE_API_KEY.includes("'")
+          : "NOT SET"
+      }`
+    );
+    console.log(
+      `🔍 [TRANSLATE] API Key trimmed length: ${
+        GOOGLE_TRANSLATE_API_KEY
+          ? GOOGLE_TRANSLATE_API_KEY.trim().length
+          : "NOT SET"
+      }`
+    );
+
+    // Google Translate API supports multiple texts in a single request
+    const params = new URLSearchParams({
+      key: GOOGLE_TRANSLATE_API_KEY,
+      target: targetLanguage,
+      format: "text",
+    });
+
+    if (sourceLanguage && sourceLanguage !== "auto") {
+      params.append("source", sourceLanguage);
+    }
+
+    // Add all texts as separate 'q' parameters
+    texts.forEach((text, index) => {
+      if (text && text.trim()) {
+        params.append("q", text.trim());
+        console.log(
+          `🔍 [TRANSLATION] Added text ${index + 1}: "${text.trim()}"`
+        );
+      }
+    });
+
+    console.log(
+      `🔍 [TRANSLATION] Total params: ${
+        params.toString().split("&").length
+      } parameters`
+    );
+    console.log(
+      `🔍 [TRANSLATION] Params preview: ${params
+        .toString()
+        .substring(0, 200)}...`
+    );
+
+    console.log(
+      `🔍 [TRANSLATION] Batch API Request URL: ${GOOGLE_TRANSLATE_BASE_URL}?${params
+        .toString()
+        .replace(GOOGLE_TRANSLATE_API_KEY, "API_KEY_HIDDEN")}`
+    );
+
+    console.log(`🔍 [TRANSLATION] About to make API call...`);
+
+    const response = await axios.post(
+      `${GOOGLE_TRANSLATE_BASE_URL}?${params.toString()}`
+    );
+
+    console.log(
+      `🔍 [TRANSLATION] Batch API Response status: ${response.status}`
+    );
+    console.log(
+      `🔍 [TRANSLATION] Batch API Response data:`,
+      JSON.stringify(response.data, null, 2)
+    );
+
+    if (
+      response.data &&
+      response.data.data &&
+      response.data.data.translations
+    ) {
+      const translatedTexts = response.data.data.translations.map(
+        (t) => t.translatedText
+      );
+      console.log(
+        `✅ [TRANSLATION] Successfully translated ${translatedTexts.length} texts`
+      );
+      return translatedTexts;
+    } else {
+      console.warn(
+        `⚠️ [TRANSLATE] No translation results for ${texts.length} texts`
+      );
+      console.warn(`🔍 [TRANSLATION] Batch response structure:`, response.data);
+      return texts;
+    }
+  } catch (error) {
+    console.error(
+      `❌ [TRANSLATION] Failed to translate ${texts.length} texts:`,
+      error.message
+    );
+
+    // Log detailed error information
+    if (error.response) {
+      console.error(
+        `🔍 [TRANSLATION] Error response status: ${error.response.status}`
+      );
+      console.error(
+        `🔍 [TRANSLATION] Error response data:`,
+        JSON.stringify(error.response.data, null, 2)
+      );
+      console.error(
+        `🔍 [TRANSLATION] Error response headers:`,
+        JSON.stringify(error.response.headers, null, 2)
+      );
+    } else if (error.request) {
+      console.error(`🔍 [TRANSLATION] Error request:`, error.request);
+    } else {
+      console.error(`🔍 [TRANSLATION] Error details:`, error);
+    }
+
+    return texts; // Return original texts if translation fails
+  }
+}
 
 // Browser health check function
 async function isBrowserHealthy() {
@@ -579,18 +854,18 @@ app.post(
                 )}%`
               );
 
-              // Debug: Check what pages are currently visible
-              console.log(`      🔍 Checking visible pages before capture...`);
-              const visiblePages = await page.evaluate(() => {
-                const pageElements =
-                  document.querySelectorAll(".react-pdf__Page");
-                return Array.from(pageElements).map((el) => ({
-                  pageNumber: el.getAttribute("data-page-number"),
-                  visible: el.offsetParent !== null,
-                  rect: el.getBoundingClientRect(),
-                }));
-              });
-              console.log(`      📊 Visible pages:`, visiblePages);
+              // // Debug: Check what pages are currently visible
+              // console.log(`      🔍 Checking visible pages before capture...`);
+              // const visiblePages = await page.evaluate(() => {
+              //   const pageElements =
+              //     document.querySelectorAll(".react-pdf__Page");
+              //   return Array.from(pageElements).map((el) => ({
+              //     pageNumber: el.getAttribute("data-page-number"),
+              //     visible: el.offsetParent !== null,
+              //     rect: el.getBoundingClientRect(),
+              //   }));
+              // });
+              // console.log(`      📊 Visible pages:`, visiblePages);
 
               console.log(
                 `      🎯 [${new Date().toISOString()}] Starting capture for page ${pageNum}...`
@@ -725,6 +1000,57 @@ app.post(
                   console.log(
                     `   ✅ OCR processing successful (${operationDuration}ms)`
                   );
+
+                  // Debug: Log the actual OCR response structure
+                  console.log(`   🔍 [OCR Debug] Response structure:`);
+                  console.log(`      - Has data: ${!!ocrResult.data}`);
+                  console.log(
+                    `      - Data keys: ${Object.keys(
+                      ocrResult.data || {}
+                    ).join(", ")}`
+                  );
+                  console.log(
+                    `      - Has styled_layout: ${!!ocrResult.data
+                      ?.styled_layout}`
+                  );
+                  if (ocrResult.data?.styled_layout) {
+                    console.log(
+                      `      - Styled layout keys: ${Object.keys(
+                        ocrResult.data.styled_layout
+                      ).join(", ")}`
+                    );
+                    if (ocrResult.data.styled_layout.pages) {
+                      console.log(
+                        `      - Pages array length: ${ocrResult.data.styled_layout.pages.length}`
+                      );
+                      if (ocrResult.data.styled_layout.pages.length > 0) {
+                        const firstPage = ocrResult.data.styled_layout.pages[0];
+                        console.log(
+                          `      - First page keys: ${Object.keys(
+                            firstPage
+                          ).join(", ")}`
+                        );
+                        if (firstPage.entities) {
+                          console.log(
+                            `      - First page entities length: ${firstPage.entities.length}`
+                          );
+                          if (firstPage.entities.length > 0) {
+                            const firstEntity = firstPage.entities[0];
+                            console.log(
+                              `      - First entity keys: ${Object.keys(
+                                firstEntity
+                              ).join(", ")}`
+                            );
+                            console.log(
+                              `      - First entity text: "${
+                                firstEntity.text || "NO TEXT"
+                              }"`
+                            );
+                          }
+                        }
+                      }
+                    }
+                  }
 
                   results.push({
                     pageNumber: pageNum,
@@ -908,6 +1234,325 @@ app.post(
         });
       }
 
+      // Translate OCR results if translation is enabled
+      let translatedResults = results;
+
+      // Check for translation parameters (support both translateTo and desiredLanguage)
+      const targetLanguage =
+        req.body.translateTo ||
+        req.body.desiredLanguage ||
+        req.body.projectData?.desiredLanguage;
+
+      console.log(`🔍 [TRANSLATION] Translation check:`);
+      console.log(`   - translateTo: ${req.body.translateTo || "NOT SET"}`);
+      console.log(
+        `   - desiredLanguage: ${req.body.desiredLanguage || "NOT SET"}`
+      );
+      console.log(
+        `   - projectData.desiredLanguage: ${
+          req.body.projectData?.desiredLanguage || "NOT SET"
+        }`
+      );
+      console.log(`   - Target Language: ${targetLanguage || "NOT SET"}`);
+      console.log(
+        `   - GOOGLE_TRANSLATE_API_KEY: ${
+          GOOGLE_TRANSLATE_API_KEY ? "SET" : "NOT SET"
+        }`
+      );
+      console.log(
+        `   - Translation enabled: ${!!(
+          targetLanguage && GOOGLE_TRANSLATE_API_KEY
+        )}`
+      );
+
+      // Debug request body
+      console.log(`🔍 [REQUEST DEBUG] Request body analysis:`);
+      console.log(
+        `   - req.body keys: ${Object.keys(req.body || {}).join(", ")}`
+      );
+      console.log(`   - req.body content:`, JSON.stringify(req.body, null, 2));
+      console.log(
+        `   - req.headers content-type: ${req.headers["content-type"]}`
+      );
+
+      if (targetLanguage && GOOGLE_TRANSLATE_API_KEY) {
+        try {
+          console.log(
+            `🌐 [TRANSLATION] Starting translation of OCR results to ${targetLanguage}...`
+          );
+
+          // Extract all text from OCR results for translation
+          const allTexts = [];
+          const textMap = new Map(); // Map to track original text -> translated text
+
+          console.log(
+            `🔍 [TRANSLATION] Analyzing ${results.length} OCR results for text extraction...`
+          );
+
+          results.forEach((result, resultIndex) => {
+            console.log(
+              `   📄 [TRANSLATION] Analyzing result ${resultIndex + 1}:`
+            );
+            console.log(
+              `      - Page: ${result.pageNumber}, View: ${result.viewType}`
+            );
+            console.log(
+              `      - Has extractedText: ${!!result.extractedText}, Length: ${
+                result.extractedText?.length || 0
+              }`
+            );
+            console.log(`      - Has ocrResult: ${!!result.ocrResult}`);
+            console.log(
+              `      - Has styled_layout: ${!!result.ocrResult?.styled_layout}`
+            );
+
+            // Extract text from extractedText array
+            if (result.extractedText && result.extractedText.length > 0) {
+              result.extractedText.forEach((textItem, textIndex) => {
+                if (textItem.text && textItem.text.trim()) {
+                  const text = textItem.text.trim();
+                  allTexts.push(text);
+                  textMap.set(text, null);
+                  console.log(`      - Text ${textIndex + 1}: "${text}"`);
+                }
+              });
+            }
+
+            // Extract text from styled_layout entities (this is what the frontend actually uses)
+            if (result.ocrResult && result.ocrResult.styled_layout) {
+              if (
+                result.ocrResult.styled_layout.entities &&
+                result.ocrResult.styled_layout.entities.length > 0
+              ) {
+                console.log(
+                  `      - Found ${result.ocrResult.styled_layout.entities.length} entities in styled_layout`
+                );
+                result.ocrResult.styled_layout.entities.forEach(
+                  (entity, entityIndex) => {
+                    if (entity.text && entity.text.trim()) {
+                      const text = entity.text.trim();
+                      if (!textMap.has(text)) {
+                        // Avoid duplicates
+                        allTexts.push(text);
+                        textMap.set(text, null);
+                        console.log(
+                          `      - Entity ${entityIndex + 1}: "${text}"`
+                        );
+                      }
+                    }
+                  }
+                );
+              }
+
+              if (
+                result.ocrResult.styled_layout.pages &&
+                result.ocrResult.styled_layout.pages.length > 0
+              ) {
+                console.log(
+                  `      - Found ${result.ocrResult.styled_layout.pages.length} pages in styled_layout`
+                );
+                result.ocrResult.styled_layout.pages.forEach(
+                  (page, pageIndex) => {
+                    if (page.entities && page.entities.length > 0) {
+                      console.log(
+                        `      - Page ${pageIndex + 1} has ${
+                          page.entities.length
+                        } entities`
+                      );
+                      page.entities.forEach((entity, entityIndex) => {
+                        if (entity.text && entity.text.trim()) {
+                          const text = entity.text.trim();
+                          if (!textMap.has(text)) {
+                            // Avoid duplicates
+                            allTexts.push(text);
+                            textMap.set(text, null);
+                            console.log(
+                              `      - Page ${pageIndex + 1} Entity ${
+                                entityIndex + 1
+                              }: "${text}"`
+                            );
+                          }
+                        }
+                      });
+                    }
+                  }
+                );
+              }
+            }
+          });
+
+          if (allTexts.length > 0) {
+            console.log(
+              `🌐 [TRANSLATION] Found ${allTexts.length} texts to translate:`
+            );
+            allTexts.forEach((text, index) => {
+              console.log(`   ${index + 1}. "${text}"`);
+            });
+
+            console.log(`🌐 [TRANSLATION] Starting batch translation...`);
+
+            // Translate all texts in batch
+            const translatedTexts = await translateMultipleTexts(
+              allTexts,
+              targetLanguage,
+              req.body.translateFrom ||
+                req.body.projectData?.sourceLanguage ||
+                "auto"
+            );
+
+            console.log(
+              `🌐 [TRANSLATION] Translation completed, updating text map...`
+            );
+
+            // Update the text map with translations
+            allTexts.forEach((originalText, index) => {
+              const translatedText = translatedTexts[index];
+              textMap.set(originalText, translatedText);
+              console.log(`   "${originalText}" → "${translatedText}"`);
+            });
+
+            // Create translated results
+            translatedResults = results.map((result) => {
+              const translatedResult = { ...result };
+
+              if (result.extractedText && result.extractedText.length > 0) {
+                translatedResult.extractedText = result.extractedText.map(
+                  (textItem) => ({
+                    ...textItem,
+                    text: textMap.get(textItem.text.trim()) || textItem.text,
+                    originalText: textItem.text, // Keep original text for reference
+                    translated: true,
+                    targetLanguage: targetLanguage,
+                  })
+                );
+              }
+
+              // Also translate styled_layout if it exists
+              if (result.ocrResult && result.ocrResult.styled_layout) {
+                translatedResult.ocrResult = { ...result.ocrResult };
+
+                // Translate entities in styled_layout
+                if (result.ocrResult.styled_layout.entities) {
+                  translatedResult.ocrResult.styled_layout.entities =
+                    result.ocrResult.styled_layout.entities.map((entity) => {
+                      if (entity.text && textMap.has(entity.text.trim())) {
+                        return {
+                          ...entity,
+                          text: textMap.get(entity.text.trim()),
+                          originalText: entity.text,
+                          translated: true,
+                          targetLanguage: targetLanguage,
+                        };
+                      }
+                      return entity;
+                    });
+                }
+
+                // Translate pages if they exist
+                if (result.ocrResult.styled_layout.pages) {
+                  translatedResult.ocrResult.styled_layout.pages =
+                    result.ocrResult.styled_layout.pages.map((page) => {
+                      if (page.entities) {
+                        page.entities = page.entities.map((entity) => {
+                          if (entity.text && textMap.has(entity.text.trim())) {
+                            return {
+                              ...entity,
+                              text: textMap.get(entity.text.trim()),
+                              originalText: entity.text,
+                              translated: true,
+                              targetLanguage: targetLanguage,
+                            };
+                          }
+                          return entity;
+                        });
+                      }
+                      return page;
+                    });
+                }
+              }
+
+              return translatedResult;
+            });
+
+            console.log(
+              `✅ [TRANSLATION] Successfully translated ${allTexts.length} texts to ${targetLanguage}`
+            );
+
+            // Log what was actually translated in the final results
+            console.log(`🔍 [TRANSLATION] Final translation summary:`);
+            translatedResults.forEach((result, resultIndex) => {
+              console.log(
+                `   📄 Result ${resultIndex + 1} (Page ${
+                  result.pageNumber
+                }, View ${result.viewType}):`
+              );
+
+              if (result.extractedText && result.extractedText.length > 0) {
+                console.log(
+                  `      - ExtractedText: ${result.extractedText.length} items`
+                );
+                result.extractedText.forEach((textItem, textIndex) => {
+                  if (textItem.translated) {
+                    console.log(
+                      `         ${textIndex + 1}. "${
+                        textItem.originalText
+                      }" → "${textItem.text}"`
+                    );
+                  }
+                });
+              }
+
+              if (result.ocrResult?.styled_layout?.entities) {
+                console.log(
+                  `      - StyledLayout Entities: ${result.ocrResult.styled_layout.entities.length} items`
+                );
+                result.ocrResult.styled_layout.entities.forEach(
+                  (entity, entityIndex) => {
+                    if (entity.translated) {
+                      console.log(
+                        `         ${entityIndex + 1}. "${
+                          entity.originalText
+                        }" → "${entity.text}"`
+                      );
+                    }
+                  }
+                );
+              }
+            });
+          } else {
+            console.log(`ℹ️ [TRANSLATION] No texts found to translate`);
+            console.log(`🔍 [TRANSLATION] Debug info:`);
+            results.forEach((result, resultIndex) => {
+              console.log(`   Result ${resultIndex + 1}:`);
+              console.log(
+                `      - extractedText: ${
+                  result.extractedText?.length || 0
+                } items`
+              );
+              console.log(
+                `      - styled_layout.entities: ${
+                  result.ocrResult?.styled_layout?.entities?.length || 0
+                } items`
+              );
+              console.log(
+                `      - styled_layout.pages: ${
+                  result.ocrResult?.styled_layout?.pages?.length || 0
+                } pages`
+              );
+            });
+          }
+        } catch (translationError) {
+          console.error(
+            `❌ [TRANSLATION] Failed to translate OCR results:`,
+            translationError.message
+          );
+          console.log(
+            `⚠️ [TRANSLATION] Returning original (untranslated) results`
+          );
+          translatedResults = results;
+        }
+      }
+
       const response = {
         success: true,
         data: {
@@ -915,12 +1560,34 @@ app.post(
           totalPages: pagesToProcess.length,
           totalViews: viewsToProcess.length,
           processedPages: results.length,
-          results,
+          results: translatedResults, // Use translated results
+          originalResults: results, // Keep original results for reference
           errors,
           startTime: new Date(startTime).toISOString(),
           endTime: new Date(endTime).toISOString(),
           duration,
           successRate: Math.round((results.length / totalOperations) * 100),
+          translation: targetLanguage
+            ? {
+                targetLanguage: targetLanguage,
+                sourceLanguage:
+                  req.body.translateFrom ||
+                  req.body.projectData?.sourceLanguage ||
+                  "auto",
+                translated: true,
+                totalTextsTranslated:
+                  translatedResults !== results
+                    ? translatedResults.reduce(
+                        (total, result) =>
+                          total +
+                          (result.extractedText
+                            ? result.extractedText.length
+                            : 0),
+                        0
+                      )
+                    : 0,
+              }
+            : null,
         },
       };
 
@@ -1671,53 +2338,64 @@ function extractTextFromStyledLayout(styledLayout) {
   if (!styledLayout) return [];
 
   const textElements = [];
+  console.log(`🔍 [Text Extraction] Analyzing styled_layout structure...`);
+  console.log(`   - Keys: ${Object.keys(styledLayout).join(", ")}`);
 
-  function traverse(node) {
-    if (node.type === "text") {
-      textElements.push({
-        text: node.text,
-        boundingBox: node.boundingBox,
-        confidence: node.confidence,
-        pageNumber: node.pageNumber,
-        viewType: node.viewType,
-      });
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        traverse(child);
+  // Handle the actual OCR response structure
+  if (styledLayout.pages && Array.isArray(styledLayout.pages)) {
+    console.log(`   - Found ${styledLayout.pages.length} pages`);
+
+    styledLayout.pages.forEach((page, pageIndex) => {
+      console.log(`   - Page ${pageIndex + 1}:`);
+      console.log(`     - Keys: ${Object.keys(page).join(", ")}`);
+
+      if (page.entities && Array.isArray(page.entities)) {
+        console.log(`     - Found ${page.entities.length} entities`);
+
+        page.entities.forEach((entity, entityIndex) => {
+          if (entity.text && entity.text.trim()) {
+            console.log(`     - Entity ${entityIndex + 1}: "${entity.text}"`);
+            textElements.push({
+              text: entity.text.trim(),
+              boundingBox: entity.bounding_box || entity.boundingBox,
+              confidence: entity.confidence,
+              pageNumber: pageIndex + 1,
+              viewType: "original",
+              entity: entity, // Keep the full entity for reference
+            });
+          }
+        });
       }
-    }
+    });
   }
 
-  traverse(styledLayout);
+  // Also check for direct entities (fallback)
+  if (styledLayout.entities && Array.isArray(styledLayout.entities)) {
+    console.log(`   - Found ${styledLayout.entities.length} direct entities`);
+
+    styledLayout.entities.forEach((entity, entityIndex) => {
+      if (entity.text && entity.text.trim()) {
+        console.log(`   - Direct Entity ${entityIndex + 1}: "${entity.text}"`);
+        textElements.push({
+          text: entity.text.trim(),
+          boundingBox: entity.bounding_box || entity.boundingBox,
+          confidence: entity.confidence,
+          pageNumber: 1, // Default page number
+          viewType: "original",
+          entity: entity, // Keep the full entity for reference
+        });
+      }
+    });
+  }
+
+  console.log(`   - Total text elements extracted: ${textElements.length}`);
   return textElements;
 }
 
 // Function to extract text elements from styled_layout
 function extractTextElements(styledLayout) {
-  if (!styledLayout) return [];
-
-  const textElements = [];
-
-  function traverse(node) {
-    if (node.type === "text") {
-      textElements.push({
-        text: node.text,
-        boundingBox: node.boundingBox,
-        confidence: node.confidence,
-        pageNumber: node.pageNumber,
-        viewType: node.viewType,
-      });
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        traverse(child);
-      }
-    }
-  }
-
-  traverse(styledLayout);
-  return textElements;
+  // Use the same logic as extractTextFromStyledLayout for consistency
+  return extractTextFromStyledLayout(styledLayout);
 }
 
 // Function to extract layout sections from styled_layout
