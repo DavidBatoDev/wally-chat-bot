@@ -36,6 +36,75 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Initialize Puppeteer browser
 let browser;
+let browserRestartCount = 0;
+const MAX_BROWSER_RESTARTS = 5;
+const BROWSER_RESTART_DELAY = 2000; // 2 seconds
+
+// Browser health check function
+async function isBrowserHealthy() {
+  try {
+    if (!browser) return false;
+
+    // Check if browser is still connected
+    if (!browser.isConnected()) return false;
+
+    // Try to create a test page to verify browser is responsive
+    const testPage = await browser.newPage();
+    await testPage.close();
+
+    return true;
+  } catch (error) {
+    console.log(`🔍 Browser health check failed: ${error.message}`);
+    return false;
+  }
+}
+
+// Function to restart browser
+async function restartBrowser() {
+  try {
+    browserRestartCount++;
+
+    if (browserRestartCount > MAX_BROWSER_RESTARTS) {
+      console.error(
+        `💥 Maximum browser restart attempts (${MAX_BROWSER_RESTARTS}) exceeded. Exiting...`
+      );
+      process.exit(1);
+    }
+
+    console.log(
+      `🔄 [${new Date().toISOString()}] Restarting Puppeteer browser (attempt ${browserRestartCount}/${MAX_BROWSER_RESTARTS})...`
+    );
+
+    // Close existing browser if it exists
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (error) {
+        console.log(`⚠️ Error closing old browser: ${error.message}`);
+      }
+      browser = null;
+    }
+
+    // Wait before restarting
+    await new Promise((resolve) => setTimeout(resolve, BROWSER_RESTART_DELAY));
+
+    // Reinitialize browser
+    await initializeBrowser();
+
+    console.log(`✅ Browser restarted successfully`);
+  } catch (error) {
+    console.error(`💥 Failed to restart browser: ${error.message}`);
+    throw error;
+  }
+}
+
+// Function to ensure browser is healthy, restart if needed
+async function ensureBrowserHealth() {
+  if (!(await isBrowserHealthy())) {
+    console.log(`⚠️ Browser is not healthy, restarting...`);
+    await restartBrowser();
+  }
+}
 
 async function initializeBrowser() {
   try {
@@ -59,8 +128,33 @@ async function initializeBrowser() {
         "--disable-background-timer-throttling",
         "--disable-backgrounding-occluded-windows",
         "--disable-renderer-backgrounding",
+        "--disable-features=VizDisplayCompositor", // Add this for better stability
+        "--disable-ipc-flooding-protection", // Add this for better stability
+        "--disable-extensions", // Disable extensions for stability
+        "--disable-plugins", // Disable plugins for stability
+        "--disable-default-apps", // Disable default apps
+        "--disable-sync", // Disable sync
+        "--disable-translate", // Disable translate
+        "--disable-web-security", // Disable web security for capture
+        "--allow-running-insecure-content", // Allow insecure content for capture
+        "--disable-features=TranslateUI", // Disable translate UI
+        "--disable-component-extensions-with-background-pages", // Disable background pages
+        "--disable-background-networking", // Disable background networking
+        "--disable-background-timer-throttling", // Disable timer throttling
+        "--disable-client-side-phishing-detection", // Disable phishing detection
+        "--disable-default-apps", // Disable default apps
+        "--disable-domain-reliability", // Disable domain reliability
+        "--disable-features=AudioServiceOutOfProcess", // Disable audio service
+        "--disable-hang-monitor", // Disable hang monitor
+        "--disable-prompt-on-repost", // Disable repost prompt
+        "--disable-renderer-backgrounding", // Disable renderer backgrounding
+        "--disable-sync-preferences", // Disable sync preferences
+        "--metrics-recording-only", // Metrics recording only
+        "--no-default-browser-check", // No default browser check
+        "--safebrowsing-disable-auto-update", // Disable safebrowsing auto-update
       ],
       defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: 2 },
+      timeout: 30000, // 30 second timeout for browser launch
     });
 
     console.log(`✅ Puppeteer browser initialized successfully`);
@@ -79,6 +173,9 @@ async function initializeBrowser() {
     });
     await testPage.close();
     console.log(`✅ Browser functionality test passed`);
+
+    // Reset restart count on successful initialization
+    browserRestartCount = 0;
   } catch (error) {
     console.error(
       `\n💥 [${new Date().toISOString()}] Failed to initialize Puppeteer browser:`,
@@ -86,7 +183,15 @@ async function initializeBrowser() {
     );
     console.error(`   Error details:`, error.message);
     console.error(`   Stack trace:`, error.stack);
-    process.exit(1);
+
+    // Try to restart browser if initialization fails
+    if (browserRestartCount < MAX_BROWSER_RESTARTS) {
+      console.log(`🔄 Attempting to restart browser...`);
+      await restartBrowser();
+    } else {
+      console.error(`💥 Maximum restart attempts exceeded, exiting...`);
+      process.exit(1);
+    }
   }
 }
 
@@ -96,7 +201,48 @@ app.get("/health", (req, res) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     browser: browser ? "initialized" : "not initialized",
+    browserHealth: browser
+      ? {
+          isConnected: browser.isConnected(),
+          processRunning: browser.process() ? "running" : "not running",
+          restartCount: browserRestartCount,
+          maxRestarts: MAX_BROWSER_RESTARTS,
+        }
+      : null,
   });
+});
+
+// Manual browser restart endpoint
+app.post("/restart-browser", async (req, res) => {
+  try {
+    console.log(
+      `🔄 [${new Date().toISOString()}] Manual browser restart requested`
+    );
+
+    if (!browser) {
+      return res.json({
+        success: false,
+        message: "No browser instance to restart",
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    await restartBrowser();
+
+    res.json({
+      success: true,
+      message: "Browser restarted successfully",
+      timestamp: new Date().toISOString(),
+      restartCount: browserRestartCount,
+    });
+  } catch (error) {
+    console.error(`💥 Manual browser restart failed: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Service status endpoint
@@ -254,32 +400,116 @@ app.post(
       let currentOperation = 0;
       const totalOperations = pagesToProcess.length * viewsToProcess.length;
 
+      // Ensure browser is healthy before starting capture
+      await ensureBrowserHealth();
+
       // Create a new page for this capture session
       console.log(
         `\n🌐 [${new Date().toISOString()}] Creating new Puppeteer page...`
       );
-      const page = await browser.newPage();
-      console.log(`✅ Puppeteer page created successfully`);
+
+      let page;
+      try {
+        page = await browser.newPage();
+        console.log(`✅ Puppeteer page created successfully`);
+      } catch (error) {
+        console.error(`💥 Failed to create page: ${error.message}`);
+
+        // If page creation fails, try to restart browser and retry
+        if (
+          error.message.includes("Connection closed") ||
+          error.message.includes("Protocol error")
+        ) {
+          console.log(
+            `🔄 Connection error detected, restarting browser and retrying...`
+          );
+          await restartBrowser();
+          page = await browser.newPage();
+          console.log(`✅ Puppeteer page created successfully after restart`);
+        } else {
+          throw error;
+        }
+      }
 
       try {
-        // Set viewport and navigate to capture URL
+        // Set viewport and navigate to capture URL with retry logic
         console.log(
           `\n🖥️  [${new Date().toISOString()}] Setting viewport and navigating...`
         );
         console.log(`   Viewport: 1920x1080 with 2x device scale factor`);
 
-        await page.setViewport({
-          width: 1920,
-          height: 1080,
-          deviceScaleFactor: 2,
-        });
+        // Retry function for page operations
+        const retryPageOperation = async (
+          operation,
+          operationName,
+          maxRetries = 3
+        ) => {
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              await operation();
+              return;
+            } catch (error) {
+              console.error(
+                `❌ ${operationName} failed (attempt ${attempt}/${maxRetries}): ${error.message}`
+              );
+
+              if (attempt === maxRetries) {
+                throw error;
+              }
+
+              // Check if it's a connection error
+              if (
+                error.message.includes("Connection closed") ||
+                error.message.includes("Protocol error")
+              ) {
+                console.log(
+                  `🔄 Connection error detected, restarting browser and retrying...`
+                );
+                await restartBrowser();
+
+                // Recreate the page after browser restart
+                try {
+                  await page.close();
+                } catch (closeError) {
+                  console.log(
+                    `⚠️ Error closing old page: ${closeError.message}`
+                  );
+                }
+
+                page = await browser.newPage();
+                console.log(`✅ New page created after browser restart`);
+              }
+
+              // Wait before retry
+              await new Promise((resolve) =>
+                setTimeout(resolve, 1000 * attempt)
+              );
+            }
+          }
+        };
+
+        // Set viewport with retry
+        await retryPageOperation(
+          () =>
+            page.setViewport({
+              width: 1920,
+              height: 1080,
+              deviceScaleFactor: 2,
+            }),
+          "Setting viewport"
+        );
         console.log(`✅ Viewport set successfully`);
 
+        // Navigate with retry
         console.log(`   Navigating to: ${captureUrl}`);
-        await page.goto(captureUrl, {
-          waitUntil: "networkidle2",
-          timeout: 60000,
-        });
+        await retryPageOperation(
+          () =>
+            page.goto(captureUrl, {
+              waitUntil: "networkidle2",
+              timeout: 60000,
+            }),
+          "Navigation"
+        );
         console.log(`✅ Navigation completed successfully`);
 
         // Wait for content to load
@@ -509,8 +739,8 @@ app.post(
                         const filePath = path.join(debugDir, latestFile);
                         console.log(
                           `      - View Image: ${filePath} (open this file to see what was sent to OCR)`
-                  );
-                } else {
+                        );
+                      } else {
                         console.log(
                           `      - View Image: ❌ No saved file found`
                         );
@@ -622,10 +852,46 @@ app.post(
         `\n💥 [${new Date().toISOString()}] Fatal error in OCR capture:`,
         error
       );
+
+      // Ensure page is closed even if there's an error
+      if (page) {
+        try {
+          await page.close();
+          console.log(`✅ Puppeteer page closed after error`);
+        } catch (closeError) {
+          console.log(
+            `⚠️ Error closing page after error: ${closeError.message}`
+          );
+        }
+      }
+
+      // Check if it's a connection error and try to restart browser
+      if (
+        error.message.includes("Connection closed") ||
+        error.message.includes("Protocol error")
+      ) {
+        console.log(
+          `🔄 Connection error detected, attempting browser restart...`
+        );
+        try {
+          await restartBrowser();
+          console.log(
+            `✅ Browser restarted successfully after connection error`
+          );
+        } catch (restartError) {
+          console.error(
+            `💥 Failed to restart browser after connection error: ${restartError.message}`
+          );
+        }
+      }
+
       res.status(500).json({
         success: false,
         error: error.message || "Internal server error",
         timestamp: new Date().toISOString(),
+        browserRestarted:
+          error.message.includes("Connection closed") ||
+          error.message.includes("Protocol error"),
       });
     }
   }
@@ -646,34 +912,77 @@ async function capturePageView(
       `      🔍 [${new Date().toISOString()}] Starting page capture...`
     );
 
-    // Wait for the specific page to be visible
+    // Check if page is still valid before proceeding
+    if (!page || page.isClosed()) {
+      throw new Error("Page is closed or invalid");
+    }
+
+    // Wait for the specific page to be visible with retry logic
     console.log(
       `      ⏳ Waiting for page element with data-page-number="${pageNumber}"...`
     );
-    await page.waitForSelector(
-      `.react-pdf__Page[data-page-number="${pageNumber}"]`,
-      { timeout: 10000 }
-    );
+
+    let pageElementFound = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await page.waitForSelector(
+          `.react-pdf__Page[data-page-number="${pageNumber}"]`,
+          { timeout: 10000 }
+        );
+        pageElementFound = true;
+        break;
+      } catch (error) {
+        console.log(
+          `      ⚠️ Page element wait attempt ${attempt}/3 failed: ${error.message}`
+        );
+
+        if (attempt === 3) {
+          throw new Error(
+            `Failed to find page element after 3 attempts: ${error.message}`
+          );
+        }
+
+        // Wait before retry
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    if (!pageElementFound) {
+      throw new Error("Page element not found after retries");
+    }
+
     console.log(`      ✅ Page element found successfully`);
 
-    // Get page dimensions
+    // Get page dimensions with error handling
     console.log(`      📏 Getting page dimensions...`);
-    const pageDimensions = await page.evaluate(
-      (pageNum, view) => {
-        const pageElement = document.querySelector(
-          `.react-pdf__Page[data-page-number="${pageNum}"]`
-        );
-        if (!pageElement) return null;
+    let pageDimensions;
 
-        const rect = pageElement.getBoundingClientRect();
-        return {
-          width: rect.width,
-          height: rect.height,
-        };
-      },
-      pageNumber,
-      viewType
-    );
+    try {
+      pageDimensions = await page.evaluate(
+        (pageNum, view) => {
+          const pageElement = document.querySelector(
+            `.react-pdf__Page[data-page-number="${pageNum}"]`
+          );
+          if (!pageElement) return null;
+
+          const rect = pageElement.getBoundingClientRect();
+          return {
+            width: rect.width,
+            height: rect.height,
+          };
+        },
+        pageNumber,
+        viewType
+      );
+    } catch (evaluateError) {
+      console.log(
+        `      ❌ Failed to evaluate page dimensions: ${evaluateError.message}`
+      );
+      return {
+        success: false,
+        error: `Page evaluation failed: ${evaluateError.message}`,
+      };
+    }
 
     if (!pageDimensions) {
       console.log(`      ❌ Page dimensions not found`);
@@ -712,26 +1021,26 @@ async function capturePageView(
 
         // Try dom-to-image first
         const imageDataUrl = await page.evaluate(
-      async (pageNum, view) => {
-        const pageElement = document.querySelector(
-          `.react-pdf__Page[data-page-number="${pageNum}"]`
-        );
-        if (!pageElement) throw new Error("Page element not found");
+          async (pageNum, view) => {
+            const pageElement = document.querySelector(
+              `.react-pdf__Page[data-page-number="${pageNum}"]`
+            );
+            if (!pageElement) throw new Error("Page element not found");
 
             // Use dom-to-image for capture
-        if (window.domtoimage && window.domtoimage.toPng) {
-          try {
+            if (window.domtoimage && window.domtoimage.toPng) {
+              try {
                 console.log(`      🎯 Using dom-to-image for capture...`);
-            const dataUrl = await window.domtoimage.toPng(pageElement, {
-              quality: 1.0,
-              bgcolor: "#ffffff",
-              width: pageElement.offsetWidth,
-              height: pageElement.offsetHeight,
-            });
+                const dataUrl = await window.domtoimage.toPng(pageElement, {
+                  quality: 1.0,
+                  bgcolor: "#ffffff",
+                  width: pageElement.offsetWidth,
+                  height: pageElement.offsetHeight,
+                });
 
                 // Return the data URL as a string (no Buffer conversion in browser)
                 return dataUrl;
-          } catch (error) {
+              } catch (error) {
                 throw new Error(
                   `dom-to-image capture failed: ${error.message}`
                 );
@@ -1269,7 +1578,12 @@ function extractLayoutSections(styledLayout) {
 process.on("SIGINT", async () => {
   console.log("Shutting down gracefully...");
   if (browser) {
-    await browser.close();
+    try {
+      await browser.close();
+      console.log("✅ Browser closed successfully");
+    } catch (error) {
+      console.log(`⚠️ Error closing browser: ${error.message}`);
+    }
   }
   process.exit(0);
 });
@@ -1277,9 +1591,52 @@ process.on("SIGINT", async () => {
 process.on("SIGTERM", async () => {
   console.log("Shutting down gracefully...");
   if (browser) {
-    await browser.close();
+    try {
+      await browser.close();
+      console.log("✅ Browser closed successfully");
+    } catch (error) {
+      console.log(`⚠️ Error closing browser: ${error.message}`);
+    }
   }
   process.exit(0);
+});
+
+// Handle uncaught exceptions
+process.on("uncaughtException", async (error) => {
+  console.error("💥 Uncaught Exception:", error);
+  console.error("Stack trace:", error.stack);
+
+  if (browser) {
+    try {
+      await browser.close();
+      console.log("✅ Browser closed after uncaught exception");
+    } catch (closeError) {
+      console.log(
+        `⚠️ Error closing browser after exception: ${closeError.message}`
+      );
+    }
+  }
+
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on("unhandledRejection", async (reason, promise) => {
+  console.error("💥 Unhandled Promise Rejection:", reason);
+  console.error("Promise:", promise);
+
+  if (browser) {
+    try {
+      await browser.close();
+      console.log("✅ Browser closed after unhandled rejection");
+    } catch (closeError) {
+      console.log(
+        `⚠️ Error closing browser after rejection: ${closeError.message}`
+      );
+    }
+  }
+
+  process.exit(1);
 });
 
 // Start server
@@ -1293,6 +1650,36 @@ async function startServer() {
   console.log(`   Node version: ${process.version}`);
 
   await initializeBrowser();
+
+  // Start periodic browser health monitoring
+  const healthCheckInterval = setInterval(async () => {
+    try {
+      if (!(await isBrowserHealthy())) {
+        console.log(
+          `⚠️ [${new Date().toISOString()}] Periodic health check failed, restarting browser...`
+        );
+        await restartBrowser();
+      } else {
+        // Log browser health status periodically (every 10th check to avoid spam)
+        if (Math.random() < 0.1) {
+          console.log(
+            `🔍 [${new Date().toISOString()}] Browser health check passed - Browser is healthy`
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        `💥 [${new Date().toISOString()}] Periodic health check error: ${
+          error.message
+        }`
+      );
+    }
+  }, 30000); // Check every 30 seconds
+
+  // Cleanup interval on process exit
+  process.on("exit", () => {
+    clearInterval(healthCheckInterval);
+  });
 
   app.listen(PORT, () => {
     console.log(`\n✅ OCR Capture Service running successfully!`);
@@ -1308,6 +1695,7 @@ async function startServer() {
       `\n🔍 Monitor the service in real-time using the debug endpoints above`
     );
     console.log(`📊 Service is ready to capture and process OCR requests\n`);
+    console.log(`🔍 Browser health monitoring active (every 30 seconds)\n`);
   });
 }
 
