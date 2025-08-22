@@ -775,33 +775,278 @@ app.post(
         );
         console.log(`✅ Viewport set successfully`);
 
-        // Navigate with retry
+        // Navigate with retry and enhanced network handling
         console.log(`   Navigating to: ${captureUrl}`);
-        await retryPageOperation(
-          () =>
-            page.goto(captureUrl, {
-              waitUntil: "networkidle2",
-              timeout: 60000,
-            }),
-          "Navigation"
-        );
+        await retryPageOperation(async () => {
+          // Set longer timeout for slow networks
+          const response = await page.goto(captureUrl, {
+            waitUntil: "networkidle2",
+            timeout: 120000, // 2 minutes for slow networks
+          });
+
+          // Check if the page loaded successfully
+          if (!response || !response.ok()) {
+            throw new Error(
+              `Page load failed with status: ${response?.status()}`
+            );
+          }
+
+          // Additional check for common error pages
+          const pageTitle = await page.title();
+          if (
+            pageTitle.includes("Error") ||
+            pageTitle.includes("Not Found") ||
+            pageTitle.includes("Timeout")
+          ) {
+            throw new Error(`Page shows error: ${pageTitle}`);
+          }
+
+          return response;
+        }, "Navigation");
         console.log(`✅ Navigation completed successfully`);
 
-        // Wait for content to load
+        // Enhanced wait for content to load with multiple strategies
         console.log(
-          `\n⏳ [${new Date().toISOString()}] Waiting for content to load...`
+          `\n⏳ [${new Date().toISOString()}] Waiting for content to fully load...`
         );
-        console.log(`   Waiting 3 seconds for initial render...`);
-        await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        console.log(`   Looking for .document-wrapper selector...`);
+        // Strategy 1: Wait for network to be idle
+        console.log(`   🔄 Waiting for network to be idle...`);
+        await page.waitForNetworkIdle({
+          idleTime: 1000, // Wait 1 second of no network activity
+          timeout: 30000, // 30 second timeout
+        });
+        console.log(`✅ Network is idle`);
+
+        // Strategy 2: Wait for specific content selectors
+        console.log(`   🔍 Looking for .document-wrapper selector...`);
         await page.waitForSelector(".document-wrapper", { timeout: 30000 });
-        console.log(`✅ Document wrapper found and loaded`);
+        console.log(`✅ Document wrapper found`);
+
+        // Strategy 3: Wait for PDF content to be visible
+        console.log(`   📄 Looking for PDF content...`);
+        await page.waitForFunction(
+          () => {
+            const pdfPages = document.querySelectorAll(".react-pdf__Page");
+            return (
+              pdfPages.length > 0 &&
+              Array.from(pdfPages).some(
+                (page) => page.offsetWidth > 0 && page.offsetHeight > 0
+              )
+            );
+          },
+          { timeout: 30000 }
+        );
+        console.log(`✅ PDF content is visible`);
+
+        // Strategy 4: Quick check if content is already rendered
+        console.log(`   🔍 Checking if content is already rendered...`);
+
+        // First, check what's actually available right now
+        const currentContentStatus = await page.evaluate(() => {
+          const pdfPages = document.querySelectorAll(".react-pdf__Page");
+          const documentWrapper = document.querySelector(".document-wrapper");
+
+          return {
+            hasWrapper: !!documentWrapper,
+            pageCount: pdfPages.length,
+            pages: Array.from(pdfPages).map((page, index) => {
+              const canvas = page.querySelector("canvas");
+              const textContent = page.textContent || "";
+
+              return {
+                index,
+                pageNumber: page.getAttribute("data-page-number"),
+                hasDimensions:
+                  page.offsetWidth > 100 && page.offsetHeight > 100,
+                dimensions: {
+                  width: page.offsetWidth,
+                  height: page.offsetHeight,
+                },
+                hasCanvas: !!canvas,
+                canvasDimensions: canvas
+                  ? { width: canvas.width, height: canvas.height }
+                  : null,
+                textLength: textContent.trim().length,
+                isVisible:
+                  page.getBoundingClientRect().width > 0 &&
+                  page.getBoundingClientRect().height > 0,
+              };
+            }),
+          };
+        });
+
+        console.log(`   📊 Current content status:`, currentContentStatus);
+        console.log(
+          `   ℹ️ Note: textLength is 0 because PDF text is rendered in canvas, not as DOM text`
+        );
+
+        // If we already have good content, skip the complex waiting
+        // Note: PDF text is rendered in canvas, not as DOM text, so textLength will be 0
+        const hasGoodContent = currentContentStatus.pages.every(
+          (page) => page.hasDimensions && page.hasCanvas
+        );
+
+        // We need to wait for the PDF content to actually be rendered
+        // The pages exist but they don't have canvases yet because PDF content isn't rendered
+        console.log(`   ⏳ Waiting for PDF content to be rendered...`);
+
+        // Wait for the PDF viewer to actually start rendering content
+        let pdfContentRendered = false;
+        try {
+          await page.waitForFunction(
+            () => {
+              const pdfPages = document.querySelectorAll(".react-pdf__Page");
+              if (pdfPages.length === 0) return false;
+
+              // Check if at least one page has actual PDF content (canvas)
+              return Array.from(pdfPages).some((page) => {
+                const hasDimensions =
+                  page.offsetWidth > 100 && page.offsetHeight > 100;
+                const hasCanvas = page.querySelector("canvas");
+                return hasDimensions && hasCanvas;
+              });
+            },
+            { timeout: 45000 } // Give more time for PDF rendering
+          );
+          pdfContentRendered = true;
+          console.log(`   ✅ PDF content is now being rendered`);
+        } catch (timeoutError) {
+          console.log(
+            `   ⚠️ PDF content rendering timeout (${timeoutError.message}), proceeding with fallback...`
+          );
+        }
+
+        // Now wait specifically for our required pages to have canvases
+        const pagesToCheck = pagesToProcess.slice(0, 2); // Only check first 2 pages for now
+        const pagesWithCanvas = [];
+
+        for (const pageNum of pagesToCheck) {
+          try {
+            console.log(`   🔍 Waiting for page ${pageNum} to have canvas...`);
+            await page.waitForFunction(
+              (targetPageNum) => {
+                const pageElement = document.querySelector(
+                  `.react-pdf__Page[data-page-number="${targetPageNum}"]`
+                );
+                if (!pageElement) return false;
+
+                const hasDimensions =
+                  pageElement.offsetWidth > 100 &&
+                  pageElement.offsetHeight > 100;
+                const hasCanvas = pageElement.querySelector("canvas");
+
+                return hasDimensions && hasCanvas;
+              },
+              { timeout: 30000 }, // Increased timeout for PDF rendering
+              pageNum
+            );
+            pagesWithCanvas.push(pageNum);
+            console.log(`   ✅ Page ${pageNum} now has canvas`);
+          } catch (timeoutError) {
+            console.log(
+              `   ⚠️ Page ${pageNum} canvas timeout (${timeoutError.message}), will attempt capture anyway...`
+            );
+          }
+        }
+
+        if (pagesWithCanvas.length > 0) {
+          console.log(
+            `✅ ${pagesWithCanvas.length}/${pagesToCheck.length} pages have canvases, proceeding with capture`
+          );
+        } else {
+          console.log(
+            `⚠️ No pages have canvases yet, but proceeding with capture attempt as fallback`
+          );
+        }
+
+        // Brief wait for any final rendering
+        console.log(`   ⏳ Brief wait for final rendering...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        console.log(`✅ Ready for capture`);
 
         // Wait for PDF viewer to be ready
         console.log(`   Looking for PDF viewer...`);
         await page.waitForSelector(".react-pdf__Document", { timeout: 30000 });
         console.log(`✅ PDF viewer found and loaded`);
+
+        // Validate that the specific pages we need are ready (with fallback)
+        console.log(`   🔍 Validating required pages...`);
+        const contentValidation = await page.evaluate((requiredPages) => {
+          const documentWrapper = document.querySelector(".document-wrapper");
+          if (!documentWrapper) {
+            return { valid: false, reason: "Document wrapper not found" };
+          }
+
+          // Check only the pages we need
+          const requiredPagesReady = requiredPages.every((pageNum) => {
+            const pageElement = document.querySelector(
+              `.react-pdf__Page[data-page-number="${pageNum}"]`
+            );
+            if (!pageElement) return false;
+
+            const hasDimensions =
+              pageElement.offsetWidth > 100 && pageElement.offsetHeight > 100;
+            const hasCanvas = pageElement.querySelector("canvas");
+
+            return hasDimensions && hasCanvas;
+          });
+
+          // Fallback: if pages don't have canvases, check if they at least have dimensions
+          if (!requiredPagesReady) {
+            const pagesWithDimensions = requiredPages.every((pageNum) => {
+              const pageElement = document.querySelector(
+                `.react-pdf__Page[data-page-number="${pageNum}"]`
+              );
+              if (!pageElement) return false;
+
+              const hasDimensions =
+                pageElement.offsetWidth > 100 && pageElement.offsetHeight > 100;
+
+              return hasDimensions; // Don't require canvas for fallback
+            });
+
+            if (pagesWithDimensions) {
+              return {
+                valid: true,
+                requiredPages: requiredPages,
+                fallback: true, // Mark as fallback mode
+                reason: "Pages have dimensions but no canvases (fallback mode)",
+              };
+            }
+
+            return { valid: false, reason: "Required pages not ready" };
+          }
+
+          return {
+            valid: true,
+            requiredPages: requiredPages,
+            fallback: false,
+            wrapperDimensions: {
+              width: documentWrapper.offsetWidth,
+              height: documentWrapper.offsetHeight,
+            },
+          };
+        }, pagesToCheck);
+
+        if (!contentValidation.valid) {
+          throw new Error(
+            `Content validation failed: ${contentValidation.reason}`
+          );
+        }
+
+        console.log(`✅ Content validation passed:`);
+        console.log(
+          `   - Required pages: ${contentValidation.requiredPages.join(", ")}`
+        );
+        if (contentValidation.fallback) {
+          console.log(
+            `   ⚠️ Running in fallback mode (pages have dimensions but no canvases)`
+          );
+        }
+        console.log(
+          `   - Wrapper dimensions: ${contentValidation.wrapperDimensions.width}x${contentValidation.wrapperDimensions.height}`
+        );
 
         // Wait for initial page to load
         console.log(`   Waiting for initial page to load...`);
@@ -871,13 +1116,61 @@ app.post(
                 `      🎯 [${new Date().toISOString()}] Starting capture for page ${pageNum}...`
               );
 
-              const captureResult = await capturePageView(
-                page,
-                pageNum,
-                viewType,
-                currentOperation,
-                totalOperations
-              );
+              // Retry capture if content isn't loaded properly
+              let captureResult;
+              let captureAttempts = 0;
+              const maxCaptureAttempts = 3;
+
+              while (captureAttempts < maxCaptureAttempts) {
+                captureAttempts++;
+                console.log(
+                  `      📸 Capture attempt ${captureAttempts}/${maxCaptureAttempts}...`
+                );
+
+                try {
+                  captureResult = await capturePageView(
+                    page,
+                    pageNum,
+                    viewType,
+                    currentOperation,
+                    totalOperations
+                  );
+
+                  // Validate the capture actually has content
+                  if (captureResult.success && captureResult.imageData) {
+                    const hasContent = await validateCaptureContent(
+                      page,
+                      pageNum
+                    );
+                    if (hasContent) {
+                      console.log(
+                        `      ✅ Capture successful with content on attempt ${captureAttempts}`
+                      );
+                      break;
+                    } else {
+                      console.log(
+                        `      ⚠️ Capture succeeded but no content detected, retrying...`
+                      );
+                      if (captureAttempts < maxCaptureAttempts) {
+                        await new Promise((resolve) =>
+                          setTimeout(resolve, 2000)
+                        ); // Wait 2 seconds before retry
+                        continue;
+                      }
+                    }
+                  }
+                } catch (captureError) {
+                  console.log(
+                    `      ❌ Capture attempt ${captureAttempts} failed: ${captureError.message}`
+                  );
+                  if (captureAttempts < maxCaptureAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+                    continue;
+                  } else {
+                    throw captureError; // Re-throw if all attempts failed
+                  }
+                }
+              }
 
               console.log(
                 `      📊 [${new Date().toISOString()}] Capture result for page ${pageNum}:`,
@@ -1243,6 +1536,10 @@ app.post(
         req.body.desiredLanguage ||
         req.body.projectData?.desiredLanguage;
 
+      // Initialize translation variables in the outer scope
+      let allTexts = [];
+      let textMap = new Map();
+
       console.log(`🔍 [TRANSLATION] Translation check:`);
       console.log(`   - translateTo: ${req.body.translateTo || "NOT SET"}`);
       console.log(
@@ -1280,10 +1577,6 @@ app.post(
           console.log(
             `🌐 [TRANSLATION] Starting translation of OCR results to ${targetLanguage}...`
           );
-
-          // Extract all text from OCR results for translation
-          const allTexts = [];
-          const textMap = new Map(); // Map to track original text -> translated text
 
           console.log(
             `🔍 [TRANSLATION] Analyzing ${results.length} OCR results for text extraction...`
@@ -1417,13 +1710,20 @@ app.post(
 
               if (result.extractedText && result.extractedText.length > 0) {
                 translatedResult.extractedText = result.extractedText.map(
-                  (textItem) => ({
-                    ...textItem,
-                    text: textMap.get(textItem.text.trim()) || textItem.text,
-                    originalText: textItem.text, // Keep original text for reference
-                    translated: true,
-                    targetLanguage: targetLanguage,
-                  })
+                  (textItem) => {
+                    const originalText = textItem.text;
+                    const translatedText = textMap.get(originalText.trim());
+                    const wasTranslated = !!translatedText;
+
+                    return {
+                      ...textItem,
+                      text: translatedText || originalText,
+                      originalText: originalText, // Always keep original text
+                      translated: wasTranslated,
+                      targetLanguage: wasTranslated ? targetLanguage : null,
+                      translationStatus: wasTranslated ? "success" : "failed",
+                    };
+                  }
                 );
               }
 
@@ -1435,16 +1735,18 @@ app.post(
                 if (result.ocrResult.styled_layout.entities) {
                   translatedResult.ocrResult.styled_layout.entities =
                     result.ocrResult.styled_layout.entities.map((entity) => {
-                      if (entity.text && textMap.has(entity.text.trim())) {
-                        return {
-                          ...entity,
-                          text: textMap.get(entity.text.trim()),
-                          originalText: entity.text,
-                          translated: true,
-                          targetLanguage: targetLanguage,
-                        };
-                      }
-                      return entity;
+                      const originalText = entity.text;
+                      const translatedText = textMap.get(originalText.trim());
+                      const wasTranslated = !!translatedText;
+
+                      return {
+                        ...entity,
+                        text: translatedText || originalText,
+                        originalText: originalText, // Always keep original text
+                        translated: wasTranslated,
+                        targetLanguage: wasTranslated ? targetLanguage : null,
+                        translationStatus: wasTranslated ? "success" : "failed",
+                      };
                     });
                 }
 
@@ -1454,16 +1756,24 @@ app.post(
                     result.ocrResult.styled_layout.pages.map((page) => {
                       if (page.entities) {
                         page.entities = page.entities.map((entity) => {
-                          if (entity.text && textMap.has(entity.text.trim())) {
-                            return {
-                              ...entity,
-                              text: textMap.get(entity.text.trim()),
-                              originalText: entity.text,
-                              translated: true,
-                              targetLanguage: targetLanguage,
-                            };
-                          }
-                          return entity;
+                          const originalText = entity.text;
+                          const translatedText = textMap.get(
+                            originalText.trim()
+                          );
+                          const wasTranslated = !!translatedText;
+
+                          return {
+                            ...entity,
+                            text: translatedText || originalText,
+                            originalText: originalText, // Always keep original text
+                            translated: wasTranslated,
+                            targetLanguage: wasTranslated
+                              ? targetLanguage
+                              : null,
+                            translationStatus: wasTranslated
+                              ? "success"
+                              : "failed",
+                          };
                         });
                       }
                       return page;
@@ -1474,8 +1784,21 @@ app.post(
               return translatedResult;
             });
 
+            // Count successful vs failed translations
+            const successfulTranslations = allTexts.filter(
+              (text) => textMap.get(text.trim()) !== null
+            ).length;
+            const failedTranslations = allTexts.length - successfulTranslations;
+
             console.log(
-              `✅ [TRANSLATION] Successfully translated ${allTexts.length} texts to ${targetLanguage}`
+              `✅ [TRANSLATION] Translation summary: ${successfulTranslations} successful, ${failedTranslations} failed out of ${allTexts.length} total texts`
+            );
+            console.log(`🌐 [TRANSLATION] Target language: ${targetLanguage}`);
+            console.log(`📤 [TRANSLATION] Frontend will receive:`);
+            console.log(`   - Translated text in 'text' field`);
+            console.log(`   - Original text in 'originalText' field`);
+            console.log(
+              `   - Translation status in 'translated' and 'translationStatus' fields`
             );
 
             // Log what was actually translated in the final results
@@ -1551,6 +1874,30 @@ app.post(
           );
           translatedResults = results;
         }
+      } else {
+        console.log(
+          `ℹ️ [TRANSLATION] Translation not enabled or API key missing`
+        );
+        // Ensure allTexts is defined even when translation is disabled
+        if (allTexts.length === 0) {
+          // Extract texts for metadata even without translation
+          results.forEach((result) => {
+            if (result.extractedText && result.extractedText.length > 0) {
+              result.extractedText.forEach((textItem) => {
+                if (textItem.text && textItem.text.trim()) {
+                  allTexts.push(textItem.text.trim());
+                }
+              });
+            }
+            if (result.ocrResult?.styled_layout?.entities) {
+              result.ocrResult.styled_layout.entities.forEach((entity) => {
+                if (entity.text && entity.text.trim()) {
+                  allTexts.push(entity.text.trim());
+                }
+              });
+            }
+          });
+        }
       }
 
       const response = {
@@ -1575,17 +1922,22 @@ app.post(
                   req.body.projectData?.sourceLanguage ||
                   "auto",
                 translated: true,
-                totalTextsTranslated:
-                  translatedResults !== results
-                    ? translatedResults.reduce(
-                        (total, result) =>
-                          total +
-                          (result.extractedText
-                            ? result.extractedText.length
-                            : 0),
-                        0
-                      )
-                    : 0,
+                totalTextsTranslated: allTexts.length,
+                successfulTranslations: allTexts.filter(
+                  (text) => textMap.get(text.trim()) !== null
+                ).length,
+                failedTranslations: allTexts.filter(
+                  (text) => textMap.get(text.trim()) === null
+                ).length,
+                translationStatus: "completed",
+                translationMetadata: {
+                  apiKeyValid: !!GOOGLE_TRANSLATE_API_KEY,
+                  targetLanguage: targetLanguage,
+                  sourceLanguage:
+                    req.body.translateFrom ||
+                    req.body.projectData?.sourceLanguage ||
+                    "auto",
+                },
               }
             : null,
         },
@@ -1847,6 +2199,76 @@ async function capturePageView(
     await page.waitForFunction(() => window.domtoimage, { timeout: 10000 });
     console.log(`      ✅ dom-to-image library loaded and ready`);
 
+    // Page-specific waiting strategy - quick check if page is ready
+    console.log(
+      `      🎯 Checking if page ${pageNumber} is ready for capture...`
+    );
+
+    // Quick check of current page status
+    const pageStatus = await page.evaluate((pageNum) => {
+      const pageElement = document.querySelector(
+        `.react-pdf__Page[data-page-number="${pageNum}"]`
+      );
+      if (!pageElement)
+        return { ready: false, reason: "Page element not found" };
+
+      const canvas = pageElement.querySelector("canvas");
+      const textContent = pageElement.textContent || "";
+
+      return {
+        ready:
+          pageElement.offsetWidth > 100 &&
+          pageElement.offsetHeight > 100 &&
+          !!canvas &&
+          canvas.width > 100 &&
+          canvas.height > 100,
+        // Note: textLength will be 0 for PDFs since text is rendered in canvas
+        dimensions: {
+          width: pageElement.offsetWidth,
+          height: pageElement.offsetHeight,
+        },
+        hasCanvas: !!canvas,
+        canvasDimensions: canvas
+          ? { width: canvas.width, height: canvas.height }
+          : null,
+        textLength: textContent.trim().length,
+      };
+    }, pageNumber);
+
+    if (pageStatus.ready) {
+      console.log(`      ✅ Page ${pageNumber} is already ready:`, pageStatus);
+    } else {
+      console.log(
+        `      ⏳ Page ${pageNumber} not ready, waiting...`,
+        pageStatus
+      );
+
+      // Simple wait for page to be ready
+      await page.waitForFunction(
+        (pageNum) => {
+          const pageElement = document.querySelector(
+            `.react-pdf__Page[data-page-number="${pageNum}"]`
+          );
+          if (!pageElement) return false;
+
+          const canvas = pageElement.querySelector("canvas");
+          const textContent = pageElement.textContent || "";
+
+          return (
+            pageElement.offsetWidth > 100 &&
+            pageElement.offsetHeight > 100 &&
+            !!canvas &&
+            canvas.width > 100 &&
+            canvas.height > 100
+          );
+        },
+        { timeout: 15000 },
+        pageNumber
+      );
+
+      console.log(`      ✅ Page ${pageNumber} is now ready for capture`);
+    }
+
     // Capture the page using dom-to-image
     console.log(`      🖼️  Capturing page image...`);
 
@@ -1860,38 +2282,90 @@ async function capturePageView(
         console.log(`      🎯 Using dom-to-image for original view...`);
 
         // Try dom-to-image first
-        const imageDataUrl = await page.evaluate(
-          async (pageNum, view) => {
-            const pageElement = document.querySelector(
-              `.react-pdf__Page[data-page-number="${pageNum}"]`
-            );
-            if (!pageElement) throw new Error("Page element not found");
+        let imageDataUrl;
+        try {
+          imageDataUrl = await page.evaluate(
+            async (pageNum, view) => {
+              const pageElement = document.querySelector(
+                `.react-pdf__Page[data-page-number="${pageNum}"]`
+              );
+              if (!pageElement) throw new Error("Page element not found");
 
-            // Use dom-to-image for capture
-            if (window.domtoimage && window.domtoimage.toPng) {
-              try {
-                console.log(`      🎯 Using dom-to-image for capture...`);
-                const dataUrl = await window.domtoimage.toPng(pageElement, {
-                  quality: 1.0,
-                  bgcolor: "#ffffff",
-                  width: pageElement.offsetWidth,
-                  height: pageElement.offsetHeight,
-                });
+              // Use dom-to-image for capture
+              if (window.domtoimage && window.domtoimage.toPng) {
+                try {
+                  console.log(`      🎯 Using dom-to-image for capture...`);
+                  const dataUrl = await window.domtoimage.toPng(pageElement, {
+                    quality: 1.0,
+                    bgcolor: "#ffffff",
+                    width: pageElement.offsetWidth,
+                    height: pageElement.offsetHeight,
+                  });
 
-                // Return the data URL as a string (no Buffer conversion in browser)
-                return dataUrl;
-              } catch (error) {
-                throw new Error(
-                  `dom-to-image capture failed: ${error.message}`
-                );
+                  // Return the data URL as a string (no Buffer conversion in browser)
+                  return dataUrl;
+                } catch (error) {
+                  throw new Error(
+                    `dom-to-image capture failed: ${error.message}`
+                  );
+                }
+              } else {
+                throw new Error("dom-to-image library not available");
               }
-            } else {
-              throw new Error("dom-to-image library not available");
-            }
-          },
-          pageNumber,
-          viewType
-        );
+            },
+            pageNumber,
+            viewType
+          );
+        } catch (captureError) {
+          console.log(
+            `      ⚠️ dom-to-image capture failed: ${captureError.message}`
+          );
+
+          // Fallback: try to capture even without canvas
+          console.log(`      🔄 Attempting fallback capture...`);
+          try {
+            imageDataUrl = await page.evaluate(
+              async (pageNum, view) => {
+                const pageElement = document.querySelector(
+                  `.react-pdf__Page[data-page-number="${pageNum}"]`
+                );
+                if (!pageElement) throw new Error("Page element not found");
+
+                // Try to capture the page element even without canvas
+                if (window.domtoimage && window.domtoimage.toPng) {
+                  try {
+                    console.log(
+                      `      🎯 Using fallback dom-to-image capture...`
+                    );
+                    const dataUrl = await window.domtoimage.toPng(pageElement, {
+                      quality: 0.8, // Lower quality for fallback
+                      bgcolor: "#ffffff",
+                      width: pageElement.offsetWidth,
+                      height: pageElement.offsetHeight,
+                    });
+                    return dataUrl;
+                  } catch (fallbackError) {
+                    throw new Error(
+                      `Fallback capture failed: ${fallbackError.message}`
+                    );
+                  }
+                } else {
+                  throw new Error("dom-to-image not available for fallback");
+                }
+              },
+              pageNumber,
+              viewType
+            );
+            console.log(`      ✅ Fallback capture successful`);
+          } catch (fallbackError) {
+            console.log(
+              `      💥 Fallback capture also failed: ${fallbackError.message}`
+            );
+            throw new Error(
+              `All capture methods failed: ${captureError.message}, fallback: ${fallbackError.message}`
+            );
+          }
+        }
 
         // Convert data URL to buffer in Node.js context (where Buffer is available)
         console.log(`      🔄 Converting data URL to buffer...`);
@@ -1924,7 +2398,7 @@ async function capturePageView(
         );
 
         // Get the page element position for screenshot clipping
-        const elementBounds = await page.evaluate((pageNum) => {
+        let elementBounds = await page.evaluate((pageNum) => {
           const pageElement = document.querySelector(
             `.react-pdf__Page[data-page-number="${pageNum}"]`
           );
@@ -1939,8 +2413,33 @@ async function capturePageView(
           };
         }, pageNumber);
 
+        // Fallback: if element bounds not found, try to get any page element
         if (!elementBounds) {
-          throw new Error("Could not determine element bounds for screenshot");
+          console.log(
+            `      ⚠️ Could not determine element bounds, trying fallback...`
+          );
+          elementBounds = await page.evaluate((pageNum) => {
+            // Try to find any page element with dimensions
+            const pageElements = document.querySelectorAll(".react-pdf__Page");
+            for (const element of pageElements) {
+              if (element.offsetWidth > 100 && element.offsetHeight > 100) {
+                const rect = element.getBoundingClientRect();
+                return {
+                  x: rect.x,
+                  y: rect.y,
+                  width: rect.width,
+                  height: rect.height,
+                };
+              }
+            }
+            return null;
+          }, pageNumber);
+        }
+
+        if (!elementBounds) {
+          throw new Error(
+            "Could not determine element bounds for screenshot, even with fallback"
+          );
         }
 
         // Take screenshot of the specific page element
@@ -2489,6 +2988,56 @@ process.on("unhandledRejection", async (reason, promise) => {
 
   process.exit(1);
 });
+
+// Function to validate that captured content actually has visible text
+async function validateCaptureContent(page, pageNumber) {
+  try {
+    const contentCheck = await page.evaluate((targetPage) => {
+      const pageElement = document.querySelector(
+        `.react-pdf__Page[data-page-number="${targetPage}"]`
+      );
+      if (!pageElement) {
+        return { hasContent: false, reason: "Page element not found" };
+      }
+
+      // Check if page has actual dimensions
+      if (pageElement.offsetWidth < 100 || pageElement.offsetHeight < 100) {
+        return { hasContent: false, reason: "Page has no dimensions" };
+      }
+
+      // Check if page has text content
+      const textContent = pageElement.textContent || "";
+      if (textContent.trim().length === 0) {
+        return { hasContent: false, reason: "Page has no text content" };
+      }
+
+      // Check if page is actually visible (not hidden by CSS)
+      const rect = pageElement.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        return { hasContent: false, reason: "Page is not visible" };
+      }
+
+      return {
+        hasContent: true,
+        textLength: textContent.trim().length,
+        dimensions: { width: rect.width, height: rect.height },
+      };
+    }, pageNumber);
+
+    if (!contentCheck.hasContent) {
+      console.log(`      ⚠️ Content validation failed: ${contentCheck.reason}`);
+      return false;
+    }
+
+    console.log(
+      `      ✅ Content validation passed: ${contentCheck.textLength} characters, ${contentCheck.dimensions.width}x${contentCheck.dimensions.height}`
+    );
+    return true;
+  } catch (error) {
+    console.log(`      ❌ Content validation error: ${error.message}`);
+    return false;
+  }
+}
 
 // Start server
 async function startServer() {
