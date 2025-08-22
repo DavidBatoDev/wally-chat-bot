@@ -45,6 +45,8 @@ export interface OcrOptions {
   // Birth certificate specific options
   pageType?: "social_media" | "birth_cert" | "dynamic_content";
   birthCertTemplateId?: string; // Template ID for birth certificate pages
+  // Add complete project data for template detection
+  projectData?: any; // Complete project state including documentState.pages
 }
 
 export interface OcrResult {
@@ -82,7 +84,50 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
       pageNumbers: options.pageNumber,
       viewTypes: [options.viewType || "original"],
       ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
+      projectData: options.projectData || {
+        totalPages: 1,
+        sourceLanguage: options.sourceLanguage || "auto",
+        desiredLanguage: options.desiredLanguage || "en",
+        timestamp: new Date().toISOString(),
+        // Include birth certificate information
+        pageType: options.pageType,
+        birthCertTemplateId: options.birthCertTemplateId,
+        // Include the complete page data for template detection
+        pages: [
+          {
+            pageNumber: options.pageNumber,
+            pageType: options.pageType,
+            birthCertTemplate: options.birthCertTemplateId
+              ? {
+                  id: options.birthCertTemplateId,
+                  type: "birth_certificate",
+                  variation: "template",
+                }
+              : null,
+            birthCertType:
+              options.pageType === "birth_cert"
+                ? "birth_cert_template"
+                : undefined,
+          },
+        ],
+      },
     };
+
+    // Log what's being sent to Puppeteer
+    console.log(
+      "🔍 [OCR SERVICE DEBUG] Request payload being sent to Puppeteer:",
+      {
+        projectId: options.projectId,
+        pageNumber: options.pageNumber,
+        pageType: options.pageType,
+        birthCertTemplateId: options.birthCertTemplateId,
+        projectData: options.projectData || "Using fallback projectData",
+        hasCompleteProjectData: !!options.projectData,
+        projectDataKeys: options.projectData
+          ? Object.keys(options.projectData)
+          : [],
+      }
+    );
 
     console.log(
       "📤 [OCR Service] Sending request to Puppeteer service:",
@@ -460,13 +505,29 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
       pageNumbers: pagesToProcess,
       viewTypes: ["original"], // Only process original view for OCR
       ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to your backend
-      projectData: {
+      projectData: options.projectData || {
         totalPages: pagesToProcess.length,
         sourceLanguage: options.sourceLanguage,
         desiredLanguage: options.desiredLanguage,
         timestamp: new Date().toISOString(),
       },
     };
+
+    // Log what's being sent to Puppeteer in bulk OCR
+    console.log(
+      "🔍 [BULK OCR DEBUG] Request payload being sent to Puppeteer:",
+      {
+        projectId: projectId,
+        totalPages: pagesToProcess.length,
+        sourceLanguage: options.sourceLanguage,
+        desiredLanguage: options.desiredLanguage,
+        hasProjectData: !!options.projectData,
+        projectDataKeys: options.projectData
+          ? Object.keys(options.projectData)
+          : [],
+        projectData: options.projectData || "Using fallback projectData",
+      }
+    );
 
     // Make the request to the background service
     const response = await fetch(`${backgroundServiceUrl}/capture-and-ocr`, {

@@ -5122,6 +5122,29 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     bulkOcrCancelRef.current.cancelled = false;
 
     try {
+      // Create complete project data for bulk OCR template detection
+      const completeProjectData = {
+        totalPages: documentState.numPages,
+        sourceLanguage: sourceLanguage || "auto",
+        desiredLanguage: desiredLanguage || "en",
+        timestamp: new Date().toISOString(),
+        // Include the complete document state with pages
+        documentState: {
+          ...documentState,
+          pages: documentState.pages,
+        },
+      };
+
+      // Log the complete project data being sent for bulk OCR
+      console.log(
+        "🔍 [FRONTEND BULK OCR DEBUG] Complete project data being sent:",
+        completeProjectData
+      );
+      console.log(
+        "🔍 [FRONTEND BULK OCR DEBUG] Document state pages:",
+        documentState.pages
+      );
+
       const result = await performBulkOcr({
         sourceLanguage,
         desiredLanguage,
@@ -5143,6 +5166,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         projectId: currentProjectId || `bulk-ocr-${Date.now()}`,
         captureUrl: "http://localhost:3000/capture-project/", // Point to capture-project page
         ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
+        // Add complete project data for template detection
+        projectData: completeProjectData,
       });
 
       if (result.success) {
@@ -5200,6 +5225,34 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         const pageType = page?.pageType;
         const birthCertTemplateId = page?.birthCertTemplate?.id;
 
+        // Create complete project data for template detection
+        const completeProjectData = {
+          totalPages: documentState.numPages,
+          sourceLanguage: sourceLanguage || "auto",
+          desiredLanguage: desiredLanguage || "en",
+          timestamp: new Date().toISOString(),
+          // Include the complete document state with pages
+          documentState: {
+            ...documentState,
+            pages: documentState.pages,
+          },
+        };
+
+        // Log the complete project data being sent
+        console.log(
+          "🔍 [FRONTEND DEBUG] Complete project data being sent:",
+          completeProjectData
+        );
+        console.log(
+          "🔍 [FRONTEND DEBUG] Document state pages:",
+          documentState.pages
+        );
+        console.log("🔍 [FRONTEND DEBUG] Page type:", pageType);
+        console.log(
+          "🔍 [FRONTEND DEBUG] Birth cert template ID:",
+          birthCertTemplateId
+        );
+
         await performPageOcr({
           pageNumber,
           sourceLanguage,
@@ -5211,6 +5264,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           addUntranslatedText,
           pageType,
           birthCertTemplateId,
+          projectData: completeProjectData, // Pass complete project data
         });
       } catch (error) {
         console.error("Error in handleTransformPageToTextbox:", error);

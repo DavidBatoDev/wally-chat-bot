@@ -992,9 +992,9 @@ app.post(
             return hasDimensions && hasCanvas;
           });
 
-          // Fallback: if pages don't have canvases, check if they at least have dimensions
+          // Fallback: if pages don't have canvases, check if they at least have dimensions and images
           if (!requiredPagesReady) {
-            const pagesWithDimensions = requiredPages.every((pageNum) => {
+            const pagesWithContent = requiredPages.every((pageNum) => {
               const pageElement = document.querySelector(
                 `.react-pdf__Page[data-page-number="${pageNum}"]`
               );
@@ -1003,15 +1003,20 @@ app.post(
               const hasDimensions =
                 pageElement.offsetWidth > 100 && pageElement.offsetHeight > 100;
 
-              return hasDimensions; // Don't require canvas for fallback
+              // Check for image content (either background image or interactive elements)
+              const hasImages = pageElement.querySelectorAll("img").length > 0;
+
+              // For image-only documents, we need both dimensions and images
+              return hasDimensions && hasImages;
             });
 
-            if (pagesWithDimensions) {
+            if (pagesWithContent) {
               return {
                 valid: true,
                 requiredPages: requiredPages,
                 fallback: true, // Mark as fallback mode
-                reason: "Pages have dimensions but no canvases (fallback mode)",
+                reason:
+                  "Pages have dimensions and images (image-only document mode)",
               };
             }
 
@@ -1043,10 +1048,13 @@ app.post(
           console.log(
             `   ⚠️ Running in fallback mode (pages have dimensions but no canvases)`
           );
+          // For fallback mode, we don't have wrapper dimensions, so we'll get them from the page elements
+          console.log(`   - Running in image-only document mode`);
+        } else {
+          console.log(
+            `   - Wrapper dimensions: ${contentValidation.wrapperDimensions.width}x${contentValidation.wrapperDimensions.height}`
+          );
         }
-        console.log(
-          `   - Wrapper dimensions: ${contentValidation.wrapperDimensions.width}x${contentValidation.wrapperDimensions.height}`
-        );
 
         // Wait for initial page to load
         console.log(`   Waiting for initial page to load...`);
@@ -1082,6 +1090,16 @@ app.post(
         // Process each page and view combination
         console.log(
           `\n🔄 [${new Date().toISOString()}] Starting page capture and OCR processing...`
+        );
+
+        // Check if this is a birth certificate project by examining the project data
+        let isBirthCertProject = false;
+        let birthCertTemplate = null;
+
+        // We'll detect birth certificate projects from the OCR metadata when processing each page
+        // This allows us to access the project_data that's passed from the frontend
+        console.log(
+          `   🔍 Birth certificate detection will be performed per-page using project metadata`
         );
 
         for (const pageNum of pagesToProcess) {
@@ -1196,64 +1214,59 @@ app.post(
                 console.log(
                   `   🎯 Capture method: ${captureResult.captureMethod}`
                 );
-                console.log(
-                  `   📸 Data URL: ${
-                    captureResult.dataUrl ? "✅ Available" : "❌ Not available"
-                  }`
-                );
+                // Save image to disk for debugging
+                try {
+                  const fs = require("fs");
+                  const path = require("path");
 
-                // Create and log blob URL for immediate image viewing
-                if (captureResult.dataUrl) {
-                  try {
-                    // Save image to disk for inspection instead of blob URL
-                    const fs = require("fs");
-                    const path = require("path");
-
-                    // Create debug directory if it doesn't exist
-                    const debugDir = path.join(__dirname, "debug_captures");
-                    if (!fs.existsSync(debugDir)) {
-                      fs.mkdirSync(debugDir, { recursive: true });
-                    }
-
-                    // Generate unique filename
-                    const timestamp = new Date()
-                      .toISOString()
-                      .replace(/[:.]/g, "-");
-                    const filename = `page-${pageNum}-${viewType}-${timestamp}.png`;
-                    const filePath = path.join(debugDir, filename);
-
-                    // Save the image buffer to disk
-                    fs.writeFileSync(filePath, captureResult.imageBuffer);
-                    console.log(`   💾 Image saved to: ${filePath}`);
-                    console.log(`   📁 Debug directory: ${debugDir}`);
-
-                    // Log image details
-                    console.log(`   📸 Image Details:`);
-                    console.log(`      - File path: ${filePath}`);
-                    console.log(
-                      `      - File size: ${captureResult.imageBuffer.length} bytes`
-                    );
-                    console.log(
-                      `      - Dimensions: ${captureResult.pageWidth}x${captureResult.pageHeight}`
-                    );
-                    console.log(
-                      `      - Data URL length: ${captureResult.dataUrl.length} characters`
-                    );
-                  } catch (fileError) {
-                    console.log(
-                      `   ⚠️  Could not save image to disk: ${fileError.message}`
-                    );
-                    console.log(`   📸 Image Details (fallback):`);
-                    console.log(
-                      `      - Buffer size: ${captureResult.imageBuffer.length} bytes`
-                    );
-                    console.log(
-                      `      - Dimensions: ${captureResult.pageWidth}x${captureResult.pageHeight}`
-                    );
-                    console.log(
-                      `      - Data URL length: ${captureResult.dataUrl.length} characters`
-                    );
+                  // Create debug directory if it doesn't exist
+                  const debugDir = path.join(__dirname, "debug_captures");
+                  if (!fs.existsSync(debugDir)) {
+                    fs.mkdirSync(debugDir, { recursive: true });
                   }
+
+                  // Generate unique filename
+                  const timestamp = new Date()
+                    .toISOString()
+                    .replace(/[:.]/g, "-");
+                  const filename = `page-${pageNum}-${viewType}-${timestamp}.png`;
+                  const filePath = path.join(debugDir, filename);
+
+                  // Save the image buffer to disk
+                  fs.writeFileSync(filePath, captureResult.imageBuffer);
+                  console.log(`   💾 Image saved to: ${filePath}`);
+                  console.log(`   📁 Debug directory: ${debugDir}`);
+
+                  // Log image details
+                  console.log(`   📸 Image Details:`);
+                  console.log(`      - File path: ${filePath}`);
+                  console.log(
+                    `      - File size: ${captureResult.imageBuffer.length} bytes`
+                  );
+                  console.log(
+                    `      - Dimensions: ${captureResult.pageWidth}x${captureResult.pageHeight}`
+                  );
+                  console.log(
+                    `      - Buffer size: ${captureResult.imageBuffer.length} bytes`
+                  );
+                  console.log(
+                    `      - Expected file size: ~${
+                      Math.round(
+                        (captureResult.imageBuffer.length / 1024) * 100
+                      ) / 100
+                    } KB`
+                  );
+                } catch (fileError) {
+                  console.log(
+                    `   ⚠️  Could not save image to disk: ${fileError.message}`
+                  );
+                  console.log(`   📸 Image Details (fallback):`);
+                  console.log(
+                    `      - Buffer size: ${captureResult.imageBuffer.length} bytes`
+                  );
+                  console.log(
+                    `      - Dimensions: ${captureResult.pageWidth}x${captureResult.pageHeight}`
+                  );
                 }
 
                 console.log(`   📤 Sending to OCR service...`);
@@ -1278,7 +1291,6 @@ app.post(
                     pageWidth: captureResult.pageWidth,
                     pageHeight: captureResult.pageHeight,
                     projectData,
-                    dataUrl: captureResult.dataUrl, // Pass data URL for validation
                   }
                 );
 
@@ -1409,46 +1421,33 @@ app.post(
                     `      - Image sent: ${captureResult.imageBuffer.length} bytes`
                   );
                   console.log(
-                    `      - Data URL sent: ${
-                      captureResult.dataUrl
-                        ? `${captureResult.dataUrl.length} characters`
-                        : "None"
-                    }`
-                  );
-                  console.log(
                     `      - Dimensions sent: ${captureResult.pageWidth}x${captureResult.pageHeight}`
                   );
 
-                  // Show blob URL again for easy access
-                  if (captureResult.dataUrl) {
-                    try {
-                      const fs = require("fs");
-                      const path = require("path");
+                  // Show saved image file for easy access
+                  try {
+                    const fs = require("fs");
+                    const path = require("path");
 
-                      // Find the saved image file
-                      const debugDir = path.join(__dirname, "debug_captures");
-                      const files = fs
-                        .readdirSync(debugDir)
-                        .filter((f) =>
-                          f.includes(`page-${pageNum}-${viewType}`)
-                        );
+                    // Find the saved image file
+                    const debugDir = path.join(__dirname, "debug_captures");
+                    const files = fs
+                      .readdirSync(debugDir)
+                      .filter((f) => f.includes(`page-${pageNum}-${viewType}`));
 
-                      if (files.length > 0) {
-                        const latestFile = files[files.length - 1]; // Get most recent
-                        const filePath = path.join(debugDir, latestFile);
-                        console.log(
-                          `      - View Image: ${filePath} (open this file to see what was sent to OCR)`
-                        );
-                      } else {
-                        console.log(
-                          `      - View Image: ❌ No saved file found`
-                        );
-                      }
-                    } catch (fileError) {
+                    if (files.length > 0) {
+                      const latestFile = files[files.length - 1]; // Get most recent
+                      const filePath = path.join(debugDir, latestFile);
                       console.log(
-                        `      - View Image: ❌ Could not locate saved file`
+                        `      - View Image: ${filePath} (open this file to see what was sent to OCR)`
                       );
+                    } else {
+                      console.log(`      - View Image: ❌ No saved file found`);
                     }
+                  } catch (fileError) {
+                    console.log(
+                      `      - View Image: ❌ Could not locate saved file`
+                    );
                   }
                 } else {
                   const operationDuration = Date.now() - operationStartTime;
@@ -1564,10 +1563,6 @@ app.post(
 
       // Debug request body
       console.log(`🔍 [REQUEST DEBUG] Request body analysis:`);
-      console.log(
-        `   - req.body keys: ${Object.keys(req.body || {}).join(", ")}`
-      );
-      console.log(`   - req.body content:`, JSON.stringify(req.body, null, 2));
       console.log(
         `   - req.headers content-type: ${req.headers["content-type"]}`
       );
@@ -2213,15 +2208,18 @@ async function capturePageView(
         return { ready: false, reason: "Page element not found" };
 
       const canvas = pageElement.querySelector("canvas");
+      const images = pageElement.querySelectorAll("img");
       const textContent = pageElement.textContent || "";
 
+      // Check if this is a PDF page (with canvas) or image page (with images)
+      const isPdfPage = !!canvas && canvas.width > 100 && canvas.height > 100;
+      const isImagePage =
+        images.length > 0 &&
+        pageElement.offsetWidth > 100 &&
+        pageElement.offsetHeight > 100;
+
       return {
-        ready:
-          pageElement.offsetWidth > 100 &&
-          pageElement.offsetHeight > 100 &&
-          !!canvas &&
-          canvas.width > 100 &&
-          canvas.height > 100,
+        ready: isPdfPage || isImagePage,
         // Note: textLength will be 0 for PDFs since text is rendered in canvas
         dimensions: {
           width: pageElement.offsetWidth,
@@ -2231,7 +2229,10 @@ async function capturePageView(
         canvasDimensions: canvas
           ? { width: canvas.width, height: canvas.height }
           : null,
+        hasImages: images.length > 0,
+        imageCount: images.length,
         textLength: textContent.trim().length,
+        pageType: isPdfPage ? "pdf" : isImagePage ? "image" : "unknown",
       };
     }, pageNumber);
 
@@ -2252,15 +2253,17 @@ async function capturePageView(
           if (!pageElement) return false;
 
           const canvas = pageElement.querySelector("canvas");
-          const textContent = pageElement.textContent || "";
+          const images = pageElement.querySelectorAll("img");
 
-          return (
+          // Check if this is a PDF page (with canvas) or image page (with images)
+          const isPdfPage =
+            !!canvas && canvas.width > 100 && canvas.height > 100;
+          const isImagePage =
+            images.length > 0 &&
             pageElement.offsetWidth > 100 &&
-            pageElement.offsetHeight > 100 &&
-            !!canvas &&
-            canvas.width > 100 &&
-            canvas.height > 100
-          );
+            pageElement.offsetHeight > 100;
+
+          return isPdfPage || isImagePage;
         },
         { timeout: 15000 },
         pageNumber
@@ -2271,17 +2274,17 @@ async function capturePageView(
 
     // Capture the page using dom-to-image
     console.log(`      🖼️  Capturing page image...`);
+    console.log(`      📋 Page type detected: ${pageStatus.pageType}`);
 
     let imageBuffer;
     let captureMethod = "unknown";
-    let dataUrl = null; // Store the data URL for validation
 
     try {
       // Only use dom-to-image for "original" view
       if (viewType === "original") {
         console.log(`      🎯 Using dom-to-image for original view...`);
 
-        // Try dom-to-image first
+        // Try dom-to-image first (works for both PDF and image documents)
         let imageDataUrl;
         try {
           imageDataUrl = await page.evaluate(
@@ -2291,7 +2294,7 @@ async function capturePageView(
               );
               if (!pageElement) throw new Error("Page element not found");
 
-              // Use dom-to-image for capture
+              // Use dom-to-image for capture (handles both PDF canvases and image elements)
               if (window.domtoimage && window.domtoimage.toPng) {
                 try {
                   console.log(`      🎯 Using dom-to-image for capture...`);
@@ -2321,8 +2324,10 @@ async function capturePageView(
             `      ⚠️ dom-to-image capture failed: ${captureError.message}`
           );
 
-          // Fallback: try to capture even without canvas
-          console.log(`      🔄 Attempting fallback capture...`);
+          // Fallback: try to capture even without canvas (useful for image-only documents)
+          console.log(
+            `      🔄 Attempting fallback capture for ${pageStatus.pageType} page...`
+          );
           try {
             imageDataUrl = await page.evaluate(
               async (pageNum, view) => {
@@ -2337,12 +2342,27 @@ async function capturePageView(
                     console.log(
                       `      🎯 Using fallback dom-to-image capture...`
                     );
-                    const dataUrl = await window.domtoimage.toPng(pageElement, {
-                      quality: 0.8, // Lower quality for fallback
+
+                    // For image-only pages, use optimized settings
+                    const captureOptions = {
+                      quality: 0.9, // Higher quality for image documents
                       bgcolor: "#ffffff",
                       width: pageElement.offsetWidth,
                       height: pageElement.offsetHeight,
-                    });
+                    };
+
+                    // Add style options for better image capture
+                    if (pageElement.querySelectorAll("img").length > 0) {
+                      captureOptions.style = {
+                        transform: "scale(1)",
+                        "transform-origin": "top left",
+                      };
+                    }
+
+                    const dataUrl = await window.domtoimage.toPng(
+                      pageElement,
+                      captureOptions
+                    );
                     return dataUrl;
                   } catch (fallbackError) {
                     throw new Error(
@@ -2384,7 +2404,7 @@ async function capturePageView(
         }
 
         imageBuffer = Buffer.from(base64, "base64");
-        dataUrl = imageDataUrl; // Store for OCR service
+
         captureMethod = "dom-to-image";
         console.log(`      ✅ Data URL converted to buffer successfully`);
         console.log(
@@ -2514,7 +2534,6 @@ async function capturePageView(
       pageWidth: pageDimensions.width,
       pageHeight: pageDimensions.height,
       captureMethod,
-      dataUrl: dataUrl, // Return the data URL
     };
   } catch (error) {
     const captureDuration = Date.now() - captureStartTime;
@@ -2543,11 +2562,158 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
 
     // Add the image as a file
     const filename = `page-${metadata.pageNumber}-${metadata.viewType}.png`;
-    formData.append("file", imageBuffer, {
-      filename: filename,
-      contentType: "image/png",
-    });
-    console.log(`      📎 File prepared: ${filename}`);
+
+    // Check if we should use template OCR for birth certificates
+    let useTemplateOcr = false;
+    let templateId = null;
+    let finalOcrApiUrl = ocrApiUrl;
+
+    // Detect birth certificate projects from project metadata
+    if (metadata.projectData) {
+      try {
+        const projectData = metadata.projectData;
+        const documentState = projectData.documentState;
+
+        if (
+          documentState &&
+          documentState.pages &&
+          Array.isArray(documentState.pages)
+        ) {
+          // Find the current page data
+          const currentPageData = documentState.pages.find(
+            (page) => page.pageNumber === metadata.pageNumber
+          );
+
+          if (currentPageData && currentPageData.pageType === "birth_cert") {
+            useTemplateOcr = true;
+
+            // Extract template ID and file URL from the birth certificate template
+            if (
+              currentPageData.birthCertTemplate &&
+              currentPageData.birthCertTemplate.id
+            ) {
+              templateId = currentPageData.birthCertTemplate.id;
+              const templateFileUrl =
+                currentPageData.birthCertTemplate.file_url;
+
+              console.log(
+                `      🎯 [TEMPLATE OCR] Found birth certificate template: ${templateId}`
+              );
+              console.log(
+                `      📁 [TEMPLATE OCR] Template file URL: ${templateFileUrl} (not needed for this endpoint)`
+              );
+            } else {
+              // Fallback to default template ID
+              templateId = "birth_cert_english_1993";
+              console.log(
+                `      ⚠️ [TEMPLATE OCR] No template ID found, using default: ${templateId}`
+              );
+            }
+
+            if (useTemplateOcr) {
+              finalOcrApiUrl = `http://localhost:8000/projects/template-ocr/${templateId}`;
+              console.log(
+                `      🎯 [TEMPLATE OCR] Using birth certificate template: ${templateId}`
+              );
+              console.log(`      📡 Template OCR endpoint: ${finalOcrApiUrl}`);
+            }
+          } else if (currentPageData && currentPageData.pageType) {
+            console.log(
+              `      📋 [PAGE TYPE] Page ${metadata.pageNumber} type: ${currentPageData.pageType}`
+            );
+          }
+        }
+      } catch (parseError) {
+        console.log(
+          `      ⚠️ [TEMPLATE OCR] Error parsing project data: ${parseError.message}`
+        );
+      }
+    }
+
+    // Add the image with the correct field name based on OCR type
+    if (useTemplateOcr) {
+      // Template OCR expects "file" (same as regular OCR)
+      formData.append("file", imageBuffer, {
+        filename: filename,
+        contentType: "image/png",
+      });
+      console.log(`      📎 File prepared for template OCR: ${filename}`);
+    } else {
+      // Regular OCR expects "file"
+      formData.append("file", imageBuffer, {
+        filename: filename,
+        contentType: "image/png",
+      });
+      console.log(`      📎 File prepared for regular OCR: ${filename}`);
+    }
+
+    // Detect birth certificate projects from project metadata
+    if (metadata.projectData) {
+      try {
+        const projectData = metadata.projectData;
+        const documentState = projectData.documentState;
+
+        if (
+          documentState &&
+          documentState.pages &&
+          Array.isArray(documentState.pages)
+        ) {
+          // Find the current page data
+          const currentPageData = documentState.pages.find(
+            (page) => page.pageNumber === metadata.pageNumber
+          );
+
+          if (currentPageData && currentPageData.pageType === "birth_cert") {
+            useTemplateOcr = true;
+
+            // Extract template ID and file URL from the birth certificate template
+            if (
+              currentPageData.birthCertTemplate &&
+              currentPageData.birthCertTemplate.id
+            ) {
+              templateId = currentPageData.birthCertTemplate.id;
+              const templateFileUrl =
+                currentPageData.birthCertTemplate.file_url;
+
+              console.log(
+                `      🎯 [TEMPLATE OCR] Found birth certificate template: ${templateId}`
+              );
+              console.log(
+                `      📁 [TEMPLATE OCR] Template file URL: ${templateFileUrl} (not needed for this endpoint)`
+              );
+            } else {
+              // Fallback to default template ID
+              templateId = "birth_cert_english_1993";
+              console.log(
+                `      ⚠️ [TEMPLATE OCR] No template ID found, using default: ${templateId}`
+              );
+            }
+
+            if (useTemplateOcr) {
+              finalOcrApiUrl = `http://localhost:8000/projects/template-ocr/${templateId}`;
+              console.log(
+                `      🎯 [TEMPLATE OCR] Using birth certificate template: ${templateId}`
+              );
+              console.log(`      📡 Template OCR endpoint: ${finalOcrApiUrl}`);
+            }
+          } else if (currentPageData && currentPageData.pageType) {
+            console.log(
+              `      📋 [PAGE TYPE] Page ${metadata.pageNumber} type: ${currentPageData.pageType}`
+            );
+          }
+        }
+      } catch (parseError) {
+        console.log(
+          `      ⚠️ [TEMPLATE OCR] Error parsing project data: ${parseError.message}`
+        );
+      }
+    }
+
+    if (!useTemplateOcr) {
+      console.log(
+        `      📄 [REGULAR OCR] No template detected, using standard OCR`
+      );
+    }
 
     // Add frontend dimensions if available
     if (metadata.pageWidth && metadata.pageHeight) {
@@ -2558,122 +2724,9 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
       );
     }
 
-    // Add data URL for validation if available
-    if (metadata.dataUrl) {
-      formData.append("data_url", metadata.dataUrl);
-      console.log(`      🔍 Data URL added for validation`);
-
-      // Save image to disk for inspection
-      try {
-        const fs = require("fs");
-        const path = require("path");
-
-        // Create debug directory if it doesn't exist
-        const debugDir = path.join(__dirname, "debug_ocr_requests");
-        if (!fs.existsSync(debugDir)) {
-          fs.mkdirSync(debugDir, { recursive: true });
-        }
-
-        // Generate unique filename
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const filename = `ocr-${metadata.pageNumber}-${metadata.viewType}-${timestamp}.png`;
-        const filePath = path.join(debugDir, filename);
-
-        // Save the image buffer to disk
-        fs.writeFileSync(filePath, imageBuffer);
-        console.log(`      💾 Image saved for OCR inspection: ${filePath}`);
-
-        // Log detailed image information for debugging
-        console.log(`      📸 Image Details:`);
-        console.log(`         - File path: ${filePath}`);
-        console.log(
-          `         - Data URL length: ${metadata.dataUrl.length} characters`
-        );
-        console.log(
-          `         - Data URL preview: ${metadata.dataUrl.substring(
-            0,
-            100
-          )}...`
-        );
-        console.log(
-          `         - Base64 data length: ${
-            metadata.dataUrl.split(",")[1]?.length || 0
-          } characters`
-        );
-        console.log(
-          `         - Image dimensions: ${metadata.pageWidth}x${metadata.pageHeight}`
-        );
-        console.log(`         - Buffer size: ${imageBuffer.length} bytes`);
-        console.log(
-          `         - Expected file size: ~${
-            Math.round((imageBuffer.length / 1024) * 100) / 100
-          } KB`
-        );
-
-        // Validate data URL format
-        if (metadata.dataUrl.startsWith("data:image/png;base64,")) {
-          console.log(`         - Format: ✅ Valid PNG data URL`);
-        } else {
-          console.log(
-            `         - Format: ⚠️  Unexpected format: ${metadata.dataUrl.substring(
-              0,
-              50
-            )}...`
-          );
-        }
-      } catch (fileError) {
-        console.log(
-          `      ⚠️  Could not save image to disk: ${fileError.message}`
-        );
-
-        // Fallback logging without file saving
-        console.log(`      📸 Image Details (fallback):`);
-        console.log(
-          `         - Data URL length: ${metadata.dataUrl.length} characters`
-        );
-        console.log(
-          `         - Data URL preview: ${metadata.dataUrl.substring(
-            0,
-            100
-          )}...`
-        );
-        console.log(
-          `         - Base64 data length: ${
-            metadata.dataUrl.split(",")[1]?.length || 0
-          } characters`
-        );
-        console.log(
-          `         - Image dimensions: ${metadata.pageWidth}x${metadata.pageHeight}`
-        );
-        console.log(`         - Buffer size: ${imageBuffer.length} bytes`);
-        console.log(
-          `         - Expected file size: ~${
-            Math.round((imageBuffer.length / 1024) * 100) / 100
-          } KB`
-        );
-
-        // Validate data URL format
-        if (metadata.dataUrl.startsWith("data:image/png;base64,")) {
-          console.log(`         - Format: ✅ Valid PNG data URL`);
-        } else {
-          console.log(
-            `         - Format: ⚠️  Unexpected format: ${metadata.dataUrl.substring(
-              0,
-              50
-            )}...`
-          );
-        }
-      }
-    }
-
     // Add project data if available
     if (metadata.projectData) {
       formData.append("project_data", JSON.stringify(metadata.projectData));
-      console.log(
-        `      📋 Project data added: ${
-          JSON.stringify(metadata.projectData).length
-        } characters`
-      );
     }
 
     // No authorization headers needed - direct call to your backend
@@ -2686,18 +2739,16 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
     console.log(`         - File: ${filename} (${imageBuffer.length} bytes)`);
     console.log(`         - frontend_page_width: ${metadata.pageWidth}`);
     console.log(`         - frontend_page_height: ${metadata.pageHeight}`);
-    if (metadata.dataUrl) {
-      console.log(`         - data_url: ${metadata.dataUrl.length} characters`);
-    }
-    if (metadata.projectData) {
-      console.log(
-        `         - project_data: ${
-          JSON.stringify(metadata.projectData).length
-        } characters`
-      );
+    if (useTemplateOcr) {
+      console.log(`         - Template OCR enabled for: ${templateId}`);
     }
 
-    console.log(`      🌐 Sending to OCR service: ${ocrApiUrl}`);
+    console.log(`      🌐 Sending to OCR service: ${finalOcrApiUrl}`);
+    if (useTemplateOcr) {
+      console.log(
+        `      🎯 [TEMPLATE OCR] Using birth certificate template: ${templateId}`
+      );
+    }
     console.log(`      📊 Request details:`);
     console.log(`         - Image size: ${imageBuffer.length} bytes`);
     console.log(
@@ -2710,12 +2761,15 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
     // Show what's being sent in the request
     console.log(`      📤 Request payload:`);
     console.log(`         - File: ${filename} (${imageBuffer.length} bytes)`);
+    if (useTemplateOcr) {
+      console.log(`         - Template OCR enabled for: ${templateId}`);
+    }
     console.log(
-      `         - Form fields: frontend_page_width, frontend_page_height, data_url, project_data`
+      `         - Form fields: frontend_page_width, frontend_page_height`
     );
 
     // Send to your backend OCR service
-    const response = await axios.post(ocrApiUrl, formData, {
+    const response = await axios.post(finalOcrApiUrl, formData, {
       headers,
       timeout: 120000, // 2 minute timeout
       maxContentLength: 100 * 1024 * 1024, // 100MB

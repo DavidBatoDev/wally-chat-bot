@@ -416,12 +416,12 @@ DO NOT include explanations or notes outside the JSON object.
 """
         return prompt
 
-    def create_styled_pdf_from_extracted_data(self, template_data: Dict[str, Any], 
-                                            extracted_data: Dict[str, Any]) -> bytes:
+    def create_styled_pdf_from_extracted_data(self, template_info: Dict[str, Any], 
+                                             extracted_data: Dict[str, Any]) -> bytes:
         """Create a styled PDF with extracted text placed in their template positions."""
         
         # Get fillable text info from template
-        fillable_text_info = template_data.get("fillable_text_info", [])
+        fillable_text_info = template_info.get("fillable_text_info", [])
         if not fillable_text_info:
             raise Exception("No fillable text info found in template")
         
@@ -517,13 +517,20 @@ DO NOT include explanations or notes outside the JSON object.
         buffer.seek(0)
         return buffer.getvalue()
 
-    def create_styled_json_from_extracted_data(self, template_data: Dict[str, Any], 
+    def create_styled_json_from_extracted_data(self, template_info: Dict[str, Any], 
                                              extracted_data: Dict[str, Any],
                                              page_width: float = 612.0,
                                              page_height: float = 792.0) -> Dict[str, Any]:
         """Create a styled JSON response similar to the OCR service format."""
         
-        fillable_text_info = template_data.get("fillable_text_info", [])
+        fillable_text_info = template_info.get("fillable_text_info", [])
+        
+        print(f"Creating styled JSON with {len(fillable_text_info)} fillable text fields")
+        if not fillable_text_info:
+            print("Warning: No fillable_text_info found in template")
+            print(f"Template info keys: {list(template_info.keys())}")
+        
+        print(f"Using page dimensions: {page_width} x {page_height}")
         
         # Create the response structure similar to OCR service
         styled_layout = {
@@ -543,28 +550,56 @@ DO NOT include explanations or notes outside the JSON object.
             "entities": []
         }
         
+        print(f"Processing {len(fillable_text_info)} fields with extracted data keys: {list(extracted_data.keys())}")
+        print(f"Sample field keys: {[f.get('key', '') for f in fillable_text_info[:5]]}")
+        print(f"Sample extracted keys: {list(extracted_data.keys())[:5]}")
+        
         # Convert extracted data to entities format - CREATE ENTITIES FOR ALL FIELDS
         for field_info in fillable_text_info:
             field_key = field_info.get("key", "")
             position = field_info.get("position", {})
+            
+            print(f"Processing field: {field_key} (label: {field_info.get('label', 'N/A')})")
+            print(f"  Position: {position}")
+            print(f"  Extracted value: {extracted_data.get(field_key, 'NOT_FOUND')}")
             
             # Get extracted value
             extracted_value = ""
             confidence = 1.0
             is_placeholder = False
             
-            if field_key in extracted_data:
-                field_data = extracted_data[field_key]
-                if isinstance(field_data, dict):
-                    extracted_value = field_data.get("value", "")
-                else:
-                    extracted_value = str(field_data)
+            # Try to find the extracted value with different key formats
+            field_key_clean = field_key.strip("{}")  # Remove curly braces
+            field_key_variations = [field_key, field_key_clean, field_key_clean.lower(), field_key_clean.upper()]
+            
+            for key_variant in field_key_variations:
+                if key_variant in extracted_data:
+                    field_data = extracted_data[key_variant]
+                    if isinstance(field_data, dict):
+                        extracted_value = field_data.get("value", "")
+                    else:
+                        extracted_value = str(field_data)
+                    print(f"  Found value using key variant: {key_variant} -> {extracted_value}")
+                    break
+            
+            if not extracted_value:
+                print(f"  No value found for field {field_key} with any key variant")
             
             # If no value found, use empty string for text, field key for placeholder
             if not extracted_value:
                 extracted_value = ""  # Empty string for non-detected fields
                 confidence = 0.0  # Set confidence to 0 for placeholder values
                 is_placeholder = True
+            
+            # Validate position data
+            if not position or not all(key in position for key in ['x0', 'y0', 'width', 'height']):
+                print(f"  Warning: Missing position data for field {field_key}, using defaults")
+                position = {
+                    'x0': 0,
+                    'y0': 0,
+                    'width': 100,
+                    'height': 12
+                }
             
             # Create entity in OCR service format for ALL fields
             entity = {
@@ -576,30 +611,54 @@ DO NOT include explanations or notes outside the JSON object.
                 "bounding_poly": {
                     "vertices": [
                         {"x": position.get("x0", 0) / page_width, "y": position.get("y0", 0) / page_height},
-                        {"x": position.get("x1", 0) / page_width, "y": position.get("y0", 0) / page_height},
-                        {"x": position.get("x1", 0) / page_width, "y": position.get("y1", 0) / page_height},
-                        {"x": position.get("x0", 0) / page_width, "y": position.get("y1", 0) / page_height}
+                        {"x": (position.get("x0", 0) + position.get("width", 100)) / page_width, "y": position.get("y0", 0) / page_height},
+                        {"x": (position.get("x0", 0) + position.get("width", 100)) / page_width, "y": (position.get("y0", 0) + position.get("height", 12)) / page_height},
+                        {"x": position.get("x0", 0) / page_width, "y": (position.get("y0", 0) + position.get("height", 12)) / page_height}
                     ]
                 },
                 "id": field_key,
-                "style": {
-                    "x": position.get("x0", 0),
-                    "y": position.get("y0", 0),  # Keep original Y for styling (PDF coordinates)
-                    "width": position.get("width", 100),
-                    "height": position.get("height", 12),
-                    "font_family": field_info.get("font", {}).get("name", "Arial"),
+                "dimensions": {
+                    "box_x": position.get("x0", 0),
+                    "box_y": position.get("y0", 0),
+                    "box_width": position.get("width", 100),
+                    "box_height": position.get("height", 12),
+                    "text_y": position.get("y0", 0) + position.get("height", 12) * 0.8,  # Approximate text baseline
+                    "coordinates": {
+                        "x1": position.get("x0", 0),
+                        "y1": position.get("y0", 0) + position.get("height", 12),
+                        "x2": position.get("x0", 0) + position.get("width", 100),
+                        "y2": position.get("y0", 0) + position.get("height", 12),
+                        "x3": position.get("x0", 0) + position.get("width", 100),
+                        "y3": position.get("y0", 0),
+                        "x4": position.get("x0", 0),
+                        "y4": position.get("y0", 0)
+                    }
+                },
+                "styling": {
                     "font_size": field_info.get("font", {}).get("size", 10),
-                    "color": "#000000",  
-                    "background_color": "transparent",
-                    "border_color": "transparent",
-                    "border_width": 0,
-                    "rotation": field_info.get("rotation", 0),
-                    "opacity": 0.7 if is_placeholder else 1,  # More transparent for placeholders
-                    "z_index": 1
+                    "font_family": field_info.get("font", {}).get("name", "Arial"),
+                    "colors": {
+                        "fill_color": {"r": 0, "g": 0, "b": 0, "a": 1} if not is_placeholder else {"r": 128, "g": 128, "b": 128, "a": 0.7},
+                        "background_color": None,
+                        "border_color": None,
+                        "stroke_color": {"r": 0, "g": 0, "b": 0, "a": 0}
+                    },
+                    "text_alignment": "left",
+                    "text_padding": 2,
+                    "line_spacing": 1.2,
+                    "line_height": 1.2,
+                    "text_lines": [extracted_value] if extracted_value else [],
+                    "line_count": 1 if extracted_value else 0,
+                    "background": {
+                        "border_radius": 0
+                    }
                 }
             }
             
             page_data["entities"].append(entity)
+        
+        print(f"Created {len(page_data['entities'])} entities")
+        print(f"Sample entity structure: {page_data['entities'][0] if page_data['entities'] else 'No entities'}")
         
         styled_layout["pages"].append(page_data)
         return styled_layout

@@ -13,6 +13,8 @@ import {
   getPdfPageCountFromFile,
   getFileTypeInfo,
   generateBlankCanvas,
+  generateOcrBlankCanvas,
+  isBirthCertificateOcrFile,
 } from "../utils/pdfUtils";
 
 // API configuration
@@ -440,11 +442,52 @@ export async function createProjectFromUpload(
   // Generate image element if this is an image file
   let imageElement = null;
   let blankCanvasUrl = null;
+  let isBirthCertificateOcr = false;
+
+  // Function to determine birth certificate template type based on filename
+  const getBirthCertTemplateInfo = (fileName: string) => {
+    const lowerFileName = fileName.toLowerCase();
+
+    // Detect language and year from filename
+    const isSpanish =
+      lowerFileName.includes("spanish") ||
+      lowerFileName.includes("español") ||
+      lowerFileName.includes("espanol");
+    const isFrench =
+      lowerFileName.includes("french") ||
+      lowerFileName.includes("français") ||
+      lowerFileName.includes("francais");
+
+    // Extract year (look for 4-digit numbers)
+    const yearMatch = fileName.match(/\b(19|20)\d{2}\b/);
+    const year = yearMatch ? yearMatch[0] : "1993";
+
+    // Determine template type
+    let templateType = "English";
+    if (isSpanish) templateType = "Spanish";
+    else if (isFrench) templateType = "French";
+
+    return {
+      type: `${templateType}_${year}_template`,
+      variation: `${templateType}_${year}`,
+      language: templateType.toLowerCase(),
+      year: year,
+    };
+  };
 
   if (fileInfo.isImage) {
     const imageId = `img_${Date.now()}_${Math.random()
       .toString(36)
       .substr(2, 9)}`;
+
+    // Check if this is for birth certificate OCR processing
+    isBirthCertificateOcr = isBirthCertificateOcrFile(file);
+
+    console.log("DEBUG: Image upload type:", {
+      fileName: file.name,
+      isBirthCertificateOcr,
+      useOcrCanvas: isBirthCertificateOcr,
+    });
 
     // Calculate image positioning - center the image on the page with some padding
     const padding = 50; // pixels of padding from edges
@@ -491,11 +534,34 @@ export async function createProjectFromUpload(
 
     // Generate and upload a blank canvas as the main document
     try {
-      console.log("DEBUG: Generating blank canvas for image upload...");
-      const blankCanvas = await generateBlankCanvas(
-        actualPageWidth,
-        actualPageHeight
-      );
+      let blankCanvas: Blob;
+
+      if (isBirthCertificateOcr) {
+        console.log(
+          "DEBUG: Generating OCR-optimized blank canvas for birth certificate..."
+        );
+        // Use OCR-specific canvas with standard A4 dimensions
+        blankCanvas = await generateOcrBlankCanvas();
+
+        // Update page dimensions to match OCR canvas
+        actualPageWidth = 595; // A4 width in points
+        actualPageHeight = 842; // A4 height in points
+
+        console.log("DEBUG: Updated dimensions for OCR processing:", {
+          originalWidth: actualPageWidth,
+          originalHeight: actualPageHeight,
+          ocrWidth: actualPageWidth,
+          ocrHeight: actualPageHeight,
+        });
+      } else {
+        console.log(
+          "DEBUG: Generating custom-sized blank canvas for image upload..."
+        );
+        blankCanvas = await generateBlankCanvas(
+          actualPageWidth,
+          actualPageHeight
+        );
+      }
 
       // Create a File object from the canvas blob
       const blankCanvasFile = new File([blankCanvas], "blank-canvas.png", {
@@ -554,11 +620,38 @@ export async function createProjectFromUpload(
       ),
       deletedPages: Array.from(documentState.deletedPages || new Set()),
       // Create pages array with blank page
-      pages: Array.from({ length: actualNumPages }, (_, index) => ({
-        pageNumber: index + 1,
-        isTranslated: false,
-        elements: imageElement && index === 0 ? [imageElement.id] : [],
-      })),
+      pages: Array.from({ length: actualNumPages }, (_, index) => {
+        const pageData: any = {
+          pageNumber: index + 1,
+          isTranslated: false,
+          elements: imageElement && index === 0 ? [imageElement.id] : [],
+        };
+
+        // Add birth certificate specific data for the first page if this is a birth certificate OCR project
+        if (index === 0 && isBirthCertificateOcr) {
+          const templateInfo = getBirthCertTemplateInfo(file.name);
+          pageData.pageType = "birth_cert";
+          pageData.birthCertType = templateInfo.type;
+          pageData.birthCertTemplate = {
+            id: `birth_cert_${templateInfo.language}_${templateInfo.year}`,
+            doc_type: "birth_certificate",
+            variation: templateInfo.variation,
+            file_url: blankCanvasUrl, // Use the blank canvas as template
+            info_json: {
+              name: `${
+                templateInfo.language.charAt(0).toUpperCase() +
+                templateInfo.language.slice(1)
+              } Birth Certificate Template ${templateInfo.year}`,
+              width: actualPageWidth,
+              height: actualPageHeight,
+              language: templateInfo.language,
+              year: templateInfo.year,
+            },
+          };
+        }
+
+        return pageData;
+      }),
     },
     viewState: {
       currentView: initialState.viewState.currentView,
@@ -617,6 +710,7 @@ export async function createProjectFromUpload(
     pages: imageElement
       ? "Created with image element on page 1"
       : "No image elements",
+    isBirthCertificateOcr,
   });
 
   console.log("DEBUG: Auto-creation - Project data being created:", {
@@ -639,12 +733,18 @@ export async function createProjectFromUpload(
     project_data: projectData,
     tags: [
       fileInfo.isImage
-        ? "image-project"
+        ? isBirthCertificateOcr
+          ? "birth-certificate-ocr"
+          : "image-project"
         : file.type.includes("pdf")
         ? "pdf"
         : "document",
       "auto-created",
-      fileInfo.isImage ? "blank-canvas" : "original-file",
+      fileInfo.isImage
+        ? isBirthCertificateOcr
+          ? "ocr-optimized"
+          : "blank-canvas"
+        : "original-file",
     ],
     is_public: false,
   };
@@ -662,6 +762,7 @@ export async function createProjectFromUpload(
     documentUrl: createRequest.project_data.documentState.url,
     isImageProject: fileInfo.isImage,
     hasImageElement: !!imageElement,
+    isBirthCertificateOcr,
   });
 
   // Create the project and then update the project_data to include the ID

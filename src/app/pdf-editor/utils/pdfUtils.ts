@@ -86,13 +86,13 @@ export const getPdfPageCountFromFileLegacy = async (
 
 /**
  * Generate a blank canvas with white background that can be used as a PDF-like document
- * @param width - Page width in pixels
- * @param height - Page height in pixels
+ * @param width - Page width in pixels (optional, defaults to A4 size)
+ * @param height - Page height in pixels (optional, defaults to A4 size)
  * @returns Promise<Blob> - The generated canvas as a Blob
  */
 export const generateBlankCanvas = async (
-  width: number,
-  height: number
+  width?: number,
+  height?: number
 ): Promise<Blob> => {
   try {
     // Check if we're in a browser environment
@@ -100,18 +100,79 @@ export const generateBlankCanvas = async (
       throw new Error("Canvas generation requires browser environment");
     }
 
+    // Use default A4 dimensions if not provided (useful for OCR processing)
+    const finalWidth = width || 595; // Default A4 width in points
+    const finalHeight = height || 842; // Default A4 height in points
+
     // Validate dimensions
-    if (width <= 0 || height <= 0) {
+    if (finalWidth <= 0 || finalHeight <= 0) {
       throw new Error("Invalid dimensions: width and height must be positive");
     }
 
     // Limit dimensions to reasonable values to prevent memory issues
     const maxDimension = 10000;
-    if (width > maxDimension || height > maxDimension) {
+    if (finalWidth > maxDimension || finalHeight > maxDimension) {
       throw new Error(
         `Dimensions too large: max allowed is ${maxDimension}x${maxDimension}`
       );
     }
+
+    // Create a canvas element
+    const canvas = document.createElement("canvas");
+    canvas.width = finalWidth;
+    canvas.height = finalHeight;
+
+    // Get the 2D context and fill with white background
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to get canvas 2D context");
+    }
+
+    // Set white background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, finalWidth, finalHeight);
+
+    // Add a subtle border to make the page visible
+    ctx.strokeStyle = "#f0f0f0";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, finalWidth, finalHeight);
+
+    // Convert canvas to blob
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error("Failed to convert canvas to blob"));
+          }
+        },
+        "image/png",
+        0.95
+      ); // High quality PNG
+    });
+  } catch (error) {
+    console.error("Error generating blank canvas:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to generate blank canvas: ${errorMessage}`);
+  }
+};
+
+/**
+ * Generate a blank canvas specifically for OCR processing (birth certificates, etc.)
+ * Uses standard A4 dimensions and is optimized for document processing
+ * @returns Promise<Blob> - The generated canvas as a Blob
+ */
+export const generateOcrBlankCanvas = async (): Promise<Blob> => {
+  try {
+    // Check if we're in a browser environment
+    if (typeof document === "undefined") {
+      throw new Error("Canvas generation requires browser environment");
+    }
+
+    // Use standard A4 dimensions for OCR processing
+    const width = 595; // A4 width in points
+    const height = 842; // A4 height in points
 
     // Create a canvas element
     const canvas = document.createElement("canvas");
@@ -148,9 +209,9 @@ export const generateBlankCanvas = async (
       ); // High quality PNG
     });
   } catch (error) {
-    console.error("Error generating blank canvas:", error);
+    console.error("Error generating OCR blank canvas:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to generate blank canvas: ${errorMessage}`);
+    throw new Error(`Failed to generate OCR blank canvas: ${errorMessage}`);
   }
 };
 
@@ -181,4 +242,44 @@ export const getFileTypeInfo = (file: File) => {
     extension: file.name.split(".").pop()?.toLowerCase() || "",
     fileName: file.name,
   };
+};
+
+/**
+ * Check if a file is likely for birth certificate OCR processing
+ * @param file - The file to check
+ * @returns boolean - True if likely for birth certificate OCR
+ */
+export const isBirthCertificateOcrFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+  const fileExtension = file.name.split(".").pop()?.toLowerCase() || "";
+
+  // Check for birth certificate related keywords
+  const birthKeywords = [
+    "birth",
+    "certificate",
+    "bc",
+    "birt",
+    "cert",
+    "birthcert",
+    "birth_cert",
+    "birth_certificate",
+    "birthcertificate",
+  ];
+
+  // Check for OCR related keywords
+  const ocrKeywords = ["ocr", "scan", "scanned", "digitized", "digital"];
+
+  // Check for common birth certificate file patterns
+  const hasBirthKeyword = birthKeywords.some((keyword) =>
+    fileName.includes(keyword)
+  );
+  const hasOcrKeyword = ocrKeywords.some((keyword) =>
+    fileName.includes(keyword)
+  );
+
+  // Check if it's an image file (common for OCR)
+  const isImageFile = file.type.startsWith("image/");
+
+  // Return true if it has birth certificate keywords or OCR keywords and is an image
+  return (hasBirthKeyword || hasOcrKeyword) && isImageFile;
 };
