@@ -9,6 +9,7 @@ import {
   extractFilePathFromUrl,
   uploadFileToSupabase,
 } from "./fileUploadService";
+import { getPdfPageCountFromFile, getFileTypeInfo } from "../utils/pdfUtils";
 
 // API configuration
 const PROJECT_STATE_ENDPOINT = getApiUrl(API_CONFIG.PROJECT_STATE.BASE);
@@ -363,6 +364,73 @@ export async function createProjectFromUpload(
   // First, upload the file to Supabase storage
   const uploadResult = await uploadFileToSupabase(file, "project-uploads");
 
+  // Get file type information and page count
+  const fileInfo = getFileTypeInfo(file);
+  let actualNumPages = 1; // Default to 1 page
+  let actualPageWidth = 595; // Default A4 width in points
+  let actualPageHeight = 842; // Default A4 height in points
+
+  console.log("DEBUG: File upload - File info:", fileInfo);
+
+  try {
+    if (fileInfo.isPdf) {
+      // Get actual page count and dimensions from PDF file
+      console.log(
+        "DEBUG: Processing PDF file, getting page count and dimensions..."
+      );
+      const pdfInfo = await getPdfPageCountFromFile(file);
+      actualNumPages = pdfInfo.pageCount;
+      actualPageWidth = pdfInfo.pageWidth;
+      actualPageHeight = pdfInfo.pageHeight;
+      console.log(
+        `DEBUG: PDF file has ${actualNumPages} pages, dimensions: ${actualPageWidth}x${actualPageHeight}`
+      );
+    } else if (fileInfo.isImage) {
+      // For images, we'll treat them as single-page documents
+      actualNumPages = 1;
+      // For images, we'll use the actual image dimensions if available
+      try {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+        actualPageWidth = img.width;
+        actualPageHeight = img.height;
+        URL.revokeObjectURL(objectUrl);
+        console.log(
+          `DEBUG: Image file dimensions: ${actualPageWidth}x${actualPageHeight}`
+        );
+      } catch (imgError) {
+        console.warn(
+          "Could not get image dimensions, using defaults:",
+          imgError
+        );
+        actualPageWidth = 800;
+        actualPageHeight = 600;
+      }
+      console.log("DEBUG: Image file treated as single page");
+    } else {
+      console.log("DEBUG: Unknown file type, treating as single page");
+    }
+  } catch (error) {
+    console.warn(
+      "Could not determine page count or dimensions, using defaults:",
+      error
+    );
+    actualNumPages = 1;
+    actualPageWidth = 595;
+    actualPageHeight = 842;
+  }
+
+  console.log("DEBUG: Final page count and dimensions determined:", {
+    numPages: actualNumPages,
+    pageWidth: actualPageWidth,
+    pageHeight: actualPageHeight,
+  });
+
   // Generate a project name based on the file
   const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
   const projectName = `${fileName} - ${new Date().toLocaleDateString()}`;
@@ -380,6 +448,13 @@ export async function createProjectFromUpload(
       url: uploadResult.publicUrl,
       isSupabaseUrl: true,
       supabaseFilePath: uploadResult.filePath,
+      // Set the correct page count and dimensions from the actual file
+      numPages: actualNumPages,
+      pageWidth: actualPageWidth,
+      pageHeight: actualPageHeight,
+      // Set file type information
+      fileType: fileInfo.mimeType,
+      isDocumentLoaded: true,
       // Convert Map and Set to serializable formats
       detectedPageBackgrounds: Object.fromEntries(
         documentState.detectedPageBackgrounds || new Map()
@@ -415,10 +490,24 @@ export async function createProjectFromUpload(
     desiredLanguage: initialState.desiredLanguage,
   };
 
+  console.log("DEBUG: Document state created with:", {
+    originalNumPages: documentState.numPages,
+    newNumPages: actualNumPages,
+    originalPageWidth: documentState.pageWidth,
+    newPageWidth: actualPageWidth,
+    originalPageHeight: documentState.pageHeight,
+    newPageHeight: actualPageHeight,
+    url: uploadResult.publicUrl,
+    fileType: fileInfo.mimeType,
+    isDocumentLoaded: true,
+  });
+
   console.log("DEBUG: Auto-creation - Project data being created:", {
     projectData,
     documentStateKeys: Object.keys(projectData.documentState),
     uploadResult,
+    fileInfo,
+    actualNumPages,
     hasRequiredFields: {
       url: !!projectData.documentState.url,
       isDocumentLoaded: projectData.documentState.isDocumentLoaded,
@@ -434,6 +523,18 @@ export async function createProjectFromUpload(
     tags: [file.type.includes("pdf") ? "pdf" : "image", "auto-created"],
     is_public: false,
   };
+
+  console.log("DEBUG: Final create request:", {
+    name: createRequest.name,
+    description: createRequest.description,
+    tags: createRequest.tags,
+    is_public: createRequest.is_public,
+    project_data_keys: Object.keys(createRequest.project_data),
+    documentState_keys: Object.keys(createRequest.project_data.documentState),
+    numPages: createRequest.project_data.documentState.numPages,
+    pageWidth: createRequest.project_data.documentState.pageWidth,
+    pageHeight: createRequest.project_data.documentState.pageHeight,
+  });
 
   // Create the project and then update the project_data to include the ID
   const result = await createProject(createRequest);
