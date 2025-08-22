@@ -359,18 +359,11 @@ export const useDocumentState = () => {
   // Change current page
   const changePage = useCallback(
     (page: number, isFinalLayout = false) => {
-      console.log(
-        "document state final layout URL:",
-        documentState.finalLayoutUrl
-      );
+
 
       if (isFinalLayout) {
         // Handle final layout page change
         if (page >= 1 && page <= (documentState.finalLayoutNumPages || 0)) {
-          console.log("✅ Final layout page change valid:", {
-            page,
-            finalLayoutNumPages: documentState.finalLayoutNumPages,
-          });
           setDocumentState((prev) => {
             const newState = {
               ...prev,
@@ -398,11 +391,6 @@ export const useDocumentState = () => {
               currentPage: page,
               isPageLoading: true,
             };
-            console.log("🔄 Regular state updated:", {
-              from: prev.currentPage,
-              to: page,
-              newState: newState,
-            });
             return newState;
           });
         } else {

@@ -157,6 +157,46 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
 
         // Collect all translated textboxes to add at once
         const translatedTextBoxesToAdd: any[] = [];
+        // Collect all untranslated texts to add at once
+        const untranslatedTextsToAdd: any[] = [];
+
+        // Create UntranslatedText objects directly from the puppeteer response
+        // This ensures we get the original OCR text before any translation
+        if (result.data?.results) {
+          result.data.results.forEach((pageResult: any) => {
+            if (pageResult.ocrResult?.styled_layout?.pages) {
+              pageResult.ocrResult.styled_layout.pages.forEach((page: any) => {
+                if (page.entities) {
+                  page.entities.forEach((entity: any) => {
+                    // Create UntranslatedText from the original OCR data
+                    if (entity.originalText && entity.dimensions) {
+                      const untranslatedText: UntranslatedText = {
+                        id: generateUUID(),
+                        translatedTextboxId: "", // Will be set after creating textboxes
+                        originalText: entity.originalText, // This is the raw OCR text
+                        page: pageResult.pageNumber,
+                        x: entity.dimensions.box_x,
+                        y: entity.dimensions.box_y,
+                        width: entity.dimensions.box_width,
+                        height: entity.dimensions.box_height,
+                        isCustomTextbox: false,
+                        status:
+                          entity.originalText && entity.originalText.trim()
+                            ? "needsChecking"
+                            : "isEmpty",
+                      };
+                      untranslatedTextsToAdd.push(untranslatedText);
+
+                      console.log(
+                        `📝 [OCR Service] Created UntranslatedText from OCR: "${entity.originalText}" at (${entity.dimensions.box_x}, ${entity.dimensions.box_y})`
+                      );
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
 
         // Process each page and create textboxes
         textBoxesByPage.forEach((pageMap, pageNumber) => {
@@ -176,6 +216,28 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                 };
 
                 translatedTextBoxesToAdd.push(translatedTextBox);
+
+                // Find matching UntranslatedText by position and text content
+                const matchingUntranslatedText = untranslatedTextsToAdd.find(
+                  (ut) =>
+                    ut.page === pageNumber &&
+                    Math.abs(ut.x - textBox.x) < 5 && // Allow small position differences
+                    Math.abs(ut.y - textBox.y) < 5 &&
+                    ut.translatedTextboxId === "" // Not yet assigned
+                );
+
+                if (matchingUntranslatedText) {
+                  // Link the UntranslatedText to this textbox
+                  matchingUntranslatedText.translatedTextboxId =
+                    translatedTextBox.id;
+                  console.log(
+                    `🔗 [OCR Service] Linked UntranslatedText "${matchingUntranslatedText.originalText}" to textbox ${translatedTextBox.id}`
+                  );
+                } else {
+                  console.warn(
+                    `⚠️ [OCR Service] No matching UntranslatedText found for textbox at (${textBox.x}, ${textBox.y})`
+                  );
+                }
 
                 console.log(
                   `✅ [OCR Service] Prepared textbox for translated page: ${translatedTextBox.id} at (${textBox.x}, ${textBox.y})`
@@ -202,6 +264,31 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
           console.log(
             `✅ [OCR Service] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
           );
+
+          // Add all untranslated texts at once using the callback if provided
+          if (
+            options.addUntranslatedText &&
+            untranslatedTextsToAdd.length > 0
+          ) {
+            untranslatedTextsToAdd.forEach((untranslatedText) => {
+              options.addUntranslatedText!(untranslatedText);
+            });
+            console.log(
+              `✅ [OCR Service] Added ${untranslatedTextsToAdd.length} untranslated texts using addUntranslatedText callback`
+            );
+          } else if (untranslatedTextsToAdd.length > 0) {
+            // Fallback: add directly to element collections if callback not provided
+            options.setElementCollections((prev: any) => ({
+              ...prev,
+              untranslatedTexts: [
+                ...prev.untranslatedTexts,
+                ...untranslatedTextsToAdd,
+              ],
+            }));
+            console.log(
+              `✅ [OCR Service] Added ${untranslatedTextsToAdd.length} untranslated texts directly to untranslatedTexts array`
+            );
+          }
 
           // Now apply measureText utility to optimize dimensions of all textboxes
           console.log(
@@ -419,6 +506,48 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
 
           // Collect all translated textboxes to add at once
           const translatedTextBoxesToAdd: any[] = [];
+          // Collect all untranslated texts to add at once
+          const untranslatedTextsToAdd: any[] = [];
+
+          // Create UntranslatedText objects directly from the puppeteer response
+          // This ensures we get the original OCR text before any translation
+          if (result.data?.results) {
+            result.data.results.forEach((pageResult: any) => {
+              if (pageResult.ocrResult?.styled_layout?.pages) {
+                pageResult.ocrResult.styled_layout.pages.forEach(
+                  (page: any) => {
+                    if (page.entities) {
+                      page.entities.forEach((entity: any) => {
+                        // Create UntranslatedText from the original OCR data
+                        if (entity.originalText && entity.dimensions) {
+                          const untranslatedText: UntranslatedText = {
+                            id: generateUUID(),
+                            translatedTextboxId: "", // Will be set after creating textboxes
+                            originalText: entity.originalText, // This is the raw OCR text
+                            page: pageResult.pageNumber,
+                            x: entity.dimensions.box_x,
+                            y: entity.dimensions.box_y,
+                            width: entity.dimensions.box_width,
+                            height: entity.dimensions.box_height,
+                            isCustomTextbox: false,
+                            status:
+                              entity.originalText && entity.originalText.trim()
+                                ? "needsChecking"
+                                : "isEmpty",
+                          };
+                          untranslatedTextsToAdd.push(untranslatedText);
+
+                          console.log(
+                            `📝 [Bulk OCR] Created UntranslatedText from OCR: "${entity.originalText}" at (${entity.dimensions.box_x}, ${entity.dimensions.box_y})`
+                          );
+                        }
+                      });
+                    }
+                  }
+                );
+              }
+            });
+          }
 
           // Process each page and create textboxes
           textBoxesByPage.forEach((pageMap, pageNumber) => {
@@ -438,6 +567,28 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
                   };
 
                   translatedTextBoxesToAdd.push(translatedTextBox);
+
+                  // Find matching UntranslatedText by position and text content
+                  const matchingUntranslatedText = untranslatedTextsToAdd.find(
+                    (ut) =>
+                      ut.page === pageNumber &&
+                      Math.abs(ut.x - textBox.x) < 5 && // Allow small position differences
+                      Math.abs(ut.y - textBox.y) < 5 &&
+                      ut.translatedTextboxId === "" // Not yet assigned
+                  );
+
+                  if (matchingUntranslatedText) {
+                    // Link the UntranslatedText to this textbox
+                    matchingUntranslatedText.translatedTextboxId =
+                      translatedTextBox.id;
+                    console.log(
+                      `🔗 [Bulk OCR] Linked UntranslatedText "${matchingUntranslatedText.originalText}" to textbox ${translatedTextBox.id}`
+                    );
+                  } else {
+                    console.warn(
+                      `⚠️ [Bulk OCR] No matching UntranslatedText found for textbox at (${textBox.x}, ${textBox.y})`
+                    );
+                  }
 
                   console.log(
                     `✅ [Bulk OCR] Prepared textbox for translated page: ${translatedTextBox.id} at (${textBox.x}, ${textBox.y})`
@@ -461,6 +612,31 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
             console.log(
               `✅ [Bulk OCR] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
             );
+
+            // Add all untranslated texts at once using the callback if provided
+            if (
+              options.addUntranslatedText &&
+              untranslatedTextsToAdd.length > 0
+            ) {
+              untranslatedTextsToAdd.forEach((untranslatedText) => {
+                options.addUntranslatedText!(untranslatedText);
+              });
+              console.log(
+                `✅ [Bulk OCR] Added ${untranslatedTextsToAdd.length} untranslated texts using addUntranslatedText callback`
+              );
+            } else if (untranslatedTextsToAdd.length > 0) {
+              // Fallback: add directly to element collections if callback not provided
+              options.setElementCollections((prev: any) => ({
+                ...prev,
+                untranslatedTexts: [
+                  ...prev.untranslatedTexts,
+                  ...untranslatedTextsToAdd,
+                ],
+              }));
+              console.log(
+                `✅ [Bulk OCR] Added ${untranslatedTextsToAdd.length} untranslated texts directly to untranslatedTexts array`
+              );
+            }
 
             // Now apply comprehensive textbox optimization using the new utility
             console.log(

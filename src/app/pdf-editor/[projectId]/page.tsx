@@ -37,19 +37,11 @@ const PDFEditorProject: React.FC = () => {
         return;
       }
 
-      // Debug logging
-      console.log("DEBUG: Looking for project with ID:", projectId);
-      console.log("DEBUG: Current user:", user);
-
       // Fetch project directly from database
       const fetchProject = async () => {
         try {
-          console.log("DEBUG: Fetching project from database...");
-          console.log("DEBUG: User authentication status:", !!user, !!session);
-
           // Check if user is authenticated before making the API call
           if (!user || !session) {
-            console.log("DEBUG: User not authenticated, setting auth error");
             setAuthError(true);
             setIsLoading(false);
             return;
