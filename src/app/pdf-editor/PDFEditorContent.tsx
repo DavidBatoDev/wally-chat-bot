@@ -3,6 +3,7 @@ import React, {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
@@ -27,6 +28,7 @@ import {
   getProjectShareSettings,
 } from "./services/projectApiService";
 import { preloadHtml2Canvas } from "./utils/html2canvasLoader";
+import { permissions } from "../pdf-editor-shared/utils/permissions";
 
 // Import types
 import {
@@ -51,6 +53,8 @@ import { useElementManagement } from "./hooks/states/useElementManagement";
 import { useTextSpanHandling } from "./hooks/states/useTextSpanHandling";
 import { useHistory } from "./hooks/states/useHistory";
 import { useProjectState } from "./hooks/states/useProjectState";
+import { useSharedProjectPersistence } from "../pdf-editor-shared/hooks/useSharedProjectPersistence";
+import { isInSharedMode } from "../pdf-editor-shared/services/sharedProjectService";
 import { uploadFileWithFallback } from "./services/fileUploadService";
 import {
   useHandleAddTextBoxWithUndo,
@@ -89,6 +93,7 @@ import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";
 import { PDFEditorSidebar } from "./components/layout/PDFEditorSidebar";
 import { PDFEditorStatusBar } from "./components/layout/PDFEditorStatusBar";
 import { FloatingToolbar } from "./components/layout/FloatingToolbar";
+import { ViewerViewSwitcher } from "./components/layout/ViewerViewSwitcher";
 import { MemoizedTextBox } from "./components/elements/TextBox";
 import { MemoizedShape } from "./components/elements/Shape";
 import { MemoizedImage } from "./components/elements/ImageElement";
@@ -99,6 +104,7 @@ import { SelectionRectangle } from "./components/elements/SelectionRectangle";
 import LanguageSelectionModal from "./components/LanguageSelectionModal";
 import ConfirmationModal from "./components/ConfirmationModal";
 import { TranslationTableView } from "./components/TranslationTableView";
+import { ViewerTranslationTable } from "./components/ViewerTranslationTable";
 import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
 import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
@@ -279,6 +285,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   });
   // Template state
   const [birthCertModalPage, setBirthCertModalPage] = useState<number>(1);
+
+  // Unsaved changes state for save button highlighting
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
   // Helper functions for birth certificate templates
   const getPageBirthCertTemplate = useCallback(
@@ -2606,6 +2615,33 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     };
   }, []); // Empty dependency array to only run on actual mount/unmount
 
+  // Track changes for unsaved changes highlighting
+  useEffect(() => {
+    // Mark as having unsaved changes when important states change
+    setHasUnsavedChanges(true);
+  }, [
+    elementCollections,
+    documentState.currentPage,
+    documentState.scale,
+    viewState.currentView,
+    viewState.currentWorkflowStep,
+    editorState,
+    sourceLanguage,
+    desiredLanguage,
+  ]);
+
+  // Reset unsaved changes after successful save
+  const markAsSaved = useCallback(() => {
+    setHasUnsavedChanges(false);
+  }, []);
+
+  // Editor-specific functions for shared projects (defined early to avoid initialization order issues)
+  const isEditorMode = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("pdf-editor-shared-mode") === "true" && 
+           localStorage.getItem("pdf-editor-shared-permissions") === "editor";
+  }, []);
+
   // Memoized values
   const currentPageTextBoxes = useMemo(
     () =>
@@ -4399,7 +4435,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     ]
   );
 
-  // Automatic project creation on document upload
   // Project management with enhanced save/load functionality
   const {
     saveProject: saveProjectToStorage,
@@ -4434,13 +4469,104 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     },
   });
 
+  // Shared project persistence for editor mode (works independently)
+  const sharedProjectPersistence = useSharedProjectPersistence({
+    documentState,
+    elementCollections,
+    layerState,
+    viewState,
+    editorState,
+    sourceLanguage,
+    desiredLanguage,
+    finalLayoutSettings,
+    setDocumentState,
+    setElementCollections,
+    setLayerState,
+    setViewState,
+    setEditorState,
+    setSourceLanguage,
+    setDesiredLanguage,
+    setFinalLayoutSettings,
+    documentActions: {
+      loadDocumentFromUrl: actions.loadDocumentFromUrl,
+      loadFinalLayoutFromUrl: actions.loadFinalLayoutFromUrl,
+    },
+  });
+
+  // Use shared editor save/load if in shared mode, otherwise use regular ones
+  const isSharedMode = isInSharedMode();
+  console.log("PDFEditorContent: Using", isSharedMode ? "shared editor" : "regular", "save/load functions");
+  
+  const actualSaveProject = isSharedMode 
+    ? sharedProjectPersistence.saveProject 
+    : saveProjectToStorage;
+  
+  const actualLoadProject = isSharedMode
+    ? sharedProjectPersistence.loadProject
+    : loadProject;
+
   // Auto-load project when projectId prop is provided
   useEffect(() => {
     if (projectId && !currentProjectId) {
       console.log("Auto-loading project with ID:", projectId);
-      loadProject(projectId);
+      actualLoadProject(projectId);
     }
-  }, [projectId, currentProjectId, loadProject]);
+  }, [projectId, currentProjectId, actualLoadProject]);
+
+  // Auto-load shared project from localStorage (run only once on mount)
+  useLayoutEffect(() => {
+    // Check if we're in shared mode
+    const isSharedMode = localStorage.getItem("pdf-editor-shared-mode") === "true";
+    const sharedPermissions = localStorage.getItem("pdf-editor-shared-permissions");
+    const sharedProjectId = localStorage.getItem("pdf-editor-shared-project-id");
+    
+    console.log("PDFEditorContent auto-load check:", {
+      isSharedMode,
+      sharedPermissions,
+      sharedProjectId,
+      projectId,
+      isEditor: sharedPermissions === "editor"
+    });
+    
+    // For editor mode, load the current state from database
+    if (isSharedMode && sharedPermissions === "editor" && sharedProjectId && !projectId) {
+      console.log("Editor mode: Loading current project state from database:", sharedProjectId);
+      
+      // Use setTimeout to ensure this happens after render
+      setTimeout(() => {
+        actualLoadProject(sharedProjectId).then((success) => {
+          if (success) {
+            console.log("Successfully loaded project from database for editor");
+          } else {
+            console.error("Failed to load project from database for editor");
+          }
+        }).catch((error) => {
+          console.error("Error loading project from database for editor:", error);
+        });
+      }, 0);
+    }
+    // For viewer mode, load from localStorage as before
+    else if (isSharedMode && sharedPermissions === "viewer") {
+      const currentProjectKey = localStorage.getItem("pdf-editor-current-project");
+      if (currentProjectKey && !projectId) {
+        console.log("Viewer mode: Auto-loading shared project from localStorage:", currentProjectKey);
+        
+        setTimeout(() => {
+          actualLoadProject().then((success) => {
+            if (success) {
+              console.log("Successfully loaded shared project for viewer");
+            } else {
+              console.error("Failed to load shared project for viewer");
+            }
+          }).catch((error) => {
+            console.error("Error loading shared project for viewer:", error);
+          });
+        }, 0);
+      }
+    }
+  }, []); // Empty dependency array to run only once
+
+  // Editor now uses the same save functionality as owner
 
   // Handle manual project loading from modal
   const handleManualProjectLoad = useCallback(
@@ -4452,22 +4578,31 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
       try {
         console.log("Manually loading project with ID:", projectId);
-        const success = await loadProject(projectId);
+        const success = await actualLoadProject(projectId);
         return success;
       } catch (error) {
         console.error("Failed to manually load project:", error);
         return false;
       }
     },
-    [loadProject]
+    [actualLoadProject]
   );
 
   // Keep backward compatibility for existing save project calls
   const saveProject = useCallback(
-    (projectName?: string) => {
-      return saveProjectToStorage(projectName);
+    async (projectName?: string) => {
+      // Add a small delay to ensure all state updates are synchronized
+      // This fixes the issue where manual saves don't persist but auto-saves do
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const result = await actualSaveProject(projectName);
+      if (result) {
+        markAsSaved();
+        // Notify about successful save
+        localStorage.setItem("pdf-editor-last-saved", new Date().toISOString());
+      }
+      return result;
     },
-    [saveProjectToStorage]
+    [actualSaveProject, markAsSaved]
   );
 
   // Handle share project
@@ -4500,6 +4635,22 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       setShowShareModal(true);
     }
   }, [currentProjectId]);
+
+  // Editor uses the exact same saveProject function as owner - no wrapper needed
+
+  const handleEditorShare = useCallback(() => {
+    if (!isEditorMode()) return handleShareProject();
+    
+    // For editors, just copy the share link
+    const shareId = localStorage.getItem("pdf-editor-share-id");
+    if (shareId) {
+      const shareLink = `${window.location.origin}/pdf-editor/shared/${shareId}`;
+      navigator.clipboard.writeText(shareLink);
+      toast.success("Share link copied to clipboard!");
+    } else {
+      toast.error("Share ID not found");
+    }
+  }, [isEditorMode, handleShareProject]);
 
   // Handle updating share settings
   const handleUpdateShareSettings = useCallback(
@@ -5443,9 +5594,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       <PDFEditorHeader
         onFileUpload={handleFileUploadIntercept}
         onSaveProject={saveProject}
+        hasUnsavedChanges={hasUnsavedChanges}
         onProjectManagement={() => setShowProjectModal(true)}
-        onShareProject={handleShareProject}
-        onExportData={exportToPDF}
+        onShareProject={handleEditorShare}
+        onExportData={permissions.canExportProject() ? exportToPDF : () => {}}
         onUndo={() => {
           const now = Date.now();
           if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
@@ -5493,6 +5645,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         isCapturingSnapshots={isCapturingSnapshots}
         projectName={currentProjectName}
         onBackToDashboard={() => router.push("/pdf-editor")}
+        hasFinalLayout={!!documentState.finalLayoutUrl}
       />
 
       {/* Main Content */}
@@ -5589,8 +5742,36 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
               </div>
             )}
 
-            {/* Floating Toolbars - Only show when PDF is loaded */}
-            {documentState.url && !documentState.error && (
+            {/* Viewer View Switcher - Only show for viewers */}
+            {documentState.url && !documentState.error && !permissions.canEditContent() && (
+              <ViewerViewSwitcher
+                currentView={viewState.currentView}
+                onViewChange={(view) => {
+                  setViewState((prev) => ({
+                    ...prev,
+                    currentView: view,
+                  }));
+                }}
+              />
+            )}
+
+            {/* Viewer Translation Table - Only show for viewers in translate step */}
+            {documentState.url && 
+             !documentState.error && 
+             !permissions.canEditContent() && 
+             viewState.currentWorkflowStep === "translate" && 
+             elementCollections.translated?.textBoxes && (
+              <ViewerTranslationTable
+                translatedTextBoxes={elementCollections.translated.textBoxes}
+                untranslatedTexts={elementCollections.untranslatedTexts || []}
+                currentPage={documentState.currentPage}
+                sourceLanguage={sourceLanguage}
+                desiredLanguage={desiredLanguage}
+              />
+            )}
+
+            {/* Floating Toolbars - Only show when PDF is loaded and user has tool access */}
+            {documentState.url && !documentState.error && permissions.shouldShowToolbar() && (
               <FloatingToolbar
                 editorState={editorState}
                 toolState={toolState}
@@ -6129,7 +6310,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         className="flex relative"
                         style={{
                           width:
-                            documentState.pageWidth * documentState.scale * 2 +
+                            documentState.pageWidth * documentState.scale +
                             20, // Double width plus gap
                           height:
                             documentState.pageHeight * documentState.scale,

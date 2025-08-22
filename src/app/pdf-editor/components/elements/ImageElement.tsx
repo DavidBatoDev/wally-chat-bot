@@ -2,6 +2,7 @@ import React, { memo, useCallback } from "react";
 import { Rnd } from "react-rnd";
 import { Trash2, Move } from "lucide-react";
 import { Image } from "../../types/pdf-editor.types";
+import { permissions } from "../../../pdf-editor-shared/utils/permissions";
 
 interface ImageElementProps {
   image: Image;
@@ -41,6 +42,12 @@ export const MemoizedImage = memo(
   }: ImageElementProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
+        // Don't allow any interaction if user cannot edit content
+        if (!permissions.canEditContent()) {
+          e.stopPropagation();
+          return;
+        }
+
         // Don't allow selection if we're currently dragging AND this is not the selected element
         if (
           document.body.classList.contains("dragging-element") &&
@@ -202,7 +209,7 @@ export const MemoizedImage = memo(
         size={{ width: image.width * scale, height: image.height * scale }}
         bounds="parent"
         dragHandleClassName="drag-handle"
-        disableDragging={!isEditMode}
+        disableDragging={!isEditMode || !permissions.canEditContent()}
         enableResizing={false}
         onDragStart={(e, d) => {
           document.body.classList.add("dragging-element");

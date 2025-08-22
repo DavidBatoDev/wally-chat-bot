@@ -328,6 +328,221 @@ class ProjectService:
             logger.error(f"Error getting project stats for user {user_id}: {e}")
             raise
 
+    def get_shared_project(self, share_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a project by its share ID for public access.
+        
+        Args:
+            share_id: The share ID
+            
+        Returns:
+            Project record or None if not found or not public
+        """
+        try:
+            # Query projects with matching share_id that are public
+            query = self.db.client.table('projects').select('*')
+            query = query.eq('share_id', share_id)
+            query = query.eq('is_public', True)
+            query = query.limit(1)
+            
+            result = query.execute()
+            projects = result.data or []
+            
+            if not projects:
+                return None
+                
+            project = projects[0]
+            
+            # Debug: Log the exact project data from database
+            logger.info(f"DEBUG: Raw project from database: {project}")
+            logger.info(f"DEBUG: Available keys: {list(project.keys())}")
+            logger.info(f"DEBUG: share_permissions = {project.get('share_permissions')}")
+            logger.info(f"DEBUG: requires_auth = {project.get('requires_auth')}")
+            logger.info(f"DEBUG: is_public = {project.get('is_public')}")
+            
+            # Ensure sharing fields have default values if missing
+            if 'share_permissions' not in project or project.get('share_permissions') is None:
+                project['share_permissions'] = 'viewer'
+                logger.info(f"DEBUG: Set default share_permissions to 'viewer'")
+                
+            if 'requires_auth' not in project or project.get('requires_auth') is None:
+                project['requires_auth'] = False
+                logger.info(f"DEBUG: Set default requires_auth to False")
+            
+            # Log access for analytics (optional)
+            logger.info(f"Shared project accessed: {project.get('id')} via share_id: {share_id}")
+            
+            return project
+            
+        except Exception as e:
+            logger.error(f"Error getting shared project {share_id}: {e}")
+            raise
+
+    def update_project_share_settings(
+        self, 
+        project_id: str, 
+        user_id: str, 
+        share_settings: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update sharing settings for a project.
+        
+        Args:
+            project_id: The project ID
+            user_id: The user ID (must own the project)
+            share_settings: New sharing settings
+            
+        Returns:
+            Updated project record with sharing settings
+        """
+        try:
+            # Verify ownership
+            project = self.get_project(project_id, user_id)
+            if not project:
+                raise ValueError(f"Project {project_id} not found or access denied")
+            
+            # Prepare update data
+            update_data = {}
+            
+            if 'is_public' in share_settings:
+                update_data['is_public'] = share_settings['is_public']
+                
+            if 'share_id' in share_settings:
+                update_data['share_id'] = share_settings['share_id']
+                
+            if 'share_permissions' in share_settings:
+                update_data['share_permissions'] = share_settings['share_permissions']
+                
+            if 'requires_auth' in share_settings:
+                update_data['requires_auth'] = share_settings['requires_auth']
+            
+            # If making private, clear share settings
+            if not share_settings.get('is_public', False):
+                update_data.update({
+                    'share_id': None,
+                    'share_permissions': 'viewer',
+                    'requires_auth': False
+                })
+            
+            result = self.db.update_record('projects', project_id, update_data)
+            logger.info(f"Updated share settings for project: {project_id}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error updating share settings for project {project_id}: {e}")
+            raise
+
+    def get_project_share_settings(self, project_id: str, user_id: str) -> Dict[str, Any]:
+        """
+        Get sharing settings for a project.
+        
+        Args:
+            project_id: The project ID
+            user_id: The user ID (must own the project)
+            
+        Returns:
+            Sharing settings
+        """
+        try:
+            # Verify ownership and get project
+            project = self.get_project(project_id, user_id)
+            if not project:
+                raise ValueError(f"Project {project_id} not found or access denied")
+            
+            return {
+                'is_public': project.get('is_public', False),
+                'share_id': project.get('share_id'),
+                'share_permissions': project.get('share_permissions', 'viewer'),
+                'requires_auth': project.get('requires_auth', False)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting share settings for project {project_id}: {e}")
+            raise
+
+    def get_shared_project_by_id(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a project by its ID if it's publicly shared.
+        
+        Args:
+            project_id: The project ID
+            
+        Returns:
+            Project record or None if not found or not public
+        """
+        try:
+            # Query projects with matching ID that are public
+            query = self.db.client.table('projects').select('*')
+            query = query.eq('id', project_id)
+            query = query.eq('is_public', True)
+            query = query.limit(1)
+            
+            result = query.execute()
+            projects = result.data or []
+            
+            if not projects:
+                return None
+                
+            project = projects[0]
+            
+            # Log access for analytics (optional)
+            logger.info(f"Shared project accessed by ID: {project_id}")
+            
+            return project
+            
+        except Exception as e:
+            logger.error(f"Error getting shared project by ID {project_id}: {e}")
+            raise
+
+    def update_shared_project(
+        self, 
+        project_id: str, 
+        update_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update a shared project (for anonymous users with editor permissions).
+        
+        Args:
+            project_id: The project ID
+            update_data: Data to update
+            
+        Returns:
+            Updated project record or None if not found
+        """
+        try:
+            # First verify the project exists and is publicly shared with editor permissions
+            project = self.get_shared_project_by_id(project_id)
+            if not project:
+                logger.warning(f"Attempted to update non-existent or private project: {project_id}")
+                return None
+            
+            # Check editor permissions
+            if project.get('share_permissions') != 'editor':
+                logger.warning(f"Attempted to update read-only shared project: {project_id}")
+                return None
+            
+            # Prepare update data
+            safe_update_data = {}
+            
+            # Only allow updating certain fields for shared projects
+            allowed_fields = ['name', 'project_data']
+            for field in allowed_fields:
+                if field in update_data:
+                    safe_update_data[field] = update_data[field]
+            
+            # Always update the timestamp
+            safe_update_data['updated_at'] = 'NOW()'
+            
+            result = self.db.update_record('projects', project_id, safe_update_data)
+            logger.info(f"Updated shared project: {project_id}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error updating shared project {project_id}: {e}")
+            raise
+
 # Create a singleton instance
 _project_service = None
 

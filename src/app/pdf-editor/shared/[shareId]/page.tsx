@@ -3,11 +3,12 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { getSharedProject } from "../../services/projectApiService";
-import { PDFEditorContent } from "../../PDFEditorContent";
+import { getSharedProject } from "../../../pdf-editor-shared/services/sharedProjectService";
+import { ViewerPDFEditorContent } from "../../../pdf-editor-viewer/ViewerPDFEditorContent";
+import { EditorPDFEditorContent } from "../../../pdf-editor-editor/EditorPDFEditorContent";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { useAuthStore } from "@/lib/store/AuthStore";
-import { Shield, Eye, Lock } from "lucide-react";
+import { Shield, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function SharedProjectPage() {
@@ -18,7 +19,7 @@ export default function SharedProjectPage() {
   const [projectData, setProjectData] = useState<any>(null);
   const [requiresAuth, setRequiresAuth] = useState(false);
   const [permissions, setPermissions] = useState<"viewer" | "editor">("viewer");
-  const { user, session } = useAuthStore();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     if (!shareId) {
@@ -50,26 +51,21 @@ export default function SharedProjectPage() {
         return;
       }
 
-      // Set permissions
-      setPermissions(project.share_permissions || "viewer");
+      // Set permissions from project
+      const projectPermissions = project.share_permissions || "viewer";
+      setPermissions(projectPermissions);
       
       // Set project data
       setProjectData(project);
       
-      // Store the project data in localStorage for the PDF editor to load
-      const projectState = project.project_data;
-      if (projectState) {
-        // Create a temporary storage key for the shared project
-        const storageKey = `pdf-editor-shared-${shareId}`;
-        localStorage.setItem(storageKey, JSON.stringify(projectState));
-        localStorage.setItem("pdf-editor-current-project", storageKey);
-        
-        // Set a flag to indicate this is a shared project
-        localStorage.setItem("pdf-editor-shared-mode", "true");
-        localStorage.setItem("pdf-editor-shared-permissions", permissions);
-      }
+      console.log("Shared project loaded:", {
+        shareId,
+        projectId: project.id,
+        permissions: projectPermissions,
+        requiresAuth: project.requires_auth,
+      });
 
-      toast.success(`Loaded shared project: ${project.name}`);
+      toast.success(`Loaded: ${project.name}`);
       
     } catch (error) {
       console.error("Error loading shared project:", error);
@@ -82,10 +78,12 @@ export default function SharedProjectPage() {
   const handleSignIn = () => {
     // Store the share ID to return after authentication
     localStorage.setItem("pdf-editor-pending-share", shareId);
-    // Redirect to login page
-    window.location.href = `/auth/login?redirect=/pdf-editor/shared/${shareId}`;
+    // Redirect to login page with return URL
+    const returnUrl = encodeURIComponent(`/pdf-editor/shared/${shareId}`);
+    window.location.href = `/auth/login?redirect=${returnUrl}`;
   };
 
+  // Loading state
   if (isLoading) {
     return (
       <LoadingModal
@@ -96,6 +94,7 @@ export default function SharedProjectPage() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -134,30 +133,32 @@ export default function SharedProjectPage() {
     );
   }
 
-  // Show permission indicator
-  if (projectData && permissions === "viewer") {
+  // No project data
+  if (!projectData) {
     return (
-      <div className="relative">
-        {/* View-only banner */}
-        <div className="fixed top-0 left-0 right-0 bg-yellow-50 border-b border-yellow-200 z-50">
-          <div className="max-w-7xl mx-auto px-4 py-2 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-center space-x-2">
-              <Eye className="w-4 h-4 text-yellow-600" />
-              <p className="text-sm font-medium text-yellow-800">
-                You are viewing this project in read-only mode
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        {/* PDF Editor with viewer restrictions */}
-        <div className="pt-10">
-          <PDFEditorContent />
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-600">No project data available</p>
       </div>
     );
   }
 
-  // Full editor mode
-  return <PDFEditorContent />;
+  // Route to appropriate implementation based on permissions
+  if (permissions === "editor") {
+    return (
+      <EditorPDFEditorContent
+        projectData={projectData}
+        projectId={projectData.id}
+        shareId={shareId}
+        projectName={projectData.name}
+      />
+    );
+  } else {
+    return (
+      <ViewerPDFEditorContent
+        projectData={projectData}
+        projectName={projectData.name}
+        shareId={shareId}
+      />
+    );
+  }
 }

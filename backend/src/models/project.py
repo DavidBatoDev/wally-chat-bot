@@ -57,5 +57,9 @@ class Project(ProjectBase):
     delivery_date: datetime.datetime
     client_name: str
     assigned_translator: Optional[UUID] = None
+    # Sharing functionality fields
+    share_id: Optional[str] = None
+    share_permissions: Optional[str] = 'viewer'
+    requires_auth: Optional[bool] = False
     class Config:
         from_attributes = True 

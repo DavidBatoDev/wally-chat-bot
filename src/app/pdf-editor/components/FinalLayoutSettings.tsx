@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { permissions } from "../../pdf-editor-shared/utils/permissions";
 
 interface FinalLayoutSettingsProps {
   currentPage: number;
@@ -473,28 +474,34 @@ export const FinalLayoutSettings: React.FC<FinalLayoutSettingsProps> = ({
               <Save className="w-4 h-4 mr-2" />
               Save Project
             </Button>
-            <Button
-              onClick={() => {
-                switch (exportSettings.format) {
-                  case "pdf":
-                    onExportPDF();
-                    break;
-                  case "png":
-                    onExportPNG();
-                    break;
-                  case "jpg":
-                    onExportJPEG();
-                    break;
-                  default:
-                    onExportPDF();
-                }
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              size="sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export {exportSettings.format.toUpperCase()}
-            </Button>
+            {permissions.shouldShowExportButton() ? (
+              <Button
+                onClick={() => {
+                  switch (exportSettings.format) {
+                    case "pdf":
+                      onExportPDF();
+                      break;
+                    case "png":
+                      onExportPNG();
+                      break;
+                    case "jpg":
+                      onExportJPEG();
+                      break;
+                    default:
+                      onExportPDF();
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                size="sm"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export {exportSettings.format.toUpperCase()}
+              </Button>
+            ) : (
+              <div className="text-sm text-gray-500 px-3 py-2 bg-gray-100 rounded">
+                Export not available
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { Trash2, Move } from "lucide-react";
 import { Shape } from "../../types/pdf-editor.types";
 import { hexToRgba } from "../../utils/colors";
 import { MemoizedLine } from "./Line";
+import { permissions } from "../../../pdf-editor-shared/utils/permissions";
 
 interface ShapeProps {
   shape: Shape;
@@ -47,6 +48,12 @@ export const MemoizedShape = memo(
   }: ShapeProps) => {
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
+        // Don't allow any interaction if user cannot edit content
+        if (!permissions.canEditContent()) {
+          e.stopPropagation();
+          return;
+        }
+
         // Don't allow selection if we're currently dragging AND this is not the selected element
         if (
           document.body.classList.contains("dragging-element") &&
@@ -90,7 +97,7 @@ export const MemoizedShape = memo(
         bounds="parent"
         dragHandleClassName="drag-handle"
         enableResizing={
-          isEditMode && isSelected
+          isEditMode && isSelected && permissions.canEditContent()
             ? {
                 top: false, // Disable top resize to avoid conflict with delete button
                 right: true,
@@ -103,6 +110,7 @@ export const MemoizedShape = memo(
               }
             : false
         }
+        disableDragging={!permissions.canEditContent()}
         onDragStart={(e, d) => {
           document.body.classList.add("dragging-element");
         }}

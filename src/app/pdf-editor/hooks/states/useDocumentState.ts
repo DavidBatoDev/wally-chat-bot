@@ -590,6 +590,7 @@ export const useDocumentState = () => {
         finalLayoutNumPages,
       });
 
+
       setDocumentState((prev) => ({
         ...prev,
         finalLayoutUrl,

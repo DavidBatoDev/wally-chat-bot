@@ -19,10 +19,12 @@ import {
   Menu,
 } from "lucide-react";
 import { WorkflowStep } from "../../types/pdf-editor.types";
+import { permissions } from "../../../pdf-editor-shared/utils/permissions";
 
 interface PDFEditorHeaderProps {
   onFileUpload: () => void;
-  onSaveProject: () => void;
+  onSaveProject: () => Promise<any>;
+  hasUnsavedChanges?: boolean;
   onProjectManagement?: () => void;
   onShareProject?: () => void;
   onExportData: () => void;
@@ -46,11 +48,13 @@ interface PDFEditorHeaderProps {
   // New props for project name and navigation
   projectName?: string | null;
   onBackToDashboard?: () => void;
+  hasFinalLayout?: boolean;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onFileUpload,
   onSaveProject,
+  hasUnsavedChanges = false,
   onProjectManagement,
   onShareProject,
   onExportData,
@@ -73,6 +77,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   isCapturingSnapshots,
   projectName,
   onBackToDashboard,
+  hasFinalLayout = false,
 }) => {
   return (
     <div className="bg-white border-b border-primary/20 shadow-sm">
@@ -204,12 +209,16 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               {/* Step 3: Final Layout */}
               <div className="flex items-center space-x-2">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                    permissions.canAccessFinalLayoutStep(hasFinalLayout) 
+                      ? "cursor-pointer" 
+                      : "cursor-not-allowed opacity-50"
+                  } ${
                     currentWorkflowStep === "final-layout"
                       ? "bg-primary text-white"
                       : "bg-primary/10 text-gray-900 hover:bg-primary/20"
                   }`}
-                  onClick={() => onWorkflowStepChange("final-layout")}
+                  onClick={() => permissions.canAccessFinalLayoutStep(hasFinalLayout) && onWorkflowStepChange("final-layout")}
                 >
                   {currentWorkflowStep !== "final-layout" ? (
                     "3"
@@ -218,12 +227,16 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   )}
                 </div>
                 <span
-                  className={`text-sm font-medium cursor-pointer transition-colors ${
+                  className={`text-sm font-medium transition-colors ${
+                    permissions.canAccessFinalLayoutStep(hasFinalLayout) 
+                      ? "cursor-pointer" 
+                      : "cursor-not-allowed opacity-50"
+                  } ${
                     currentWorkflowStep === "final-layout"
                       ? "text-primary"
                       : "text-gray-900 hover:text-primaryLight"
                   }`}
-                  onClick={() => onWorkflowStepChange("final-layout")}
+                  onClick={() => permissions.canAccessFinalLayoutStep(hasFinalLayout) && onWorkflowStepChange("final-layout")}
                 >
                   Final Layout
                 </span>
@@ -245,15 +258,29 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               <FolderOpen className="w-4 h-4" />
             </Button>
           )}
-          <Button
-            onClick={onSaveProject}
-            variant="ghost"
-            size="sm"
-            className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
-            title="Save Project"
-          >
-            <Save className="w-4 h-4" />
-          </Button>
+          {permissions.shouldShowSaveButton() && (
+            <Button
+              onClick={async () => {
+                try {
+                  await onSaveProject();
+                } catch (error) {
+                  console.error("Save failed:", error);
+                }
+              }}
+              variant="ghost"
+              size="sm"
+              className={`transition-colors ${
+                hasUnsavedChanges
+                  ? "text-orange-600 hover:text-orange-700 hover:bg-orange-50 bg-orange-50/50"
+                  : "text-primary hover:text-primaryLight hover:bg-primary/10"
+              }`}
+              title={hasUnsavedChanges ? "Save Project (Unsaved Changes)" : "Save Project"}
+            >
+              <Save 
+                className={`w-4 h-4 ${hasUnsavedChanges ? "animate-pulse" : ""}`} 
+              />
+            </Button>
+          )}
           {onShareProject && (
             <Button
               onClick={onShareProject}
@@ -315,7 +342,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   Go to Layout
                 </Button>
               )}
-              {currentWorkflowStep === "layout" && (
+              {currentWorkflowStep === "layout" && permissions.canGenerateFinalLayout() && (
                 <Button
                   onClick={() => onWorkflowStepChange("final-layout")}
                   className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
@@ -325,7 +352,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   Go to Final Layout
                 </Button>
               )}
-              {currentWorkflowStep === "final-layout" && (
+              {currentWorkflowStep === "final-layout" && permissions.canGenerateFinalLayout() && (
                 <Button
                   onClick={onRecreateFinalLayout}
                   disabled={isCapturingSnapshots}

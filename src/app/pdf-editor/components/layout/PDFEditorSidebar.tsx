@@ -21,6 +21,7 @@ import { SidebarProps } from "../../types/pdf-editor.types";
 import { isPdfFile } from "../../utils/measurements";
 import { ChatbotSidebar } from "../ChatbotSidebar";
 import { SidebarPagePreview } from "./SidebarPagePreview";
+import { permissions } from "../../../pdf-editor-shared/utils/permissions";
 import {
   Select,
   SelectContent,
@@ -240,19 +241,20 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       </div>
                     )}
                   {!isFinalLayout ? (
-                    <Select
-                      value={currentPageType}
-                      onValueChange={(value) => {
-                        if (onPageTypeChange) {
-                          onPageTypeChange(
-                            pageNum,
-                            value as
-                              | "social_media"
-                              | "birth_cert"
-                              | "dynamic_content"
-                          );
-                        }
-                      }}
+                    permissions.shouldShowDocumentTypeSelector() ? (
+                      <Select
+                        value={currentPageType}
+                        onValueChange={(value) => {
+                          if (onPageTypeChange) {
+                            onPageTypeChange(
+                              pageNum,
+                              value as
+                                | "social_media"
+                                | "birth_cert"
+                                | "dynamic_content"
+                            );
+                          }
+                        }}
                       onOpenChange={(open) => {
                         if (open) {
                           // Prevent page selection when opening dropdown
@@ -306,7 +308,16 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                           </div>
                         </SelectItem>
                       </SelectContent>
-                    </Select>
+                      </Select>
+                    ) : (
+                      <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border">
+                        {currentPageType === "social_media"
+                          ? "Social Media"
+                          : currentPageType === "birth_cert"
+                          ? "Birth Certificate"
+                          : "Dynamic Content"} (Read-only)
+                      </div>
+                    )
                   ) : (
                     <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border">
                       Final Layout Page
@@ -411,23 +422,25 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         
         {/* Tab Navigation */}
         <div className="flex border-b border-primary/20 mb-4">
-          <button
-            onClick={() => onTabChange("tools")}
-            className={`${
-              documentState.url || documentState.finalLayoutUrl
-                ? "flex-1"
-                : "w-full"
-            } px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
-              viewState.activeSidebarTab === "tools"
-                ? "text-primary border-b-2 border-primary bg-primary/10"
-                : "text-gray-900 hover:text-primary hover:bg-primary/10"
-            }`}
-          >
-            <div className="flex items-center justify-center space-x-2">
-              <Wrench className="w-4 h-4" />
-              <span>Tools</span>
-            </div>
-          </button>
+          {permissions.canAccessTools() && (
+            <button
+              onClick={() => onTabChange("tools")}
+              className={`${
+                documentState.url || documentState.finalLayoutUrl
+                  ? "flex-1"
+                  : "w-full"
+              } px-4 py-3 text-sm font-medium text-center transition-all duration-200 relative ${
+                viewState.activeSidebarTab === "tools"
+                  ? "text-primary border-b-2 border-primary bg-primary/10"
+                  : "text-gray-900 hover:text-primary hover:bg-primary/10"
+              }`}
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <Wrench className="w-4 h-4" />
+                <span>Tools</span>
+              </div>
+            </button>
+          )}
           {(documentState.url || documentState.finalLayoutUrl) && (
             <button
               onClick={() => onTabChange("pages")}
@@ -457,36 +470,38 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               </div>
 
               {/* Upload Buttons at Bottom */}
-              <div className="border-t border-primary/20 pt-4 mt-4 space-y-2">
-                {!isFinalLayout ? (
-                  <>
-                    <Button
-                      onClick={onFileUpload}
-                      className="w-full bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {documentState.url
-                        ? "Upload New Document"
-                        : "Upload Document"}
-                    </Button>
-
-                    {documentState.url && (
+              {permissions.shouldShowUploadButton() && (
+                <div className="border-t border-primary/20 pt-4 mt-4 space-y-2">
+                  {!isFinalLayout ? (
+                    <>
                       <Button
-                        onClick={onAppendDocument}
-                        variant="outline"
-                        className="w-full border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
+                        onClick={onFileUpload}
+                        className="w-full bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
                       >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Upload More Document/Image
+                        <Upload className="w-4 h-4 mr-2" />
+                        {documentState.url
+                          ? "Upload New Document"
+                          : "Upload Document"}
                       </Button>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center text-sm text-gray-500">
-                    Final layout mode - upload options disabled
-                  </div>
-                )}
-              </div>
+
+                      {documentState.url && (
+                        <Button
+                          onClick={onAppendDocument}
+                          variant="outline"
+                          className="w-full border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/40 transition-all duration-200"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Upload More Document/Image
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-center text-sm text-gray-500">
+                      Final layout mode - upload options disabled
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : viewState.activeSidebarTab === "chat" ? (
             <ChatbotSidebar
@@ -496,8 +511,16 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               desiredLanguage={desiredLanguage}
               documentState={documentState}
             />
-          ) : (
+          ) : permissions.canAccessTools() ? (
             renderToolsTab()
+          ) : (
+            <div className="flex items-center justify-center h-64 text-gray-500">
+              <div className="text-center">
+                <Wrench className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-sm">Tools not available in viewer mode</p>
+                <p className="text-xs">Switch to Pages to view document</p>
+              </div>
+            </div>
           )}
         </div>
       </div>

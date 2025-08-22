@@ -12,6 +12,7 @@ import { Trash2, Move, Copy } from "lucide-react";
 import { TextField } from "../../types/pdf-editor.types";
 import { measureText } from "../../utils/measurements";
 import { measureWrappedTextHeight } from "../../utils/measurements";
+import { permissions } from "../../../pdf-editor-shared/utils/permissions";
 
 interface TextBoxProps {
   textBox: TextField;
@@ -443,6 +444,12 @@ export const MemoizedTextBox = memo(
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
+        // Don't allow any interaction if user cannot edit content
+        if (!permissions.canEditContent()) {
+          e.stopPropagation();
+          return;
+        }
+
         // Don't allow selection if we're currently dragging AND this is not the selected element
         if (
           document.body.classList.contains("dragging-element") &&
@@ -670,7 +677,7 @@ export const MemoizedTextBox = memo(
           height: textBoxProps.height * scale,
         }}
         bounds="parent"
-        disableDragging={isTextSelectionMode}
+        disableDragging={isTextSelectionMode || !permissions.canEditContent()}
         dragHandleClassName="drag-handle"
         enableResizing={false}
         minHeight={measureWrappedTextHeight(
@@ -914,6 +921,7 @@ export const MemoizedTextBox = memo(
               onClick={handleClick}
               onFocus={handleFocus}
               onBlur={handleBlur}
+              readOnly={!permissions.canEditContent()}
               onCompositionStart={() => {
                 isComposingRef.current = true;
               }}
