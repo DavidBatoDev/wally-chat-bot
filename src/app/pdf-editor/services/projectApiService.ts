@@ -9,7 +9,11 @@ import {
   extractFilePathFromUrl,
   uploadFileToSupabase,
 } from "./fileUploadService";
-import { getPdfPageCountFromFile, getFileTypeInfo } from "../utils/pdfUtils";
+import {
+  getPdfPageCountFromFile,
+  getFileTypeInfo,
+  generateBlankCanvas,
+} from "../utils/pdfUtils";
 
 // API configuration
 const PROJECT_STATE_ENDPOINT = getApiUrl(API_CONFIG.PROJECT_STATE.BASE);
@@ -386,7 +390,7 @@ export async function createProjectFromUpload(
         `DEBUG: PDF file has ${actualNumPages} pages, dimensions: ${actualPageWidth}x${actualPageHeight}`
       );
     } else if (fileInfo.isImage) {
-      // For images, we'll treat them as single-page documents
+      // For images, we'll create a blank document page and place the image as an interactive element
       actualNumPages = 1;
       // For images, we'll use the actual image dimensions if available
       try {
@@ -411,7 +415,9 @@ export async function createProjectFromUpload(
         actualPageWidth = 800;
         actualPageHeight = 600;
       }
-      console.log("DEBUG: Image file treated as single page");
+      console.log(
+        "DEBUG: Image file will be placed as interactive element on blank page"
+      );
     } else {
       console.log("DEBUG: Unknown file type, treating as single page");
     }
@@ -431,6 +437,91 @@ export async function createProjectFromUpload(
     pageHeight: actualPageHeight,
   });
 
+  // Generate image element if this is an image file
+  let imageElement = null;
+  let blankCanvasUrl = null;
+
+  if (fileInfo.isImage) {
+    const imageId = `img_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    // Calculate image positioning - center the image on the page with some padding
+    const padding = 50; // pixels of padding from edges
+    const maxImageWidth = actualPageWidth - padding * 2;
+    const maxImageHeight = actualPageHeight - padding * 2;
+
+    // Scale image to fit within page bounds while maintaining aspect ratio
+    const imageAspectRatio = actualPageWidth / actualPageHeight;
+    let imageWidth = maxImageWidth;
+    let imageHeight = maxImageHeight;
+
+    if (imageWidth / imageHeight > imageAspectRatio) {
+      // Page is wider than image aspect ratio
+      imageWidth = maxImageHeight * imageAspectRatio;
+    } else {
+      // Page is taller than image aspect ratio
+      imageHeight = maxImageWidth / imageAspectRatio;
+    }
+
+    // Center the image on the page
+    const imageX = (actualPageWidth - imageWidth) / 2;
+    const imageY = (actualPageHeight - imageHeight) / 2;
+
+    imageElement = {
+      id: imageId,
+      x: imageX,
+      y: imageY,
+      width: imageWidth,
+      height: imageHeight,
+      page: 1,
+      src: uploadResult.publicUrl,
+      rotation: 0,
+      opacity: 1,
+      borderColor: "#cccccc",
+      borderWidth: 1,
+      borderRadius: 0,
+      isSupabaseUrl: true,
+      filePath: uploadResult.filePath,
+      fileName: file.name,
+      fileObjectId: uploadResult.fileObjectId,
+    };
+
+    console.log("DEBUG: Created image element:", imageElement);
+
+    // Generate and upload a blank canvas as the main document
+    try {
+      console.log("DEBUG: Generating blank canvas for image upload...");
+      const blankCanvas = await generateBlankCanvas(
+        actualPageWidth,
+        actualPageHeight
+      );
+
+      // Create a File object from the canvas blob
+      const blankCanvasFile = new File([blankCanvas], "blank-canvas.png", {
+        type: "image/png",
+      });
+
+      // Upload the blank canvas to Supabase
+      const blankCanvasUploadResult = await uploadFileToSupabase(
+        blankCanvasFile,
+        "project-uploads"
+      );
+      blankCanvasUrl = blankCanvasUploadResult.publicUrl;
+
+      console.log(
+        "DEBUG: Blank canvas uploaded successfully:",
+        blankCanvasUploadResult.publicUrl
+      );
+    } catch (canvasError) {
+      console.warn(
+        "Failed to generate/upload blank canvas, using original image as document:",
+        canvasError
+      );
+      blankCanvasUrl = uploadResult.publicUrl; // Fallback to original image
+    }
+  }
+
   // Generate a project name based on the file
   const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
   const projectName = `${fileName} - ${new Date().toLocaleDateString()}`;
@@ -444,22 +535,30 @@ export async function createProjectFromUpload(
     version: "1.0.0",
     documentState: {
       ...documentState,
-      // Set the URL to the uploaded file URL from Supabase
-      url: uploadResult.publicUrl,
+      // Set the URL to the blank canvas for images, or original file for PDFs
+      url: blankCanvasUrl || uploadResult.publicUrl,
       isSupabaseUrl: true,
-      supabaseFilePath: uploadResult.filePath,
+      supabaseFilePath: blankCanvasUrl
+        ? uploadResult.filePath.replace(file.name, "blank-canvas.png")
+        : uploadResult.filePath,
       // Set the correct page count and dimensions from the actual file
       numPages: actualNumPages,
       pageWidth: actualPageWidth,
       pageHeight: actualPageHeight,
-      // Set file type information
-      fileType: fileInfo.mimeType,
+      // Set file type information - use PDF type for images since we're creating a document
+      fileType: fileInfo.isImage ? "application/pdf" : fileInfo.mimeType,
       isDocumentLoaded: true,
       // Convert Map and Set to serializable formats
       detectedPageBackgrounds: Object.fromEntries(
         documentState.detectedPageBackgrounds || new Map()
       ),
       deletedPages: Array.from(documentState.deletedPages || new Set()),
+      // Create pages array with blank page
+      pages: Array.from({ length: actualNumPages }, (_, index) => ({
+        pageNumber: index + 1,
+        isTranslated: false,
+        elements: imageElement && index === 0 ? [imageElement.id] : [],
+      })),
     },
     viewState: {
       currentView: initialState.viewState.currentView,
@@ -471,9 +570,15 @@ export async function createProjectFromUpload(
       containerWidth: initialState.viewState.containerWidth,
       transformOrigin: initialState.viewState.transformOrigin,
     },
-    elementCollections: initialState.elementCollections,
+    elementCollections: {
+      ...initialState.elementCollections,
+      // Add the uploaded image as an interactive element if it's an image file
+      originalImages: imageElement ? [imageElement] : [],
+    },
     layerState: {
-      originalLayerOrder: [...initialState.layerState.originalLayerOrder],
+      originalLayerOrder: imageElement
+        ? [...initialState.layerState.originalLayerOrder, imageElement.id]
+        : [...initialState.layerState.originalLayerOrder],
       translatedLayerOrder: [...initialState.layerState.translatedLayerOrder],
     },
     editorState: {
@@ -497,9 +602,21 @@ export async function createProjectFromUpload(
     newPageWidth: actualPageWidth,
     originalPageHeight: documentState.pageHeight,
     newPageHeight: actualPageHeight,
-    url: uploadResult.publicUrl,
-    fileType: fileInfo.mimeType,
+    url: blankCanvasUrl || uploadResult.publicUrl,
+    originalImageUrl: fileInfo.isImage ? uploadResult.publicUrl : null,
+    blankCanvasUrl: blankCanvasUrl,
+    fileType: fileInfo.isImage ? "application/pdf" : fileInfo.mimeType,
     isDocumentLoaded: true,
+    imageElement: imageElement
+      ? {
+          id: imageElement.id,
+          dimensions: `${imageElement.width}x${imageElement.height}`,
+          position: `(${imageElement.x}, ${imageElement.y})`,
+        }
+      : null,
+    pages: imageElement
+      ? "Created with image element on page 1"
+      : "No image elements",
   });
 
   console.log("DEBUG: Auto-creation - Project data being created:", {
@@ -520,7 +637,15 @@ export async function createProjectFromUpload(
     name: projectName,
     description: `Project created from uploaded file: ${file.name}`,
     project_data: projectData,
-    tags: [file.type.includes("pdf") ? "pdf" : "image", "auto-created"],
+    tags: [
+      fileInfo.isImage
+        ? "image-project"
+        : file.type.includes("pdf")
+        ? "pdf"
+        : "document",
+      "auto-created",
+      fileInfo.isImage ? "blank-canvas" : "original-file",
+    ],
     is_public: false,
   };
 
@@ -534,6 +659,9 @@ export async function createProjectFromUpload(
     numPages: createRequest.project_data.documentState.numPages,
     pageWidth: createRequest.project_data.documentState.pageWidth,
     pageHeight: createRequest.project_data.documentState.pageHeight,
+    documentUrl: createRequest.project_data.documentState.url,
+    isImageProject: fileInfo.isImage,
+    hasImageElement: !!imageElement,
   });
 
   // Create the project and then update the project_data to include the ID

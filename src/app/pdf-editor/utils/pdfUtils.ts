@@ -85,6 +85,76 @@ export const getPdfPageCountFromFileLegacy = async (
 };
 
 /**
+ * Generate a blank canvas with white background that can be used as a PDF-like document
+ * @param width - Page width in pixels
+ * @param height - Page height in pixels
+ * @returns Promise<Blob> - The generated canvas as a Blob
+ */
+export const generateBlankCanvas = async (
+  width: number,
+  height: number
+): Promise<Blob> => {
+  try {
+    // Check if we're in a browser environment
+    if (typeof document === "undefined") {
+      throw new Error("Canvas generation requires browser environment");
+    }
+
+    // Validate dimensions
+    if (width <= 0 || height <= 0) {
+      throw new Error("Invalid dimensions: width and height must be positive");
+    }
+
+    // Limit dimensions to reasonable values to prevent memory issues
+    const maxDimension = 10000;
+    if (width > maxDimension || height > maxDimension) {
+      throw new Error(
+        `Dimensions too large: max allowed is ${maxDimension}x${maxDimension}`
+      );
+    }
+
+    // Create a canvas element
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    // Get the 2D context and fill with white background
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Failed to get canvas 2D context");
+    }
+
+    // Set white background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+
+    // Add a subtle border to make the page visible
+    ctx.strokeStyle = "#f0f0f0";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, width, height);
+
+    // Convert canvas to blob
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error("Failed to convert canvas to blob"));
+          }
+        },
+        "image/png",
+        0.95
+      ); // High quality PNG
+    });
+  } catch (error) {
+    console.error("Error generating blank canvas:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to generate blank canvas: ${errorMessage}`);
+  }
+};
+
+/**
  * Check if a file is a PDF
  * @param file - The file to check
  * @returns boolean - True if the file is a PDF
