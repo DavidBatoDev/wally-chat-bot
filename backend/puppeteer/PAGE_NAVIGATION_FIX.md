@@ -202,3 +202,4 @@ curl -X POST http://localhost:3001/capture-and-ocr \
 ---
 
 **Note**: This fix ensures that all requested pages are properly captured by implementing robust page navigation strategies. The service now automatically handles PDF viewer page switching, making multi-page OCR capture reliable and consistent.
+

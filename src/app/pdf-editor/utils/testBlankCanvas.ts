@@ -37,3 +37,4 @@ export async function testBlankCanvas() {
     console.error("Blank canvas generation test failed:", error);
   }
 }
+

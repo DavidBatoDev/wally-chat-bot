@@ -350,3 +350,4 @@ export const OcrSerializerDemo: React.FC = () => {
     </div>
   );
 };
+

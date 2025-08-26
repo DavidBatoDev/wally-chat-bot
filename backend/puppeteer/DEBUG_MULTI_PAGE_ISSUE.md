@@ -263,3 +263,4 @@ curl http://localhost:3001/health
 ---
 
 **Note**: This debugging guide will help identify exactly where the multi-page OCR process is failing. The enhanced logging will show whether the issue is in page navigation, capture, OCR processing, or frontend serialization.
+

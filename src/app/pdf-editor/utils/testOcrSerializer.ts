@@ -210,3 +210,4 @@ export function testOcrSerializer() {
 
 // Export the sample data for testing
 export { sampleOcrResponse };
+

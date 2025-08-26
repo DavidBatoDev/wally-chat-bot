@@ -274,3 +274,4 @@ This ensures that **all pages get textboxes** even when the OCR backend returns 
 ---
 
 **Status**: ✅ **FIXED** - Multi-page OCR now works correctly with enhanced entity discovery and fallback mechanisms.
+
