@@ -20,6 +20,7 @@ interface FinalLayoutSettingsProps {
   totalPages: number;
   capturedSnapshots: any[];
   isCapturingSnapshots: boolean;
+  hasFinalLayout?: boolean;
   onExportPDF: () => void;
   onExportPNG: () => void;
   onExportJPEG: () => void;
@@ -56,6 +57,7 @@ export const FinalLayoutSettings: React.FC<FinalLayoutSettingsProps> = ({
   totalPages,
   capturedSnapshots,
   isCapturingSnapshots,
+  hasFinalLayout = false,
   onExportPDF,
   onExportPNG,
   onExportJPEG,
@@ -100,7 +102,7 @@ export const FinalLayoutSettings: React.FC<FinalLayoutSettingsProps> = ({
     }
   }, [exportSettings, activeTab, isPreviewMode, onSettingsChange]);
 
-  if (capturedSnapshots.length === 0 && !isCapturingSnapshots) {
+  if (capturedSnapshots.length === 0 && !isCapturingSnapshots && !hasFinalLayout) {
     return (
       <div className="bg-white h-full flex flex-col">
         {/* Header */}

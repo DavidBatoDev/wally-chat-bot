@@ -7125,6 +7125,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                   totalPages={documentState.numPages}
                   capturedSnapshots={capturedSnapshots}
                   isCapturingSnapshots={isCapturingSnapshots}
+                  hasFinalLayout={!!documentState.finalLayoutUrl}
                   onExportPDF={exportToPDF}
                   onExportPNG={exportToPNG}
                   onExportJPEG={exportToJPEG}
