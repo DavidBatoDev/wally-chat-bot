@@ -80,6 +80,10 @@ let browserRestartCount = 0;
 const MAX_BROWSER_RESTARTS = 5;
 const BROWSER_RESTART_DELAY = 2000; // 2 seconds
 
+// Add abort functionality
+let activeOperations = new Map(); // Track active operations by projectId
+let abortControllers = new Map(); // Track AbortController instances by projectId
+
 // Translation service functions
 async function translateText(text, targetLanguage, sourceLanguage = "auto") {
   try {
@@ -535,6 +539,7 @@ app.get("/status", (req, res) => {
       : "not initialized",
     endpoints: [
       "POST /capture-and-ocr",
+      "POST /abort",
       "GET /health",
       "GET /status",
       "GET /debug",
@@ -542,6 +547,65 @@ app.get("/status", (req, res) => {
     uptime: process.uptime(),
     memory: process.memoryUsage(),
   });
+});
+
+// Abort endpoint to cancel ongoing operations
+app.post("/abort", async (req, res) => {
+  try {
+    const { projectId } = req.body;
+
+    if (!projectId) {
+      return res.status(400).json({
+        success: false,
+        error: "projectId is required",
+      });
+    }
+
+    console.log(`🛑 [ABORT] Aborting operation for project: ${projectId}`);
+
+    // Check if operation exists
+    if (!activeOperations.has(projectId)) {
+      return res.status(404).json({
+        success: false,
+        error: "No active operation found for this project",
+      });
+    }
+
+    // Get the abort controller
+    const abortController = abortControllers.get(projectId);
+    if (abortController) {
+      abortController.abort();
+      console.log(`✅ [ABORT] Abort signal sent for project: ${projectId}`);
+    }
+
+    // Mark operation as aborted
+    activeOperations.set(projectId, {
+      status: "aborted",
+      timestamp: new Date().toISOString(),
+    });
+
+    // Clean up after a delay
+    setTimeout(() => {
+      activeOperations.delete(projectId);
+      abortControllers.delete(projectId);
+      console.log(
+        `🧹 [ABORT] Cleaned up aborted operation for project: ${projectId}`
+      );
+    }, 5000);
+
+    res.json({
+      success: true,
+      message: `Operation aborted for project: ${projectId}`,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`❌ [ABORT] Error aborting operation:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Internal server error",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Debug endpoint for real-time monitoring
@@ -575,15 +639,18 @@ app.post(
   "/capture-and-ocr",
   upload.single("project_data"),
   async (req, res) => {
+    let projectId; // Declare at function scope so it's accessible in catch block
     try {
       const {
-        projectId,
+        projectId: reqProjectId,
         captureUrl,
         pageNumbers,
         viewTypes,
         ocrApiUrl = "http://localhost:8000/projects/process-file", // Default to our OCR service
         projectData,
       } = req.body;
+
+      projectId = reqProjectId; // Assign to the function-scoped variable
 
       // Enhanced debug logging with timestamps
       const startTime = Date.now();
@@ -599,6 +666,30 @@ app.post(
       console.log(
         `   Project Data: ${projectData ? "✅ Provided" : "❌ Not provided"}`
       );
+
+      // Create abort controller for this operation
+      let abortController; // Declare at function scope so it's accessible in catch block
+      abortController = new AbortController();
+      abortControllers.set(projectId, abortController);
+
+      // Track this operation
+      activeOperations.set(projectId, {
+        status: "running",
+        startTime: new Date().toISOString(),
+        totalOperations: 0,
+        currentOperation: 0,
+      });
+
+      // Check for abort signal
+      abortController.signal.addEventListener("abort", () => {
+        console.log(
+          `🛑 [ABORT] Abort signal received for project: ${projectId}`
+        );
+        activeOperations.set(projectId, {
+          status: "aborted",
+          timestamp: new Date().toISOString(),
+        });
+      });
 
       // Validate required parameters
       if (!projectId || !captureUrl) {
@@ -675,6 +766,14 @@ app.post(
       let currentOperation = 0;
       const totalOperations = pagesToProcess.length * viewsToProcess.length;
 
+      // Check for abort signal before browser health check
+      if (abortController.signal.aborted) {
+        console.log(
+          `🛑 [ABORT] Browser health check aborted for project: ${projectId}`
+        );
+        throw new Error("Operation aborted by user");
+      }
+
       // Ensure browser is healthy before starting capture
       await ensureBrowserHealth();
 
@@ -683,7 +782,15 @@ app.post(
         `\n🌐 [${new Date().toISOString()}] Creating new Puppeteer page...`
       );
 
-      let page;
+      // Check for abort signal before page creation
+      if (abortController.signal.aborted) {
+        console.log(
+          `🛑 [ABORT] Page creation aborted for project: ${projectId}`
+        );
+        throw new Error("Operation aborted by user");
+      }
+
+      let page; // Declare at function scope so it's accessible in catch block
       try {
         page = await browser.newPage();
         console.log(`✅ Puppeteer page created successfully`);
@@ -763,6 +870,14 @@ app.post(
           }
         };
 
+        // Check for abort signal before viewport setting
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Viewport setting aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Set viewport with retry
         await retryPageOperation(
           () =>
@@ -774,6 +889,14 @@ app.post(
           "Setting viewport"
         );
         console.log(`✅ Viewport set successfully`);
+
+        // Check for abort signal before navigation
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Navigation aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Navigate with retry and enhanced network handling
         console.log(`   Navigating to: ${captureUrl}`);
@@ -804,6 +927,14 @@ app.post(
           return response;
         }, "Navigation");
         console.log(`✅ Navigation completed successfully`);
+
+        // Check for abort signal before content loading
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Content loading aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Enhanced wait for content to load with multiple strategies
         console.log(
@@ -891,6 +1022,14 @@ app.post(
         // The pages exist but they don't have canvases yet because PDF content isn't rendered
         console.log(`   ⏳ Waiting for PDF content to be rendered...`);
 
+        // Check for abort signal before PDF content rendering
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] PDF content rendering aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Wait for the PDF viewer to actually start rendering content
         let pdfContentRendered = false;
         try {
@@ -917,11 +1056,27 @@ app.post(
           );
         }
 
+        // Check for abort signal before page canvas waiting
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Page canvas waiting aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Now wait specifically for our required pages to have canvases
         const pagesToCheck = pagesToProcess.slice(0, 2); // Only check first 2 pages for now
         const pagesWithCanvas = [];
 
         for (const pageNum of pagesToCheck) {
+          // Check for abort signal before each page canvas check
+          if (abortController.signal.aborted) {
+            console.log(
+              `🛑 [ABORT] Page canvas check aborted for project: ${projectId}`
+            );
+            throw new Error("Operation aborted by user");
+          }
+
           try {
             console.log(`   🔍 Waiting for page ${pageNum} to have canvas...`);
             await page.waitForFunction(
@@ -960,15 +1115,39 @@ app.post(
           );
         }
 
+        // Check for abort signal before final rendering wait
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Final rendering wait aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Brief wait for any final rendering
         console.log(`   ⏳ Brief wait for final rendering...`);
         await new Promise((resolve) => setTimeout(resolve, 1000));
         console.log(`✅ Ready for capture`);
 
+        // Check for abort signal before PDF viewer waiting
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] PDF viewer waiting aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Wait for PDF viewer to be ready
         console.log(`   Looking for PDF viewer...`);
         await page.waitForSelector(".react-pdf__Document", { timeout: 30000 });
         console.log(`✅ PDF viewer found and loaded`);
+
+        // Check for abort signal before content validation
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Content validation aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Validate that the specific pages we need are ready (with fallback)
         console.log(`   🔍 Validating required pages...`);
@@ -1056,10 +1235,26 @@ app.post(
           );
         }
 
+        // Check for abort signal before initial page loading
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Initial page loading aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Wait for initial page to load
         console.log(`   Waiting for initial page to load...`);
         await page.waitForSelector(".react-pdf__Page", { timeout: 30000 });
         console.log(`✅ Initial page loaded`);
+
+        // Check for abort signal before all pages waiting
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] All pages waiting aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Wait for all pages to be available in the DOM
         console.log(`   Waiting for all pages to be available...`);
@@ -1072,6 +1267,14 @@ app.post(
           },
           { timeout: 30000 }
         );
+
+        // Check for abort signal before total pages count
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Total pages count aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Get total pages count
         const totalPagesInViewer = await page.evaluate(() => {
@@ -1087,10 +1290,26 @@ app.post(
           );
         }
 
+        // Check for abort signal before processing start
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Processing start aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Process each page and view combination
         console.log(
           `\n🔄 [${new Date().toISOString()}] Starting page capture and OCR processing...`
         );
+
+        // Check for abort signal before birth certificate detection
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Birth certificate detection aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Check if this is a birth certificate project by examining the project data
         let isBirthCertProject = false;
@@ -1106,6 +1325,22 @@ app.post(
           for (const viewType of viewsToProcess) {
             currentOperation++;
             const operationStartTime = Date.now();
+
+            // Check for abort signal before processing each operation
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Operation aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
+            // Update operation tracking
+            activeOperations.set(projectId, {
+              status: "running",
+              startTime: new Date().toISOString(),
+              totalOperations,
+              currentOperation,
+            });
 
             try {
               console.log(
@@ -1140,6 +1375,14 @@ app.post(
               const maxCaptureAttempts = 3;
 
               while (captureAttempts < maxCaptureAttempts) {
+                // Check for abort signal before each capture attempt
+                if (abortController.signal.aborted) {
+                  console.log(
+                    `🛑 [ABORT] Capture aborted for project: ${projectId}`
+                  );
+                  throw new Error("Operation aborted by user");
+                }
+
                 captureAttempts++;
                 console.log(
                   `      📸 Capture attempt ${captureAttempts}/${maxCaptureAttempts}...`
@@ -1151,7 +1394,9 @@ app.post(
                     pageNum,
                     viewType,
                     currentOperation,
-                    totalOperations
+                    totalOperations,
+                    abortController,
+                    projectId
                   );
 
                   // Validate the capture actually has content
@@ -1271,6 +1516,14 @@ app.post(
 
                 console.log(`   📤 Sending to OCR service...`);
 
+                // Check for abort signal before OCR processing
+                if (abortController.signal.aborted) {
+                  console.log(
+                    `🛑 [ABORT] OCR processing aborted for project: ${projectId}`
+                  );
+                  throw new Error("Operation aborted by user");
+                }
+
                 // Send captured image to OCR service
                 console.log(`   📤 Sending to OCR service...`);
                 console.log(`   📋 OCR request details:`, {
@@ -1291,7 +1544,9 @@ app.post(
                     pageWidth: captureResult.pageWidth,
                     pageHeight: captureResult.pageHeight,
                     projectData,
-                  }
+                  },
+                  abortController,
+                  projectId
                 );
 
                 console.log(`   📊 OCR result for page ${pageNum}:`, {
@@ -1485,9 +1740,23 @@ app.post(
                 error: error.message || "Unknown error",
               });
             }
+
+            // Check for abort signal after each operation
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Operation aborted for project: ${projectId} after operation ${currentOperation}`
+              );
+              throw new Error("Operation aborted by user");
+            }
           }
         }
       } finally {
+        // Check for abort signal before cleanup
+        if (abortController.signal.aborted) {
+          console.log(`🛑 [ABORT] Cleanup aborted for project: ${projectId}`);
+          throw new Error("Operation aborted by user");
+        }
+
         console.log(
           `\n🔒 [${new Date().toISOString()}] Closing Puppeteer page...`
         );
@@ -1568,6 +1837,14 @@ app.post(
       );
 
       if (targetLanguage && GOOGLE_TRANSLATE_API_KEY) {
+        // Check for abort signal before translation processing
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Translation processing aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         try {
           console.log(
             `🌐 [TRANSLATION] Starting translation of OCR results to ${targetLanguage}...`
@@ -1578,6 +1855,14 @@ app.post(
           );
 
           results.forEach((result, resultIndex) => {
+            // Check for abort signal during translation analysis
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Translation analysis aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
             console.log(
               `   📄 [TRANSLATION] Analyzing result ${resultIndex + 1}:`
             );
@@ -1597,6 +1882,14 @@ app.post(
             // Extract text from extractedText array
             if (result.extractedText && result.extractedText.length > 0) {
               result.extractedText.forEach((textItem, textIndex) => {
+                // Check for abort signal during text extraction
+                if (abortController.signal.aborted) {
+                  console.log(
+                    `🛑 [ABORT] Text extraction aborted for project: ${projectId}`
+                  );
+                  throw new Error("Operation aborted by user");
+                }
+
                 if (textItem.text && textItem.text.trim()) {
                   const text = textItem.text.trim();
                   allTexts.push(text);
@@ -1617,6 +1910,14 @@ app.post(
                 );
                 result.ocrResult.styled_layout.entities.forEach(
                   (entity, entityIndex) => {
+                    // Check for abort signal during entity processing
+                    if (abortController.signal.aborted) {
+                      console.log(
+                        `🛑 [ABORT] Entity processing aborted for project: ${projectId}`
+                      );
+                      throw new Error("Operation aborted by user");
+                    }
+
                     if (entity.text && entity.text.trim()) {
                       const text = entity.text.trim();
                       if (!textMap.has(text)) {
@@ -1641,6 +1942,14 @@ app.post(
                 );
                 result.ocrResult.styled_layout.pages.forEach(
                   (page, pageIndex) => {
+                    // Check for abort signal during page processing
+                    if (abortController.signal.aborted) {
+                      console.log(
+                        `🛑 [ABORT] Page processing aborted for project: ${projectId}`
+                      );
+                      throw new Error("Operation aborted by user");
+                    }
+
                     if (page.entities && page.entities.length > 0) {
                       console.log(
                         `      - Page ${pageIndex + 1} has ${
@@ -1648,6 +1957,14 @@ app.post(
                         } entities`
                       );
                       page.entities.forEach((entity, entityIndex) => {
+                        // Check for abort signal during page entity processing
+                        if (abortController.signal.aborted) {
+                          console.log(
+                            `🛑 [ABORT] Page entity processing aborted for project: ${projectId}`
+                          );
+                          throw new Error("Operation aborted by user");
+                        }
+
                         if (entity.text && entity.text.trim()) {
                           const text = entity.text.trim();
                           if (!textMap.has(text)) {
@@ -1674,10 +1991,26 @@ app.post(
               `🌐 [TRANSLATION] Found ${allTexts.length} texts to translate:`
             );
             allTexts.forEach((text, index) => {
+              // Check for abort signal during text logging
+              if (abortController.signal.aborted) {
+                console.log(
+                  `🛑 [ABORT] Text logging aborted for project: ${projectId}`
+                );
+                throw new Error("Operation aborted by user");
+              }
+
               console.log(`   ${index + 1}. "${text}"`);
             });
 
             console.log(`🌐 [TRANSLATION] Starting batch translation...`);
+
+            // Check for abort signal before batch translation
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Batch translation aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
 
             // Translate all texts in batch
             const translatedTexts = await translateMultipleTexts(
@@ -1694,18 +2027,50 @@ app.post(
 
             // Update the text map with translations
             allTexts.forEach((originalText, index) => {
+              // Check for abort signal during text map update
+              if (abortController.signal.aborted) {
+                console.log(
+                  `🛑 [ABORT] Text map update aborted for project: ${projectId}`
+                );
+                throw new Error("Operation aborted by user");
+              }
+
               const translatedText = translatedTexts[index];
               textMap.set(originalText, translatedText);
               console.log(`   "${originalText}" → "${translatedText}"`);
             });
 
+            // Check for abort signal before processing translation results
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Translation result processing aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
             // Create translated results
             translatedResults = results.map((result) => {
+              // Check for abort signal during result processing
+              if (abortController.signal.aborted) {
+                console.log(
+                  `🛑 [ABORT] Result processing aborted for project: ${projectId}`
+                );
+                throw new Error("Operation aborted by user");
+              }
+
               const translatedResult = { ...result };
 
               if (result.extractedText && result.extractedText.length > 0) {
                 translatedResult.extractedText = result.extractedText.map(
                   (textItem) => {
+                    // Check for abort signal during text item processing
+                    if (abortController.signal.aborted) {
+                      console.log(
+                        `🛑 [ABORT] Text item processing aborted for project: ${projectId}`
+                      );
+                      throw new Error("Operation aborted by user");
+                    }
+
                     const originalText = textItem.text;
                     const translatedText = textMap.get(originalText.trim());
                     const wasTranslated = !!translatedText;
@@ -1730,6 +2095,14 @@ app.post(
                 if (result.ocrResult.styled_layout.entities) {
                   translatedResult.ocrResult.styled_layout.entities =
                     result.ocrResult.styled_layout.entities.map((entity) => {
+                      // Check for abort signal during entity translation
+                      if (abortController.signal.aborted) {
+                        console.log(
+                          `🛑 [ABORT] Entity translation aborted for project: ${projectId}`
+                        );
+                        throw new Error("Operation aborted by user");
+                      }
+
                       const originalText = entity.text;
                       const translatedText = textMap.get(originalText.trim());
                       const wasTranslated = !!translatedText;
@@ -1749,8 +2122,24 @@ app.post(
                 if (result.ocrResult.styled_layout.pages) {
                   translatedResult.ocrResult.styled_layout.pages =
                     result.ocrResult.styled_layout.pages.map((page) => {
+                      // Check for abort signal during page translation
+                      if (abortController.signal.aborted) {
+                        console.log(
+                          `🛑 [ABORT] Page translation aborted for project: ${projectId}`
+                        );
+                        throw new Error("Operation aborted by user");
+                      }
+
                       if (page.entities) {
                         page.entities = page.entities.map((entity) => {
+                          // Check for abort signal during page entity translation
+                          if (abortController.signal.aborted) {
+                            console.log(
+                              `🛑 [ABORT] Page entity translation aborted for project: ${projectId}`
+                            );
+                            throw new Error("Operation aborted by user");
+                          }
+
                           const originalText = entity.text;
                           const translatedText = textMap.get(
                             originalText.trim()
@@ -1779,6 +2168,14 @@ app.post(
               return translatedResult;
             });
 
+            // Check for abort signal before translation summary calculation
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Translation summary calculation aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
             // Count successful vs failed translations
             const successfulTranslations = allTexts.filter(
               (text) => textMap.get(text.trim()) !== null
@@ -1799,6 +2196,14 @@ app.post(
             // Log what was actually translated in the final results
             console.log(`🔍 [TRANSLATION] Final translation summary:`);
             translatedResults.forEach((result, resultIndex) => {
+              // Check for abort signal during final summary logging
+              if (abortController.signal.aborted) {
+                console.log(
+                  `🛑 [ABORT] Final summary logging aborted for project: ${projectId}`
+                );
+                throw new Error("Operation aborted by user");
+              }
+
               console.log(
                 `   📄 Result ${resultIndex + 1} (Page ${
                   result.pageNumber
@@ -1810,6 +2215,14 @@ app.post(
                   `      - ExtractedText: ${result.extractedText.length} items`
                 );
                 result.extractedText.forEach((textItem, textIndex) => {
+                  // Check for abort signal during text item summary logging
+                  if (abortController.signal.aborted) {
+                    console.log(
+                      `🛑 [ABORT] Text item summary logging aborted for project: ${projectId}`
+                    );
+                    throw new Error("Operation aborted by user");
+                  }
+
                   if (textItem.translated) {
                     console.log(
                       `         ${textIndex + 1}. "${
@@ -1826,6 +2239,14 @@ app.post(
                 );
                 result.ocrResult.styled_layout.entities.forEach(
                   (entity, entityIndex) => {
+                    // Check for abort signal during entity summary logging
+                    if (abortController.signal.aborted) {
+                      console.log(
+                        `🛑 [ABORT] Entity summary logging aborted for project: ${projectId}`
+                      );
+                      throw new Error("Operation aborted by user");
+                    }
+
                     if (entity.translated) {
                       console.log(
                         `         ${entityIndex + 1}. "${
@@ -1841,6 +2262,14 @@ app.post(
             console.log(`ℹ️ [TRANSLATION] No texts found to translate`);
             console.log(`🔍 [TRANSLATION] Debug info:`);
             results.forEach((result, resultIndex) => {
+              // Check for abort signal during debug info logging
+              if (abortController.signal.aborted) {
+                console.log(
+                  `🛑 [ABORT] Debug info logging aborted for project: ${projectId}`
+                );
+                throw new Error("Operation aborted by user");
+              }
+
               console.log(`   Result ${resultIndex + 1}:`);
               console.log(
                 `      - extractedText: ${
@@ -1877,8 +2306,24 @@ app.post(
         if (allTexts.length === 0) {
           // Extract texts for metadata even without translation
           results.forEach((result) => {
+            // Check for abort signal during fallback text extraction
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Fallback text extraction aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
             if (result.extractedText && result.extractedText.length > 0) {
               result.extractedText.forEach((textItem) => {
+                // Check for abort signal during fallback text item extraction
+                if (abortController.signal.aborted) {
+                  console.log(
+                    `🛑 [ABORT] Fallback text item extraction aborted for project: ${projectId}`
+                  );
+                  throw new Error("Operation aborted by user");
+                }
+
                 if (textItem.text && textItem.text.trim()) {
                   allTexts.push(textItem.text.trim());
                 }
@@ -1886,6 +2331,14 @@ app.post(
             }
             if (result.ocrResult?.styled_layout?.entities) {
               result.ocrResult.styled_layout.entities.forEach((entity) => {
+                // Check for abort signal during fallback entity extraction
+                if (abortController.signal.aborted) {
+                  console.log(
+                    `🛑 [ABORT] Fallback entity extraction aborted for project: ${projectId}`
+                  );
+                  throw new Error("Operation aborted by user");
+                }
+
                 if (entity.text && entity.text.trim()) {
                   allTexts.push(entity.text.trim());
                 }
@@ -1910,41 +2363,96 @@ app.post(
           duration,
           successRate: Math.round((results.length / totalOperations) * 100),
           translation: targetLanguage
-            ? {
-                targetLanguage: targetLanguage,
-                sourceLanguage:
-                  req.body.translateFrom ||
-                  req.body.projectData?.sourceLanguage ||
-                  "auto",
-                translated: true,
-                totalTextsTranslated: allTexts.length,
-                successfulTranslations: allTexts.filter(
-                  (text) => textMap.get(text.trim()) !== null
-                ).length,
-                failedTranslations: allTexts.filter(
-                  (text) => textMap.get(text.trim()) === null
-                ).length,
-                translationStatus: "completed",
-                translationMetadata: {
-                  apiKeyValid: !!GOOGLE_TRANSLATE_API_KEY,
+            ? (() => {
+                // Check for abort signal before translation metadata calculation
+                if (abortController.signal.aborted) {
+                  console.log(
+                    `🛑 [ABORT] Translation metadata calculation aborted for project: ${projectId}`
+                  );
+                  throw new Error("Operation aborted by user");
+                }
+
+                return {
                   targetLanguage: targetLanguage,
                   sourceLanguage:
                     req.body.translateFrom ||
                     req.body.projectData?.sourceLanguage ||
                     "auto",
-                },
-              }
+                  translated: true,
+                  totalTextsTranslated: allTexts.length,
+                  successfulTranslations: allTexts.filter(
+                    (text) => textMap.get(text.trim()) !== null
+                  ).length,
+                  failedTranslations: allTexts.filter(
+                    (text) => textMap.get(text.trim()) === null
+                  ).length,
+                  translationStatus: "completed",
+                  translationMetadata: {
+                    apiKeyValid: !!GOOGLE_TRANSLATE_API_KEY,
+                    targetLanguage: targetLanguage,
+                    sourceLanguage:
+                      req.body.translateFrom ||
+                      req.body.projectData?.sourceLanguage ||
+                      "auto",
+                  },
+                };
+              })()
             : null,
         },
       };
 
+      // Check for abort signal before sending response
+      if (abortController.signal.aborted) {
+        console.log(
+          `🛑 [ABORT] Response sending aborted for project: ${projectId}`
+        );
+        throw new Error("Operation aborted by user");
+      }
+
       console.log(`\n📤 Sending response to client...`);
       res.json(response);
       console.log(`✅ Response sent successfully\n`);
+
+      // Clean up operation tracking
+      activeOperations.delete(projectId);
+      abortControllers.delete(projectId);
+      console.log(
+        `🧹 [CLEANUP] Operation tracking cleaned up for project: ${projectId}`
+      );
     } catch (error) {
+      // Check if this was an abort error
+      if (error.message === "Operation aborted by user") {
+        console.log(
+          `🛑 [ABORT] Operation was aborted for project: ${projectId}`
+        );
+
+        // Clean up operation tracking
+        activeOperations.delete(projectId);
+        abortControllers.delete(projectId);
+        console.log(
+          `🧹 [CLEANUP] Operation tracking cleaned up for project: ${projectId} due to abort`
+        );
+
+        // Send abort response
+        res.status(200).json({
+          success: false,
+          error: "Operation aborted by user",
+          timestamp: new Date().toISOString(),
+          aborted: true,
+        });
+        return;
+      }
+
       console.error(
         `\n💥 [${new Date().toISOString()}] Fatal error in OCR capture:`,
         error
+      );
+
+      // Clean up operation tracking on error
+      activeOperations.delete(projectId);
+      abortControllers.delete(projectId);
+      console.log(
+        `🧹 [CLEANUP] Operation tracking cleaned up for project: ${projectId} due to error`
       );
 
       // Ensure page is closed even if there's an error
@@ -1997,7 +2505,9 @@ async function capturePageView(
   pageNumber,
   viewType,
   currentOperation,
-  totalOperations
+  totalOperations,
+  abortController,
+  projectId
 ) {
   const captureStartTime = Date.now();
 
@@ -2009,6 +2519,14 @@ async function capturePageView(
     // Check if page is still valid before proceeding
     if (!page || page.isClosed()) {
       throw new Error("Page is closed or invalid");
+    }
+
+    // Check for abort signal before page navigation
+    if (abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] Page navigation aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
     }
 
     // Navigate to the specific page if needed
@@ -2032,6 +2550,14 @@ async function capturePageView(
 
         // Strategy 1: Try to click on page navigation if available
         try {
+          // Check for abort signal before click navigation
+          if (abortController.signal.aborted) {
+            console.log(
+              `🛑 [ABORT] Click navigation aborted for project: ${projectId}`
+            );
+            throw new Error("Operation aborted by user");
+          }
+
           const pageNavButton = await page.$(
             `[data-page-number="${pageNumber}"]`
           );
@@ -2052,6 +2578,14 @@ async function capturePageView(
         // Strategy 2: Try to scroll to the page if it exists but is not visible
         if (!navigationSuccess) {
           try {
+            // Check for abort signal before scroll navigation
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Scroll navigation aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
             console.log(
               `      📜 Attempting to scroll to page ${pageNumber}...`
             );
@@ -2078,11 +2612,27 @@ async function capturePageView(
         // Strategy 3: Try to use keyboard navigation
         if (!navigationSuccess) {
           try {
+            // Check for abort signal before keyboard navigation
+            if (abortController.signal.aborted) {
+              console.log(
+                `🛑 [ABORT] Keyboard navigation aborted for project: ${projectId}`
+              );
+              throw new Error("Operation aborted by user");
+            }
+
             console.log(
               `      ⌨️ Attempting keyboard navigation to page ${pageNumber}...`
             );
             // Press Page Down multiple times to navigate
             for (let i = 1; i < pageNumber; i++) {
+              // Check for abort signal before each key press
+              if (abortController.signal.aborted) {
+                console.log(
+                  `🛑 [ABORT] Keyboard navigation key press aborted for project: ${projectId}`
+                );
+                throw new Error("Operation aborted by user");
+              }
+
               await page.keyboard.press("PageDown");
               await new Promise((resolve) => setTimeout(resolve, 500));
             }
@@ -2104,6 +2654,14 @@ async function capturePageView(
       console.log(`      ⚠️ Navigation attempt failed: ${navError.message}`);
     }
 
+    // Check for abort signal before page element waiting
+    if (abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] Page element waiting aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
+
     // Wait for the specific page to be visible with retry logic
     console.log(
       `      ⏳ Waiting for page element with data-page-number="${pageNumber}"...`
@@ -2111,6 +2669,14 @@ async function capturePageView(
 
     let pageElementFound = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
+      // Check for abort signal before each page element wait attempt
+      if (abortController.signal.aborted) {
+        console.log(
+          `🛑 [ABORT] Page element wait attempt aborted for project: ${projectId}`
+        );
+        throw new Error("Operation aborted by user");
+      }
+
       try {
         await page.waitForSelector(
           `.react-pdf__Page[data-page-number="${pageNumber}"]`,
@@ -2139,6 +2705,14 @@ async function capturePageView(
     }
 
     console.log(`      ✅ Page element found successfully`);
+
+    // Check for abort signal before page dimensions
+    if (abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] Page dimensions aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
 
     // Get page dimensions with error handling
     console.log(`      📏 Getting page dimensions...`);
@@ -2180,6 +2754,14 @@ async function capturePageView(
       `      📐 Page dimensions: ${pageDimensions.width}x${pageDimensions.height}`
     );
 
+    // Check for abort signal before dom-to-image library injection
+    if (abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] dom-to-image library injection aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
+
     // Inject dom-to-image library into the page
     console.log(`      📦 Injecting dom-to-image library...`);
     await page.addScriptTag({
@@ -2190,9 +2772,25 @@ async function capturePageView(
     });
     console.log(`      ✅ dom-to-image library injected successfully`);
 
+    // Check for abort signal before dom-to-image library loading
+    if (abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] dom-to-image library loading aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
+
     // Wait a moment for the library to load
     await page.waitForFunction(() => window.domtoimage, { timeout: 10000 });
     console.log(`      ✅ dom-to-image library loaded and ready`);
+
+    // Check for abort signal before page status check
+    if (abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] Page status check aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
 
     // Page-specific waiting strategy - quick check if page is ready
     console.log(
@@ -2244,6 +2842,14 @@ async function capturePageView(
         pageStatus
       );
 
+      // Check for abort signal before page waiting
+      if (abortController.signal.aborted) {
+        console.log(
+          `🛑 [ABORT] Page waiting aborted for project: ${projectId}`
+        );
+        throw new Error("Operation aborted by user");
+      }
+
       // Simple wait for page to be ready
       await page.waitForFunction(
         (pageNum) => {
@@ -2272,6 +2878,12 @@ async function capturePageView(
       console.log(`      ✅ Page ${pageNumber} is now ready for capture`);
     }
 
+    // Check for abort signal before page capture
+    if (abortController.signal.aborted) {
+      console.log(`🛑 [ABORT] Page capture aborted for project: ${projectId}`);
+      throw new Error("Operation aborted by user");
+    }
+
     // Capture the page using dom-to-image
     console.log(`      🖼️  Capturing page image...`);
     console.log(`      📋 Page type detected: ${pageStatus.pageType}`);
@@ -2283,6 +2895,14 @@ async function capturePageView(
       // Only use dom-to-image for "original" view
       if (viewType === "original") {
         console.log(`      🎯 Using dom-to-image for original view...`);
+
+        // Check for abort signal before dom-to-image capture
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] dom-to-image capture aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
 
         // Try dom-to-image first (works for both PDF and image documents)
         let imageDataUrl;
@@ -2323,6 +2943,14 @@ async function capturePageView(
           console.log(
             `      ⚠️ dom-to-image capture failed: ${captureError.message}`
           );
+
+          // Check for abort signal before fallback capture
+          if (abortController.signal.aborted) {
+            console.log(
+              `🛑 [ABORT] Fallback capture aborted for project: ${projectId}`
+            );
+            throw new Error("Operation aborted by user");
+          }
 
           // Fallback: try to capture even without canvas (useful for image-only documents)
           console.log(
@@ -2387,6 +3015,14 @@ async function capturePageView(
           }
         }
 
+        // Check for abort signal before image processing
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Image processing aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // Convert data URL to buffer in Node.js context (where Buffer is available)
         console.log(`      🔄 Converting data URL to buffer...`);
 
@@ -2412,6 +3048,14 @@ async function capturePageView(
         );
         console.log(`      📊 Base64 length: ${base64.length} characters`);
       } else {
+        // Check for abort signal before translated view capture
+        if (abortController.signal.aborted) {
+          console.log(
+            `🛑 [ABORT] Translated view capture aborted for project: ${projectId}`
+          );
+          throw new Error("Operation aborted by user");
+        }
+
         // For translated view, use Puppeteer screenshot directly
         console.log(
           `      📸 Using Puppeteer screenshot for ${viewType} view...`
@@ -2479,6 +3123,14 @@ async function capturePageView(
     } catch (captureError) {
       console.log(`      ❌ Capture failed: ${captureError.message}`);
 
+      // Check for abort signal before fallback screenshot
+      if (abortController.signal.aborted) {
+        console.log(
+          `🛑 [ABORT] Fallback screenshot aborted for project: ${projectId}`
+        );
+        throw new Error("Operation aborted by user");
+      }
+
       // Fallback to Puppeteer screenshot for any view if dom-to-image fails
       try {
         console.log(`      🔄 Falling back to Puppeteer screenshot...`);
@@ -2523,6 +3175,12 @@ async function capturePageView(
       }
     }
 
+    // Check for abort signal before final return
+    if (abortController.signal.aborted) {
+      console.log(`🛑 [ABORT] Final return aborted for project: ${projectId}`);
+      throw new Error("Operation aborted by user");
+    }
+
     const captureDuration = Date.now() - captureStartTime;
     console.log(`      ✅ Page capture completed in ${captureDuration}ms`);
     console.log(`      🖼️  Image buffer size: ${imageBuffer.length} bytes`);
@@ -2548,10 +3206,24 @@ async function capturePageView(
 }
 
 // Function to send captured image to OCR service
-async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
+async function sendToOcrService(
+  imageBuffer,
+  ocrApiUrl,
+  metadata,
+  abortController,
+  projectId
+) {
   const ocrStartTime = Date.now();
 
   try {
+    // Check for abort signal before OCR service request
+    if (abortController && abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] OCR service request aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
+
     console.log(
       `      📤 [${new Date().toISOString()}] Preparing OCR service request...`
     );
@@ -2567,6 +3239,14 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
     let useTemplateOcr = false;
     let templateId = null;
     let finalOcrApiUrl = ocrApiUrl;
+
+    // Check for abort signal before birth certificate detection
+    if (abortController && abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] Birth certificate detection aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
 
     // Detect birth certificate projects from project metadata
     if (metadata.projectData) {
@@ -2628,6 +3308,14 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
           `      ⚠️ [TEMPLATE OCR] Error parsing project data: ${parseError.message}`
         );
       }
+    }
+
+    // Check for abort signal before OCR request preparation
+    if (abortController && abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] OCR request preparation aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
     }
 
     // Add the image with the correct field name based on OCR type
@@ -2743,6 +3431,14 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
       console.log(`         - Template OCR enabled for: ${templateId}`);
     }
 
+    // Check for abort signal before OCR request sending
+    if (abortController && abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] OCR request sending aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
+
     console.log(`      🌐 Sending to OCR service: ${finalOcrApiUrl}`);
     if (useTemplateOcr) {
       console.log(
@@ -2768,6 +3464,12 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
       `         - Form fields: frontend_page_width, frontend_page_height`
     );
 
+    // Check for abort signal before OCR request
+    if (abortController && abortController.signal.aborted) {
+      console.log(`🛑 [ABORT] OCR request aborted for project: ${projectId}`);
+      throw new Error("Operation aborted by user");
+    }
+
     // Send to your backend OCR service
     const response = await axios.post(finalOcrApiUrl, formData, {
       headers,
@@ -2775,6 +3477,14 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
       maxContentLength: 100 * 1024 * 1024, // 100MB
       maxBodyLength: 100 * 1024 * 1024,
     });
+
+    // Check for abort signal before OCR response processing
+    if (abortController && abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] OCR response processing aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
 
     const ocrDuration = Date.now() - ocrStartTime;
     console.log(`      ✅ OCR service response received in ${ocrDuration}ms`);
@@ -2853,11 +3563,31 @@ async function sendToOcrService(imageBuffer, ocrApiUrl, metadata) {
       }
     }
 
+    // Check for abort signal before final return
+    if (abortController && abortController.signal.aborted) {
+      console.log(
+        `🛑 [ABORT] OCR service final return aborted for project: ${projectId}`
+      );
+      throw new Error("Operation aborted by user");
+    }
+
     return {
       success: true,
       data: response.data,
     };
   } catch (error) {
+    // Check if this was an abort error
+    if (error.message === "Operation aborted by user") {
+      console.log(
+        `🛑 [ABORT] OCR service was aborted for project: ${projectId}`
+      );
+      return {
+        success: false,
+        error: "Operation aborted by user",
+        aborted: true,
+      };
+    }
+
     const ocrDuration = Date.now() - ocrStartTime;
     console.error(
       `      ❌ OCR service error after ${ocrDuration}ms:`,

@@ -24,6 +24,57 @@ function validateBackgroundServiceConfig(): {
   };
 }
 
+// Function to abort ongoing OCR operations
+export async function abortOcrOperation(projectId: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const backgroundServiceUrl =
+      process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL;
+    if (!backgroundServiceUrl) {
+      return {
+        success: false,
+        error: "OCR Capture Service URL not configured",
+      };
+    }
+
+    console.log(
+      `🛑 [OCR Service] Aborting operation for project: ${projectId}`
+    );
+
+    const response = await fetch(`${backgroundServiceUrl}/abort`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ projectId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        errorData.error || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    const result = await response.json();
+    console.log(`✅ [OCR Service] Abort request successful:`, result.message);
+
+    return {
+      success: true,
+      message: result.message,
+    };
+  } catch (error) {
+    console.error(`❌ [OCR Service] Failed to abort operation:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
 // Types for OCR processing
 export interface OcrOptions {
   pageNumber: number;

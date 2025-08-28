@@ -15,7 +15,11 @@ import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 
 // Import services
-import { performPageOcr, performBulkOcr } from "./services/ocrService";
+import {
+  performPageOcr,
+  performBulkOcr,
+  abortOcrOperation,
+} from "./services/ocrService";
 import {
   exportPdfDocument,
   exportToPDFService,
@@ -5320,10 +5324,27 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   );
 
   // Handler to cancel bulk OCR
-  const handleCancelBulkOcr = useCallback(() => {
+  const handleCancelBulkOcr = useCallback(async () => {
     bulkOcrCancelRef.current.cancelled = true;
     setIsBulkOcrRunning(false);
-  }, []);
+
+    // Also abort the Puppeteer operation if we have a project ID
+    if (currentProjectId) {
+      try {
+        const abortResult = await abortOcrOperation(currentProjectId);
+        if (abortResult.success) {
+          toast.success("Translation operation cancelled successfully");
+        } else {
+          console.warn(
+            "Failed to abort Puppeteer operation:",
+            abortResult.error
+          );
+        }
+      } catch (error) {
+        console.error("Error aborting Puppeteer operation:", error);
+      }
+    }
+  }, [currentProjectId]);
 
   // Add state for confirmation modal
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
