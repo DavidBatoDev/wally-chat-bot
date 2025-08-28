@@ -7,7 +7,13 @@ export interface TourStep {
   targetId?: string; // Element ID to highlight
   title: string;
   description: string;
-  position?: "top" | "bottom" | "left" | "right" | "center";
+  position?:
+    | "top"
+    | "bottom"
+    | "left"
+    | "right"
+    | "center"
+    | "screen-right-200";
   showSpotlight?: boolean; // Whether to show the dark overlay
 }
 
@@ -34,24 +40,36 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({
 
   // Helper function to calculate modal position near the target element
   const getModalPosition = (position: string, element: HTMLElement | null) => {
+    // Define common variables first
+    const modalWidth = 400; // Approximate modal width
+    const modalHeight = 300; // Approximate modal height
+    const padding = 20;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Handle screen-based positioning even when no target element
+    if (!element) {
+      if (position === "screen-right-200") {
+        return {
+          top: Math.max(padding, 100), // Fixed top position
+          left: Math.max(padding, viewportWidth - 200 - modalWidth),
+        };
+      }
+      return {};
+    }
+
     // Special handling for translation table steps
     if (
-      !element &&
-      (currentStep.id === "first-original-text" ||
-        currentStep.id === "first-translated-text" ||
-        currentStep.id === "first-action-buttons" ||
-        currentStep.id === "floating-toolbar")
+      currentStep.id === "first-original-text" ||
+      currentStep.id === "first-translated-text" ||
+      currentStep.id === "first-action-buttons" ||
+      currentStep.id === "floating-toolbar"
     ) {
       const translationTable = document.getElementById(
         "translation-table-view"
       );
       if (translationTable) {
         const rect = translationTable.getBoundingClientRect();
-        const modalWidth = 400;
-        const modalHeight = 300;
-        const padding = 20;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
 
         switch (position) {
           case "left":
@@ -88,12 +106,6 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({
 
       // Special handling for floating toolbar step
       if (currentStep.id === "floating-toolbar") {
-        const modalWidth = 400;
-        const modalHeight = 300;
-        const padding = 20;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-
         // Position modal to the left of the floating toolbar
         return {
           top: Math.max(
@@ -111,13 +123,20 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({
       }
     }
 
-    if (!element) return {};
-
-    const modalWidth = 400; // Approximate modal width
-    const modalHeight = 300; // Approximate modal height
-    const padding = 20;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    // Special handling for element format drawer step
+    if (currentStep.id === "element-format-drawer") {
+      // Position modal to the left side with lower positioning
+      return {
+        top: Math.max(
+          padding,
+          Math.min(
+            200, // Fixed lower position for better visibility
+            viewportHeight - modalHeight - padding
+          )
+        ),
+        left: Math.max(padding, 50), // 50px from left edge
+      };
+    }
 
     const elementRect = element.getBoundingClientRect();
 
@@ -176,6 +195,18 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({
             )
           ),
         };
+      case "screen-right-200":
+        // Position modal 200px from the right edge of the screen
+        return {
+          top: Math.max(
+            padding,
+            Math.min(
+              elementRect.top - 50,
+              viewportHeight - modalHeight - padding
+            )
+          ),
+          left: Math.max(padding, viewportWidth - 200 - modalWidth),
+        };
       default:
         return {};
     }
@@ -212,6 +243,52 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({
       setTargetElement(null);
     }
   }, [isOpen, currentStep?.targetId, currentStepIndex]);
+
+  // If the target element doesn't exist yet (e.g., created after step side-effects), observe DOM until it appears
+  useEffect(() => {
+    if (!isOpen || !currentStep?.targetId || targetElement) return;
+
+    let cancelled = false;
+    const tryFind = () => {
+      const el = document.getElementById(currentStep.targetId!);
+      if (el && !cancelled) {
+        setTargetElement(el);
+        return true;
+      }
+      return false;
+    };
+
+    // Immediate retry
+    if (tryFind()) return;
+
+    const observer = new MutationObserver(() => {
+      if (tryFind()) {
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Fallback polling in case mutations don't catch attribute changes
+    const intervalId = window.setInterval(() => {
+      if (tryFind()) {
+        window.clearInterval(intervalId);
+        observer.disconnect();
+      }
+    }, 100);
+
+    // Safety timeout to stop observing after a while
+    const timeoutId = window.setTimeout(() => {
+      window.clearInterval(intervalId);
+      observer.disconnect();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+      observer.disconnect();
+    };
+  }, [isOpen, currentStep?.targetId, currentStepIndex, targetElement]);
 
   if (!isOpen) return null;
   const isLastStep = currentStepIndex === steps.length - 1;

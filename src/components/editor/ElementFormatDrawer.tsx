@@ -385,7 +385,10 @@ export const ElementFormatDrawer: React.FC = () => {
 
   return (
     <div className="z-[99999909999] absolute w-full flex justify-center bg-transparent">
-      <div className="element-format-drawer z-[99999909999] mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative">
+      <div
+        id="element-format-drawer"
+        className="element-format-drawer z-[99999909999] mt-2 overflow-visible bg-white/95 backdrop-blur-sm shadow-lg border border-gray-200 p-3 flex flex-row items-center gap-4 min-h-[60px] w-max rounded-full relative"
+      >
         {/* Multi-selection indicator */}
         {!selectedElementId &&
           currentFormat &&

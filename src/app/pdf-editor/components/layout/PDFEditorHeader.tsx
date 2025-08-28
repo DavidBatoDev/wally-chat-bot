@@ -50,8 +50,7 @@ interface PDFEditorHeaderProps {
   projectName?: string | null;
   onBackToDashboard?: () => void;
   hasFinalLayout?: boolean;
-  onStartTour?: () => void;
-  onStartLayoutTour?: () => void;
+  onStartTutorial?: () => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -81,8 +80,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   projectName,
   onBackToDashboard,
   hasFinalLayout = false,
-  onStartTour,
-  onStartLayoutTour,
+  onStartTutorial,
 }) => {
   return (
     <div
@@ -325,26 +323,20 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               <Settings className="w-4 h-4" />
             </Button>
           )}
-          {onStartTour && (
+          {onStartTutorial && (
             <Button
-              id="start-tour-button"
-              onClick={onStartTour}
+              id="start-tutorial-button"
+              onClick={onStartTutorial}
               variant="ghost"
               size="sm"
               className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
-              title="Start Tour"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </Button>
-          )}
-          {onStartLayoutTour && currentWorkflowStep === "layout" && (
-            <Button
-              id="start-layout-tour-button"
-              onClick={onStartLayoutTour}
-              variant="ghost"
-              size="sm"
-              className="text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors"
-              title="Start Layout Tour"
+              title={`Start ${
+                currentWorkflowStep === "translate"
+                  ? "Translation"
+                  : currentWorkflowStep === "layout"
+                  ? "Layout"
+                  : "Final Layout"
+              } Tutorial`}
             >
               <HelpCircle className="w-4 h-4" />
             </Button>

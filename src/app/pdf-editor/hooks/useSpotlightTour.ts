@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { TourStep } from "../components/SpotlightTour";
 
-const TOUR_STORAGE_KEY = "pdfEditorTourCompleted";
+const TOUR_STORAGE_KEY = "tutorial-translate";
 
 export const useSpotlightTour = (
   onWorkflowStepChange?: (
@@ -9,11 +9,13 @@ export const useSpotlightTour = (
   ) => void,
   onViewChange?: (
     view: "original" | "translated" | "split" | "final-layout"
-  ) => void
+  ) => void,
+  currentWorkflowStep?: "translate" | "layout" | "final-layout"
 ) => {
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [hasCompletedTour, setHasCompletedTour] = useState(false);
+  const [wasManuallyClosed, setWasManuallyClosed] = useState(false);
 
   // Check localStorage on mount
   useEffect(() => {
@@ -22,6 +24,24 @@ export const useSpotlightTour = (
       setHasCompletedTour(true);
     }
   }, []);
+
+  // Auto-start tutorial when in translate workflow and tutorial hasn't been completed
+  useEffect(() => {
+    if (
+      currentWorkflowStep === "translate" &&
+      !hasCompletedTour &&
+      !isTourOpen &&
+      !wasManuallyClosed &&
+      !localStorage.getItem(TOUR_STORAGE_KEY)
+    ) {
+      // Small delay to ensure the component is fully mounted
+      const timer = setTimeout(() => {
+        startTour();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentWorkflowStep, hasCompletedTour, isTourOpen, wasManuallyClosed]);
 
   // Tour steps configuration
   const tourSteps: TourStep[] = [
@@ -88,10 +108,10 @@ export const useSpotlightTour = (
     },
     {
       id: "tutorial-button",
-      title: "Start Tour",
+      title: "Start Tutorial",
       description:
-        "This button allows you to restart this guided tour anytime. Use it if you need a refresher on how to use the PDF editor features.",
-      targetId: "start-tour-button",
+        "This button allows you to start the tutorial for the current workflow step anytime. Use it if you need a refresher on how to use the PDF editor features.",
+      targetId: "start-tutorial-button",
       position: "bottom",
       showSpotlight: true,
     },
@@ -182,17 +202,23 @@ export const useSpotlightTour = (
   const closeTour = useCallback(() => {
     setIsTourOpen(false);
     setCurrentStepIndex(0);
+    // Mark tour as completed when closed to prevent infinite loops
+    localStorage.setItem(TOUR_STORAGE_KEY, "true");
+    setHasCompletedTour(true);
+    setWasManuallyClosed(true);
   }, []);
 
   const completeTour = useCallback(() => {
     localStorage.setItem(TOUR_STORAGE_KEY, "true");
     setHasCompletedTour(true);
+    setWasManuallyClosed(false); // Reset manual close flag when properly completed
     closeTour();
   }, [closeTour]);
 
   const resetTour = useCallback(() => {
     localStorage.removeItem(TOUR_STORAGE_KEY);
     setHasCompletedTour(false);
+    setWasManuallyClosed(false);
   }, []);
 
   const goToStep = useCallback(

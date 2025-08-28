@@ -2122,50 +2122,197 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     isFirstStep,
     isLastStep,
     totalSteps,
-  } = useSpotlightTour(handleWorkflowStepChange, handleViewChange);
+  } = useSpotlightTour(
+    handleWorkflowStepChange,
+    handleViewChange,
+    viewState.currentWorkflowStep
+  );
 
   // Layout tour hook (for layout workflow)
-  const layoutTour = useLayoutTour(handleWorkflowStepChange, handleViewChange);
+  const layoutTour = useLayoutTour(
+    handleWorkflowStepChange,
+    handleViewChange,
+    () => {
+      // Toggle edit mode for the layout tour
+      setEditorState((prev) => ({
+        ...prev,
+        isEditMode: true,
+      }));
+    },
+    () => {
+      // Robust selection across all collections with retry while document loads
+      let attempts = 0;
+      const trySelect = () => {
+        attempts += 1;
+        if (!documentState.isDocumentLoaded) {
+          if (attempts < 20) return setTimeout(trySelect, 100);
+          console.warn("Layout Tour: Document not loaded, giving up.");
+          return;
+        }
 
-  // Auto-start tour for first-time users when workflow step is translate
-  useEffect(() => {
-    if (
-      !hasCompletedTour &&
-      viewState.currentWorkflowStep === "translate" &&
-      documentState.isDocumentLoaded
-    ) {
-      // Small delay to ensure the component is fully rendered
-      const timer = setTimeout(() => {
-        startTour();
-      }, 1000);
+        const allTextBoxes = [
+          ...elementCollections.originalTextBoxes,
+          ...elementCollections.translatedTextBoxes,
+          ...elementCollections.finalLayoutTextboxes,
+        ];
+        const allShapes = [
+          ...elementCollections.originalShapes,
+          ...elementCollections.translatedShapes,
+          ...elementCollections.finalLayoutShapes,
+        ];
+        const allImages = [
+          ...elementCollections.originalImages,
+          ...elementCollections.translatedImages,
+          ...elementCollections.finalLayoutImages,
+        ];
 
-      return () => clearTimeout(timer);
-    }
-  }, [
-    hasCompletedTour,
-    viewState.currentWorkflowStep,
-    documentState.isDocumentLoaded,
-  ]);
+        const elTb = allTextBoxes[0];
+        const elSh = allShapes[0];
+        const elIm = allImages[0];
 
-  // Auto-start layout tour for first-time users when workflow step is layout
-  useEffect(() => {
-    if (
-      !layoutTour.hasCompletedTour &&
-      viewState.currentWorkflowStep === "layout" &&
-      documentState.isDocumentLoaded
-    ) {
-      // Small delay to ensure the component is fully rendered
-      const timer = setTimeout(() => {
-        layoutTour.startTour();
-      }, 1000);
+        if (elTb) {
+          console.log("🎯 Layout Tour: Selecting first textbox:", elTb.id);
+          // Ensure correct page first
+          if (typeof elTb.page === "number") {
+            setDocumentState((prev) => ({ ...prev, currentPage: elTb.page }));
+          }
+          setSelectedElementId(elTb.id);
+          setSelectedElementType("textbox");
+          setCurrentFormat(elTb);
+          setIsDrawerOpen(true);
+          setEditorState((prev) => ({
+            ...prev,
+            isEditMode: true,
+            selectedFieldId: elTb.id,
+            selectedShapeId: null,
+            selectedImageId: null,
+          }));
 
-      return () => clearTimeout(timer);
-    }
-  }, [
-    layoutTour.hasCompletedTour,
-    viewState.currentWorkflowStep,
-    documentState.isDocumentLoaded,
-  ]);
+          // Click DOM node to trigger selection side-effects
+          setTimeout(() => {
+            const node = document.querySelector(
+              `[data-element-id="${elTb.id}"]`
+            ) as HTMLElement | null;
+            if (!node && attempts < 20) return setTimeout(trySelect, 100);
+            if (node) node.click();
+          }, 50);
+          return;
+        }
+
+        if (elSh) {
+          console.log("🎯 Layout Tour: Selecting first shape:", elSh.id);
+          if (typeof elSh.page === "number") {
+            setDocumentState((prev) => ({ ...prev, currentPage: elSh.page }));
+          }
+          setSelectedElementId(elSh.id);
+          setSelectedElementType("shape");
+          setCurrentFormat(elSh);
+          setIsDrawerOpen(true);
+          setEditorState((prev) => ({
+            ...prev,
+            isEditMode: true,
+            selectedFieldId: null,
+            selectedShapeId: elSh.id,
+            selectedImageId: null,
+          }));
+          setTimeout(() => {
+            const node = document.querySelector(
+              `[data-element-id=\"${elSh.id}\"]`
+            ) as HTMLElement | null;
+            if (!node && attempts < 20) return setTimeout(trySelect, 100);
+            if (node) node.click();
+          }, 50);
+          return;
+        }
+
+        if (elIm) {
+          console.log("🎯 Layout Tour: Selecting first image:", elIm.id);
+          if (typeof elIm.page === "number") {
+            setDocumentState((prev) => ({ ...prev, currentPage: elIm.page }));
+          }
+          setSelectedElementId(elIm.id);
+          setSelectedElementType("image");
+          setCurrentFormat(elIm);
+          setIsDrawerOpen(true);
+          setEditorState((prev) => ({
+            ...prev,
+            isEditMode: true,
+            selectedFieldId: null,
+            selectedShapeId: null,
+            selectedImageId: elIm.id,
+          }));
+          setTimeout(() => {
+            const node = document.querySelector(
+              `[data-element-id=\"${elIm.id}\"]`
+            ) as HTMLElement | null;
+            if (!node && attempts < 20) return setTimeout(trySelect, 100);
+            if (node) node.click();
+          }, 50);
+          return;
+        }
+
+        // None found yet, retry briefly as elements may still be mounting
+        if (attempts < 20) return setTimeout(trySelect, 100);
+        console.log("⚠️ Layout Tour: No elements found across collections.");
+
+        // Fallback: create a textbox so the drawer can be demonstrated
+        try {
+          const page = documentState.currentPage;
+          const x = 100;
+          const y = 100;
+          const view = viewState.currentView;
+          const createdId = handleAddTextBoxWithUndo(
+            x,
+            y,
+            page,
+            view,
+            undefined,
+            undefined
+          );
+          if (createdId) {
+            setSelectedElementId(createdId);
+            setSelectedElementType("textbox");
+            setIsDrawerOpen(true);
+            setEditorState((prev) => ({
+              ...prev,
+              isEditMode: true,
+              selectedFieldId: createdId,
+              selectedShapeId: null,
+              selectedImageId: null,
+            }));
+            setTimeout(() => {
+              const node = document.querySelector(
+                `[data-element-id="${createdId}"]`
+              ) as HTMLElement | null;
+              if (node) node.click();
+            }, 1000);
+          }
+        } catch (e) {
+          console.warn("Layout Tour: Failed to create fallback textbox", e);
+        }
+      };
+
+      // Slight delay to allow UI to settle after step change
+      setTimeout(trySelect, 150);
+    },
+    () => {
+      // Move to first non-deleted page after tutorial completion
+      const pages = documentState.pages;
+      if (pages && pages.length > 0) {
+        // Find the first page that is not in the deletedPages set
+        const firstNonDeletedPage = pages.find(
+          (page) => !documentState.deletedPages.has(page.pageNumber)
+        );
+        if (firstNonDeletedPage) {
+          setDocumentState((prev) => ({
+            ...prev,
+            currentPage: firstNonDeletedPage.pageNumber,
+          }));
+        }
+      }
+    },
+    viewState.currentWorkflowStep
+  );
 
   // Ensure view is always split when in layout step
   useEffect(() => {
@@ -6039,8 +6186,13 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         projectName={currentProjectName}
         onBackToDashboard={() => router.push("/pdf-editor")}
         hasFinalLayout={!!documentState.finalLayoutUrl}
-        onStartTour={startTour}
-        onStartLayoutTour={layoutTour.startTour}
+        onStartTutorial={() => {
+          if (viewState.currentWorkflowStep === "translate") {
+            startTour();
+          } else if (viewState.currentWorkflowStep === "layout") {
+            layoutTour.startTour();
+          }
+        }}
       />
 
       {/* Bulk OCR Loading Indicator */}
