@@ -5125,6 +5125,31 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     setBulkOcrProgress({ current: 0, total: 0 });
     bulkOcrCancelRef.current.cancelled = false;
 
+    // Create a persistent loading toast that will be updated
+    const loadingToastId = toast.loading(
+      "Starting bulk page transformation...",
+      {
+        duration: Infinity, // Keep it open until we dismiss it
+        style: {
+          background: "white",
+          color: "#374151",
+          border: "1px solid #e5e7eb",
+          borderRadius: "12px",
+          padding: "16px",
+          fontSize: "14px",
+          fontWeight: "500",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        },
+        action: {
+          label: "✕",
+          onClick: () => {
+            bulkOcrCancelRef.current.cancelled = true;
+            handleCancelBulkOcr();
+          },
+        },
+      }
+    );
+
     try {
       // Create complete project data for bulk OCR template detection
       const completeProjectData = {
@@ -5159,7 +5184,95 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         deletedPages: documentState.deletedPages,
         currentPage: documentState.currentPage,
         onProgress: (current, total) => {
+          // Check if operation was cancelled
+          if (bulkOcrCancelRef.current.cancelled) {
+            toast.dismiss(loadingToastId);
+            toast.info("🛑 Page transformation was cancelled", {
+              duration: 3000,
+            });
+            return;
+          }
+
           setBulkOcrProgress({ current, total });
+
+          // Update the loading toast with progress information
+          const percentage = Math.round((current / total) * 100);
+          if (current === 1) {
+            toast.loading(
+              `🔄 Transforming pages... (${current}/${total}) - ${percentage}%`,
+              {
+                id: loadingToastId,
+                style: {
+                  background: "white",
+                  color: "#374151",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+                },
+                action: {
+                  label: "✕",
+                  onClick: () => {
+                    bulkOcrCancelRef.current.cancelled = true;
+                    handleCancelBulkOcr();
+                  },
+                },
+              }
+            );
+          } else if (current === total) {
+            toast.loading(
+              `🔄 Finalizing transformation... (${current}/${total}) - ${percentage}%`,
+              {
+                id: loadingToastId,
+                style: {
+                  background: "white",
+                  color: "#374151",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  boxShadow: "0 8px 32px rgba(0,0, 0, 0.12)",
+                },
+                action: {
+                  label: "✕",
+                  onClick: () => {
+                    bulkOcrCancelRef.current.cancelled = true;
+                    handleCancelBulkOcr();
+                  },
+                },
+              }
+            );
+          } else {
+            // Update every 3rd page to avoid too many updates
+            if (current % 3 === 0 || current === total) {
+              toast.loading(
+                `🔄 Transforming pages... (${current}/${total}) - ${percentage}%`,
+                {
+                  id: loadingToastId,
+                  style: {
+                    background: "white",
+                    color: "#374151",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+                  },
+                  action: {
+                    label: "✕",
+                    onClick: () => {
+                      bulkOcrCancelRef.current.cancelled = true;
+                      handleCancelBulkOcr();
+                    },
+                  },
+                }
+              );
+            }
+          }
         },
         onPageChange: (page) => {
           actions.changePage(page);
@@ -5170,22 +5283,74 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         projectId: currentProjectId || `bulk-ocr-${Date.now()}`,
         captureUrl: "http://localhost:3000/capture-project/", // Point to capture-project page
         ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
-        // Add complete project data for template detection
+        // Add required project data for template detection
         projectData: completeProjectData,
       });
 
+      // Dismiss the loading toast and show success
+      toast.dismiss(loadingToastId);
+
       if (result.success) {
         toast.success(
-          result.message ||
+          `🎉 ${
+            result.message ||
             `Successfully processed ${result.processedPages} pages`
+          }`,
+          {
+            duration: 5000,
+            style: {
+              background: "white",
+              color: "#059669",
+              border: "1px solid #10b981",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+            },
+          }
         );
       } else {
-        toast.error(result.message || "Bulk OCR process failed");
+        toast.error(`❌ ${result.message || "Bulk OCR process failed"}`, {
+          duration: 5000,
+          style: {
+            background: "white",
+            color: "#dc2626",
+            border: "1px solid #ef4444",
+            borderRadius: "12px",
+            padding: "16px",
+            fontSize: "14px",
+            fontWeight: "500",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+          },
+        });
       }
     } catch (error) {
       console.error("Error in bulk OCR:", error);
-      toast.error("Failed to complete bulk OCR process");
+      // Dismiss the loading toast and show error
+      toast.dismiss(loadingToastId);
+      toast.error("❌ Failed to complete bulk OCR process", {
+        duration: 5000,
+        style: {
+          background: "white",
+          color: "#dc2626",
+          border: "1px solid #ef4444",
+          borderRadius: "12px",
+          padding: "16px",
+          fontSize: "14px",
+          fontWeight: "500",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        },
+      });
     } finally {
+      // Check if operation was cancelled
+      if (bulkOcrCancelRef.current.cancelled) {
+        toast.dismiss(loadingToastId);
+        toast.info("🛑 Page transformation cancelled", {
+          duration: 3000,
+        });
+      }
+
       setIsBulkOcrRunning(false);
       setBulkOcrProgress(null);
     }
@@ -5328,20 +5493,73 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     bulkOcrCancelRef.current.cancelled = true;
     setIsBulkOcrRunning(false);
 
+    // Show cancellation toast with loading state
+    toast.loading("🛑 Cancelling page transformation...", {
+      duration: 2000,
+      style: {
+        background: "white",
+        color: "#374151",
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        padding: "16px",
+        fontSize: "14px",
+        fontWeight: "500",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+      },
+    });
+
     // Also abort the Puppeteer operation if we have a project ID
     if (currentProjectId) {
       try {
         const abortResult = await abortOcrOperation(currentProjectId);
         if (abortResult.success) {
-          toast.success("Translation operation cancelled successfully");
+          toast.success("✅ Page transformation cancelled successfully", {
+            duration: 4000,
+            style: {
+              background: "white",
+              color: "#059669",
+              border: "1px solid #10b981",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+            },
+          });
         } else {
           console.warn(
             "Failed to abort Puppeteer operation:",
             abortResult.error
           );
+          toast.error("❌ Failed to cancel page transformation", {
+            duration: 4000,
+            style: {
+              background: "white",
+              color: "#dc2626",
+              border: "1px solid #ef4444",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+            },
+          });
         }
       } catch (error) {
         console.error("Error aborting Puppeteer operation:", error);
+        toast.error("❌ Error occurred while cancelling", {
+          duration: 4000,
+          style: {
+            background: "white",
+            color: "#dc2626",
+            border: "1px solid #ef4444",
+            borderRadius: "12px",
+            padding: "16px",
+            fontSize: "14px",
+            fontWeight: "500",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+          },
+        });
       }
     }
   }, [currentProjectId]);
@@ -5577,6 +5795,32 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         projectName={currentProjectName}
         onBackToDashboard={() => router.push("/pdf-editor")}
       />
+
+      {/* Bulk OCR Loading Indicator */}
+      {isBulkOcrRunning && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 shadow-lg">
+          <div className="flex items-center space-x-2">
+            <svg
+              className="w-4 h-4 animate-spin text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span className="text-blue-700 font-medium text-sm">
+              {bulkOcrProgress
+                ? `Transforming pages: ${bulkOcrProgress.current}/${bulkOcrProgress.total}`
+                : "Starting page transformation..."}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden relative bg-white">
@@ -7101,6 +7345,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         onDesiredLanguageChange={setDesiredLanguage}
         onConfirm={handleLanguageConfirm}
         onCancel={handleLanguageCancel}
+        isBulkOcrRunning={isBulkOcrRunning}
       />
 
       {/* Birth Certificate Selection Modal */}
@@ -7136,7 +7381,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       <LanguageSelectionModal
         open={showSettingsModal}
         sourceLanguage={tempSourceLanguage}
-        desiredLanguage={tempDesiredLanguage}
+        desiredLanguage={desiredLanguage}
         onSourceLanguageChange={setTempSourceLanguage}
         onDesiredLanguageChange={setTempDesiredLanguage}
         onConfirm={handleSettingsSave}
@@ -7144,17 +7389,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         isSettings={true}
         onSave={handleSettingsSave}
         onBack={handleSettingsBack}
+        isBulkOcrRunning={isBulkOcrRunning}
       />
 
-      {/* Bulk OCR Loading Modal */}
-      <LoadingModal
-        isOpen={isBulkOcrRunning}
-        title="Transforming Pages"
-        message="Please wait while we transform all pages. This may take a few moments..."
-        progress={bulkOcrProgress}
-        onCancel={handleCancelBulkOcr}
-        cancelText="Cancel Transformation"
-      />
+      {/* Bulk OCR Loading Modal - Replaced with toast-based approach */}
 
       {/* Snapshot Capturing Loading Modal */}
       <LoadingModal
