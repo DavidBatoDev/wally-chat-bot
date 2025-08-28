@@ -302,6 +302,7 @@ export interface SidebarProps {
     pageType: "social_media" | "birth_cert" | "dynamic_content"
   ) => void;
   onBirthCertModalOpen?: (pageNumber?: number) => void;
+  onResetTour?: () => void;
   documentRef?: React.RefObject<HTMLDivElement | null>;
   sourceLanguage?: string;
   desiredLanguage?: string;

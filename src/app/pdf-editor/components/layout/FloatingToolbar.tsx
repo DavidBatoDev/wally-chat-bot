@@ -190,6 +190,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
     <>
       {/* Combined Right Floating Toolbar - Tools and View Controls */}
       <div
+        id="floating-toolbar"
         className="absolute z-50 flex flex-col space-y-2 floating-toolbar transition-all duration-300"
         style={rightToolbarStyle}
       >

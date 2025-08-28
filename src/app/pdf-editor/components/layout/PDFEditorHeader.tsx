@@ -17,6 +17,7 @@ import {
   Share2,
   ArrowLeft,
   Menu,
+  HelpCircle,
 } from "lucide-react";
 import { WorkflowStep } from "../../types/pdf-editor.types";
 import { permissions } from "../../../pdf-editor-shared/utils/permissions";
@@ -49,6 +50,8 @@ interface PDFEditorHeaderProps {
   projectName?: string | null;
   onBackToDashboard?: () => void;
   hasFinalLayout?: boolean;
+  onStartTour?: () => void;
+  onStartLayoutTour?: () => void;
 }
 
 export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
@@ -78,13 +81,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   projectName,
   onBackToDashboard,
   hasFinalLayout = false,
+  onStartTour,
+  onStartLayoutTour,
 }) => {
   return (
-    <div className="bg-white border-b border-primary/20 shadow-sm">
+    <div
+      className="bg-white border-b border-primary/20 shadow-sm"
+      id="pdf-editor-header"
+    >
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center space-x-4">
           {/* Wally Logo and Project Name */}
-          <div 
+          <div
             className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity"
             onClick={onBackToDashboard}
             title="Back to Dashboard"
@@ -143,7 +151,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
         {/* Centered Workflow Steps */}
         {hasPages && (
           <div className="flex-1 flex justify-center">
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-6" id="workflow-steps">
               {/* Step 1: Translate */}
               <div className="flex items-center space-x-2">
                 <div
@@ -210,15 +218,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               <div className="flex items-center space-x-2">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                    permissions.canAccessFinalLayoutStep(hasFinalLayout) 
-                      ? "cursor-pointer" 
+                    permissions.canAccessFinalLayoutStep(hasFinalLayout)
+                      ? "cursor-pointer"
                       : "cursor-not-allowed opacity-50"
                   } ${
                     currentWorkflowStep === "final-layout"
                       ? "bg-primary text-white"
                       : "bg-primary/10 text-gray-900 hover:bg-primary/20"
                   }`}
-                  onClick={() => permissions.canAccessFinalLayoutStep(hasFinalLayout) && onWorkflowStepChange("final-layout")}
+                  onClick={() =>
+                    permissions.canAccessFinalLayoutStep(hasFinalLayout) &&
+                    onWorkflowStepChange("final-layout")
+                  }
                 >
                   {currentWorkflowStep !== "final-layout" ? (
                     "3"
@@ -228,15 +239,18 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                 </div>
                 <span
                   className={`text-sm font-medium transition-colors ${
-                    permissions.canAccessFinalLayoutStep(hasFinalLayout) 
-                      ? "cursor-pointer" 
+                    permissions.canAccessFinalLayoutStep(hasFinalLayout)
+                      ? "cursor-pointer"
                       : "cursor-not-allowed opacity-50"
                   } ${
                     currentWorkflowStep === "final-layout"
                       ? "text-primary"
                       : "text-gray-900 hover:text-primaryLight"
                   }`}
-                  onClick={() => permissions.canAccessFinalLayoutStep(hasFinalLayout) && onWorkflowStepChange("final-layout")}
+                  onClick={() =>
+                    permissions.canAccessFinalLayoutStep(hasFinalLayout) &&
+                    onWorkflowStepChange("final-layout")
+                  }
                 >
                   Final Layout
                 </span>
@@ -260,6 +274,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
           )}
           {permissions.shouldShowSaveButton() && (
             <Button
+              id="save-project-button"
               onClick={async () => {
                 try {
                   await onSaveProject();
@@ -274,15 +289,22 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   ? "text-orange-600 hover:text-orange-700 hover:bg-orange-50 bg-orange-50/50"
                   : "text-primary hover:text-primaryLight hover:bg-primary/10"
               }`}
-              title={hasUnsavedChanges ? "Save Project (Unsaved Changes)" : "Save Project"}
+              title={
+                hasUnsavedChanges
+                  ? "Save Project (Unsaved Changes)"
+                  : "Save Project"
+              }
             >
-              <Save 
-                className={`w-4 h-4 ${hasUnsavedChanges ? "animate-pulse" : ""}`} 
+              <Save
+                className={`w-4 h-4 ${
+                  hasUnsavedChanges ? "animate-pulse" : ""
+                }`}
               />
             </Button>
           )}
           {onShareProject && (
             <Button
+              id="share-project-button"
               onClick={onShareProject}
               variant="ghost"
               size="sm"
@@ -301,6 +323,30 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               title="Settings"
             >
               <Settings className="w-4 h-4" />
+            </Button>
+          )}
+          {onStartTour && (
+            <Button
+              id="start-tour-button"
+              onClick={onStartTour}
+              variant="ghost"
+              size="sm"
+              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+              title="Start Tour"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </Button>
+          )}
+          {onStartLayoutTour && currentWorkflowStep === "layout" && (
+            <Button
+              id="start-layout-tour-button"
+              onClick={onStartLayoutTour}
+              variant="ghost"
+              size="sm"
+              className="text-green-600 hover:text-green-700 hover:bg-green-50 transition-colors"
+              title="Start Layout Tour"
+            >
+              <HelpCircle className="w-4 h-4" />
             </Button>
           )}
           {/* {onRunOcrAllPages && hasPages && !isBulkOcrRunning && (
@@ -334,6 +380,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             <>
               {currentWorkflowStep === "translate" && (
                 <Button
+                  id="next-workflow-step-button"
                   onClick={() => onWorkflowStepChange("layout")}
                   className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
                   size="sm"
@@ -342,36 +389,38 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   Go to Layout
                 </Button>
               )}
-              {currentWorkflowStep === "layout" && permissions.canGenerateFinalLayout() && (
-                <Button
-                  onClick={() => onWorkflowStepChange("final-layout")}
-                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
-                  size="sm"
-                >
-                  <ChevronRight className="w-4 h-4 mr-2" />
-                  Go to Final Layout
-                </Button>
-              )}
-              {currentWorkflowStep === "final-layout" && permissions.canGenerateFinalLayout() && (
-                <Button
-                  onClick={onRecreateFinalLayout}
-                  disabled={isCapturingSnapshots}
-                  className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  size="sm"
-                >
-                  {isCapturingSnapshots ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      Recreating...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Recreate Final-Layout
-                    </>
-                  )}
-                </Button>
-              )}
+              {currentWorkflowStep === "layout" &&
+                permissions.canGenerateFinalLayout() && (
+                  <Button
+                    onClick={() => onWorkflowStepChange("final-layout")}
+                    className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg"
+                    size="sm"
+                  >
+                    <ChevronRight className="w-4 h-4 mr-2" />
+                    Go to Final Layout
+                  </Button>
+                )}
+              {currentWorkflowStep === "final-layout" &&
+                permissions.canGenerateFinalLayout() && (
+                  <Button
+                    onClick={onRecreateFinalLayout}
+                    disabled={isCapturingSnapshots}
+                    className="bg-primary hover:bg-primaryLight text-white border-primary hover:border-primaryLight shadow-md transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    size="sm"
+                  >
+                    {isCapturingSnapshots ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Recreating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Recreate Final-Layout
+                      </>
+                    )}
+                  </Button>
+                )}
             </>
           )}
         </div>

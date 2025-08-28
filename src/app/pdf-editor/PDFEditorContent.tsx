@@ -118,6 +118,9 @@ import {
   ShareProjectModal,
   ShareSettings,
 } from "./components/ShareProjectModal";
+import { SpotlightTour } from "./components/SpotlightTour";
+import { useSpotlightTour } from "./hooks/useSpotlightTour";
+import { useLayoutTour } from "./hooks/useLayoutTour";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
 import {
@@ -215,6 +218,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   // Use custom hooks
   const { documentState, setDocumentState, handlers, actions, pageActions } =
     useDocumentState();
+
   const {
     elementCollections,
     setElementCollections,
@@ -2012,7 +2016,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Set initial view to split for layout step (but allow changing it)
         // Only set to split if coming from a different step, not when already in layout
-        if (prev && prev !== "layout" as WorkflowStep) {
+        if (prev && prev !== ("layout" as WorkflowStep)) {
           setViewState((prevState) => ({
             ...prevState,
             currentView: "split",
@@ -2093,6 +2097,75 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       setViewState,
     ]
   );
+
+  // View change handler for tour
+  const handleViewChange = useCallback(
+    (view: "original" | "translated" | "split" | "final-layout") => {
+      setViewState((prev) => ({ ...prev, currentView: view }));
+    },
+    []
+  );
+
+  // Spotlight tour hook (for translate workflow)
+  const {
+    isTourOpen,
+    currentStepIndex,
+    hasCompletedTour,
+    tourSteps,
+    startTour,
+    closeTour,
+    completeTour,
+    resetTour,
+    goToStep,
+    nextStep,
+    currentStep,
+    isFirstStep,
+    isLastStep,
+    totalSteps,
+  } = useSpotlightTour(handleWorkflowStepChange, handleViewChange);
+
+  // Layout tour hook (for layout workflow)
+  const layoutTour = useLayoutTour(handleWorkflowStepChange, handleViewChange);
+
+  // Auto-start tour for first-time users when workflow step is translate
+  useEffect(() => {
+    if (
+      !hasCompletedTour &&
+      viewState.currentWorkflowStep === "translate" &&
+      documentState.isDocumentLoaded
+    ) {
+      // Small delay to ensure the component is fully rendered
+      const timer = setTimeout(() => {
+        startTour();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    hasCompletedTour,
+    viewState.currentWorkflowStep,
+    documentState.isDocumentLoaded,
+  ]);
+
+  // Auto-start layout tour for first-time users when workflow step is layout
+  useEffect(() => {
+    if (
+      !layoutTour.hasCompletedTour &&
+      viewState.currentWorkflowStep === "layout" &&
+      documentState.isDocumentLoaded
+    ) {
+      // Small delay to ensure the component is fully rendered
+      const timer = setTimeout(() => {
+        layoutTour.startTour();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    layoutTour.hasCompletedTour,
+    viewState.currentWorkflowStep,
+    documentState.isDocumentLoaded,
+  ]);
 
   // Ensure view is always split when in layout step
   useEffect(() => {
@@ -5966,6 +6039,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         projectName={currentProjectName}
         onBackToDashboard={() => router.push("/pdf-editor")}
         hasFinalLayout={!!documentState.finalLayoutUrl}
+        onStartTour={startTour}
+        onStartLayoutTour={layoutTour.startTour}
       />
 
       {/* Bulk OCR Loading Indicator */}
@@ -6062,6 +6137,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           }
           onPageTypeChange={handlePageTypeChange}
           onBirthCertModalOpen={handleBirthCertModalOpen}
+          onResetTour={resetTour}
           documentRef={documentRef}
           sourceLanguage={sourceLanguage}
           desiredLanguage={desiredLanguage}
@@ -6206,6 +6282,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
             {/* Document Viewer */}
             <div
+              id="document-viewer"
               className="flex-1 document-viewer document-container"
               ref={containerRef}
               style={{
@@ -7445,7 +7522,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           >
             {viewState.currentView === "split" &&
               viewState.currentWorkflowStep === "translate" && (
-                <div className="h-full transition-opacity duration-300 opacity-100">
+                <div
+                  className="h-full transition-opacity duration-300 opacity-100"
+                  id="translation-table-view"
+                >
                   <TranslationTableView
                     translatedTextBoxes={getCurrentTextBoxes("translated")}
                     untranslatedTexts={elementCollections.untranslatedTexts}
@@ -7710,6 +7790,24 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         }
         currentShareSettings={currentShareSettings}
         onUpdateShareSettings={handleUpdateShareSettings}
+      />
+
+      {/* Spotlight Tour */}
+      <SpotlightTour
+        isOpen={isTourOpen}
+        onClose={closeTour}
+        steps={tourSteps}
+        currentStepIndex={currentStepIndex}
+        onStepChange={goToStep}
+      />
+
+      {/* Layout Tour */}
+      <SpotlightTour
+        isOpen={layoutTour.isTourOpen}
+        onClose={layoutTour.closeTour}
+        steps={layoutTour.tourSteps}
+        currentStepIndex={layoutTour.currentStepIndex}
+        onStepChange={layoutTour.goToStep}
       />
     </div>
   );

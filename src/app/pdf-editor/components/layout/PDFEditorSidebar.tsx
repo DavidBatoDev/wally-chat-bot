@@ -16,6 +16,7 @@ import {
   Share,
   FileText,
   Zap,
+  HelpCircle,
 } from "lucide-react";
 import { SidebarProps } from "../../types/pdf-editor.types";
 import { isPdfFile } from "../../utils/measurements";
@@ -45,6 +46,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   desiredLanguage,
   onPageTypeChange,
   onBirthCertModalOpen,
+  onResetTour,
 }) => {
   // Determine if we're in final layout mode
   const isFinalLayout = viewState.currentView === "final-layout";
@@ -219,7 +221,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                 </div> */}
 
                 {/* Page Type Selector */}
-                                  <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2">
                   {!isFinalLayout && currentPageType === "birth_cert" && (
                     <button
                       onClick={(e) => {
@@ -255,59 +257,59 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                             );
                           }
                         }}
-                      onOpenChange={(open) => {
-                        if (open) {
-                          // Prevent page selection when opening dropdown
-                          event?.stopPropagation();
-                        }
-                      }}
-                    >
-                      <SelectTrigger
-                        className={`h-7 text-xs ${
-                          currentPageType === "social_media"
-                            ? "bg-primary/20 text-primary border-primary/30"
-                            : currentPageType === "birth_cert"
-                            ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                            : "bg-gray-100 text-gray-800 border-gray-200"
-                        }`}
+                        onOpenChange={(open) => {
+                          if (open) {
+                            // Prevent page selection when opening dropdown
+                            event?.stopPropagation();
+                          }
+                        }}
                       >
-                        <div className="flex items-center space-x-1">
-                          {currentPageType === "social_media" ? (
-                            <Share className="w-3 h-3" />
-                          ) : currentPageType === "birth_cert" ? (
-                            <FileText className="w-3 h-3" />
-                          ) : (
-                            <Zap className="w-3 h-3" />
-                          )}
-                          <span>
-                            {currentPageType === "social_media"
-                              ? "Social Media"
+                        <SelectTrigger
+                          className={`h-7 text-xs ${
+                            currentPageType === "social_media"
+                              ? "bg-primary/20 text-primary border-primary/30"
                               : currentPageType === "birth_cert"
-                              ? "Birth Certificate"
-                              : "Dynamic Content"}
-                          </span>
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="social_media">
-                          <div className="flex items-center space-x-2">
-                            <Share className="w-3 h-3" />
-                            <span>Social Media</span>
+                              ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                              : "bg-gray-100 text-gray-800 border-gray-200"
+                          }`}
+                        >
+                          <div className="flex items-center space-x-1">
+                            {currentPageType === "social_media" ? (
+                              <Share className="w-3 h-3" />
+                            ) : currentPageType === "birth_cert" ? (
+                              <FileText className="w-3 h-3" />
+                            ) : (
+                              <Zap className="w-3 h-3" />
+                            )}
+                            <span>
+                              {currentPageType === "social_media"
+                                ? "Social Media"
+                                : currentPageType === "birth_cert"
+                                ? "Birth Certificate"
+                                : "Dynamic Content"}
+                            </span>
                           </div>
-                        </SelectItem>
-                        <SelectItem value="birth_cert">
-                          <div className="flex items-center space-x-2">
-                            <FileText className="w-3 h-3" />
-                            <span>Birth Certificate</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="dynamic_content">
-                          <div className="flex items-center space-x-2">
-                            <Zap className="w-3 h-3" />
-                            <span>Dynamic Content</span>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="social_media">
+                            <div className="flex items-center space-x-2">
+                              <Share className="w-3 h-3" />
+                              <span>Social Media</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="birth_cert">
+                            <div className="flex items-center space-x-2">
+                              <FileText className="w-3 h-3" />
+                              <span>Birth Certificate</span>
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="dynamic_content">
+                            <div className="flex items-center space-x-2">
+                              <Zap className="w-3 h-3" />
+                              <span>Dynamic Content</span>
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
                       </Select>
                     ) : (
                       <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded border">
@@ -315,7 +317,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                           ? "Social Media"
                           : currentPageType === "birth_cert"
                           ? "Birth Certificate"
-                          : "Dynamic Content"} (Read-only)
+                          : "Dynamic Content"}{" "}
+                        (Read-only)
                       </div>
                     )
                   ) : (
@@ -388,6 +391,27 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
           </button>
+
+          {onResetTour && (
+            <button
+              onClick={onResetTour}
+              className="w-full p-4 text-left border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                  <HelpCircle className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <div className="font-medium text-sm text-gray-900">
+                    Reset Tour
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Restart the guided tour
+                  </div>
+                </div>
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -419,9 +443,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         }`}
         style={{ display: viewState.isSidebarCollapsed ? "none" : "flex" }}
       >
-        
-        {/* Tab Navigation */}
-        <div className="flex border-b border-primary/20 mb-4">
+        {/* Tab Navigation - hidden for now */}
+        <div className="flex border-b border-primary/20 mb-4 hidden">
           {permissions.canAccessTools() && (
             <button
               onClick={() => onTabChange("tools")}
@@ -459,9 +482,9 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto pl-4">
           {viewState.activeSidebarTab === "pages" ? (
-            <div className="flex flex-col h-full">
+            <div className="flex flex-col h-full" id="sidebar-pages-section">
               <div className="flex-1">
                 <h3 className="text-lg font-semibold mb-3 text-gray-900">
                   {isFinalLayout ? "Final Layout Pages" : "Pages"}

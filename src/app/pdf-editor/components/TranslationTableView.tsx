@@ -406,6 +406,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                       isSelected ? "bg-blue-50" : isEditing ? "bg-blue-25" : ""
                     }`}
                     onClick={() => handleRowClick(textbox.id)}
+                    {...(index === 0 && { id: "first-translation-row" })}
                   >
                     {/* Row Number */}
                     <td className="px-1 py-2 text-center text-xs text-gray-500 border-r border-gray-200 bg-gray-50 font-mono">
@@ -420,6 +421,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                       <div className="p-2">
                         {onUpdateUntranslatedText ? (
                           <textarea
+                            {...(index === 0 && {
+                              id: "first-original-textarea",
+                            })}
                             ref={(el) => {
                               if (el) {
                                 originalTextareaRefs.current[
@@ -510,6 +514,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                     >
                       <div className="p-2 relative">
                         <textarea
+                          {...(index === 0 && {
+                            id: "first-translated-textarea",
+                          })}
                           ref={(el) => {
                             if (el) {
                               textareaRefs.current[textbox.id] = el;
@@ -549,7 +556,10 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                         />
 
                         {/* Action buttons - positioned in top right corner */}
-                        <div className="absolute top-1 right-1 flex items-center gap-0.5">
+                        <div
+                          className="absolute top-1 right-1 flex items-center gap-0.5"
+                          {...(index === 0 && { id: "first-action-buttons" })}
+                        >
                           {/* Toggle Check/X Button */}
                           {!untranslatedText?.isCustomTextbox && (
                             <button
