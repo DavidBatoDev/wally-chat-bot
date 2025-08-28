@@ -4,7 +4,18 @@
 
 import { ProjectState } from "../hooks/states/useProjectState";
 import { API_CONFIG, getApiUrl } from "../../../config/api";
-import { isSupabaseUrl, extractFilePathFromUrl, uploadFileToSupabase } from "./fileUploadService";
+import {
+  isSupabaseUrl,
+  extractFilePathFromUrl,
+  uploadFileToSupabase,
+} from "./fileUploadService";
+import {
+  getPdfPageCountFromFile,
+  getFileTypeInfo,
+  generateBlankCanvas,
+  generateOcrBlankCanvas,
+  isBirthCertificateOcrFile,
+} from "../utils/pdfUtils";
 
 // API configuration
 const PROJECT_STATE_ENDPOINT = getApiUrl(API_CONFIG.PROJECT_STATE.BASE);
@@ -92,7 +103,7 @@ function getAuthToken(): string | null {
 
   // Import the auth store dynamically to avoid SSR issues
   try {
-    const { useAuthStore } = require("../../../lib/store/AuthStore");
+    const { useAuthStore } = require("@/lib/store/AuthStore");
     const getToken = useAuthStore.getState().getAuthToken;
     return getToken();
   } catch (error) {
@@ -190,12 +201,48 @@ export async function listProjects(
 /**
  * Get a specific project by ID
  */
-export async function getProject(projectId: string): Promise<ProjectResponse> {
+export async function getProject(
+  projectId: string,
+  authToken?: string | null
+): Promise<ProjectResponse> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  } else {
+    // Fallback to the old method
+    const token = getAuthToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
+
   const response = await fetch(
     `${PROJECT_STATE_ENDPOINT}/projects/${projectId}`,
     {
       method: "GET",
-      headers: createHeaders(),
+      headers,
+    }
+  );
+
+  return handleResponse<ProjectResponse>(response);
+}
+
+/**
+ * Get a specific project by ID without authentication (public access)
+ */
+export async function getPublicProject(
+  projectId: string
+): Promise<ProjectResponse> {
+  const response = await fetch(
+    `${PROJECT_STATE_ENDPOINT}/projects/${projectId}/public`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
     }
   );
 
@@ -322,7 +369,225 @@ export async function createProjectFromUpload(
 ): Promise<ProjectResponse> {
   // First, upload the file to Supabase storage
   const uploadResult = await uploadFileToSupabase(file, "project-uploads");
-  
+
+  // Get file type information and page count
+  const fileInfo = getFileTypeInfo(file);
+  let actualNumPages = 1; // Default to 1 page
+  let actualPageWidth = 595; // Default A4 width in points
+  let actualPageHeight = 842; // Default A4 height in points
+
+  console.log("DEBUG: File upload - File info:", fileInfo);
+
+  try {
+    if (fileInfo.isPdf) {
+      // Get actual page count and dimensions from PDF file
+      console.log(
+        "DEBUG: Processing PDF file, getting page count and dimensions..."
+      );
+      const pdfInfo = await getPdfPageCountFromFile(file);
+      actualNumPages = pdfInfo.pageCount;
+      actualPageWidth = pdfInfo.pageWidth;
+      actualPageHeight = pdfInfo.pageHeight;
+      console.log(
+        `DEBUG: PDF file has ${actualNumPages} pages, dimensions: ${actualPageWidth}x${actualPageHeight}`
+      );
+    } else if (fileInfo.isImage) {
+      // For images, we'll create a blank document page and place the image as an interactive element
+      actualNumPages = 1;
+      // For images, we'll use the actual image dimensions if available
+      try {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+        actualPageWidth = img.width;
+        actualPageHeight = img.height;
+        URL.revokeObjectURL(objectUrl);
+        console.log(
+          `DEBUG: Image file dimensions: ${actualPageWidth}x${actualPageHeight}`
+        );
+      } catch (imgError) {
+        console.warn(
+          "Could not get image dimensions, using defaults:",
+          imgError
+        );
+        actualPageWidth = 800;
+        actualPageHeight = 600;
+      }
+      console.log(
+        "DEBUG: Image file will be placed as interactive element on blank page"
+      );
+    } else {
+      console.log("DEBUG: Unknown file type, treating as single page");
+    }
+  } catch (error) {
+    console.warn(
+      "Could not determine page count or dimensions, using defaults:",
+      error
+    );
+    actualNumPages = 1;
+    actualPageWidth = 595;
+    actualPageHeight = 842;
+  }
+
+  console.log("DEBUG: Final page count and dimensions determined:", {
+    numPages: actualNumPages,
+    pageWidth: actualPageWidth,
+    pageHeight: actualPageHeight,
+  });
+
+  // Generate image element if this is an image file
+  let imageElement = null;
+  let blankCanvasUrl = null;
+  let isBirthCertificateOcr = false;
+
+  // Function to determine birth certificate template type based on filename
+  const getBirthCertTemplateInfo = (fileName: string) => {
+    const lowerFileName = fileName.toLowerCase();
+
+    // Detect language and year from filename
+    const isSpanish =
+      lowerFileName.includes("spanish") ||
+      lowerFileName.includes("español") ||
+      lowerFileName.includes("espanol");
+    const isFrench =
+      lowerFileName.includes("french") ||
+      lowerFileName.includes("français") ||
+      lowerFileName.includes("francais");
+
+    // Extract year (look for 4-digit numbers)
+    const yearMatch = fileName.match(/\b(19|20)\d{2}\b/);
+    const year = yearMatch ? yearMatch[0] : "1993";
+
+    // Determine template type
+    let templateType = "English";
+    if (isSpanish) templateType = "Spanish";
+    else if (isFrench) templateType = "French";
+
+    return {
+      type: `${templateType}_${year}_template`,
+      variation: `${templateType}_${year}`,
+      language: templateType.toLowerCase(),
+      year: year,
+    };
+  };
+
+  if (fileInfo.isImage) {
+    const imageId = `img_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+
+    // Check if this is for birth certificate OCR processing
+    isBirthCertificateOcr = isBirthCertificateOcrFile(file);
+
+    console.log("DEBUG: Image upload type:", {
+      fileName: file.name,
+      isBirthCertificateOcr,
+      useOcrCanvas: isBirthCertificateOcr,
+    });
+
+    // Calculate image positioning - center the image on the page with some padding
+    const padding = 50; // pixels of padding from edges
+    const maxImageWidth = actualPageWidth - padding * 2;
+    const maxImageHeight = actualPageHeight - padding * 2;
+
+    // Scale image to fit within page bounds while maintaining aspect ratio
+    const imageAspectRatio = actualPageWidth / actualPageHeight;
+    let imageWidth = maxImageWidth;
+    let imageHeight = maxImageHeight;
+
+    if (imageWidth / imageHeight > imageAspectRatio) {
+      // Page is wider than image aspect ratio
+      imageWidth = maxImageHeight * imageAspectRatio;
+    } else {
+      // Page is taller than image aspect ratio
+      imageHeight = maxImageWidth / imageAspectRatio;
+    }
+
+    // Center the image on the page
+    const imageX = (actualPageWidth - imageWidth) / 2;
+    const imageY = (actualPageHeight - imageHeight) / 2;
+
+    imageElement = {
+      id: imageId,
+      x: imageX,
+      y: imageY,
+      width: imageWidth,
+      height: imageHeight,
+      page: 1,
+      src: uploadResult.publicUrl,
+      rotation: 0,
+      opacity: 1,
+      borderColor: "#cccccc",
+      borderWidth: 1,
+      borderRadius: 0,
+      isSupabaseUrl: true,
+      filePath: uploadResult.filePath,
+      fileName: file.name,
+      fileObjectId: uploadResult.fileObjectId,
+    };
+
+    console.log("DEBUG: Created image element:", imageElement);
+
+    // Generate and upload a blank canvas as the main document
+    try {
+      let blankCanvas: Blob;
+
+      if (isBirthCertificateOcr) {
+        console.log(
+          "DEBUG: Generating OCR-optimized blank canvas for birth certificate..."
+        );
+        // Use OCR-specific canvas with standard A4 dimensions
+        blankCanvas = await generateOcrBlankCanvas();
+
+        // Update page dimensions to match OCR canvas
+        actualPageWidth = 595; // A4 width in points
+        actualPageHeight = 842; // A4 height in points
+
+        console.log("DEBUG: Updated dimensions for OCR processing:", {
+          originalWidth: actualPageWidth,
+          originalHeight: actualPageHeight,
+          ocrWidth: actualPageWidth,
+          ocrHeight: actualPageHeight,
+        });
+      } else {
+        console.log(
+          "DEBUG: Generating custom-sized blank canvas for image upload..."
+        );
+        blankCanvas = await generateBlankCanvas(
+          actualPageWidth,
+          actualPageHeight
+        );
+      }
+
+      // Create a File object from the canvas blob
+      const blankCanvasFile = new File([blankCanvas], "blank-canvas.png", {
+        type: "image/png",
+      });
+
+      // Upload the blank canvas to Supabase
+      const blankCanvasUploadResult = await uploadFileToSupabase(
+        blankCanvasFile,
+        "project-uploads"
+      );
+      blankCanvasUrl = blankCanvasUploadResult.publicUrl;
+
+      console.log(
+        "DEBUG: Blank canvas uploaded successfully:",
+        blankCanvasUploadResult.publicUrl
+      );
+    } catch (canvasError) {
+      console.warn(
+        "Failed to generate/upload blank canvas, using original image as document:",
+        canvasError
+      );
+      blankCanvasUrl = uploadResult.publicUrl; // Fallback to original image
+    }
+  }
+
   // Generate a project name based on the file
   const fileName = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
   const projectName = `${fileName} - ${new Date().toLocaleDateString()}`;
@@ -336,15 +601,57 @@ export async function createProjectFromUpload(
     version: "1.0.0",
     documentState: {
       ...documentState,
-      // Set the URL to the uploaded file URL from Supabase
-      url: uploadResult.publicUrl,
+      // Set the URL to the blank canvas for images, or original file for PDFs
+      url: blankCanvasUrl || uploadResult.publicUrl,
       isSupabaseUrl: true,
-      supabaseFilePath: uploadResult.filePath,
+      supabaseFilePath: blankCanvasUrl
+        ? uploadResult.filePath.replace(file.name, "blank-canvas.png")
+        : uploadResult.filePath,
+      // Set the correct page count and dimensions from the actual file
+      numPages: actualNumPages,
+      pageWidth: actualPageWidth,
+      pageHeight: actualPageHeight,
+      // Set file type information - use PDF type for images since we're creating a document
+      fileType: fileInfo.isImage ? "application/pdf" : fileInfo.mimeType,
+      isDocumentLoaded: true,
       // Convert Map and Set to serializable formats
       detectedPageBackgrounds: Object.fromEntries(
         documentState.detectedPageBackgrounds || new Map()
       ),
       deletedPages: Array.from(documentState.deletedPages || new Set()),
+      // Create pages array with blank page
+      pages: Array.from({ length: actualNumPages }, (_, index) => {
+        const pageData: any = {
+          pageNumber: index + 1,
+          isTranslated: false,
+          elements: imageElement && index === 0 ? [imageElement.id] : [],
+        };
+
+        // Add birth certificate specific data for the first page if this is a birth certificate OCR project
+        if (index === 0 && isBirthCertificateOcr) {
+          const templateInfo = getBirthCertTemplateInfo(file.name);
+          pageData.pageType = "birth_cert";
+          pageData.birthCertType = templateInfo.type;
+          pageData.birthCertTemplate = {
+            id: `birth_cert_${templateInfo.language}_${templateInfo.year}`,
+            doc_type: "birth_certificate",
+            variation: templateInfo.variation,
+            file_url: blankCanvasUrl, // Use the blank canvas as template
+            info_json: {
+              name: `${
+                templateInfo.language.charAt(0).toUpperCase() +
+                templateInfo.language.slice(1)
+              } Birth Certificate Template ${templateInfo.year}`,
+              width: actualPageWidth,
+              height: actualPageHeight,
+              language: templateInfo.language,
+              year: templateInfo.year,
+            },
+          };
+        }
+
+        return pageData;
+      }),
     },
     viewState: {
       currentView: initialState.viewState.currentView,
@@ -356,9 +663,15 @@ export async function createProjectFromUpload(
       containerWidth: initialState.viewState.containerWidth,
       transformOrigin: initialState.viewState.transformOrigin,
     },
-    elementCollections: initialState.elementCollections,
+    elementCollections: {
+      ...initialState.elementCollections,
+      // Add the uploaded image as an interactive element if it's an image file
+      originalImages: imageElement ? [imageElement] : [],
+    },
     layerState: {
-      originalLayerOrder: [...initialState.layerState.originalLayerOrder],
+      originalLayerOrder: imageElement
+        ? [...initialState.layerState.originalLayerOrder, imageElement.id]
+        : [...initialState.layerState.originalLayerOrder],
       translatedLayerOrder: [...initialState.layerState.translatedLayerOrder],
     },
     editorState: {
@@ -375,10 +688,37 @@ export async function createProjectFromUpload(
     desiredLanguage: initialState.desiredLanguage,
   };
 
+  console.log("DEBUG: Document state created with:", {
+    originalNumPages: documentState.numPages,
+    newNumPages: actualNumPages,
+    originalPageWidth: documentState.pageWidth,
+    newPageWidth: actualPageWidth,
+    originalPageHeight: documentState.pageHeight,
+    newPageHeight: actualPageHeight,
+    url: blankCanvasUrl || uploadResult.publicUrl,
+    originalImageUrl: fileInfo.isImage ? uploadResult.publicUrl : null,
+    blankCanvasUrl: blankCanvasUrl,
+    fileType: fileInfo.isImage ? "application/pdf" : fileInfo.mimeType,
+    isDocumentLoaded: true,
+    imageElement: imageElement
+      ? {
+          id: imageElement.id,
+          dimensions: `${imageElement.width}x${imageElement.height}`,
+          position: `(${imageElement.x}, ${imageElement.y})`,
+        }
+      : null,
+    pages: imageElement
+      ? "Created with image element on page 1"
+      : "No image elements",
+    isBirthCertificateOcr,
+  });
+
   console.log("DEBUG: Auto-creation - Project data being created:", {
     projectData,
     documentStateKeys: Object.keys(projectData.documentState),
     uploadResult,
+    fileInfo,
+    actualNumPages,
     hasRequiredFields: {
       url: !!projectData.documentState.url,
       isDocumentLoaded: projectData.documentState.isDocumentLoaded,
@@ -391,9 +731,39 @@ export async function createProjectFromUpload(
     name: projectName,
     description: `Project created from uploaded file: ${file.name}`,
     project_data: projectData,
-    tags: [file.type.includes("pdf") ? "pdf" : "image", "auto-created"],
+    tags: [
+      fileInfo.isImage
+        ? isBirthCertificateOcr
+          ? "birth-certificate-ocr"
+          : "image-project"
+        : file.type.includes("pdf")
+        ? "pdf"
+        : "document",
+      "auto-created",
+      fileInfo.isImage
+        ? isBirthCertificateOcr
+          ? "ocr-optimized"
+          : "blank-canvas"
+        : "original-file",
+    ],
     is_public: false,
   };
+
+  console.log("DEBUG: Final create request:", {
+    name: createRequest.name,
+    description: createRequest.description,
+    tags: createRequest.tags,
+    is_public: createRequest.is_public,
+    project_data_keys: Object.keys(createRequest.project_data),
+    documentState_keys: Object.keys(createRequest.project_data.documentState),
+    numPages: createRequest.project_data.documentState.numPages,
+    pageWidth: createRequest.project_data.documentState.pageWidth,
+    pageHeight: createRequest.project_data.documentState.pageHeight,
+    documentUrl: createRequest.project_data.documentState.url,
+    isImageProject: fileInfo.isImage,
+    hasImageElement: !!imageElement,
+    isBirthCertificateOcr,
+  });
 
   // Create the project and then update the project_data to include the ID
   const result = await createProject(createRequest);
@@ -461,7 +831,9 @@ export function isAuthenticated(): boolean {
 /**
  * Get a shared project by share ID
  */
-export async function getSharedProject(shareId: string): Promise<ProjectResponse> {
+export async function getSharedProject(
+  shareId: string
+): Promise<ProjectResponse> {
   const response = await fetch(
     `${PROJECT_STATE_ENDPOINT}/projects/shared/${shareId}`,
     {
@@ -500,9 +872,7 @@ export async function updateProjectShareSettings(
 /**
  * Get project share settings
  */
-export async function getProjectShareSettings(
-  projectId: string
-): Promise<{
+export async function getProjectShareSettings(projectId: string): Promise<{
   is_public: boolean;
   share_id?: string;
   share_permissions?: "viewer" | "editor";

@@ -1,6 +1,6 @@
 // NOTE: All element mutations (add, update, delete, move, etc.) should be wrapped in Command objects and pushed to the undo/redo history using useHistory.
 // See useHistory.ts and commands.ts for details.
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import {
   ElementCollections,
   LayerState,
@@ -1274,40 +1274,147 @@ export const useElementManagement = () => {
   // Untranslated texts management
   const addUntranslatedText = useCallback(
     (untranslatedText: UntranslatedText) => {
-      setElementCollections((prev) => ({
-        ...prev,
-        untranslatedTexts: [...prev.untranslatedTexts, untranslatedText],
-      }));
+      console.log(`📝 [useElementManagement] Adding untranslated text:`, {
+        id: untranslatedText.id,
+        translatedTextboxId: untranslatedText.translatedTextboxId,
+        originalText:
+          untranslatedText.originalText?.substring(0, 50) +
+          (untranslatedText.originalText?.length > 50 ? "..." : ""),
+        page: untranslatedText.page,
+        status: untranslatedText.status,
+        isCustomTextbox: untranslatedText.isCustomTextbox,
+        position: `(${untranslatedText.x}, ${untranslatedText.y})`,
+        dimensions: `${untranslatedText.width}x${untranslatedText.height}`,
+      });
+
+      setElementCollections((prev) => {
+        const newState = {
+          ...prev,
+          untranslatedTexts: [...prev.untranslatedTexts, untranslatedText],
+        };
+
+        console.log(
+          `📊 [useElementManagement] untranslatedTexts collection updated:`,
+          {
+            previousCount: prev.untranslatedTexts.length,
+            newCount: newState.untranslatedTexts.length,
+            totalElements: newState.untranslatedTexts.length,
+          }
+        );
+
+        return newState;
+      });
     },
     []
   );
 
   const updateUntranslatedText = useCallback(
     (id: string, updates: Partial<UntranslatedText>) => {
-      setElementCollections((prev) => ({
-        ...prev,
-        untranslatedTexts: prev.untranslatedTexts.map((text) =>
-          text.id === id ? { ...text, ...updates } : text
-        ),
-      }));
+      console.log(`📝 [useElementManagement] Updating untranslated text:`, {
+        id,
+        updates,
+        updateKeys: Object.keys(updates),
+      });
+
+      setElementCollections((prev) => {
+        const textIndex = prev.untranslatedTexts.findIndex(
+          (text) => text.id === id
+        );
+        if (textIndex === -1) {
+          console.warn(
+            `⚠️ [useElementManagement] Untranslated text with id ${id} not found for update`
+          );
+          return prev;
+        }
+
+        const updatedText = {
+          ...prev.untranslatedTexts[textIndex],
+          ...updates,
+        };
+        const newState = {
+          ...prev,
+          untranslatedTexts: prev.untranslatedTexts.map((text) =>
+            text.id === id ? updatedText : text
+          ),
+        };
+
+        console.log(`📊 [useElementManagement] untranslatedText updated:`, {
+          id,
+          previousStatus: prev.untranslatedTexts[textIndex].status,
+          newStatus: updatedText.status,
+          previousText:
+            prev.untranslatedTexts[textIndex].originalText?.substring(0, 30) +
+            (prev.untranslatedTexts[textIndex].originalText?.length > 30
+              ? "..."
+              : ""),
+          newText:
+            updatedText.originalText?.substring(0, 30) +
+            (updatedText.originalText?.length > 30 ? "..." : ""),
+        });
+
+        return newState;
+      });
     },
     []
   );
 
   const deleteUntranslatedText = useCallback((id: string) => {
-    setElementCollections((prev) => ({
-      ...prev,
-      untranslatedTexts: prev.untranslatedTexts.filter(
-        (text) => text.id !== id
-      ),
-    }));
+    console.log(`📝 [useElementManagement] Deleting untranslated text:`, {
+      id,
+    });
+
+    setElementCollections((prev) => {
+      const textToDelete = prev.untranslatedTexts.find(
+        (text) => text.id === id
+      );
+      if (!textToDelete) {
+        console.warn(
+          `⚠️ [useElementManagement] Untranslated text with id ${id} not found for deletion`
+        );
+        return prev;
+      }
+
+      const newState = {
+        ...prev,
+        untranslatedTexts: prev.untranslatedTexts.filter(
+          (text) => text.id !== id
+        ),
+      };
+
+      console.log(`📊 [useElementManagement] untranslatedText deleted:`, {
+        id,
+        deletedText:
+          textToDelete.originalText?.substring(0, 30) +
+          (textToDelete.originalText?.length > 30 ? "..." : ""),
+        previousCount: prev.untranslatedTexts.length,
+        newCount: newState.untranslatedTexts.length,
+      });
+
+      return newState;
+    });
   }, []);
 
   const getUntranslatedTextByTranslatedId = useCallback(
     (translatedTextboxId: string) => {
-      return elementCollections.untranslatedTexts.find(
+      const untranslatedText = elementCollections.untranslatedTexts.find(
         (text) => text.translatedTextboxId === translatedTextboxId
       );
+
+      console.log(
+        `🔍 [useElementManagement] Looking up untranslated text for translated textbox:`,
+        {
+          translatedTextboxId,
+          found: !!untranslatedText,
+          untranslatedTextId: untranslatedText?.id || "NOT_FOUND",
+          originalText: untranslatedText?.originalText
+            ? untranslatedText.originalText.substring(0, 30) +
+              (untranslatedText.originalText.length > 30 ? "..." : "")
+            : "NOT_FOUND",
+          status: untranslatedText?.status || "NOT_FOUND",
+        }
+      );
+
+      return untranslatedText;
     },
     [elementCollections.untranslatedTexts]
   );
@@ -1345,6 +1452,36 @@ export const useElementManagement = () => {
     },
     [elementCollections]
   );
+
+  // Log untranslatedTexts collection changes
+  useEffect(() => {
+    if (elementCollections.untranslatedTexts.length > 0) {
+      console.log(
+        `📊 [useElementManagement] untranslatedTexts collection summary:`,
+        {
+          totalCount: elementCollections.untranslatedTexts.length,
+          byPage: elementCollections.untranslatedTexts.reduce((acc, text) => {
+            acc[text.page] = (acc[text.page] || 0) + 1;
+            return acc;
+          }, {} as Record<number, number>),
+          byStatus: elementCollections.untranslatedTexts.reduce((acc, text) => {
+            acc[text.status] = (acc[text.status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          customTextboxes: elementCollections.untranslatedTexts.filter(
+            (text) => text.isCustomTextbox
+          ).length,
+          ocrDetected: elementCollections.untranslatedTexts.filter(
+            (text) => !text.isCustomTextbox
+          ).length,
+        }
+      );
+    } else {
+      console.log(
+        `📊 [useElementManagement] untranslatedTexts collection is empty`
+      );
+    }
+  }, [elementCollections.untranslatedTexts]);
 
   return {
     elementCollections,

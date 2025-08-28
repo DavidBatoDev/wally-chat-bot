@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 
 // Import services
-import { performPageOcr, performBulkOcr } from "./services/ocrService";
+import {
+  performPageOcr,
+  performBulkOcr,
+  abortOcrOperation,
+} from "./services/ocrService";
 import {
   exportPdfDocument,
   exportToPDFService,
@@ -1949,7 +1953,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         }
       }
       // Get the previous step from current state if not provided
-      const prev = previousStep || viewState.currentWorkflowStep;
+      const prev: WorkflowStep = previousStep || viewState.currentWorkflowStep;
 
       // Handle leaving final-layout step - set view to split when going to translate or layout
       if (
@@ -2008,16 +2012,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Set initial view to split for layout step (but allow changing it)
         // Only set to split if coming from a different step, not when already in layout
-        if (prev !== "layout") {
-          setViewState((prevState) => {
-            console.log(
-              `Setting initial view to split for layout step (was ${prevState.currentView})`
-            );
-            return {
-              ...prevState,
-              currentView: "split",
-            };
-          });
+        if (prev && prev !== "layout" as WorkflowStep) {
+          setViewState((prevState) => ({
+            ...prevState,
+            currentView: "split",
+          }));
         }
 
         console.log("Layout step: Initialized");
@@ -2095,7 +2094,21 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     ]
   );
 
-  // Layout step no longer forces split view - users can switch freely between views
+  // Ensure view is always split when in layout step
+  useEffect(() => {
+    if (
+      viewState.currentWorkflowStep === "layout" &&
+      viewState.currentView !== "split"
+    ) {
+      console.log(
+        `Layout step detected but view is ${viewState.currentView}, forcing to split`
+      );
+      setViewState((prevState) => ({
+        ...prevState,
+        currentView: "split",
+      }));
+    }
+  }, [viewState.currentWorkflowStep, setViewState]);
 
   // Text span handling hook
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
@@ -2638,8 +2651,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   // Editor-specific functions for shared projects (defined early to avoid initialization order issues)
   const isEditorMode = useCallback(() => {
     if (typeof window === "undefined") return false;
-    return localStorage.getItem("pdf-editor-shared-mode") === "true" && 
-           localStorage.getItem("pdf-editor-shared-permissions") === "editor";
+    return (
+      localStorage.getItem("pdf-editor-shared-mode") === "true" &&
+      localStorage.getItem("pdf-editor-shared-permissions") === "editor"
+    );
   }, []);
 
   // Memoized values
@@ -3881,7 +3896,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Only proceed if the image was successfully uploaded to cloud storage
         if (!imageUploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload image to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload image to cloud storage. Please try again."
+          );
           return;
         }
 
@@ -3963,13 +3980,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload to Supabase or create blob URL
         const uploadResult = await uploadFileWithFallback(updatedFile);
-        
+
         // Only proceed if the PDF was successfully uploaded to cloud storage
         if (!uploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload updated document to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload updated document to cloud storage. Please try again."
+          );
           return;
         }
-        
+
         const newUrl = uploadResult.url;
         const newPageNumber = currentPdfDoc.getPageCount();
 
@@ -4014,7 +4033,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Only proceed if the image was successfully uploaded to cloud storage
         if (!imageUploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload image to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload image to cloud storage. Please try again."
+          );
           return;
         }
 
@@ -4103,13 +4124,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Upload merged PDF to Supabase or use blob URL as fallback
         const uploadResult = await uploadFileWithFallback(mergedFile);
-        
+
         // Only proceed if the merged PDF was successfully uploaded to cloud storage
         if (!uploadResult.isSupabaseUrl) {
-          toast.error("Failed to upload merged document to cloud storage. Please try again.");
+          toast.error(
+            "Failed to upload merged document to cloud storage. Please try again."
+          );
           return;
         }
-        
+
         const newUrl = uploadResult.url;
         const totalPages = currentPdfDoc.getPageCount();
         const addedPagesCount = newPages.length;
@@ -4168,13 +4191,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         try {
           // Upload image to Supabase or use blob URL as fallback
           const uploadResult = await uploadFileWithFallback(file);
-          
+
           // Only proceed if the image was successfully uploaded to cloud storage
           if (!uploadResult.isSupabaseUrl) {
-            toast.error("Failed to upload image to cloud storage. Please try again.");
+            toast.error(
+              "Failed to upload image to cloud storage. Please try again."
+            );
             return;
           }
-          
+
           const url = uploadResult.url;
 
           // Load the image to get its natural dimensions
@@ -4326,73 +4351,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     [pageActions, viewState.currentView]
   );
 
-  // Transform page to textbox functionality
-  const handleTransformPageToTextbox = useCallback(
-    async (pageNumber: number) => {
-      try {
-        // Create a compatibility wrapper for setPageState
-        const setPageStateCompat = (updater: (prev: any) => any) => {
-          const prev = {
-            isTransforming: documentState.isTransforming,
-            deletedPages: documentState.deletedPages,
-            isPageTranslated: new Map(
-              documentState.pages.map((p) => [p.pageNumber, p.isTranslated])
-            ),
-          };
-          const newState = updater(prev);
-
-          if (newState.isTransforming !== undefined) {
-            pageActions.setIsTransforming(newState.isTransforming);
-          }
-        };
-
-        // Get page information for birth certificate detection
-        const page = documentState.pages.find(
-          (p) => p.pageNumber === pageNumber
-        );
-        const pageType = page?.pageType;
-        const birthCertTemplateId = page?.birthCertTemplate?.id;
-
-        await performPageOcr({
-          pageNumber,
-          documentRef,
-          containerRef,
-          documentState,
-          viewState,
-          editorState,
-          setPageState: setPageStateCompat,
-          setViewState,
-          setEditorState,
-          actions,
-          sourceLanguage,
-          desiredLanguage,
-          handleAddTextBoxWithUndo,
-          setIsTranslating,
-          addUntranslatedText,
-          pageType,
-          birthCertTemplateId,
-        });
-      } catch (error) {
-        console.error("Error in handleTransformPageToTextbox:", error);
-        toast.error("Failed to transform page to textboxes");
-      }
-    },
-    [
-      documentRef,
-      containerRef,
-      documentState,
-      viewState,
-      editorState,
-      pageActions,
-      setViewState,
-      setEditorState,
-      actions,
-      sourceLanguage,
-      desiredLanguage,
-      handleAddTextBoxWithUndo,
-      setIsTranslating,
-    ]
-  );
+  // Transform page to textbox functionality - will be defined after useProjectState hook
 
   // Clear translation for a single page
   const handleClearPageTranslation = useCallback(
@@ -4495,12 +4454,16 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
   // Use shared editor save/load if in shared mode, otherwise use regular ones
   const isSharedMode = isInSharedMode();
-  console.log("PDFEditorContent: Using", isSharedMode ? "shared editor" : "regular", "save/load functions");
-  
-  const actualSaveProject = isSharedMode 
-    ? sharedProjectPersistence.saveProject 
+  console.log(
+    "PDFEditorContent: Using",
+    isSharedMode ? "shared editor" : "regular",
+    "save/load functions"
+  );
+
+  const actualSaveProject = isSharedMode
+    ? sharedProjectPersistence.saveProject
     : saveProjectToStorage;
-  
+
   const actualLoadProject = isSharedMode
     ? sharedProjectPersistence.loadProject
     : loadProject;
@@ -4516,51 +4479,78 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   // Auto-load shared project from localStorage (run only once on mount)
   useLayoutEffect(() => {
     // Check if we're in shared mode
-    const isSharedMode = localStorage.getItem("pdf-editor-shared-mode") === "true";
-    const sharedPermissions = localStorage.getItem("pdf-editor-shared-permissions");
-    const sharedProjectId = localStorage.getItem("pdf-editor-shared-project-id");
-    
+    const isSharedMode =
+      localStorage.getItem("pdf-editor-shared-mode") === "true";
+    const sharedPermissions = localStorage.getItem(
+      "pdf-editor-shared-permissions"
+    );
+    const sharedProjectId = localStorage.getItem(
+      "pdf-editor-shared-project-id"
+    );
+
     console.log("PDFEditorContent auto-load check:", {
       isSharedMode,
       sharedPermissions,
       sharedProjectId,
       projectId,
-      isEditor: sharedPermissions === "editor"
+      isEditor: sharedPermissions === "editor",
     });
-    
+
     // For editor mode, load the current state from database
-    if (isSharedMode && sharedPermissions === "editor" && sharedProjectId && !projectId) {
-      console.log("Editor mode: Loading current project state from database:", sharedProjectId);
-      
+    if (
+      isSharedMode &&
+      sharedPermissions === "editor" &&
+      sharedProjectId &&
+      !projectId
+    ) {
+      console.log(
+        "Editor mode: Loading current project state from database:",
+        sharedProjectId
+      );
+
       // Use setTimeout to ensure this happens after render
       setTimeout(() => {
-        actualLoadProject(sharedProjectId).then((success) => {
-          if (success) {
-            console.log("Successfully loaded project from database for editor");
-          } else {
-            console.error("Failed to load project from database for editor");
-          }
-        }).catch((error) => {
-          console.error("Error loading project from database for editor:", error);
-        });
+        actualLoadProject(sharedProjectId)
+          .then((success) => {
+            if (success) {
+              console.log(
+                "Successfully loaded project from database for editor"
+              );
+            } else {
+              console.error("Failed to load project from database for editor");
+            }
+          })
+          .catch((error) => {
+            console.error(
+              "Error loading project from database for editor:",
+              error
+            );
+          });
       }, 0);
     }
     // For viewer mode, load from localStorage as before
     else if (isSharedMode && sharedPermissions === "viewer") {
-      const currentProjectKey = localStorage.getItem("pdf-editor-current-project");
+      const currentProjectKey = localStorage.getItem(
+        "pdf-editor-current-project"
+      );
       if (currentProjectKey && !projectId) {
-        console.log("Viewer mode: Auto-loading shared project from localStorage:", currentProjectKey);
-        
+        console.log(
+          "Viewer mode: Auto-loading shared project from localStorage:",
+          currentProjectKey
+        );
+
         setTimeout(() => {
-          actualLoadProject().then((success) => {
-            if (success) {
-              console.log("Successfully loaded shared project for viewer");
-            } else {
-              console.error("Failed to load shared project for viewer");
-            }
-          }).catch((error) => {
-            console.error("Error loading shared project for viewer:", error);
-          });
+          actualLoadProject()
+            .then((success) => {
+              if (success) {
+                console.log("Successfully loaded shared project for viewer");
+              } else {
+                console.error("Failed to load shared project for viewer");
+              }
+            })
+            .catch((error) => {
+              console.error("Error loading shared project for viewer:", error);
+            });
         }, 0);
       }
     }
@@ -4593,7 +4583,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     async (projectName?: string) => {
       // Add a small delay to ensure all state updates are synchronized
       // This fixes the issue where manual saves don't persist but auto-saves do
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       const result = await actualSaveProject(projectName);
       if (result) {
         markAsSaved();
@@ -4640,7 +4630,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
   const handleEditorShare = useCallback(() => {
     if (!isEditorMode()) return handleShareProject();
-    
+
     // For editors, just copy the share link
     const shareId = localStorage.getItem("pdf-editor-share-id");
     if (shareId) {
@@ -5305,18 +5295,254 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     setBulkOcrProgress({ current: 0, total: 0 });
     bulkOcrCancelRef.current.cancelled = false;
 
+    // Create a persistent loading toast that will be updated
+    const loadingToastId = toast.loading(
+      "Starting bulk page transformation...",
+      {
+        duration: Infinity, // Keep it open until we dismiss it
+        style: {
+          background: "white",
+          color: "#374151",
+          border: "1px solid #e5e7eb",
+          borderRadius: "12px",
+          padding: "16px",
+          fontSize: "14px",
+          fontWeight: "500",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        },
+        action: {
+          label: "✕",
+          onClick: () => {
+            bulkOcrCancelRef.current.cancelled = true;
+            handleCancelBulkOcr();
+          },
+        },
+      }
+    );
+
     try {
+      // Create complete project data for bulk OCR template detection
+      const completeProjectData = {
+        totalPages: documentState.numPages,
+        sourceLanguage: sourceLanguage || "auto",
+        desiredLanguage: desiredLanguage || "en",
+        timestamp: new Date().toISOString(),
+        // Include the complete document state with pages
+        documentState: {
+          ...documentState,
+          pages: documentState.pages,
+        },
+      };
+
+      // Log the complete project data being sent for bulk OCR
+      console.log(
+        "🔍 [FRONTEND BULK OCR DEBUG] Complete project data being sent:",
+        completeProjectData
+      );
+      console.log(
+        "🔍 [FRONTEND BULK OCR DEBUG] Document state pages:",
+        documentState.pages
+      );
+
       const result = await performBulkOcr({
-        documentRef,
-        containerRef,
-        documentState,
-        editorState,
-        viewState,
-        actions,
-        setEditorState,
-        setViewState,
-        setPageState: (updater: (prev: any) => any) => {
-          // Compatibility wrapper for bulk OCR
+        sourceLanguage,
+        desiredLanguage,
+        addTextBox,
+        setElementCollections,
+        setIsTranslating,
+        totalPages: documentState.numPages,
+        deletedPages: documentState.deletedPages,
+        currentPage: documentState.currentPage,
+        onProgress: (current, total) => {
+          // Check if operation was cancelled
+          if (bulkOcrCancelRef.current.cancelled) {
+            toast.dismiss(loadingToastId);
+            toast.info("🛑 Page transformation was cancelled", {
+              duration: 3000,
+            });
+            return;
+          }
+
+          setBulkOcrProgress({ current, total });
+
+          // Update the loading toast with progress information
+          const percentage = Math.round((current / total) * 100);
+          if (current === 1) {
+            toast.loading(
+              `🔄 Transforming pages... (${current}/${total}) - ${percentage}%`,
+              {
+                id: loadingToastId,
+                style: {
+                  background: "white",
+                  color: "#374151",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+                },
+                action: {
+                  label: "✕",
+                  onClick: () => {
+                    bulkOcrCancelRef.current.cancelled = true;
+                    handleCancelBulkOcr();
+                  },
+                },
+              }
+            );
+          } else if (current === total) {
+            toast.loading(
+              `🔄 Finalizing transformation... (${current}/${total}) - ${percentage}%`,
+              {
+                id: loadingToastId,
+                style: {
+                  background: "white",
+                  color: "#374151",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  boxShadow: "0 8px 32px rgba(0,0, 0, 0.12)",
+                },
+                action: {
+                  label: "✕",
+                  onClick: () => {
+                    bulkOcrCancelRef.current.cancelled = true;
+                    handleCancelBulkOcr();
+                  },
+                },
+              }
+            );
+          } else {
+            // Update every 3rd page to avoid too many updates
+            if (current % 3 === 0 || current === total) {
+              toast.loading(
+                `🔄 Transforming pages... (${current}/${total}) - ${percentage}%`,
+                {
+                  id: loadingToastId,
+                  style: {
+                    background: "white",
+                    color: "#374151",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+                  },
+                  action: {
+                    label: "✕",
+                    onClick: () => {
+                      bulkOcrCancelRef.current.cancelled = true;
+                      handleCancelBulkOcr();
+                    },
+                  },
+                }
+              );
+            }
+          }
+        },
+        onPageChange: (page) => {
+          actions.changePage(page);
+        },
+        cancelRef: bulkOcrCancelRef,
+        addUntranslatedText,
+        // Add required parameters for background OCR service
+        projectId: currentProjectId || `bulk-ocr-${Date.now()}`,
+        captureUrl: "http://localhost:3000/capture-project/", // Point to capture-project page
+        ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
+        // Add required project data for template detection
+        projectData: completeProjectData,
+      });
+
+      // Dismiss the loading toast and show success
+      toast.dismiss(loadingToastId);
+
+      if (result.success) {
+        toast.success(
+          `🎉 ${
+            result.message ||
+            `Successfully processed ${result.processedPages} pages`
+          }`,
+          {
+            duration: 5000,
+            style: {
+              background: "white",
+              color: "#059669",
+              border: "1px solid #10b981",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+            },
+          }
+        );
+      } else {
+        toast.error(`❌ ${result.message || "Bulk OCR process failed"}`, {
+          duration: 5000,
+          style: {
+            background: "white",
+            color: "#dc2626",
+            border: "1px solid #ef4444",
+            borderRadius: "12px",
+            padding: "16px",
+            fontSize: "14px",
+            fontWeight: "500",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error in bulk OCR:", error);
+      // Dismiss the loading toast and show error
+      toast.dismiss(loadingToastId);
+      toast.error("❌ Failed to complete bulk OCR process", {
+        duration: 5000,
+        style: {
+          background: "white",
+          color: "#dc2626",
+          border: "1px solid #ef4444",
+          borderRadius: "12px",
+          padding: "16px",
+          fontSize: "14px",
+          fontWeight: "500",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        },
+      });
+    } finally {
+      // Check if operation was cancelled
+      if (bulkOcrCancelRef.current.cancelled) {
+        toast.dismiss(loadingToastId);
+        toast.info("🛑 Page transformation cancelled", {
+          duration: 3000,
+        });
+      }
+
+      setIsBulkOcrRunning(false);
+      setBulkOcrProgress(null);
+    }
+  }, [
+    isBulkOcrRunning,
+    documentState,
+    pageActions,
+    actions,
+    sourceLanguage,
+    desiredLanguage,
+    addTextBox,
+    setElementCollections,
+    setIsTranslating,
+    currentProjectId, // Add currentProjectId to dependencies
+  ]);
+
+  // Transform page to textbox functionality - defined after useProjectState hook
+  const handleTransformPageToTextbox = useCallback(
+    async (pageNumber: number) => {
+      try {
+        // Create a compatibility wrapper for setPageState
+        const setPageStateCompat = (updater: (prev: any) => any) => {
           const prev = {
             isTransforming: documentState.isTransforming,
             deletedPages: documentState.deletedPages,
@@ -5329,55 +5555,79 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           if (newState.isTransforming !== undefined) {
             pageActions.setIsTransforming(newState.isTransforming);
           }
-        },
-        sourceLanguage,
-        desiredLanguage,
-        handleAddTextBoxWithUndo,
-        setIsTranslating,
-        totalPages: documentState.numPages,
-        deletedPages: documentState.deletedPages,
-        currentPage: documentState.currentPage,
-        onProgress: (current, total) => {
-          setBulkOcrProgress({ current, total });
-        },
-        onPageChange: (page) => {
-          actions.changePage(page);
-        },
-        cancelRef: bulkOcrCancelRef,
-        addUntranslatedText,
-      });
+        };
 
-      if (result.success) {
-        toast.success(
-          result.message ||
-            `Successfully processed ${result.processedPages} pages`
+        // Get page information for birth certificate detection
+        const page = documentState.pages.find(
+          (p) => p.pageNumber === pageNumber
         );
-      } else {
-        toast.error(result.message || "Bulk OCR process failed");
+        const pageType = page?.pageType;
+        const birthCertTemplateId = page?.birthCertTemplate?.id;
+
+        // Create complete project data for template detection
+        const completeProjectData = {
+          totalPages: documentState.numPages,
+          sourceLanguage: sourceLanguage || "auto",
+          desiredLanguage: desiredLanguage || "en",
+          timestamp: new Date().toISOString(),
+          // Include the complete document state with pages
+          documentState: {
+            ...documentState,
+            pages: documentState.pages,
+          },
+        };
+
+        // Log the complete project data being sent
+        console.log(
+          "🔍 [FRONTEND DEBUG] Complete project data being sent:",
+          completeProjectData
+        );
+        console.log(
+          "🔍 [FRONTEND DEBUG] Document state pages:",
+          documentState.pages
+        );
+        console.log("🔍 [FRONTEND DEBUG] Page type:", pageType);
+        console.log(
+          "🔍 [FRONTEND DEBUG] Birth cert template ID:",
+          birthCertTemplateId
+        );
+
+        await performPageOcr({
+          pageNumber,
+          sourceLanguage,
+          desiredLanguage,
+          projectId: currentProjectId || undefined, // Handle null case
+          setIsTranslating,
+          addTextBox,
+          setElementCollections,
+          addUntranslatedText,
+          pageType,
+          birthCertTemplateId,
+          projectData: completeProjectData, // Pass complete project data
+        });
+      } catch (error) {
+        console.error("Error in handleTransformPageToTextbox:", error);
+        toast.error("Failed to transform page to textboxes");
       }
-    } catch (error) {
-      console.error("Error in bulk OCR:", error);
-      toast.error("Failed to complete bulk OCR process");
-    } finally {
-      setIsBulkOcrRunning(false);
-      setBulkOcrProgress(null);
-    }
-  }, [
-    isBulkOcrRunning,
-    documentRef,
-    containerRef,
-    documentState,
-    editorState,
-    viewState,
-    pageActions,
-    actions,
-    setEditorState,
-    setViewState,
-    sourceLanguage,
-    desiredLanguage,
-    handleAddTextBoxWithUndo,
-    setIsTranslating,
-  ]);
+    },
+    [
+      documentRef,
+      containerRef,
+      documentState,
+      viewState,
+      editorState,
+      pageActions,
+      setViewState,
+      setEditorState,
+      actions,
+      sourceLanguage,
+      desiredLanguage,
+      addTextBox,
+      setElementCollections,
+      setIsTranslating,
+      currentProjectId, // Add currentProjectId to dependencies
+    ]
+  );
 
   // Wrapper function to check language states before running OCR
   const checkLanguageAndRunOcr = useCallback(
@@ -5409,10 +5659,80 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   );
 
   // Handler to cancel bulk OCR
-  const handleCancelBulkOcr = useCallback(() => {
+  const handleCancelBulkOcr = useCallback(async () => {
     bulkOcrCancelRef.current.cancelled = true;
     setIsBulkOcrRunning(false);
-  }, []);
+
+    // Show cancellation toast with loading state
+    toast.loading("🛑 Cancelling page transformation...", {
+      duration: 2000,
+      style: {
+        background: "white",
+        color: "#374151",
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        padding: "16px",
+        fontSize: "14px",
+        fontWeight: "500",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+      },
+    });
+
+    // Also abort the Puppeteer operation if we have a project ID
+    if (currentProjectId) {
+      try {
+        const abortResult = await abortOcrOperation(currentProjectId);
+        if (abortResult.success) {
+          toast.success("✅ Page transformation cancelled successfully", {
+            duration: 4000,
+            style: {
+              background: "white",
+              color: "#059669",
+              border: "1px solid #10b981",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+            },
+          });
+        } else {
+          console.warn(
+            "Failed to abort Puppeteer operation:",
+            abortResult.error
+          );
+          toast.error("❌ Failed to cancel page transformation", {
+            duration: 4000,
+            style: {
+              background: "white",
+              color: "#dc2626",
+              border: "1px solid #ef4444",
+              borderRadius: "12px",
+              padding: "16px",
+              fontSize: "14px",
+              fontWeight: "500",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error aborting Puppeteer operation:", error);
+        toast.error("❌ Error occurred while cancelling", {
+          duration: 4000,
+          style: {
+            background: "white",
+            color: "#dc2626",
+            border: "1px solid #ef4444",
+            borderRadius: "12px",
+            padding: "16px",
+            fontSize: "14px",
+            fontWeight: "500",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+          },
+        });
+      }
+    }
+  }, [currentProjectId]);
 
   // Add state for confirmation modal
   const [showReplaceConfirm, setShowReplaceConfirm] = useState(false);
@@ -5648,6 +5968,32 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         hasFinalLayout={!!documentState.finalLayoutUrl}
       />
 
+      {/* Bulk OCR Loading Indicator */}
+      {isBulkOcrRunning && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 shadow-lg">
+          <div className="flex items-center space-x-2">
+            <svg
+              className="w-4 h-4 animate-spin text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span className="text-blue-700 font-medium text-sm">
+              {bulkOcrProgress
+                ? `Transforming pages: ${bulkOcrProgress.current}/${bulkOcrProgress.total}`
+                : "Starting page transformation..."}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden relative bg-white">
         {/* Floating Hamburger Menu Button */}
@@ -5665,7 +6011,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         >
           <Menu className="w-4 h-4" />
         </Button>
-        
+
         {/* Hidden file inputs */}
         <input
           type="file"
@@ -5743,122 +6089,129 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             )}
 
             {/* Viewer View Switcher - Only show for viewers */}
-            {documentState.url && !documentState.error && !permissions.canEditContent() && (
-              <ViewerViewSwitcher
-                currentView={viewState.currentView}
-                onViewChange={(view) => {
-                  setViewState((prev) => ({
-                    ...prev,
-                    currentView: view,
-                  }));
-                }}
-              />
-            )}
+            {documentState.url &&
+              !documentState.error &&
+              !permissions.canEditContent() && (
+                <ViewerViewSwitcher
+                  currentView={viewState.currentView}
+                  onViewChange={(view) => {
+                    setViewState((prev) => ({
+                      ...prev,
+                      currentView: view,
+                    }));
+                  }}
+                />
+              )}
 
             {/* Viewer Translation Table - Only show for viewers in translate step */}
-            {documentState.url && 
-             !documentState.error && 
-             !permissions.canEditContent() && 
-             viewState.currentWorkflowStep === "translate" && 
-             elementCollections.translated?.textBoxes && (
-              <ViewerTranslationTable
-                translatedTextBoxes={elementCollections.translated.textBoxes}
-                untranslatedTexts={elementCollections.untranslatedTexts || []}
-                currentPage={documentState.currentPage}
-                sourceLanguage={sourceLanguage}
-                desiredLanguage={desiredLanguage}
-              />
-            )}
+            {documentState.url &&
+              !documentState.error &&
+              !permissions.canEditContent() &&
+              viewState.currentWorkflowStep === "translate" &&
+              elementCollections.translatedTextBoxes &&
+              elementCollections.translatedTextBoxes.length > 0 && (
+                <ViewerTranslationTable
+                  translatedTextBoxes={elementCollections.translatedTextBoxes}
+                  untranslatedTexts={elementCollections.untranslatedTexts || []}
+                  currentPage={documentState.currentPage}
+                  sourceLanguage={sourceLanguage}
+                  desiredLanguage={desiredLanguage}
+                />
+              )}
 
             {/* Floating Toolbars - Only show when PDF is loaded and user has tool access */}
-            {documentState.url && !documentState.error && permissions.shouldShowToolbar() && (
-              <FloatingToolbar
-                editorState={editorState}
-                toolState={toolState}
-                erasureState={erasureState}
-                currentView={viewState.currentView}
-                showDeletionRectangles={editorState.showDeletionRectangles}
-                isSidebarCollapsed={viewState.isSidebarCollapsed}
-                currentWorkflowStep={viewState.currentWorkflowStep}
-                onToolChange={handleToolChange}
-                onViewChange={(view) => {
-                  // Clear selection when changing views to close ElementFormatDrawer
-                  clearSelectionState();
-                  setViewState((prev) => ({ ...prev, currentView: view }));
-                }}
-                onEditModeToggle={() => {
-                  setEditorState((prev) => {
-                    const newEditMode = !prev.isEditMode;
-                    // Clear all modes and selections when turning off edit mode
-                    if (!newEditMode) {
-                      clearSelectionState();
+            {documentState.url &&
+              !documentState.error &&
+              permissions.shouldShowToolbar() && (
+                <FloatingToolbar
+                  editorState={editorState}
+                  toolState={toolState}
+                  erasureState={erasureState}
+                  currentView={viewState.currentView}
+                  showDeletionRectangles={editorState.showDeletionRectangles}
+                  isSidebarCollapsed={viewState.isSidebarCollapsed}
+                  currentWorkflowStep={viewState.currentWorkflowStep}
+                  onToolChange={handleToolChange}
+                  onViewChange={(view) => {
+                    // Clear selection when changing views to close ElementFormatDrawer
+                    clearSelectionState();
+                    setViewState((prev) => ({ ...prev, currentView: view }));
+                  }}
+                  onEditModeToggle={() => {
+                    setEditorState((prev) => {
+                      const newEditMode = !prev.isEditMode;
+                      // Clear all modes and selections when turning off edit mode
+                      if (!newEditMode) {
+                        clearSelectionState();
 
-                      // Clear all tool states
-                      setToolState((toolPrev) => ({
-                        ...toolPrev,
-                        shapeDrawingMode: null,
-                        isDrawingShape: false,
-                        shapeDrawStart: null,
-                        shapeDrawEnd: null,
-                        isDrawingInProgress: false,
-                        shapeDrawTargetView: null,
-                      }));
+                        // Clear all tool states
+                        setToolState((toolPrev) => ({
+                          ...toolPrev,
+                          shapeDrawingMode: null,
+                          isDrawingShape: false,
+                          shapeDrawStart: null,
+                          shapeDrawEnd: null,
+                          isDrawingInProgress: false,
+                          shapeDrawTargetView: null,
+                        }));
 
-                      // Clear erasure state
-                      setErasureState((erasurePrev) => ({
-                        ...erasurePrev,
-                        isErasureMode: false,
-                        isDrawingErasure: false,
-                        erasureDrawStart: null,
-                        erasureDrawEnd: null,
-                        erasureDrawTargetView: null,
-                      }));
+                        // Clear erasure state
+                        setErasureState((erasurePrev) => ({
+                          ...erasurePrev,
+                          isErasureMode: false,
+                          isDrawingErasure: false,
+                          erasureDrawStart: null,
+                          erasureDrawEnd: null,
+                          erasureDrawTargetView: null,
+                        }));
+
+                        return {
+                          ...prev,
+                          isEditMode: newEditMode,
+                          isAddTextBoxMode: false,
+                          isTextSelectionMode: false,
+                          isImageUploadMode: false,
+                          isSelectionMode: false,
+                        };
+                      }
 
                       return {
                         ...prev,
                         isEditMode: newEditMode,
-                        isAddTextBoxMode: false,
-                        isTextSelectionMode: false,
-                        isImageUploadMode: false,
-                        isSelectionMode: false,
                       };
-                    }
-
-                    return {
+                    });
+                  }}
+                  onDeletionToggle={() =>
+                    setEditorState((prev) => ({
                       ...prev,
-                      isEditMode: newEditMode,
-                    };
-                  });
-                }}
-                onDeletionToggle={() =>
-                  setEditorState((prev) => ({
-                    ...prev,
-                    showDeletionRectangles: !prev.showDeletionRectangles,
-                  }))
-                }
-                onImageUpload={
-                  viewState.currentView !== "split"
-                    ? () => imageInputRef.current?.click()
-                    : undefined
-                }
-                showFinalLayoutSettings={showFinalLayoutSettings}
-                onToggleFinalLayoutSettings={() => {
-                  setShowFinalLayoutSettings((prev) => {
-                    return !prev;
-                  });
-                }}
-                onErasureStateChange={setErasureState}
-                documentState={documentState}
-                onPdfBackgroundColorChange={actions.updatePdfBackgroundColor}
-              />
-            )}
+                      showDeletionRectangles: !prev.showDeletionRectangles,
+                    }))
+                  }
+                  onImageUpload={
+                    viewState.currentView !== "split"
+                      ? () => imageInputRef.current?.click()
+                      : undefined
+                  }
+                  showFinalLayoutSettings={showFinalLayoutSettings}
+                  onToggleFinalLayoutSettings={() => {
+                    setShowFinalLayoutSettings((prev) => {
+                      return !prev;
+                    });
+                  }}
+                  onErasureStateChange={setErasureState}
+                  documentState={documentState}
+                  onPdfBackgroundColorChange={actions.updatePdfBackgroundColor}
+                />
+              )}
 
             {/* Document Viewer */}
             <div
               className="flex-1 document-viewer document-container"
               ref={containerRef}
               style={{
-                scrollBehavior: documentState.isScaleChanging ? "auto" : "smooth",
+                scrollBehavior: documentState.isScaleChanging
+                  ? "auto"
+                  : "smooth",
                 overflow: "auto",
                 paddingTop: "64px",
               }}
@@ -5903,10 +6256,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
                     {/* Description */}
                     <p className="text-gray-600 leading-relaxed">
-                      {projectId 
+                      {projectId
                         ? "Loading your project and document content..."
-                        : "Preparing the PDF editor..."
-                      }
+                        : "Preparing the PDF editor..."}
                     </p>
                   </div>
                 </div>
@@ -6310,8 +6662,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         className="flex relative"
                         style={{
                           width:
-                            documentState.pageWidth * documentState.scale +
-                            20, // Double width plus gap
+                            documentState.pageWidth * documentState.scale + 20, // Double width plus gap
                           height:
                             documentState.pageHeight * documentState.scale,
                         }}
@@ -7202,6 +7553,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         onDesiredLanguageChange={setDesiredLanguage}
         onConfirm={handleLanguageConfirm}
         onCancel={handleLanguageCancel}
+        isBulkOcrRunning={isBulkOcrRunning}
       />
 
       {/* Birth Certificate Selection Modal */}
@@ -7237,7 +7589,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       <LanguageSelectionModal
         open={showSettingsModal}
         sourceLanguage={tempSourceLanguage}
-        desiredLanguage={tempDesiredLanguage}
+        desiredLanguage={desiredLanguage}
         onSourceLanguageChange={setTempSourceLanguage}
         onDesiredLanguageChange={setTempDesiredLanguage}
         onConfirm={handleSettingsSave}
@@ -7245,17 +7597,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         isSettings={true}
         onSave={handleSettingsSave}
         onBack={handleSettingsBack}
+        isBulkOcrRunning={isBulkOcrRunning}
       />
 
-      {/* Bulk OCR Loading Modal */}
-      <LoadingModal
-        isOpen={isBulkOcrRunning}
-        title="Transforming Pages"
-        message="Please wait while we transform all pages. This may take a few moments..."
-        progress={bulkOcrProgress}
-        onCancel={handleCancelBulkOcr}
-        cancelText="Cancel Transformation"
-      />
+      {/* Bulk OCR Loading Modal - Replaced with toast-based approach */}
 
       {/* Snapshot Capturing Loading Modal */}
       <LoadingModal
@@ -7311,8 +7656,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             <div>
               <div className="mb-2 text-gray-700">
                 Before proceeding to layout, please review the following page
-                {[...new Set(untranslatedCheckList.map((t) => t.page))].length >
-                1
+                {Array.from(new Set(untranslatedCheckList.map((t) => t.page)))
+                  .length > 1
                   ? "s"
                   : ""}
                 :

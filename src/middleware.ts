@@ -38,10 +38,17 @@ export async function middleware(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // If user is not signed in and the current path is not /auth/* or /pdf-editor/shared/*, redirect to /auth/login
-  if (!session && 
-      !request.nextUrl.pathname.startsWith("/auth") && 
-      !request.nextUrl.pathname.startsWith("/pdf-editor/shared/")) {
+  // If user is not signed in and the current path is not /auth/*, redirect to /auth/login
+  if (!session && !request.nextUrl.pathname.startsWith("/auth")) {
+    // Allow public access to capture-project pages
+    if (request.nextUrl.pathname.startsWith("/capture-project")) {
+      return response;
+    }
+
+    // Allow public access to pdf-editor shared pages
+    if (request.nextUrl.pathname.startsWith("/pdf-editor/shared/")) {
+      return response;
+    }
     return NextResponse.redirect(new URL("/auth/login", request.url));
   }
 

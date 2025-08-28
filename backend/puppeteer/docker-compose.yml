@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  ocr-capture-service:
+    build: .
+    container_name: ocr-capture-service
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - OCR_CAPTURE_PORT=3001
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+    volumes:
+      - ./uploads:/usr/src/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ocr-network
+
+networks:
+  ocr-network:
+    driver: bridge
+

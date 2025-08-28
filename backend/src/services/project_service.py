@@ -75,7 +75,7 @@ class ProjectService:
         
         Args:
             project_id: The project ID
-            user_id: Optional user ID for permission checking
+            user_id: Optional user ID for permission checking. If None, allows public access.
             
         Returns:
             Project record or None if not found

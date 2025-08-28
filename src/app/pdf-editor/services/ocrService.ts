@@ -1,46 +1,103 @@
 import { toast } from "sonner";
 import { generateUUID, measureText } from "../utils/measurements";
 import { TextField, UntranslatedText } from "../types/pdf-editor.types";
-import domtoimage from "dom-to-image";
+import {
+  serializeOcrResponse,
+  getTextBoxesForPage,
+} from "../utils/ocrResponseSerializer";
+
+// Helper function to validate background service configuration
+function validateBackgroundServiceConfig(): {
+  isValid: boolean;
+  missingVars: string[];
+} {
+  const missingVars: string[] = [];
+
+  if (!process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL) {
+    missingVars.push("NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL");
+  }
+
+  // No API key validation needed - direct call to backend
+  return {
+    isValid: missingVars.length === 0,
+    missingVars,
+  };
+}
+
+// Function to abort ongoing OCR operations
+export async function abortOcrOperation(projectId: string): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const backgroundServiceUrl =
+      process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL;
+    if (!backgroundServiceUrl) {
+      return {
+        success: false,
+        error: "OCR Capture Service URL not configured",
+      };
+    }
+
+    console.log(
+      `🛑 [OCR Service] Aborting operation for project: ${projectId}`
+    );
+
+    const response = await fetch(`${backgroundServiceUrl}/abort`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ projectId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        errorData.error || `HTTP ${response.status}: ${response.statusText}`
+      );
+    }
+
+    const result = await response.json();
+    console.log(`✅ [OCR Service] Abort request successful:`, result.message);
+
+    return {
+      success: true,
+      message: result.message,
+    };
+  } catch (error) {
+    console.error(`❌ [OCR Service] Failed to abort operation:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
 
 // Types for OCR processing
 export interface OcrOptions {
   pageNumber: number;
-  documentRef: React.RefObject<HTMLDivElement | null>;
-  containerRef: React.RefObject<HTMLDivElement | null>;
-  documentState: {
-    scale: number;
-    pageWidth: number;
-    pageHeight: number;
-    pages?: any[]; // Add pages array for bulk OCR
-  };
-  editorState: {
-    isAddTextBoxMode: boolean;
-  };
-  viewState: {
-    currentView: string;
-  };
-  actions: {
-    updateScale: (scale: number) => void;
-  };
-  setEditorState: (updater: (prev: any) => any) => void;
-  setViewState: (updater: (prev: any) => any) => void;
-  setPageState: (updater: (prev: any) => any) => void;
   sourceLanguage?: string;
   desiredLanguage?: string;
-  handleAddTextBoxWithUndo: (
+  projectId?: string; // Add project ID for capture URL
+  viewType?: "original" | "translated"; // Add view type
+  addTextBox: (
     x: number,
     y: number,
     page: number,
     view: any,
     targetView?: "original" | "translated",
     initialProperties?: any
-  ) => string | null;
+  ) => string;
+  setElementCollections: (updater: (prev: any) => any) => void;
   setIsTranslating: (isTranslating: boolean) => void;
   addUntranslatedText?: (untranslatedText: any) => void;
   // Birth certificate specific options
   pageType?: "social_media" | "birth_cert" | "dynamic_content";
   birthCertTemplateId?: string; // Template ID for birth certificate pages
+  // Add complete project data for template detection
+  projectData?: any; // Complete project state including documentState.pages
 }
 
 export interface OcrResult {
@@ -56,412 +113,366 @@ export interface BulkOcrOptions extends Omit<OcrOptions, "pageNumber"> {
   onProgress?: (current: number, total: number) => void;
   onPageChange: (page: number) => void;
   cancelRef: React.MutableRefObject<{ cancelled: boolean }>;
+  projectId?: string; // Add project ID for background service
+  captureUrl?: string; // Add capture URL for background service
+  ocrApiUrl?: string; // Add OCR API URL for background service
 }
 
-/**
- * Performs OCR on a single page of a PDF document
- */
-export async function performPageOcr(options: OcrOptions): Promise<OcrResult> {
-  const {
-    pageNumber,
-    documentRef,
-    containerRef,
-    documentState,
-    editorState,
-    viewState,
-    actions,
-    setEditorState,
-    setViewState,
-    setPageState,
-    sourceLanguage,
-    desiredLanguage,
-    setIsTranslating,
-  } = options;
-
-  const previousView = viewState.currentView;
-
+export const performPageOcr = async (options: OcrOptions): Promise<any> => {
   try {
-    // Set transforming state
-    setPageState((prev) => ({
-      ...prev,
-      isTransforming: true,
-    }));
+    console.log("🚀 [OCR Service] Starting single page OCR...");
+    console.log("📋 OCR Options:", {
+      projectId: options.projectId,
+      pageNumber: options.pageNumber,
+      viewType: options.viewType || "original",
+    });
 
-    // Switch to original view
-    setViewState((prev) => ({ ...prev, currentView: "original" }));
-
-    // Wait for the view change to apply and document to render
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Get the document element after view change
-    const documentElement = documentRef.current;
-    if (!documentElement) {
-      throw new Error("Document element not found");
-    }
-
-    // Get the PDF page element
-    const pdfPage = documentElement.querySelector(
-      ".react-pdf__Page"
-    ) as HTMLElement;
-    if (!pdfPage) {
-      throw new Error("PDF page element not found");
-    }
-
-    // Calculate PDF offset in container
-    if (!containerRef.current) {
-      throw new Error("Container element not found");
-    }
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const pdfRect = pdfPage.getBoundingClientRect();
-    const offsetLeft = pdfRect.left - containerRect.left;
-    const centerOffsetX = (containerRect.width - pdfRect.width) / 2 + 30;
-    const offsetTop = pdfRect.top - containerRect.top + 20;
-
-    // Temporarily set scale to 500% for better OCR
-    const originalScale = documentState.scale;
-    const captureScale = 5;
-
-    // Save original state
-    const wasAddTextBoxMode = editorState.isAddTextBoxMode;
-    setEditorState((prev) => ({ ...prev, isAddTextBoxMode: false }));
-
-    // Set the scale
-    actions.updateScale(captureScale);
-
-    // Wait for the scale change to apply
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Capture the PDF page as an image using dom-to-image
-    const containerEl = documentRef.current;
-    if (!containerEl) throw new Error("Document container not found");
-
-    // Use DOM-to-image to capture the element
-    const dataUrl = await domtoimage.toPng(containerEl, {
-      quality: 1.0,
-      bgcolor: "#ffffff",
-      width: containerEl.offsetWidth,
-      height: containerEl.offsetHeight,
-      filter: (node: Node): boolean => {
-        // Filter out unwanted elements
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const element = node as HTMLElement;
-
-          // Skip interactive UI elements
-          return !(
-            element.classList.contains("text-format-drawer") ||
-            element.classList.contains("element-format-drawer") ||
-            element.classList.contains("drag-handle") ||
-            element.tagName === "BUTTON" ||
-            element.classList.contains("settings-popup") ||
-            element.classList.contains("text-selection-popup") ||
-            element.classList.contains("shape-dropdown") ||
-            element.classList.contains("field-status-dropdown") ||
-            element.classList.contains("fixed") ||
-            element.closest(".fixed") !== null ||
-            element.classList.contains("react-resizable-handle") ||
-            element.classList.contains("resizable-handle")
-          );
-        }
-        return true;
+    const requestPayload = {
+      projectId: options.projectId,
+      captureUrl: `http://localhost:3000/capture-project/${
+        options.projectId || `single-page-${Date.now()}`
+      }`, // Include project ID
+      pageNumbers: options.pageNumber,
+      viewTypes: [options.viewType || "original"],
+      ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
+      projectData: options.projectData || {
+        totalPages: 1,
+        sourceLanguage: options.sourceLanguage || "auto",
+        desiredLanguage: options.desiredLanguage || "en",
+        timestamp: new Date().toISOString(),
+        // Include birth certificate information
+        pageType: options.pageType,
+        birthCertTemplateId: options.birthCertTemplateId,
+        // Include the complete page data for template detection
+        pages: [
+          {
+            pageNumber: options.pageNumber,
+            pageType: options.pageType,
+            birthCertTemplate: options.birthCertTemplateId
+              ? {
+                  id: options.birthCertTemplateId,
+                  type: "birth_certificate",
+                  variation: "template",
+                }
+              : null,
+            birthCertType:
+              options.pageType === "birth_cert"
+                ? "birth_cert_template"
+                : undefined,
+          },
+        ],
       },
-    });
+    };
 
-    // Convert data URL to canvas for blob conversion
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx?.drawImage(img, 0, 0);
-        resolve();
-      };
-
-      img.onerror = reject;
-      img.src = dataUrl;
-    });
-
-    // Reset scale
-    actions.updateScale(originalScale);
-    setEditorState((prev) => ({
-      ...prev,
-      isAddTextBoxMode: wasAddTextBoxMode,
-    }));
-
-    // Switch back to the previous view (tab) after snapshot
-    setViewState((prev) => ({ ...prev, currentView: previousView }));
-
-    // Convert canvas to blob
-    const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((blob: Blob | null) => {
-        if (blob) resolve(blob);
-      }, "image/png");
-    });
-
-    // Create FormData and send to API
-    const formData = new FormData();
-    formData.append("file", blob, `page-${pageNumber}.png`);
-    formData.append("page_number", "1");
-
-    // Always send current page-specific dimensions to backend for accurate coordinate calculations
-    // This is critical because each page can have different dimensions, especially in multi-page documents
-    // or documents with mixed page sizes (e.g., birth certificates with different templates)
-    
-    // Ensure dimensions are valid before sending
-    const pageWidth = documentState.pageWidth > 0 ? documentState.pageWidth : 595; // A4 width fallback
-    const pageHeight = documentState.pageHeight > 0 ? documentState.pageHeight : 842; // A4 height fallback
-    
-    formData.append("frontend_page_width", pageWidth.toString());
-    formData.append("frontend_page_height", pageHeight.toString());
-    formData.append("frontend_scale", documentState.scale.toString());
-
-    console.log(`📤 Sending page ${pageNumber} OCR request with dimensions:`, {
-      pageWidth: pageWidth,
-      pageHeight: pageHeight,
-      scale: documentState.scale,
-      pageType: options.pageType,
-      templateId: options.birthCertTemplateId,
-      originalPageWidth: documentState.pageWidth,
-      originalPageHeight: documentState.pageHeight
-    });
-
-    // Call the appropriate OCR API based on page type
-    const { processFile, processTemplateOcr } = await import("@/lib/api");
-
-    let data;
-    try {
-      // Check if this is a birth certificate page and we have a template ID
-      if (options.pageType === "birth_cert" && options.birthCertTemplateId) {
-        console.log(
-          `Using template-ocr endpoint for birth certificate page ${pageNumber} with template ID: ${options.birthCertTemplateId}`
-        );
-        data = await processTemplateOcr(formData, options.birthCertTemplateId);
-      } else {
-        console.log(
-          `Using standard process-file endpoint for page ${pageNumber}`
-        );
-        data = await processFile(formData);
+    // Log what's being sent to Puppeteer
+    console.log(
+      "🔍 [OCR SERVICE DEBUG] Request payload being sent to Puppeteer:",
+      {
+        projectId: options.projectId,
+        pageNumber: options.pageNumber,
+        pageType: options.pageType,
+        birthCertTemplateId: options.birthCertTemplateId,
+        projectData: options.projectData || "Using fallback projectData",
+        hasCompleteProjectData: !!options.projectData,
+        projectDataKeys: options.projectData
+          ? Object.keys(options.projectData)
+          : [],
       }
-    } catch (error: any) {
-      console.error("=== OCR API ERROR ===");
-      console.error("Error object:", error);
-      console.error("Error message:", error.message);
-      console.error("Error stack:", error.stack);
+    );
 
-      if (error.response) {
-        console.error("Response status:", error.response.status);
-        console.error("Response statusText:", error.response.statusText);
-        console.error("Response headers:", error.response.headers);
-        console.error("Response data:", error.response.data);
+    console.log(
+      "📤 [OCR Service] Sending request to Puppeteer service:",
+      requestPayload
+    );
 
-        if (error.response.data) {
-          console.error("Response data:", error.response.data);
-          if (error.response.data.detail) {
-            console.error("Error detail:", error.response.data.detail);
-          }
-        }
-      }
+    const response = await fetch("http://localhost:3001/capture-and-ocr", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
 
-      if (error.request) {
-        console.error("Request details:", error.request);
-      }
-
-      throw error;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    // Extract entities from the response (handle both old and new API formats)
-    let entities: any[] = [];
+    const result = await response.json();
+    console.log("✅ [OCR Service] OCR completed successfully!");
+    console.log("📊 [OCR Service] Full OCR Response:", result);
 
-    if (
-      data.styled_layout &&
-      data.styled_layout.pages &&
-      data.styled_layout.pages.length > 0
-    ) {
-      // New API format
-      entities = data.styled_layout.pages[0].entities || [];
-    } else if (
-      data.layout &&
-      data.layout.pages &&
-      data.layout.pages.length > 0
-    ) {
-      // Old API format
-      entities = data.layout.pages[0].entities || [];
-    }
+    // Log detailed results
+    if (result.success && result.data && result.data.results) {
+      console.log("🎯 [OCR Service] OCR Results Summary:");
+      console.log(`   - Total pages processed: ${result.data.results.length}`);
+      console.log(`   - Success rate: ${result.data.successRate}%`);
+      console.log(`   - Duration: ${result.data.duration}ms`);
 
-    console.log("🔍 Backend Response Data:", {
-      fullResponse: data,
-      entities: entities,
-      entityCount: entities.length,
-      hasStyledLayout: !!data.styled_layout,
-      hasLayout: !!data.layout,
-      pageType: options.pageType,
-      birthCertTemplateId: options.birthCertTemplateId,
-    });
+      // Serialize OCR response to get textboxes
+      const { textBoxesByPage, pageDimensions, totalTextBoxes } =
+        serializeOcrResponse(result);
 
-    if (entities.length > 0) {
-      // Convert entities to textboxes
-      const newTextBoxes = await convertEntitiesToTextBoxes(
-        entities,
-        pageNumber,
-        documentState.pageWidth,
-        documentState.pageHeight
+      console.log(
+        `🎯 [OCR Service] Serialized ${totalTextBoxes} textboxes across all pages`
       );
 
-      // Translate all textboxes if languages are set
-      if (
-        sourceLanguage &&
-        desiredLanguage &&
-        sourceLanguage !== desiredLanguage
-      ) {
-        await translateTextBoxes(
-          newTextBoxes,
-          sourceLanguage,
-          desiredLanguage,
-          setIsTranslating
-        );
-      }
-
-      // Add all textboxes to the translated view using the undo system
-      newTextBoxes.forEach((textbox, index) => {
-        // Store original text before adding the textbox
-        const originalText = entities[index]?.text || "";
-
-        // For OCR-generated textboxes, if the text is empty, set value to empty string
-        // so the placeholder will show instead of "New Text Field"
-        const ocrValue = textbox.value.trim() === "" ? "" : textbox.value;
-
-        const textboxId = options.handleAddTextBoxWithUndo(
-          textbox.x,
-          textbox.y,
-          textbox.page,
-          "translated",
-          "translated",
-          {
-            value: ocrValue,
-            placeholder: textbox.placeholder,
-            fontSize: textbox.fontSize,
-            fontFamily: textbox.fontFamily,
-            color: textbox.color,
-            bold: textbox.bold,
-            italic: textbox.italic,
-            underline: textbox.underline,
-            textAlign: textbox.textAlign,
-            letterSpacing: textbox.letterSpacing,
-            lineHeight: textbox.lineHeight,
-            width: textbox.width,
-            height: textbox.height,
-            borderColor: textbox.borderColor,
-            borderWidth: textbox.borderWidth,
-            backgroundColor: textbox.backgroundColor,
-            backgroundOpacity: textbox.backgroundOpacity,
-            borderRadius: textbox.borderRadius,
-            borderTopLeftRadius: textbox.borderTopLeftRadius,
-            borderTopRightRadius: textbox.borderTopRightRadius,
-            borderBottomLeftRadius: textbox.borderBottomLeftRadius,
-            borderBottomRightRadius: textbox.borderBottomRightRadius,
-            paddingTop: textbox.paddingTop,
-            paddingRight: textbox.paddingRight,
-            paddingBottom: textbox.paddingBottom,
-            paddingLeft: textbox.paddingLeft,
-          }
+      // Log each page result
+      result.data.results.forEach((pageResult: any, index: number) => {
+        const pageTextBoxes = getTextBoxesForPage(
+          textBoxesByPage,
+          pageResult.pageNumber,
+          pageResult.viewType
         );
 
-        // Create untranslated text entry if textbox was created successfully and function is available
-        if (textboxId && originalText && options.addUntranslatedText) {
-          const untranslatedText: UntranslatedText = {
-            id: generateUUID(),
-            translatedTextboxId: textboxId,
-            originalText: originalText,
-            page: pageNumber,
-            x: textbox.x,
-            y: textbox.y,
-            width: textbox.width,
-            height: textbox.height,
-            isCustomTextbox: false,
-            status: originalText.trim() === "" ? "isEmpty" : "needsChecking",
-          };
-          options.addUntranslatedText(untranslatedText);
+        console.log(
+          `\n📄 [OCR Service] Page ${pageResult.pageNumber} Results:`
+        );
+        console.log(`   - View type: ${pageResult.viewType}`);
+        console.log(`   - Textboxes created: ${pageTextBoxes.length}`);
+
+        if (pageResult.ocrResult?.styled_layout?.pages) {
+          const pageData = pageResult.ocrResult.styled_layout.pages.find(
+            (p: any) => p.page_number === pageResult.pageNumber
+          );
+          console.log(
+            `   - OCR entities found: ${pageData?.entities?.length || 0}`
+          );
         }
       });
 
-      // Mark the page as transformed
-      setPageState((prev) => ({
-        ...prev,
-        isPageTranslated: new Map(prev.isPageTranslated.set(pageNumber, true)),
-        isTransforming: false,
-      }));
-
-      const translationMessage =
-        sourceLanguage && desiredLanguage && sourceLanguage !== desiredLanguage
-          ? `Transformed and translated ${newTextBoxes.length} entities into textboxes`
-          : `Transformed ${newTextBoxes.length} entities into textboxes`;
-
-      // Switch back to the previous view
-      setViewState((prev) => ({ ...prev, currentView: previousView }));
-
-      return {
-        textBoxes: newTextBoxes,
-        success: true,
-        message: translationMessage,
+      // Add the serialized result to the response for easy access
+      result.serializedData = {
+        textBoxesByPage,
+        pageDimensions,
+        totalTextBoxes,
       };
+
+      // Create textboxes in the frontend using the serialized data
+      if (options.setElementCollections && totalTextBoxes > 0) {
+        console.log("🎯 [OCR Service] Creating textboxes in frontend...");
+
+        // Collect all translated textboxes to add at once
+        const translatedTextBoxesToAdd: any[] = [];
+        // Collect all untranslated texts to add at once
+        const untranslatedTextsToAdd: any[] = [];
+
+        // Create UntranslatedText objects directly from the puppeteer response
+        // This ensures we get the original OCR text before any translation
+        if (result.data?.results) {
+          result.data.results.forEach((pageResult: any) => {
+            if (pageResult.ocrResult?.styled_layout?.pages) {
+              pageResult.ocrResult.styled_layout.pages.forEach((page: any) => {
+                if (page.entities) {
+                  page.entities.forEach((entity: any) => {
+                    // Create UntranslatedText from the original OCR data
+                    if (entity.originalText && entity.dimensions) {
+                      const untranslatedText: UntranslatedText = {
+                        id: generateUUID(),
+                        translatedTextboxId: "", // Will be set after creating textboxes
+                        originalText: entity.originalText, // This is the raw OCR text
+                        page: pageResult.pageNumber,
+                        x: entity.dimensions.box_x,
+                        y: entity.dimensions.box_y,
+                        width: entity.dimensions.box_width,
+                        height: entity.dimensions.box_height,
+                        isCustomTextbox: false,
+                        status:
+                          entity.originalText && entity.originalText.trim()
+                            ? "needsChecking"
+                            : "isEmpty",
+                      };
+                      untranslatedTextsToAdd.push(untranslatedText);
+
+                      console.log(
+                        `📝 [OCR Service] Created UntranslatedText from OCR: "${entity.originalText}" at (${entity.dimensions.box_x}, ${entity.dimensions.box_y})`
+                      );
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+
+        // Process each page and create textboxes
+        textBoxesByPage.forEach((pageMap, pageNumber) => {
+          pageMap.forEach((textBoxes, viewType) => {
+            console.log(
+              `📝 [OCR Service] Creating ${textBoxes.length} textboxes for page ${pageNumber} (${viewType})`
+            );
+
+            textBoxes.forEach((textBox) => {
+              try {
+                // Prepare translated textbox to add directly to translatedTextBoxes array
+                const translatedTextBox = {
+                  ...textBox,
+                  id: generateUUID(), // Generate new ID for translated version
+                  value: textBox.value, // Set the detected text as the value
+                  placeholder: "Enter translation...", // Generic placeholder for translation
+                };
+
+                translatedTextBoxesToAdd.push(translatedTextBox);
+
+                // Find matching UntranslatedText by position and text content
+                const matchingUntranslatedText = untranslatedTextsToAdd.find(
+                  (ut) =>
+                    ut.page === pageNumber &&
+                    Math.abs(ut.x - textBox.x) < 5 && // Allow small position differences
+                    Math.abs(ut.y - textBox.y) < 5 &&
+                    ut.translatedTextboxId === "" // Not yet assigned
+                );
+
+                if (matchingUntranslatedText) {
+                  // Link the UntranslatedText to this textbox
+                  matchingUntranslatedText.translatedTextboxId =
+                    translatedTextBox.id;
+                  console.log(
+                    `🔗 [OCR Service] Linked UntranslatedText "${matchingUntranslatedText.originalText}" to textbox ${translatedTextBox.id}`
+                  );
+                } else {
+                  console.warn(
+                    `⚠️ [OCR Service] No matching UntranslatedText found for textbox at (${textBox.x}, ${textBox.y})`
+                  );
+                }
+
+                console.log(
+                  `✅ [OCR Service] Prepared textbox for translated page: ${translatedTextBox.id} at (${textBox.x}, ${textBox.y})`
+                );
+              } catch (error) {
+                console.error(
+                  `❌ [OCR Service] Error creating textbox:`,
+                  error
+                );
+              }
+            });
+          });
+        });
+
+        // Add all translated textboxes at once
+        if (translatedTextBoxesToAdd.length > 0) {
+          options.setElementCollections((prev: any) => ({
+            ...prev,
+            translatedTextBoxes: [
+              ...prev.translatedTextBoxes,
+              ...translatedTextBoxesToAdd,
+            ],
+          }));
+          console.log(
+            `✅ [OCR Service] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
+          );
+
+          // Add all untranslated texts at once using the callback if provided
+          if (
+            options.addUntranslatedText &&
+            untranslatedTextsToAdd.length > 0
+          ) {
+            untranslatedTextsToAdd.forEach((untranslatedText) => {
+              options.addUntranslatedText!(untranslatedText);
+            });
+            console.log(
+              `✅ [OCR Service] Added ${untranslatedTextsToAdd.length} untranslated texts using addUntranslatedText callback`
+            );
+          } else if (untranslatedTextsToAdd.length > 0) {
+            // Fallback: add directly to element collections if callback not provided
+            options.setElementCollections((prev: any) => ({
+              ...prev,
+              untranslatedTexts: [
+                ...prev.untranslatedTexts,
+                ...untranslatedTextsToAdd,
+              ],
+            }));
+            console.log(
+              `✅ [OCR Service] Added ${untranslatedTextsToAdd.length} untranslated texts directly to untranslatedTexts array`
+            );
+          }
+
+          // Now apply measureText utility to optimize dimensions of all textboxes
+          console.log(
+            "🔍 [OCR Service] Applying measureText utility to optimize textbox dimensions..."
+          );
+
+          // Get the updated state to access the newly added textboxes
+          options.setElementCollections((prev: any) => {
+            const updatedTextBoxes = prev.translatedTextBoxes.map(
+              (textBox: any) => {
+                try {
+                  console.log(
+                    `🔍 [OCR Service] Measuring text: "${
+                      textBox.value
+                    }" with font: ${textBox.fontSize || 16}px ${
+                      textBox.fontFamily || "Arial"
+                    }`
+                  );
+
+                  const measured = measureText(
+                    textBox.value,
+                    textBox.fontSize || 16,
+                    textBox.fontFamily || "Arial, sans-serif",
+                    textBox.letterSpacing || 0,
+                    undefined, // No maxWidth constraint
+                    {
+                      top: textBox.paddingTop || 0,
+                      right: textBox.paddingRight || 0,
+                      bottom: textBox.paddingBottom || 0,
+                      left: textBox.paddingLeft || 0,
+                    }
+                  );
+
+                  console.log(
+                    `📏 [OCR Service] Measured textbox dimensions: ${measured.width}x${measured.height} for text: "${textBox.value}" (original: ${textBox.width}x${textBox.height})`
+                  );
+
+                  return {
+                    ...textBox,
+                    width: measured.width,
+                    height: measured.height,
+                  };
+                } catch (error) {
+                  console.warn(
+                    `⚠️ [OCR Service] Failed to measure text dimensions for "${textBox.value}", keeping original:`,
+                    error
+                  );
+                  return textBox;
+                }
+              }
+            );
+
+            return {
+              ...prev,
+              translatedTextBoxes: updatedTextBoxes,
+            };
+          });
+        }
+
+        console.log(
+          `🎉 [OCR Service] Successfully created ${translatedTextBoxesToAdd.length} translated textboxes in frontend`
+        );
+      } else {
+        console.log(
+          "ℹ️ [OCR Service] No textboxes to create or handlers not provided"
+        );
+      }
     } else {
-      // Reset transforming state when no entities are found
-      setPageState((prev) => ({
-        ...prev,
-        isTransforming: false,
-      }));
-
-      // Switch back to the previous view
-      setViewState((prev) => ({ ...prev, currentView: previousView }));
-
-      return {
-        textBoxes: [],
-        success: false,
-        message: "No text entities found in the document",
-      };
+      console.log("⚠️ [OCR Service] OCR completed but no results data found");
+      console.log("📝 Response structure:", result);
     }
+
+    return result;
   } catch (error) {
-    console.error("Error transforming page to textboxes:", error);
-
-    // Reset transforming state on error
-    setPageState((prev) => ({
-      ...prev,
-      isTransforming: false,
-    }));
-
-    // Reset view if error occurred
-    setViewState((prev) => ({ ...prev, currentView: previousView }));
-
-    return {
-      textBoxes: [],
-      success: false,
-      message: "Failed to transform page to textboxes",
-    };
+    console.error("❌ [OCR Service] OCR failed:", error);
+    throw error;
   }
-}
+};
 
 /**
- * Performs OCR on all pages in a document
- * 
- * This function processes each page individually and dynamically determines the current page dimensions
- * for each page. This is crucial because:
- * 1. Different pages may have different dimensions (mixed page sizes)
- * 2. Birth certificate pages may use different templates with varying dimensions
- * 3. The rendered page dimensions may change based on document state or zoom level
- * 
- * For each page, the function:
- * - Switches to the target page
- * - Gets the current rendered page dimensions from the DOM
- * - Falls back to stored page-specific dimensions if DOM query fails
- * - Sends the page-specific dimensions to the backend for accurate coordinate calculations
+ * Performs OCR on all pages in a document using the background capture service
  */
 export async function performBulkOcr(options: BulkOcrOptions): Promise<{
   success: boolean;
   processedPages: number;
   totalPages: number;
   message?: string;
+  backgroundJobId?: string; // Add background job ID for tracking
 }> {
   const {
     deletedPages,
@@ -470,7 +481,9 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
     onProgress,
     onPageChange,
     cancelRef,
-    ...ocrOptions
+    projectId,
+    captureUrl,
+    ocrApiUrl,
   } = options;
 
   // Build a list of non-deleted pages
@@ -484,129 +497,362 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
   let processedCount = 0;
 
   try {
-    for (let i = 0; i < pagesToProcess.length; i++) {
-      if (cancelRef.current.cancelled) break;
+    console.log("🚀 [OCR Service] Starting bulk OCR...");
+    console.log("📋 Bulk OCR Options:", {
+      projectId: options.projectId,
+      totalPages: options.totalPages,
+      currentPage: options.currentPage,
+      deletedPages: Array.from(options.deletedPages),
+    });
 
-      const page = pagesToProcess[i];
-
-      // Switch to the page
-      onPageChange(page);
-
-      // Wait for the page to render
-      await new Promise((resolve) => {
-        setTimeout(resolve, 1000); // Simple delay to ensure page is rendered
-      });
-
-      // Run OCR for this page
-      try {
-        // Get page information for birth certificate detection
-        const pageData = options.documentState?.pages?.find(
-          (p: any) => p.pageNumber === page
-        );
-        const pageType = pageData?.pageType;
-        const birthCertTemplateId = pageData?.birthCertTemplate?.id;
-
-        // Get current rendered page dimensions for this specific page
-        // This ensures we always send the actual current page dimensions to the backend
-        let currentPageWidth = options.documentState.pageWidth;
-        let currentPageHeight = options.documentState.pageHeight;
-
-        // Try to get actual rendered dimensions from the DOM
-        if (options.documentRef?.current) {
-          const pdfPage = options.documentRef.current.querySelector(
-            ".react-pdf__Page"
-          ) as HTMLElement;
-          if (pdfPage) {
-            const rect = pdfPage.getBoundingClientRect();
-            // Convert from rendered size to actual PDF dimensions accounting for scale
-            const calculatedWidth = rect.width / options.documentState.scale;
-            const calculatedHeight = rect.height / options.documentState.scale;
-            
-            // Only use calculated dimensions if they are valid (non-zero)
-            if (calculatedWidth > 0 && calculatedHeight > 0) {
-              currentPageWidth = calculatedWidth;
-              currentPageHeight = calculatedHeight;
-            }
-            
-            console.log(`📐 Page ${page} dimensions:`, {
-              renderedWidth: rect.width,
-              renderedHeight: rect.height,
-              scale: options.documentState.scale,
-              calculatedPageWidth: calculatedWidth,
-              calculatedPageHeight: calculatedHeight,
-              finalPageWidth: currentPageWidth,
-              finalPageHeight: currentPageHeight,
-              storedWidth: pageData?.translatedTemplateWidth || 'not available',
-              storedHeight: pageData?.translatedTemplateHeight || 'not available'
-            });
-          }
-        }
-
-        // Fallback to stored page-specific dimensions if DOM query fails or calculated dimensions are invalid
-        if (!currentPageWidth || !currentPageHeight || currentPageWidth <= 0 || currentPageHeight <= 0) {
-          currentPageWidth =
-            pageData?.translatedTemplateWidth ||
-            options.documentState.pageWidth;
-          currentPageHeight =
-            pageData?.translatedTemplateHeight ||
-            options.documentState.pageHeight;
-            
-          console.log(`📐 Page ${page} using fallback dimensions:`, {
-            pageWidth: currentPageWidth,
-            pageHeight: currentPageHeight,
-            source: pageData?.translatedTemplateWidth ? 'stored page data' : 'document state'
-          });
-        }
-
-        const result = await performPageOcr({
-          ...ocrOptions,
-          pageNumber: page,
-          pageType,
-          birthCertTemplateId,
-          // Always override document state with current page-specific dimensions
-          documentState: {
-            ...options.documentState,
-            pageWidth: currentPageWidth,
-            pageHeight: currentPageHeight,
-          },
-        });
-
-        if (result.success) {
-          processedCount++;
-        }
-      } catch (e) {
-        console.error(`Error processing page ${page}:`, e);
-        // Continue with next page
-      }
-
-      // Update progress
-      onProgress?.(i + 1, pagesToProcess.length);
+    // Check if we have the required parameters for background service
+    if (!projectId || !captureUrl || !ocrApiUrl) {
+      console.warn("Missing required parameters for background OCR service");
+      return {
+        success: false,
+        processedPages: 0,
+        totalPages: pagesToProcess.length,
+        message: "Missing configuration for background OCR service",
+      };
     }
 
-    // Restore the original page only after all processing is done or cancelled
+    // Validate background service configuration
+    const configValidation = validateBackgroundServiceConfig();
+    if (!configValidation.isValid) {
+      const missingVars = configValidation.missingVars.join(", ");
+      console.error(`Missing environment variables: ${missingVars}`);
+      return {
+        success: false,
+        processedPages: 0,
+        totalPages: pagesToProcess.length,
+        message: `Missing environment configuration: ${missingVars}`,
+      };
+    }
+
+    // Call the background OCR capture service
+    const backgroundServiceUrl =
+      process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL;
+    if (!backgroundServiceUrl) {
+      console.error("OCR Capture Service URL not configured");
+      return {
+        success: false,
+        processedPages: 0,
+        totalPages: pagesToProcess.length,
+        message: "OCR Capture Service not configured",
+      };
+    }
+
+    console.log("Initiating background OCR capture service...");
+    console.log("Service URL:", backgroundServiceUrl);
+    console.log("Project ID:", projectId);
+    console.log("Pages to process:", pagesToProcess);
+
+    // Prepare the request payload for the background service
+    const requestPayload = {
+      projectId: projectId || `bulk-ocr-${Date.now()}`,
+      captureUrl: `http://localhost:3000/capture-project/${
+        projectId || `bulk-ocr-${Date.now()}`
+      }`, // Include project ID
+      pageNumbers: pagesToProcess,
+      viewTypes: ["original"], // Only process original view for OCR
+      ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to your backend
+      projectData: options.projectData || {
+        totalPages: pagesToProcess.length,
+        sourceLanguage: options.sourceLanguage,
+        desiredLanguage: options.desiredLanguage,
+        timestamp: new Date().toISOString(),
+      },
+    };
+
+    // Log what's being sent to Puppeteer in bulk OCR
+    console.log(
+      "🔍 [BULK OCR DEBUG] Request payload being sent to Puppeteer:",
+      {
+        projectId: projectId,
+        totalPages: pagesToProcess.length,
+        sourceLanguage: options.sourceLanguage,
+        desiredLanguage: options.desiredLanguage,
+        hasProjectData: !!options.projectData,
+        projectDataKeys: options.projectData
+          ? Object.keys(options.projectData)
+          : [],
+        projectData: options.projectData || "Using fallback projectData",
+      }
+    );
+
+    // Make the request to the background service
+    const response = await fetch(`${backgroundServiceUrl}/capture-and-ocr`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestPayload),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Background service error: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log("Background OCR service initiated successfully:", result);
+
+      // Check if we have OCR results to process
+      if (result.data?.results && result.data.results.length > 0) {
+        console.log("🎯 [Bulk OCR] Processing OCR results...");
+
+        // Serialize OCR response to get textboxes
+        const { textBoxesByPage, pageDimensions, totalTextBoxes } =
+          serializeOcrResponse(result);
+
+        console.log(
+          `🎯 [Bulk OCR] Serialized ${totalTextBoxes} textboxes across all pages`
+        );
+
+        // Create textboxes in the frontend using the serialized data
+        if (options.setElementCollections && totalTextBoxes > 0) {
+          console.log("🎯 [Bulk OCR] Creating textboxes in frontend...");
+
+          // Collect all translated textboxes to add at once
+          const translatedTextBoxesToAdd: any[] = [];
+          // Collect all untranslated texts to add at once
+          const untranslatedTextsToAdd: any[] = [];
+
+          // Create UntranslatedText objects directly from the puppeteer response
+          // This ensures we get the original OCR text before any translation
+          if (result.data?.results) {
+            result.data.results.forEach((pageResult: any) => {
+              if (pageResult.ocrResult?.styled_layout?.pages) {
+                pageResult.ocrResult.styled_layout.pages.forEach(
+                  (page: any) => {
+                    if (page.entities) {
+                      page.entities.forEach((entity: any) => {
+                        // Create UntranslatedText from the original OCR data
+                        if (entity.originalText && entity.dimensions) {
+                          const untranslatedText: UntranslatedText = {
+                            id: generateUUID(),
+                            translatedTextboxId: "", // Will be set after creating textboxes
+                            originalText: entity.originalText, // This is the raw OCR text
+                            page: pageResult.pageNumber,
+                            x: entity.dimensions.box_x,
+                            y: entity.dimensions.box_y,
+                            width: entity.dimensions.box_width,
+                            height: entity.dimensions.box_height,
+                            isCustomTextbox: false,
+                            status:
+                              entity.originalText && entity.originalText.trim()
+                                ? "needsChecking"
+                                : "isEmpty",
+                          };
+                          untranslatedTextsToAdd.push(untranslatedText);
+
+                          console.log(
+                            `📝 [Bulk OCR] Created UntranslatedText from OCR: "${entity.originalText}" at (${entity.dimensions.box_x}, ${entity.dimensions.box_y})`
+                          );
+                        }
+                      });
+                    }
+                  }
+                );
+              }
+            });
+          }
+
+          // Process each page and create textboxes
+          textBoxesByPage.forEach((pageMap, pageNumber) => {
+            pageMap.forEach((textBoxes, viewType) => {
+              console.log(
+                `📝 [Bulk OCR] Creating ${textBoxes.length} textboxes for page ${pageNumber} (${viewType})`
+              );
+
+              textBoxes.forEach((textBox) => {
+                try {
+                  // Prepare translated textbox to add directly to translatedTextBoxes array
+                  const translatedTextBox = {
+                    ...textBox,
+                    id: generateUUID(), // Generate new ID for translated version
+                    value: textBox.value, // Set the detected text as the value
+                    placeholder: "Enter translation...", // Generic placeholder for translation
+                  };
+
+                  translatedTextBoxesToAdd.push(translatedTextBox);
+
+                  // Find matching UntranslatedText by position and text content
+                  const matchingUntranslatedText = untranslatedTextsToAdd.find(
+                    (ut) =>
+                      ut.page === pageNumber &&
+                      Math.abs(ut.x - textBox.x) < 5 && // Allow small position differences
+                      Math.abs(ut.y - textBox.y) < 5 &&
+                      ut.translatedTextboxId === "" // Not yet assigned
+                  );
+
+                  if (matchingUntranslatedText) {
+                    // Link the UntranslatedText to this textbox
+                    matchingUntranslatedText.translatedTextboxId =
+                      translatedTextBox.id;
+                    console.log(
+                      `🔗 [Bulk OCR] Linked UntranslatedText "${matchingUntranslatedText.originalText}" to textbox ${translatedTextBox.id}`
+                    );
+                  } else {
+                    console.warn(
+                      `⚠️ [Bulk OCR] No matching UntranslatedText found for textbox at (${textBox.x}, ${textBox.y})`
+                    );
+                  }
+
+                  console.log(
+                    `✅ [Bulk OCR] Prepared textbox for translated page: ${translatedTextBox.id} at (${textBox.x}, ${textBox.y})`
+                  );
+                } catch (error) {
+                  console.error(`❌ [Bulk OCR] Error creating textbox:`, error);
+                }
+              });
+            });
+          });
+
+          // Add all translated textboxes at once
+          if (translatedTextBoxesToAdd.length > 0) {
+            options.setElementCollections((prev: any) => ({
+              ...prev,
+              translatedTextBoxes: [
+                ...prev.translatedTextBoxes,
+                ...translatedTextBoxesToAdd,
+              ],
+            }));
+            console.log(
+              `✅ [Bulk OCR] Added ${translatedTextBoxesToAdd.length} textboxes directly to translatedTextBoxes array`
+            );
+
+            // Add all untranslated texts at once using the callback if provided
+            if (
+              options.addUntranslatedText &&
+              untranslatedTextsToAdd.length > 0
+            ) {
+              untranslatedTextsToAdd.forEach((untranslatedText) => {
+                options.addUntranslatedText!(untranslatedText);
+              });
+              console.log(
+                `✅ [Bulk OCR] Added ${untranslatedTextsToAdd.length} untranslated texts using addUntranslatedText callback`
+              );
+            } else if (untranslatedTextsToAdd.length > 0) {
+              // Fallback: add directly to element collections if callback not provided
+              options.setElementCollections((prev: any) => ({
+                ...prev,
+                untranslatedTexts: [
+                  ...prev.untranslatedTexts,
+                  ...untranslatedTextsToAdd,
+                ],
+              }));
+              console.log(
+                `✅ [Bulk OCR] Added ${untranslatedTextsToAdd.length} untranslated texts directly to untranslatedTexts array`
+              );
+            }
+
+            // Now apply comprehensive textbox optimization using the new utility
+            console.log(
+              "🔍 [Bulk OCR] Applying comprehensive textbox optimization..."
+            );
+
+            // Import the optimization utility
+            const { comprehensivelyOptimizeTextbox } = await import(
+              "../utils/textboxOptimizer"
+            );
+
+            // Get the updated state to access the newly added textboxes
+            options.setElementCollections((prev: any) => {
+              const updatedTextBoxes = prev.translatedTextBoxes.map(
+                (textBox: any) => {
+                  try {
+                    console.log(
+                      `🔍 [Bulk OCR] Optimizing textbox: "${
+                        textBox.value
+                      }" with font: ${textBox.fontSize || 16}px ${
+                        textBox.fontFamily || "Arial"
+                      }`
+                    );
+
+                    // Apply comprehensive optimization
+                    const optimized = comprehensivelyOptimizeTextbox(textBox);
+
+                    console.log(
+                      `📏 [Bulk OCR] Textbox optimization completed: "${textBox.value}" - Original: ${textBox.width}x${textBox.height}, Optimized: ${optimized.width}x${optimized.height}`
+                    );
+
+                    return optimized;
+                  } catch (error) {
+                    console.warn(
+                      `⚠️ [Bulk OCR] Failed to optimize textbox "${textBox.value}", keeping original:`,
+                      error
+                    );
+                    return textBox;
+                  }
+                }
+              );
+
+              return {
+                ...prev,
+                translatedTextBoxes: updatedTextBoxes,
+              };
+            });
+          }
+
+          console.log(
+            `🎉 [Bulk OCR] Successfully created ${translatedTextBoxesToAdd.length} translated textboxes in frontend`
+          );
+        }
+      }
+
+      // Update progress for all pages
+      for (let i = 0; i < pagesToProcess.length; i++) {
+        if (cancelRef.current.cancelled) break;
+        onProgress?.(i + 1, pagesToProcess.length);
+        processedCount++;
+      }
+
+      // Restore the original page
+      onPageChange(originalPage);
+
+      toast.success(
+        `Background OCR processing completed for ${processedCount} pages`
+      );
+
+      return {
+        success: true,
+        processedPages: processedCount,
+        totalPages: pagesToProcess.length,
+        message: `Background OCR processing completed for ${processedCount} pages`,
+        backgroundJobId: result.data?.jobId, // Return job ID for tracking
+      };
+    } else {
+      throw new Error(result.error || "Background service failed");
+    }
+  } catch (error) {
+    console.error("❌ [OCR Service] Bulk OCR failed:", error);
     onPageChange(originalPage);
 
-    return {
-      success: true,
-      processedPages: processedCount,
-      totalPages: pagesToProcess.length,
-      message: `Successfully processed ${processedCount} out of ${pagesToProcess.length} pages`,
-    };
-  } catch (error) {
-    console.error("Bulk OCR error:", error);
-    onPageChange(originalPage);
+    toast.error(
+      `Failed to initiate background OCR: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
 
     return {
       success: false,
-      processedPages: processedCount,
+      processedPages: 0,
       totalPages: pagesToProcess.length,
-      message: "Bulk OCR process failed",
+      message: `Failed to initiate background OCR: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`,
     };
   }
 }
 
 /**
  * Converts OCR entities to TextField objects
+ * This function is kept for backward compatibility and template-ocr format
+ * For the new styled layout format, use serializeOcrEntities from ocrResponseSerializer
  */
 export async function convertEntitiesToTextBoxes(
   entities: any[],
@@ -614,6 +860,26 @@ export async function convertEntitiesToTextBoxes(
   pdfPageWidth: number,
   pdfPageHeight: number
 ): Promise<TextField[]> {
+  // Check if this is the new styled layout format
+  if (entities.length > 0 && entities[0].dimensions && entities[0].styling) {
+    console.log(
+      "🔄 [OCR Service] Using new styled layout format, delegating to serializer"
+    );
+    const { serializeOcrEntities } = await import(
+      "../utils/ocrResponseSerializer"
+    );
+    return serializeOcrEntities(
+      entities,
+      pageNumber,
+      pdfPageWidth,
+      pdfPageHeight
+    );
+  }
+
+  // Fallback to original logic for template-ocr format
+  console.log(
+    "🔄 [OCR Service] Using template-ocr format, using legacy conversion"
+  );
   const newTextBoxes: TextField[] = [];
 
   entities.forEach((entity: any) => {
@@ -638,8 +904,6 @@ export async function convertEntitiesToTextBoxes(
     } else if (entity.style) {
       // Template-ocr format
       x = entity.style.x;
-      // x = 1;
-      // y = pdfPageHeight - entity.style.y - entity.style.height;
       y = entity.style.y;
       width = entity.style.width;
       height = entity.style.height;
@@ -778,15 +1042,6 @@ export async function convertEntitiesToTextBoxes(
 
     // Always show placeholder: entity placeholder if provided, otherwise "Enter Text..."
     const placeholder = entityPlaceholder || "Enter Text...";
-
-    // Debug placeholder logic
-    console.log("🔍 Placeholder Debug:", {
-      textValue,
-      entityPlaceholder,
-      finalPlaceholder: placeholder,
-      isEmpty: textValue.trim() === "",
-      hasEntityPlaceholder: !!entityPlaceholder,
-    });
 
     const newTextBox: TextField = {
       id: generateUUID(),

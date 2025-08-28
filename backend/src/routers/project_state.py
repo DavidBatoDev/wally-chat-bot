@@ -181,6 +181,36 @@ async def get_project_state(
             detail=f"Failed to get project: {str(e)}"
         )
 
+@router.get("/projects/{project_id}/public", response_model=ProjectStateResponse)
+async def get_public_project_state(
+    project_id: str
+):
+    """
+    Get a specific project state by ID without authentication.
+    This is for public access to projects (e.g., capture-project page).
+    """
+    try:
+        project_service = get_project_service()
+        # Get project without user ID requirement for public access
+        project = project_service.get_project(project_id)
+        
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        
+        return ProjectStateResponse(**project)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting public project state {project_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get project: {str(e)}"
+        )
+
 @router.put("/projects/{project_id}", response_model=ProjectStateResponse)
 async def update_project_state(
     project_id: str,

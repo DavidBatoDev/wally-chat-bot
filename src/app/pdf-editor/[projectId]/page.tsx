@@ -37,19 +37,11 @@ const PDFEditorProject: React.FC = () => {
         return;
       }
 
-      // Debug logging
-      console.log("DEBUG: Looking for project with ID:", projectId);
-      console.log("DEBUG: Current user:", user);
-
       // Fetch project directly from database
       const fetchProject = async () => {
         try {
-          console.log("DEBUG: Fetching project from database...");
-          console.log("DEBUG: User authentication status:", !!user, !!session);
-
           // Check if user is authenticated before making the API call
           if (!user || !session) {
-            console.log("DEBUG: User not authenticated, setting auth error");
             setAuthError(true);
             setIsLoading(false);
             return;
@@ -58,18 +50,6 @@ const PDFEditorProject: React.FC = () => {
           const projectData = await getProject(projectId);
 
           if (projectData) {
-            console.log("DEBUG: Project found in database:", projectData);
-            console.log("DEBUG: Project structure:", {
-              id: projectData.id,
-              name: projectData.name,
-              project_data: projectData.project_data,
-              source_language: projectData.source_language,
-              desired_language: projectData.desired_language,
-              created_by: projectData.created_by,
-              is_public: projectData.is_public,
-            });
-            console.log("DEBUG: Complete project object:", projectData);
-            console.log("DEBUG: Project keys:", Object.keys(projectData));
             setProject(projectData);
             setProjectNotFound(false);
           } else {

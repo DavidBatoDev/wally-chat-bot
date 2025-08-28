@@ -557,8 +557,7 @@ async def process_file_ocr_download(file: UploadFile = File(...)):
 @router.post("/template-ocr/{template_id}")
 async def process_file_with_template_ocr(
     template_id: str,
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    file: UploadFile = File(...)
 ):
     """
     Process a file through template-based OCR using Gemini AI.
@@ -627,8 +626,7 @@ async def process_file_with_template_ocr(
 async def process_file_with_pdf_template_ocr(
     template_id: str,
     document_file: UploadFile = File(..., description="Document to extract data from"),
-    template_pdf: UploadFile = File(..., description="PDF template to apply extracted text to"),
-    current_user: User = Depends(get_current_user)
+    template_pdf: UploadFile = File(..., description="PDF template to apply extracted text to")
 ):
     """
     Process a document through template-based OCR and apply extracted text to a PDF template.

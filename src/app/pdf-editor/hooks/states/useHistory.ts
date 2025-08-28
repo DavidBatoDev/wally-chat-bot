@@ -23,17 +23,11 @@ export class GroupCommand implements Command {
   }
 
   execute() {
-    console.log(
-      `[GroupCommand] Executing ${this.commands.length} commands atomically`
-    );
     // Execute all commands at once (appears atomic to user)
     this.commands.forEach((cmd) => cmd.execute());
   }
 
   undo() {
-    console.log(
-      `[GroupCommand] Undoing ${this.commands.length} commands atomically`
-    );
     // Undo all commands in reverse order (appears atomic to user)
     for (let i = this.commands.length - 1; i >= 0; i--) {
       this.commands[i].undo();
@@ -63,7 +57,6 @@ export function useHistory() {
       );
       endGroup();
     }
-    console.log("[History] Starting group:", description);
     currentGroupRef.current = new GroupCommand([], description);
   }, []);
 
@@ -71,23 +64,13 @@ export function useHistory() {
   const endGroup = useCallback(() => {
     if (currentGroupRef.current && !currentGroupRef.current.isEmpty()) {
       const group = currentGroupRef.current;
-      console.log(
-        "[History] Ending group with",
-        group.getCommands().length,
-        "commands"
-      );
 
       // Push the group as a single undo/redo item
       undoStackRef.current.push(group);
       redoStackRef.current = []; // Clear redo stack on new action
 
       currentGroupRef.current = null;
-
-      console.log("[History] Group added to undo stack");
-      console.log("[History] Undo stack size:", undoStackRef.current.length);
-      console.log("[History] Redo stack cleared");
     } else if (currentGroupRef.current) {
-      console.log("[History] Ending empty group - discarding");
       currentGroupRef.current = null;
     }
   }, []);
@@ -99,122 +82,65 @@ export function useHistory() {
 
   // Execute and push a command to history
   const executeCommand = useCallback((command: Command) => {
-    console.log("[History] Executing command:", command.description);
-
     // Always execute the command
     command.execute();
 
     // Add to current group if grouping, otherwise push directly
     if (currentGroupRef.current) {
-      console.log("[History] Adding to current group:", command.description);
       currentGroupRef.current.addCommand(command);
     } else {
-      console.log("[History] Adding as individual command to undo stack");
       undoStackRef.current.push(command);
       redoStackRef.current = []; // Clear redo stack on new action
-
-      console.log("[History] Undo stack size:", undoStackRef.current.length);
-      console.log("[History] Redo stack cleared");
     }
   }, []);
 
   // Push a command without executing (for pre-executed commands)
   const push = useCallback((command: Command) => {
-    console.log("[History] Pushing pre-executed command:", command.description);
-
     // Add to current group if grouping, otherwise push directly
     if (currentGroupRef.current) {
-      console.log("[History] Adding to current group:", command.description);
       currentGroupRef.current.addCommand(command);
     } else {
-      console.log("[History] Adding as individual command to undo stack");
       undoStackRef.current.push(command);
       redoStackRef.current = []; // Clear redo stack on new action
-
-      console.log("[History] Undo stack size:", undoStackRef.current.length);
-      console.log("[History] Redo stack cleared");
     }
   }, []);
 
   // Undo last action (individual or group)
   const undo = useCallback(() => {
-    console.log("[History] Undo called");
-
     // End any ongoing group first
     if (currentGroupRef.current) {
-      console.log("[History] Ending group before undo");
       endGroup();
     }
 
     const command = undoStackRef.current.pop();
     if (command) {
-      console.log("[History] Undoing:", command.description);
-
-      if (command instanceof GroupCommand) {
-        console.log(
-          "[History] Undoing group with",
-          command.getCommands().length,
-          "commands"
-        );
-      }
-
       // Undo the command
       command.undo();
 
       // Move to redo stack
       redoStackRef.current.push(command);
 
-      console.log(
-        "[History] After undo - undo stack:",
-        undoStackRef.current.length
-      );
-      console.log(
-        "[History] After undo - redo stack:",
-        redoStackRef.current.length
-      );
       return true;
     }
 
-    console.log("[History] Nothing to undo");
     return false;
   }, [endGroup]);
 
   // Redo last undone action (individual or group)
   const redo = useCallback(() => {
-    console.log("[History] Redo called");
-
     // End any ongoing group first
     if (currentGroupRef.current) {
-      console.log("[History] Ending group before redo");
       endGroup();
     }
 
     const command = redoStackRef.current.pop();
     if (command) {
-      console.log("[History] Redoing:", command.description);
-
-      if (command instanceof GroupCommand) {
-        console.log(
-          "[History] Redoing group with",
-          command.getCommands().length,
-          "commands"
-        );
-      }
-
       // Execute the command
       command.execute();
 
       // Move back to undo stack
       undoStackRef.current.push(command);
 
-      console.log(
-        "[History] After redo - undo stack:",
-        undoStackRef.current.length
-      );
-      console.log(
-        "[History] After redo - redo stack:",
-        redoStackRef.current.length
-      );
       return true;
     }
 
@@ -226,7 +152,7 @@ export function useHistory() {
   const canUndo = useCallback((): boolean => {
     return (
       undoStackRef.current.length > 0 ||
-      (currentGroupRef.current && !currentGroupRef.current.isEmpty())
+      (currentGroupRef.current !== null && !currentGroupRef.current.isEmpty())
     );
   }, []);
 
