@@ -642,6 +642,7 @@ app.post(
   upload.single("project_data"),
   async (req, res) => {
     let projectId; // Declare at function scope so it's accessible in catch block
+    let page = null; // Declare at function scope so it's accessible in catch block
     try {
       const {
         projectId: reqProjectId,
@@ -792,7 +793,6 @@ app.post(
         throw new Error("Operation aborted by user");
       }
 
-      let page; // Declare at function scope so it's accessible in catch block
       try {
         page = await browser.newPage();
         console.log(`✅ Puppeteer page created successfully`);
@@ -815,6 +815,7 @@ app.post(
         }
       }
 
+      // Main function logic wrapped in try block
       try {
         // Set viewport and navigate to capture URL with retry logic
         console.log(
@@ -1138,10 +1139,35 @@ app.post(
           throw new Error("Operation aborted by user");
         }
 
-        // Wait for PDF viewer to be ready
+        // Wait for PDF viewer to be ready with fallback for image documents
         console.log(`   Looking for PDF viewer...`);
-        await page.waitForSelector(".react-pdf__Document", { timeout: 30000 });
-        console.log(`✅ PDF viewer found and loaded`);
+        let pdfViewerReady = false;
+        let fallbackMode = false;
+
+        try {
+          await page.waitForSelector(".react-pdf__Document", {
+            timeout: 10000,
+          });
+          console.log(`✅ PDF viewer found and loaded`);
+          pdfViewerReady = true;
+        } catch (pdfTimeoutError) {
+          console.log(
+            `⚠️ PDF viewer not found, checking for image document fallback...`
+          );
+
+          // Fallback: Check if this is an image document with .react-pdf__Page elements
+          try {
+            await page.waitForSelector(".react-pdf__Page", { timeout: 10000 });
+            console.log(
+              `✅ Image document detected (using .react-pdf__Page fallback)`
+            );
+            fallbackMode = true;
+          } catch (imageTimeoutError) {
+            throw new Error(
+              "Neither PDF viewer (.react-pdf__Document) nor image document (.react-pdf__Page) found"
+            );
+          }
+        }
 
         // Check for abort signal before content validation
         if (abortController.signal.aborted) {
@@ -1245,7 +1271,7 @@ app.post(
           throw new Error("Operation aborted by user");
         }
 
-        // Wait for initial page to load
+        // Wait for initial page to load (works for both PDF and image documents)
         console.log(`   Waiting for initial page to load...`);
         await page.waitForSelector(".react-pdf__Page", { timeout: 30000 });
         console.log(`✅ Initial page loaded`);
@@ -1278,12 +1304,21 @@ app.post(
           throw new Error("Operation aborted by user");
         }
 
-        // Get total pages count
+        // Get total pages count (works for both PDF and image documents)
         const totalPagesInViewer = await page.evaluate(() => {
           const pageElements = document.querySelectorAll(".react-pdf__Page");
           return pageElements.length;
         });
-        console.log(`✅ PDF viewer has ${totalPagesInViewer} pages available`);
+
+        if (fallbackMode) {
+          console.log(
+            `✅ Image document has ${totalPagesInViewer} pages available (fallback mode)`
+          );
+        } else {
+          console.log(
+            `✅ PDF viewer has ${totalPagesInViewer} pages available`
+          );
+        }
 
         // Verify we have all the pages we need
         if (totalPagesInViewer < pagesToProcess.length) {
@@ -1305,22 +1340,28 @@ app.post(
           `\n🔄 [${new Date().toISOString()}] Starting page capture and OCR processing...`
         );
 
-        // Check for abort signal before birth certificate detection
+        if (fallbackMode) {
+          console.log(`   📸 Processing in IMAGE DOCUMENT fallback mode`);
+        } else {
+          console.log(`   📄 Processing in PDF viewer mode`);
+        }
+
+        // Check for abort signal before template detection
         if (abortController.signal.aborted) {
           console.log(
-            `🛑 [ABORT] Birth certificate detection aborted for project: ${projectId}`
+            `🛑 [ABORT] Template detection aborted for project: ${projectId}`
           );
           throw new Error("Operation aborted by user");
         }
 
-        // Check if this is a birth certificate project by examining the project data
-        let isBirthCertProject = false;
-        let birthCertTemplate = null;
+        // Check if this is a template-based project by examining the project data
+        let isTemplateProject = false;
+        let currentTemplate = null;
 
-        // We'll detect birth certificate projects from the OCR metadata when processing each page
+        // We'll detect template-based projects from the OCR metadata when processing each page
         // This allows us to access the project_data that's passed from the frontend
         console.log(
-          `   🔍 Birth certificate detection will be performed per-page using project metadata`
+          `   🔍 Template detection will be performed per-page using project metadata`
         );
 
         for (const pageNum of pagesToProcess) {
@@ -1370,6 +1411,12 @@ app.post(
               console.log(
                 `      🎯 [${new Date().toISOString()}] Starting capture for page ${pageNum}...`
               );
+
+              if (fallbackMode) {
+                console.log(
+                  `      📸 Using IMAGE DOCUMENT fallback capture mode`
+                );
+              }
 
               // Retry capture if content isn't loaded properly
               let captureResult;
@@ -1451,7 +1498,13 @@ app.post(
               );
 
               if (captureResult.success) {
-                console.log(`   ✅ Page capture successful`);
+                if (fallbackMode) {
+                  console.log(
+                    `   ✅ Page capture successful (IMAGE DOCUMENT fallback mode)`
+                  );
+                } else {
+                  console.log(`   ✅ Page capture successful`);
+                }
                 console.log(
                   `   📏 Dimensions: ${captureResult.pageWidth}x${captureResult.pageHeight}`
                 );
@@ -3311,7 +3364,7 @@ async function sendToOcrService(
       throw new Error("Operation aborted by user");
     }
 
-    // Detect birth certificate projects from project metadata
+    // Detect template-based projects from project metadata
     if (metadata.projectData) {
       try {
         const projectData = metadata.projectData;
@@ -3327,27 +3380,30 @@ async function sendToOcrService(
             (page) => page.pageNumber === metadata.pageNumber
           );
 
-          if (currentPageData && currentPageData.pageType === "birth_cert") {
+          if (
+            currentPageData &&
+            (currentPageData.pageType === "birth_cert" ||
+              currentPageData.pageType === "nbi_clearance")
+          ) {
             useTemplateOcr = true;
 
-            // Extract template ID and file URL from the birth certificate template
-            if (
-              currentPageData.birthCertTemplate &&
-              currentPageData.birthCertTemplate.id
-            ) {
-              templateId = currentPageData.birthCertTemplate.id;
-              const templateFileUrl =
-                currentPageData.birthCertTemplate.file_url;
+            // Extract template ID and file URL from the universal template
+            if (currentPageData.template && currentPageData.template.id) {
+              templateId = currentPageData.template.id;
+              const templateFileUrl = currentPageData.template.file_url;
 
               console.log(
-                `      🎯 [TEMPLATE OCR] Found birth certificate template: ${templateId}`
+                `      🎯 [TEMPLATE OCR] Found ${currentPageData.pageType} template: ${templateId}`
               );
               console.log(
                 `      📁 [TEMPLATE OCR] Template file URL: ${templateFileUrl} (not needed for this endpoint)`
               );
             } else {
-              // Fallback to default template ID
-              templateId = "birth_cert_english_1993";
+              // Fallback to default template ID based on page type
+              templateId =
+                currentPageData.pageType === "birth_cert"
+                  ? "birth_cert_english_1993"
+                  : "nbi_clearance_default";
               console.log(
                 `      ⚠️ [TEMPLATE OCR] No template ID found, using default: ${templateId}`
               );
@@ -3356,7 +3412,7 @@ async function sendToOcrService(
             if (useTemplateOcr) {
               finalOcrApiUrl = `http://localhost:8000/projects/template-ocr/${templateId}`;
               console.log(
-                `      🎯 [TEMPLATE OCR] Using birth certificate template: ${templateId}`
+                `      🎯 [TEMPLATE OCR] Using ${currentPageData.pageType} template: ${templateId}`
               );
               console.log(`      📡 Template OCR endpoint: ${finalOcrApiUrl}`);
             }
@@ -3398,7 +3454,7 @@ async function sendToOcrService(
       console.log(`      📎 File prepared for regular OCR: ${filename}`);
     }
 
-    // Detect birth certificate projects from project metadata
+    // Detect template-based projects from project metadata
     if (metadata.projectData) {
       try {
         const projectData = metadata.projectData;
@@ -3414,27 +3470,30 @@ async function sendToOcrService(
             (page) => page.pageNumber === metadata.pageNumber
           );
 
-          if (currentPageData && currentPageData.pageType === "birth_cert") {
+          if (
+            currentPageData &&
+            (currentPageData.pageType === "birth_cert" ||
+              currentPageData.pageType === "nbi_clearance")
+          ) {
             useTemplateOcr = true;
 
-            // Extract template ID and file URL from the birth certificate template
-            if (
-              currentPageData.birthCertTemplate &&
-              currentPageData.birthCertTemplate.id
-            ) {
-              templateId = currentPageData.birthCertTemplate.id;
-              const templateFileUrl =
-                currentPageData.birthCertTemplate.file_url;
+            // Extract template ID and file URL from the universal template
+            if (currentPageData.template && currentPageData.template.id) {
+              templateId = currentPageData.template.id;
+              const templateFileUrl = currentPageData.template.file_url;
 
               console.log(
-                `      🎯 [TEMPLATE OCR] Found birth certificate template: ${templateId}`
+                `      🎯 [TEMPLATE OCR] Found ${currentPageData.pageType} template: ${templateId}`
               );
               console.log(
                 `      📁 [TEMPLATE OCR] Template file URL: ${templateFileUrl} (not needed for this endpoint)`
               );
             } else {
-              // Fallback to default template ID
-              templateId = "birth_cert_english_1993";
+              // Fallback to default template ID based on page type
+              templateId =
+                currentPageData.pageType === "birth_cert"
+                  ? "birth_cert_english_1993"
+                  : "nbi_clearance_default";
               console.log(
                 `      ⚠️ [TEMPLATE OCR] No template ID found, using default: ${templateId}`
               );
@@ -3443,7 +3502,7 @@ async function sendToOcrService(
             if (useTemplateOcr) {
               finalOcrApiUrl = `http://localhost:8000/projects/template-ocr/${templateId}`;
               console.log(
-                `      🎯 [TEMPLATE OCR] Using birth certificate template: ${templateId}`
+                `      🎯 [TEMPLATE OCR] Using ${currentPageData.pageType} template: ${templateId}`
               );
               console.log(`      📡 Template OCR endpoint: ${finalOcrApiUrl}`);
             }

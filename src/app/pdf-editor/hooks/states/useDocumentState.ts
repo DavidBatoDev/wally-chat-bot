@@ -92,8 +92,8 @@ export const useDocumentState = () => {
               isTranslated: existingPage.isTranslated,
               pageType: existingPage.pageType || "dynamic_content",
               backgroundColor: existingPage.backgroundColor,
-              birthCertTemplate: existingPage.birthCertTemplate,
-              birthCertType: existingPage.birthCertType,
+              template: existingPage.template,
+              templateType: existingPage.templateType,
               translatedTemplateURL: existingPage.translatedTemplateURL,
               translatedTemplateWidth: existingPage.translatedTemplateWidth,
               translatedTemplateHeight: existingPage.translatedTemplateHeight,
@@ -244,7 +244,9 @@ export const useDocumentState = () => {
           isLoading: false,
           isDocumentLoaded: false,
         }));
-        toast.error("Failed to upload document to cloud storage. Please try again.");
+        toast.error(
+          "Failed to upload document to cloud storage. Please try again."
+        );
         return;
       }
 
@@ -267,7 +269,9 @@ export const useDocumentState = () => {
         isLoading: false,
         isDocumentLoaded: false,
       }));
-      toast.error("Failed to upload document to cloud storage. Please try again.");
+      toast.error(
+        "Failed to upload document to cloud storage. Please try again."
+      );
     }
   }, []);
 
@@ -359,8 +363,6 @@ export const useDocumentState = () => {
   // Change current page
   const changePage = useCallback(
     (page: number, isFinalLayout = false) => {
-
-
       if (isFinalLayout) {
         // Handle final layout page change
         if (page >= 1 && page <= (documentState.finalLayoutNumPages || 0)) {
@@ -577,7 +579,6 @@ export const useDocumentState = () => {
         finalLayoutUrl,
         finalLayoutNumPages,
       });
-
 
       setDocumentState((prev) => ({
         ...prev,

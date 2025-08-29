@@ -19,7 +19,7 @@ import { Template, TextField, Shape, Image } from "../types/pdf-editor.types";
 import { colorToRgba } from "../utils/colors";
 import { isPdfFile } from "../utils/measurements";
 
-interface BirthCertificateSelectionModalProps {
+interface NBIClearanceSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   documentUrl: string;
@@ -38,8 +38,8 @@ interface BirthCertificateSelectionModalProps {
   pdfBackgroundColor?: string;
 }
 
-export const BirthCertificateSelectionModal: React.FC<
-  BirthCertificateSelectionModalProps
+export const NBIClearanceSelectionModal: React.FC<
+  NBIClearanceSelectionModalProps
 > = ({
   isOpen,
   onClose,
@@ -294,15 +294,15 @@ export const BirthCertificateSelectionModal: React.FC<
       }
       const data = await response.json();
 
-      // Filter to only show birth certificate templates
-      const birthCertTemplates = data.filter(
+      // Filter to only show NBI clearance templates
+      const nbiClearanceTemplates = data.filter(
         (template: Template) =>
-          template.doc_type.toLowerCase().includes("birth") ||
-          template.doc_type.toLowerCase().includes("certificate")
+          template.doc_type.toLowerCase().includes("nbi") ||
+          template.doc_type.toLowerCase().includes("clearance")
       );
 
-      setTemplates(birthCertTemplates);
-      console.log("Fetched birth certificate templates:", birthCertTemplates);
+      setTemplates(nbiClearanceTemplates);
+      console.log("Fetched NBI clearance templates:", nbiClearanceTemplates);
     } catch (err) {
       console.error("Error fetching templates:", err);
       setError(
@@ -394,7 +394,7 @@ export const BirthCertificateSelectionModal: React.FC<
             <p className="text-gray-600 text-sm">
               {currentTemplate
                 ? `Current: ${currentTemplate.variation}`
-                : "Choose a prebuilt template for your birth certificate translation"}
+                : "Choose a prebuilt template for your NBI clearance translation"}
             </p>
           </div>
         </div>

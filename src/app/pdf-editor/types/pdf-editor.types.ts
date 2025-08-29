@@ -1,7 +1,7 @@
 // Re-export TextField from components/types
 
-// Template interface for birth certificate templates
-export interface BirthCertTemplate {
+// Universal template interface for all document types
+export interface Template {
   id: string;
   doc_type: string;
   variation: string;
@@ -16,11 +16,15 @@ export interface PageData {
   pageNumber: number;
   isTranslated: boolean;
   backgroundColor?: string;
-  pageType?: "social_media" | "birth_cert" | "dynamic_content";
-  // Birth certificate specific data
-  birthCertTemplate?: BirthCertTemplate | null;
-  birthCertType?: string; // e.g., "English_1993_template", "Spanish_1993_template"
-  translatedTemplateURL?: string; // URL of the birth certificate template for translated view
+  pageType?:
+    | "social_media"
+    | "birth_cert"
+    | "nbi_clearance"
+    | "dynamic_content";
+  // Universal template data for all document types
+  template?: Template | null;
+  templateType?: string; // e.g., "English_1993_template", "Spanish_1993_template", "English_template", "Spanish_template"
+  translatedTemplateURL?: string; // URL of the template for translated view
   translatedTemplateWidth?: number; // Width of the template for translated view
   translatedTemplateHeight?: number; // Height of the template for translated view
 }
@@ -300,9 +304,14 @@ export interface SidebarProps {
   onTabChange: (tab: "pages" | "tools" | "chat") => void;
   onPageTypeChange?: (
     pageNumber: number,
-    pageType: "social_media" | "birth_cert" | "dynamic_content"
+    pageType:
+      | "social_media"
+      | "birth_cert"
+      | "nbi_clearance"
+      | "dynamic_content"
   ) => void;
   onBirthCertModalOpen?: (pageNumber?: number) => void;
+  onNBIClearanceModalOpen?: (pageNumber?: number) => void;
   onResetTour?: () => void;
   documentRef?: React.RefObject<HTMLDivElement | null>;
   sourceLanguage?: string;
@@ -442,19 +451,6 @@ export interface ToolbarProps {
   onToolChange: (tool: string, enabled: boolean) => void;
   onShapeTypeChange: (type: "circle" | "rectangle") => void;
   onImageUpload: () => void;
-}
-
-export interface SidebarProps {
-  viewState: ViewState;
-  documentState: DocumentState;
-  pageState: PageState;
-  elementCollections: ElementCollections;
-  onPageChange: (page: number) => void;
-  onPageDelete: (page: number) => void;
-  onFileUpload: () => void;
-  onAppendDocument: () => void;
-  onSidebarToggle: () => void;
-  onTabChange: (tab: "pages" | "tools" | "chat") => void;
 }
 
 export interface StatusBarProps {

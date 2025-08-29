@@ -46,6 +46,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   desiredLanguage,
   onPageTypeChange,
   onBirthCertModalOpen,
+  onNBIClearanceModalOpen,
   onResetTour,
 }) => {
   // Determine if we're in final layout mode
@@ -234,14 +235,28 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       <Settings className="w-3 h-3 text-gray-400" />
                     </button>
                   )}
-                  {/* Show current template name for birth certificate pages */}
+                  {/* Show current template name for template pages */}
                   {!isFinalLayout &&
-                    currentPageType === "birth_cert" &&
-                    pageData?.birthCertType && (
+                    (currentPageType === "birth_cert" ||
+                      currentPageType === "nbi_clearance") &&
+                    pageData?.templateType && (
                       <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border">
-                        {pageData.birthCertType}
+                        {pageData.templateType}
                       </div>
                     )}
+
+                  {!isFinalLayout && currentPageType === "nbi_clearance" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onNBIClearanceModalOpen?.(pageNum);
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Configure NBI Clearance Template"
+                    >
+                      <Settings className="w-3 h-3 text-gray-400" />
+                    </button>
+                  )}
                   {!isFinalLayout ? (
                     permissions.shouldShowDocumentTypeSelector() ? (
                       <Select
@@ -253,6 +268,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                               value as
                                 | "social_media"
                                 | "birth_cert"
+                                | "nbi_clearance"
                                 | "dynamic_content"
                             );
                           }
@@ -270,6 +286,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                               ? "bg-primary/20 text-primary border-primary/30"
                               : currentPageType === "birth_cert"
                               ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                              : currentPageType === "nbi_clearance"
+                              ? "bg-green-100 text-green-800 border-green-200"
                               : "bg-gray-100 text-gray-800 border-gray-200"
                           }`}
                         >
@@ -277,6 +295,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                             {currentPageType === "social_media" ? (
                               <Share className="w-3 h-3" />
                             ) : currentPageType === "birth_cert" ? (
+                              <FileText className="w-3 h-3" />
+                            ) : currentPageType === "nbi_clearance" ? (
                               <FileText className="w-3 h-3" />
                             ) : (
                               <Zap className="w-3 h-3" />
@@ -286,6 +306,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                                 ? "Social Media"
                                 : currentPageType === "birth_cert"
                                 ? "Birth Certificate"
+                                : currentPageType === "nbi_clearance"
+                                ? "NBI Clearance"
                                 : "Dynamic Content"}
                             </span>
                           </div>
@@ -303,6 +325,12 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                               <span>Birth Certificate</span>
                             </div>
                           </SelectItem>
+                          <SelectItem value="nbi_clearance">
+                            <div className="flex items-center space-x-2">
+                              <FileText className="w-3 h-3" />
+                              <span>NBI Clearance</span>
+                            </div>
+                          </SelectItem>
                           <SelectItem value="dynamic_content">
                             <div className="flex items-center space-x-2">
                               <Zap className="w-3 h-3" />
@@ -317,6 +345,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                           ? "Social Media"
                           : currentPageType === "birth_cert"
                           ? "Birth Certificate"
+                          : currentPageType === "nbi_clearance"
+                          ? "NBI Clearance"
                           : "Dynamic Content"}{" "}
                         (Read-only)
                       </div>

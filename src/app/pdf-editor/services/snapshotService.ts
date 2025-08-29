@@ -11,7 +11,11 @@ export interface SnapshotData {
   originalHeight: number;
   translatedWidth: number;
   translatedHeight: number;
-  pageType?: "social_media" | "birth_cert" | "dynamic_content";
+  pageType?:
+    | "social_media"
+    | "birth_cert"
+    | "nbi_clearance"
+    | "dynamic_content";
 }
 
 export interface CaptureSnapshotsOptions {
@@ -22,7 +26,11 @@ export interface CaptureSnapshotsOptions {
     currentPage: number;
     pages: Array<{
       pageNumber: number;
-      pageType?: "social_media" | "birth_cert" | "dynamic_content";
+      pageType?:
+        | "social_media"
+        | "birth_cert"
+        | "nbi_clearance"
+        | "dynamic_content";
       isTranslated: boolean;
     }>;
   };

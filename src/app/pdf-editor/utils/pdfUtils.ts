@@ -283,3 +283,44 @@ export const isBirthCertificateOcrFile = (file: File): boolean => {
   // Return true if it has birth certificate keywords or OCR keywords and is an image
   return (hasBirthKeyword || hasOcrKeyword) && isImageFile;
 };
+
+/**
+ * Check if a file is likely for NBI clearance OCR processing
+ * @param file - The file to check
+ * @returns boolean - True if likely for NBI clearance OCR
+ */
+export const isNBIClearanceOcrFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+  const fileExtension = file.name.split(".").pop()?.toLowerCase() || "";
+
+  // Check for NBI clearance related keywords
+  const nbiKeywords = [
+    "nbi",
+    "clearance",
+    "nbi_clearance",
+    "nbi-clearance",
+    "nbiclearance",
+    "national_bureau_investigation",
+    "national_bureau_of_investigation",
+    "police_clearance",
+    "police_clearance_certificate",
+    "clearance_certificate",
+  ];
+
+  // Check for OCR related keywords
+  const ocrKeywords = ["ocr", "scan", "scanned", "digitized", "digital"];
+
+  // Check for common NBI clearance file patterns
+  const hasNbiKeyword = nbiKeywords.some((keyword) =>
+    fileName.includes(keyword)
+  );
+  const hasOcrKeyword = ocrKeywords.some((keyword) =>
+    fileName.includes(keyword)
+  );
+
+  // Check if it's an image file (common for OCR)
+  const isImageFile = file.type.startsWith("image/");
+
+  // Return true if it has NBI clearance keywords or OCR keywords and is an image
+  return (hasNbiKeyword || hasOcrKeyword) && isImageFile;
+};

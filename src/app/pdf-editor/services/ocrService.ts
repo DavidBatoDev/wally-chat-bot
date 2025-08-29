@@ -93,9 +93,13 @@ export interface OcrOptions {
   setElementCollections: (updater: (prev: any) => any) => void;
   setIsTranslating: (isTranslating: boolean) => void;
   addUntranslatedText?: (untranslatedText: any) => void;
-  // Birth certificate specific options
-  pageType?: "social_media" | "birth_cert" | "dynamic_content";
-  birthCertTemplateId?: string; // Template ID for birth certificate pages
+  // Universal template options
+  pageType?:
+    | "social_media"
+    | "birth_cert"
+    | "nbi_clearance"
+    | "dynamic_content";
+  templateId?: string; // Template ID for all document types
   // Add complete project data for template detection
   projectData?: any; // Complete project state including documentState.pages
 }
@@ -140,24 +144,29 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
         sourceLanguage: options.sourceLanguage || "auto",
         desiredLanguage: options.desiredLanguage || "en",
         timestamp: new Date().toISOString(),
-        // Include birth certificate information
+        // Include universal template information
         pageType: options.pageType,
-        birthCertTemplateId: options.birthCertTemplateId,
+        templateId: options.templateId,
         // Include the complete page data for template detection
         pages: [
           {
             pageNumber: options.pageNumber,
             pageType: options.pageType,
-            birthCertTemplate: options.birthCertTemplateId
+            template: options.templateId
               ? {
-                  id: options.birthCertTemplateId,
-                  type: "birth_certificate",
+                  id: options.templateId,
+                  type:
+                    options.pageType === "birth_cert"
+                      ? "birth_certificate"
+                      : "nbi_clearance",
                   variation: "template",
                 }
               : null,
-            birthCertType:
+            templateType:
               options.pageType === "birth_cert"
                 ? "birth_cert_template"
+                : options.pageType === "nbi_clearance"
+                ? "nbi_clearance_template"
                 : undefined,
           },
         ],
@@ -171,7 +180,7 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
         projectId: options.projectId,
         pageNumber: options.pageNumber,
         pageType: options.pageType,
-        birthCertTemplateId: options.birthCertTemplateId,
+        templateId: options.templateId,
         projectData: options.projectData || "Using fallback projectData",
         hasCompleteProjectData: !!options.projectData,
         projectDataKeys: options.projectData

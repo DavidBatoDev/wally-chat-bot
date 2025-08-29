@@ -112,6 +112,7 @@ import { ViewerTranslationTable } from "./components/ViewerTranslationTable";
 import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
 import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
+import { NBIClearanceSelectionModal } from "./components/NBIClearanceSelectionModal";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { ProjectSelectionModal } from "./components/ProjectSelectionModal";
 import {
@@ -292,24 +293,23 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     isSelectionMode: false,
   });
   // Template state
-  const [birthCertModalPage, setBirthCertModalPage] = useState<number>(1);
 
   // Unsaved changes state for save button highlighting
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
-  // Helper functions for birth certificate templates
-  const getPageBirthCertTemplate = useCallback(
+  // Helper functions for universal templates
+  const getPageTemplate = useCallback(
     (pageNumber: number) => {
       const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
-      return page?.birthCertTemplate || null;
+      return page?.template || null;
     },
     [documentState.pages]
   );
 
-  const getPageBirthCertType = useCallback(
+  const getPageTemplateType = useCallback(
     (pageNumber: number) => {
       const page = documentState.pages.find((p) => p.pageNumber === pageNumber);
-      return page?.birthCertType || null;
+      return page?.templateType || null;
     },
     [documentState.pages]
   );
@@ -410,10 +410,14 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     [documentState.pages, documentState.pageWidth, documentState.pageHeight]
   );
 
-  const setPageBirthCertTemplate = useCallback(
-    (pageNumber: number, template: any) => {
+  const setPageTemplate = useCallback(
+    (
+      pageNumber: number,
+      template: any,
+      pageType: "birth_cert" | "nbi_clearance"
+    ) => {
       console.log(
-        "Setting birth certificate template for page:",
+        `Setting ${pageType} template for page:`,
         pageNumber,
         "template:",
         template
@@ -427,9 +431,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         if (pageIndex >= 0 && pageIndex < updatedPages.length) {
           updatedPages[pageIndex] = {
             ...updatedPages[pageIndex],
-            pageType: "birth_cert" as const,
-            birthCertTemplate: template,
-            birthCertType: template.variation,
+            pageType: pageType,
+            template: template,
+            templateType: template.variation,
             translatedTemplateURL: template.file_url, // Store the template URL for translated view
             // Template dimensions will be set when the template is actually loaded
             translatedTemplateWidth: undefined, // Will be set when template loads
@@ -5777,7 +5781,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           (p) => p.pageNumber === pageNumber
         );
         const pageType = page?.pageType;
-        const birthCertTemplateId = page?.birthCertTemplate?.id;
+        const templateId = page?.template?.id;
 
         // Create complete project data for template detection
         const completeProjectData = {
@@ -5802,10 +5806,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           documentState.pages
         );
         console.log("🔍 [FRONTEND DEBUG] Page type:", pageType);
-        console.log(
-          "🔍 [FRONTEND DEBUG] Birth cert template ID:",
-          birthCertTemplateId
-        );
+        console.log("🔍 [FRONTEND DEBUG] Template ID:", templateId);
 
         await performPageOcr({
           pageNumber,
@@ -5817,7 +5818,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           setElementCollections,
           addUntranslatedText,
           pageType,
-          birthCertTemplateId,
+          templateId: templateId,
           projectData: completeProjectData, // Pass complete project data
         });
       } catch (error) {
@@ -5969,6 +5970,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
   // Add state for birth certificate modal
   const [showBirthCertModal, setShowBirthCertModal] = useState(false);
+  const [birthCertModalPage, setBirthCertModalPage] = useState<number>(1);
+
+  // Add state for NBI clearance modal
+  const [showNBIClearanceModal, setShowNBIClearanceModal] = useState(false);
+  const [nbiClearanceModalPage, setNBIClearanceModalPage] = useState<number>(1);
 
   // Intercept file upload to show confirmation if a document is loaded
   const handleFileUploadIntercept = useCallback(() => {
@@ -6001,7 +6007,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   const handlePageTypeChange = useCallback(
     (
       pageNumber: number,
-      pageType: "social_media" | "birth_cert" | "dynamic_content"
+      pageType:
+        | "social_media"
+        | "birth_cert"
+        | "nbi_clearance"
+        | "dynamic_content"
     ) => {
       setDocumentState((prev) => ({
         ...prev,
@@ -6018,6 +6028,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     (pageNumber?: number) => {
       setBirthCertModalPage(pageNumber || documentState.currentPage);
       setShowBirthCertModal(true);
+    },
+    [documentState.currentPage]
+  );
+
+  // NBI clearance modal handler
+  const handleNBIClearanceModalOpen = useCallback(
+    (pageNumber?: number) => {
+      setNBIClearanceModalPage(pageNumber || documentState.currentPage);
+      setShowNBIClearanceModal(true);
     },
     [documentState.currentPage]
   );
@@ -6284,6 +6303,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           }
           onPageTypeChange={handlePageTypeChange}
           onBirthCertModalOpen={handleBirthCertModalOpen}
+          onNBIClearanceModalOpen={handleNBIClearanceModalOpen}
           onResetTour={resetTour}
           documentRef={documentRef}
           sourceLanguage={sourceLanguage}
@@ -7794,14 +7814,14 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         sourceLanguage={sourceLanguage}
         desiredLanguage={desiredLanguage}
         pageNumber={birthCertModalPage}
-        currentTemplate={getPageBirthCertTemplate(birthCertModalPage)}
+        currentTemplate={getPageTemplate(birthCertModalPage)}
         originalTextBoxes={elementCollections.originalTextBoxes}
         originalShapes={elementCollections.originalShapes}
         originalImages={elementCollections.originalImages}
         pdfBackgroundColor={documentState.pdfBackgroundColor}
         onTemplateSelect={(template, pageNumber) => {
           // Update the specific page with the template information
-          setPageBirthCertTemplate(pageNumber, template);
+          setPageTemplate(pageNumber, template, "birth_cert");
 
           // Show success message
           toast.success(
@@ -7809,6 +7829,35 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           );
 
           setShowBirthCertModal(false);
+        }}
+      />
+
+      {/* NBI Clearance Selection Modal */}
+      <NBIClearanceSelectionModal
+        isOpen={showNBIClearanceModal}
+        onClose={() => setShowNBIClearanceModal(false)}
+        documentUrl={documentState.url}
+        currentPage={documentState.currentPage}
+        pageWidth={documentState.pageWidth}
+        pageHeight={documentState.pageHeight}
+        sourceLanguage={sourceLanguage}
+        desiredLanguage={desiredLanguage}
+        pageNumber={nbiClearanceModalPage}
+        currentTemplate={getPageTemplate(nbiClearanceModalPage)}
+        originalTextBoxes={elementCollections.originalTextBoxes}
+        originalShapes={elementCollections.originalShapes}
+        originalImages={elementCollections.originalImages}
+        pdfBackgroundColor={documentState.pdfBackgroundColor}
+        onTemplateSelect={(template, pageNumber) => {
+          // Update the specific page with the template information
+          setPageTemplate(pageNumber, template, "nbi_clearance");
+
+          // Show success message
+          toast.success(
+            `Template "${template.variation}" applied to page ${pageNumber}`
+          );
+
+          setShowNBIClearanceModal(false);
         }}
       />
 

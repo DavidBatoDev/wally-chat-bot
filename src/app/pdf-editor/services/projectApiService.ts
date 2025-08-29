@@ -15,6 +15,7 @@ import {
   generateBlankCanvas,
   generateOcrBlankCanvas,
   isBirthCertificateOcrFile,
+  isNBIClearanceOcrFile,
 } from "../utils/pdfUtils";
 
 // API configuration
@@ -443,6 +444,7 @@ export async function createProjectFromUpload(
   let imageElement = null;
   let blankCanvasUrl = null;
   let isBirthCertificateOcr = false;
+  let isNBIClearanceOcr = false;
 
   // Function to determine birth certificate template type based on filename
   const getBirthCertTemplateInfo = (fileName: string) => {
@@ -475,6 +477,32 @@ export async function createProjectFromUpload(
     };
   };
 
+  // Function to determine NBI clearance template type based on filename
+  const getNBIClearanceTemplateInfo = (fileName: string) => {
+    const lowerFileName = fileName.toLowerCase();
+
+    // Detect language from filename
+    const isSpanish =
+      lowerFileName.includes("spanish") ||
+      lowerFileName.includes("español") ||
+      lowerFileName.includes("espanol");
+    const isFrench =
+      lowerFileName.includes("french") ||
+      lowerFileName.includes("français") ||
+      lowerFileName.includes("francais");
+
+    // Determine template type
+    let templateType = "English";
+    if (isSpanish) templateType = "Spanish";
+    else if (isFrench) templateType = "French";
+
+    return {
+      type: `${templateType}_template`,
+      variation: `${templateType}`,
+      language: templateType.toLowerCase(),
+    };
+  };
+
   if (fileInfo.isImage) {
     const imageId = `img_${Date.now()}_${Math.random()
       .toString(36)
@@ -483,10 +511,14 @@ export async function createProjectFromUpload(
     // Check if this is for birth certificate OCR processing
     isBirthCertificateOcr = isBirthCertificateOcrFile(file);
 
+    // Check if this is for NBI clearance OCR processing
+    isNBIClearanceOcr = isNBIClearanceOcrFile(file);
+
     console.log("DEBUG: Image upload type:", {
       fileName: file.name,
       isBirthCertificateOcr,
-      useOcrCanvas: isBirthCertificateOcr,
+      isNBIClearanceOcr,
+      useOcrCanvas: isBirthCertificateOcr || isNBIClearanceOcr,
     });
 
     // Calculate image positioning - center the image on the page with some padding
@@ -627,25 +659,33 @@ export async function createProjectFromUpload(
           elements: imageElement && index === 0 ? [imageElement.id] : [],
         };
 
-        // Add birth certificate specific data for the first page if this is a birth certificate OCR project
-        if (index === 0 && isBirthCertificateOcr) {
-          const templateInfo = getBirthCertTemplateInfo(file.name);
-          pageData.pageType = "birth_cert";
-          pageData.birthCertType = templateInfo.type;
-          pageData.birthCertTemplate = {
-            id: `birth_cert_${templateInfo.language}_${templateInfo.year}`,
-            doc_type: "birth_certificate",
+        // Add universal template data for the first page if this is a template OCR project
+        if (index === 0 && (isBirthCertificateOcr || isNBIClearanceOcr)) {
+          const isBirthCert = isBirthCertificateOcr;
+          const templateInfo = isBirthCert
+            ? getBirthCertTemplateInfo(file.name)
+            : getNBIClearanceTemplateInfo(file.name);
+
+          pageData.pageType = isBirthCert ? "birth_cert" : "nbi_clearance";
+          pageData.templateType = templateInfo.type;
+          pageData.template = {
+            id: `${pageData.pageType}_${templateInfo.language}${
+              isBirthCert ? `_${(templateInfo as any).year}` : ""
+            }`,
+            doc_type: isBirthCert ? "birth_certificate" : "nbi_clearance",
             variation: templateInfo.variation,
             file_url: blankCanvasUrl, // Use the blank canvas as template
             info_json: {
               name: `${
                 templateInfo.language.charAt(0).toUpperCase() +
                 templateInfo.language.slice(1)
-              } Birth Certificate Template ${templateInfo.year}`,
+              } ${
+                isBirthCert ? "Birth Certificate" : "NBI Clearance"
+              } Template${isBirthCert ? ` ${(templateInfo as any).year}` : ""}`,
               width: actualPageWidth,
               height: actualPageHeight,
               language: templateInfo.language,
-              year: templateInfo.year,
+              ...(isBirthCert && { year: (templateInfo as any).year }),
             },
           };
         }
@@ -711,6 +751,7 @@ export async function createProjectFromUpload(
       ? "Created with image element on page 1"
       : "No image elements",
     isBirthCertificateOcr,
+    isNBIClearanceOcr,
   });
 
   console.log("DEBUG: Auto-creation - Project data being created:", {
