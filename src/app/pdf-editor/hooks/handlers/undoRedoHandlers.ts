@@ -51,8 +51,7 @@ export function useHandleAddTextBoxWithUndo(
         x,
         y,
         page,
-        width: initialProperties?.width || 100,
-        height: initialProperties?.height || 30,
+        // Width and height will be calculated by measureText in addTextBox
         value: initialProperties?.value || "New Text Field",
         fontSize: initialProperties?.fontSize || 8,
         fontFamily: initialProperties?.fontFamily || "Arial, sans-serif",

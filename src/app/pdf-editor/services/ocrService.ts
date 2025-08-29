@@ -1089,8 +1089,7 @@ export async function convertEntitiesToTextBoxes(
       }
     }
 
-    // Calculate text dimensions using measureText function with buffer
-    const bufferWidth = 20; // Add 20px buffer on each side
+    // Calculate text dimensions using measureText function without buffer
     const { width: textWidth, height: textHeight } = measureText(
       longestLine,
       estimatedFontSize,
@@ -1098,16 +1097,16 @@ export async function convertEntitiesToTextBoxes(
       0,
       undefined,
       {
-        top: textPadding,
-        right: textPadding,
-        bottom: textPadding,
-        left: textPadding,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
       }
     );
 
-    // Use measured text width with buffer instead of original width
-    const finalWidth = textWidth + bufferWidth * 2; // Add buffer on both sides
-    const finalHeight = Math.max(textHeight, height) + textPadding * 2; // Use the larger of measured height or original height
+    // Use measured text dimensions without buffer for cleaner appearance
+    const finalWidth = textWidth;
+    const finalHeight = Math.max(textHeight, height);
 
     // Determine placeholder text
     const textValue = entity.text || "";

@@ -67,7 +67,22 @@ const arePropsEqual = (prevProps: TextBoxProps, nextProps: TextBoxProps) => {
       prev.fontFamily !== next.fontFamily ||
       prev.color !== next.color ||
       prev.backgroundColor !== next.backgroundColor ||
+      prev.textOpacity !== next.textOpacity ||
+      prev.backgroundOpacity !== next.backgroundOpacity ||
+      prev.bold !== next.bold ||
+      prev.italic !== next.italic ||
+      prev.underline !== next.underline ||
+      prev.letterSpacing !== next.letterSpacing ||
+      prev.lineHeight !== next.lineHeight ||
       prev.textAlign !== next.textAlign ||
+      prev.borderWidth !== next.borderWidth ||
+      prev.borderColor !== next.borderColor ||
+      prev.borderRadius !== next.borderRadius ||
+      prev.borderTopLeftRadius !== next.borderTopLeftRadius ||
+      prev.borderTopRightRadius !== next.borderTopRightRadius ||
+      prev.borderBottomLeftRadius !== next.borderBottomLeftRadius ||
+      prev.borderBottomRightRadius !== next.borderBottomRightRadius ||
+      prev.rotation !== next.rotation ||
       prev.paddingTop !== next.paddingTop ||
       prev.paddingRight !== next.paddingRight ||
       prev.paddingBottom !== next.paddingBottom ||
@@ -187,6 +202,29 @@ export const MemoizedTextBox = memo(
         width: textBox.width,
         height: textBox.height,
         hasBeenManuallyResized: textBox.hasBeenManuallyResized || false,
+        // Add all properties that can be changed by sliders for real-time updates
+        color: textBox.color,
+        backgroundColor: textBox.backgroundColor,
+        textOpacity: textBox.textOpacity,
+        backgroundOpacity: textBox.backgroundOpacity,
+        bold: textBox.bold,
+        italic: textBox.italic,
+        underline: textBox.underline,
+        letterSpacing: textBox.letterSpacing,
+        lineHeight: textBox.lineHeight,
+        textAlign: textBox.textAlign,
+        borderWidth: textBox.borderWidth,
+        borderColor: textBox.borderColor,
+        borderRadius: textBox.borderRadius,
+        borderTopLeftRadius: textBox.borderTopLeftRadius,
+        borderTopRightRadius: textBox.borderTopRightRadius,
+        borderBottomLeftRadius: textBox.borderBottomLeftRadius,
+        borderBottomRightRadius: textBox.borderBottomRightRadius,
+        rotation: textBox.rotation,
+        paddingTop: textBox.paddingTop,
+        paddingRight: textBox.paddingRight,
+        paddingBottom: textBox.paddingBottom,
+        paddingLeft: textBox.paddingLeft,
       }),
       [
         textBox.id,
@@ -195,14 +233,32 @@ export const MemoizedTextBox = memo(
         textBox.width,
         textBox.height,
         textBox.hasBeenManuallyResized,
+        // Add all properties that can be changed by sliders for real-time updates
+        textBox.color,
+        textBox.backgroundColor,
+        textBox.textOpacity,
+        textBox.backgroundOpacity,
+        textBox.bold,
+        textBox.italic,
+        textBox.underline,
+        textBox.letterSpacing,
+        textBox.lineHeight,
+        textBox.textAlign,
+        textBox.borderWidth,
+        textBox.borderColor,
+        textBox.borderRadius,
+        textBox.borderTopLeftRadius,
+        textBox.borderTopRightRadius,
+        textBox.borderBottomLeftRadius,
+        textBox.borderBottomRightRadius,
+        textBox.rotation,
+        textBox.paddingTop,
+        textBox.paddingRight,
+        textBox.paddingBottom,
+        textBox.paddingLeft,
       ]
     );
 
-    // Debounce timer ref for resize operations
-    const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const lastResizeRequestRef = useRef<number>(0);
-    const isTypingFastRef = useRef<boolean>(false);
-    const fastTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const commitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const finalizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const isFocusedRef = useRef<boolean>(false);
@@ -251,7 +307,7 @@ export const MemoizedTextBox = memo(
           clearTimeout(commitTimeoutRef.current);
         }
         const base = lowPowerRef.current ? 200 : 100;
-        const delay = isTypingFastRef.current ? base * 3 : base;
+        const delay = base;
         if (finalize) {
           doCommit(false);
           return;
@@ -262,7 +318,7 @@ export const MemoizedTextBox = memo(
         if (finalizeTimeoutRef.current) {
           clearTimeout(finalizeTimeoutRef.current);
         }
-        const idleDelay = isTypingFastRef.current ? 800 : 400;
+        const idleDelay = 400;
         finalizeTimeoutRef.current = setTimeout(() => {
           if (!isComposingRef.current) {
             doCommit(false);
@@ -279,35 +335,16 @@ export const MemoizedTextBox = memo(
         localValueRef.current = newValue;
         setLocalValue(newValue);
 
-        // Detect fast typing
-        const now = Date.now();
-        const timeSinceLastResize = now - lastResizeRequestRef.current;
-        if (timeSinceLastResize < 100) {
-          isTypingFastRef.current = true;
-          if (fastTypingTimeoutRef.current) {
-            clearTimeout(fastTypingTimeoutRef.current);
-          }
-          fastTypingTimeoutRef.current = setTimeout(() => {
-            isTypingFastRef.current = false;
-          }, 500);
-        }
-        lastResizeRequestRef.current = now;
-
         // Schedule commit of value (throttled) and batch finalization (idle)
         scheduleCommit(false);
       },
       [scheduleCommit]
     );
 
-    // Debounced resize handler (for expensive operations)
-    const handleTextChangeDebounced = useCallback(
+    // Immediate resize handler - no debouncing or throttling
+    const handleTextChangeResize = useCallback(
       (newValue: string) => {
         const currentValue = textBox.value;
-
-        // Skip expensive resize operations during fast typing
-        if (isTypingFastRef.current) {
-          return;
-        }
 
         // Auto-resize textbox based on content changes
         if (newValue.length !== currentValue.length) {
@@ -328,7 +365,11 @@ export const MemoizedTextBox = memo(
             );
 
             const paddingValue = 4;
-            const newWidth = Math.max(textBoxProps.width, width + paddingValue);
+            const rightBuffer = 16; // Add 16px buffer to the right to prevent immediate wrapping during fast typing
+            const newWidth = Math.max(
+              textBoxProps.width,
+              width + paddingValue + rightBuffer
+            );
             const newHeight = Math.max(
               textBoxProps.height,
               height + paddingValue
@@ -375,9 +416,10 @@ export const MemoizedTextBox = memo(
             }
 
             if (!textBoxProps.hasBeenManuallyResized) {
+              const rightBuffer = 16; // Add 16px buffer to the right to prevent immediate wrapping during fast typing
               const newWidth = Math.max(
                 textBoxProps.width,
-                width + paddingValue
+                width + paddingValue + rightBuffer
               );
               if (newWidth > textBoxProps.width) {
                 updates.width = newWidth;
@@ -397,7 +439,7 @@ export const MemoizedTextBox = memo(
       [onUpdate, textBox.value, textBoxProps, padding]
     );
 
-    // Combined text change handler with debouncing for resize operations
+    // Combined text change handler - no debouncing for immediate resize
     const handleTextChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
@@ -405,42 +447,11 @@ export const MemoizedTextBox = memo(
         // Update text immediately for responsive typing
         handleTextChangeImmediate(e);
 
-        // Debounce expensive resize calculations
-        if (resizeTimeoutRef.current) {
-          clearTimeout(resizeTimeoutRef.current);
-        }
-
-        // Use more aggressive debouncing during fast typing
-        const debounceDelay = isTypingFastRef.current ? 500 : 150;
-
-        resizeTimeoutRef.current = setTimeout(() => {
-          // Use requestIdleCallback for non-critical resize operations during fast typing
-          if (isTypingFastRef.current && window.requestIdleCallback) {
-            window.requestIdleCallback(
-              () => {
-                handleTextChangeDebounced(newValue);
-              },
-              { timeout: 1000 }
-            ); // Max 1 second delay
-          } else {
-            handleTextChangeDebounced(newValue);
-          }
-        }, debounceDelay);
+        // Resize immediately - no debouncing for instant feedback
+        handleTextChangeResize(newValue);
       },
-      [handleTextChangeImmediate, handleTextChangeDebounced]
+      [handleTextChangeImmediate, handleTextChangeResize]
     );
-
-    // Cleanup timeouts on unmount
-    useEffect(() => {
-      return () => {
-        if (resizeTimeoutRef.current) {
-          clearTimeout(resizeTimeoutRef.current);
-        }
-        if (fastTypingTimeoutRef.current) {
-          clearTimeout(fastTypingTimeoutRef.current);
-        }
-      };
-    }, []);
 
     const handleClick = useCallback(
       (e: React.MouseEvent) => {
@@ -632,7 +643,11 @@ export const MemoizedTextBox = memo(
         );
 
         const paddingValue = 4;
-        const newWidth = Math.max(textBoxProps.width, width + paddingValue);
+        const rightBuffer = 16; // Add 16px buffer to the right to prevent immediate wrapping during font size changes
+        const newWidth = Math.max(
+          textBoxProps.width,
+          width + paddingValue + rightBuffer
+        );
         const newHeight = Math.max(
           height + paddingValue,
           textBoxProps.fontSize

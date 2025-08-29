@@ -299,8 +299,7 @@ export const useElementManagement = () => {
         return fieldId; // Return existing ID to prevent adding duplicate
       }
 
-      // Add buffer width to the textbox by including padding
-      const bufferWidth = 10; // 20px buffer on each side
+      // Measure text without buffer padding for cleaner appearance
       const { width, height } = measureText(
         value,
         fontSize,
@@ -308,10 +307,10 @@ export const useElementManagement = () => {
         0, // characterSpacing
         undefined, // maxWidth
         {
-          left: bufferWidth,
-          right: bufferWidth,
-          top: 4,
-          bottom: 4,
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
         }
       );
 
@@ -350,7 +349,7 @@ export const useElementManagement = () => {
         backgroundOpacity:
           initialProperties?.backgroundOpacity !== undefined
             ? initialProperties.backgroundOpacity
-            : 1,
+            : 0,
         paddingTop: initialProperties?.paddingTop || 0,
         paddingRight: initialProperties?.paddingRight || 0,
         paddingBottom: initialProperties?.paddingBottom || 0,

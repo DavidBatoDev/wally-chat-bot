@@ -181,8 +181,6 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       "translated",
       {
         fontSize: 10,
-        width: 200,
-        height: 30,
         fontFamily: "Arial",
         backgroundColor: "transparent", // Use transparent background by default
         backgroundOpacity: 0, // Ensure full transparency
