@@ -2122,11 +2122,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     isFirstStep,
     isLastStep,
     totalSteps,
-  } = useSpotlightTour(
-    handleWorkflowStepChange,
-    handleViewChange,
-    viewState.currentWorkflowStep
-  );
+  } = useSpotlightTour(handleWorkflowStepChange, handleViewChange);
 
   // Layout tour hook (for layout workflow)
   const layoutTour = useLayoutTour(
@@ -2285,7 +2281,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                 `[data-element-id="${createdId}"]`
               ) as HTMLElement | null;
               if (node) node.click();
-            }, 1000);
+            }, 50);
           }
         } catch (e) {
           console.warn("Layout Tour: Failed to create fallback textbox", e);
@@ -2310,8 +2306,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           }));
         }
       }
-    },
-    viewState.currentWorkflowStep
+    }
   );
 
   // Ensure view is always split when in layout step

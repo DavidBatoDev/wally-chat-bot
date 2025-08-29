@@ -165,6 +165,7 @@ export interface UntranslatedText {
   height: number;
   isCustomTextbox?: boolean;
   status: "isEmpty" | "needsChecking" | "checked";
+  placeholder?: string; // Placeholder text for the original text field
 }
 
 // Editor state types

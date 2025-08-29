@@ -256,8 +256,24 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
         // Collect all untranslated texts to add at once
         const untranslatedTextsToAdd: any[] = [];
 
-        // Create UntranslatedText objects directly from the puppeteer response
-        // This ensures we get the original OCR text before any translation
+        // Create UntranslatedText objects with placeholders from the serialized textboxes
+        // This ensures we get the correct placeholders like "Enter or Remove Text for Child's Name"
+        const textBoxesWithPlaceholders = new Map();
+
+        // First, collect all textboxes with their placeholders from the OCR serializer
+        textBoxesByPage.forEach((pageMap, pageNumber) => {
+          pageMap.forEach((textBoxes, viewType) => {
+            textBoxes.forEach((textBox) => {
+              // Create a key based on position and page to match with untranslated texts
+              const key = `${pageNumber}-${Math.round(textBox.x)}-${Math.round(
+                textBox.y
+              )}`;
+              textBoxesWithPlaceholders.set(key, textBox);
+            });
+          });
+        });
+
+        // Create UntranslatedText objects with placeholders from the serialized textboxes
         if (result.data?.results) {
           result.data.results.forEach((pageResult: any) => {
             if (pageResult.ocrResult?.styled_layout?.pages) {
@@ -266,6 +282,13 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                   page.entities.forEach((entity: any) => {
                     // Create UntranslatedText from the original OCR data
                     if (entity.originalText && entity.dimensions) {
+                      // Find matching textbox to get the placeholder
+                      const key = `${pageResult.pageNumber}-${Math.round(
+                        entity.dimensions.box_x
+                      )}-${Math.round(entity.dimensions.box_y)}`;
+                      const matchingTextBox =
+                        textBoxesWithPlaceholders.get(key);
+
                       const untranslatedText: UntranslatedText = {
                         id: generateUUID(),
                         translatedTextboxId: "", // Will be set after creating textboxes
@@ -280,12 +303,40 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                           entity.originalText && entity.originalText.trim()
                             ? "needsChecking"
                             : "isEmpty",
+                        // Add the placeholder from the serialized textbox
+                        placeholder:
+                          matchingTextBox?.placeholder ||
+                          `Enter or Remove Text for ${entity.type || "Field"}`,
                       };
                       untranslatedTextsToAdd.push(untranslatedText);
 
                       console.log(
-                        `📝 [OCR Service] Created UntranslatedText from OCR: "${entity.originalText}" at (${entity.dimensions.box_x}, ${entity.dimensions.box_y})`
+                        `📝 [OCR Service] Created UntranslatedText from OCR: "${entity.originalText}" at (${entity.dimensions.box_x}, ${entity.dimensions.box_y}) with placeholder: "${untranslatedText.placeholder}"`
                       );
+
+                      // Debug: show the matching textbox if found
+                      if (matchingTextBox) {
+                        console.log(
+                          `🔍 [DEBUG] Found matching textbox for placeholder:`,
+                          {
+                            textboxPlaceholder: matchingTextBox.placeholder,
+                            entityType: entity.type,
+                            fallbackPlaceholder: `Enter or Remove Text for ${
+                              entity.type || "Field"
+                            }`,
+                          }
+                        );
+                      } else {
+                        console.log(
+                          `🔍 [DEBUG] No matching textbox found, using fallback placeholder:`,
+                          {
+                            entityType: entity.type,
+                            fallbackPlaceholder: `Enter or Remove Text for ${
+                              entity.type || "Field"
+                            }`,
+                          }
+                        );
+                      }
                     }
                   });
                 }
@@ -308,7 +359,9 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                   ...textBox,
                   id: generateUUID(), // Generate new ID for translated version
                   value: textBox.value, // Set the detected text as the value
-                  placeholder: "Enter translation...", // Generic placeholder for translation
+                  // Preserve the original placeholder from OCR serializer (e.g., "Enter or Remove Text for Child's Name")
+                  // Only use generic placeholder if none was set
+                  placeholder: textBox.placeholder || "Enter translation...",
                 };
 
                 translatedTextBoxesToAdd.push(translatedTextBox);
@@ -327,12 +380,30 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                   matchingUntranslatedText.translatedTextboxId =
                     translatedTextBox.id;
                   console.log(
-                    `🔗 [OCR Service] Linked UntranslatedText "${matchingUntranslatedText.originalText}" to textbox ${translatedTextBox.id}`
+                    `🔗 [OCR Service] Linked UntranslatedText "${matchingUntranslatedText.originalText}" to textbox ${translatedTextBox.id} with placeholder: "${matchingUntranslatedText.placeholder}"`
                   );
                 } else {
                   console.warn(
                     `⚠️ [OCR Service] No matching UntranslatedText found for textbox at (${textBox.x}, ${textBox.y})`
                   );
+                  // Debug: show all untranslated texts and their positions
+                  console.log(
+                    `🔍 [DEBUG] Available untranslated texts:`,
+                    untranslatedTextsToAdd.map((ut) => ({
+                      id: ut.id,
+                      page: ut.page,
+                      x: ut.x,
+                      y: ut.y,
+                      placeholder: ut.placeholder,
+                      translatedTextboxId: ut.translatedTextboxId,
+                    }))
+                  );
+                  console.log(`🔍 [DEBUG] Current textbox:`, {
+                    page: pageNumber,
+                    x: textBox.x,
+                    y: textBox.y,
+                    placeholder: textBox.placeholder,
+                  });
                 }
 
                 console.log(
@@ -675,7 +746,9 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
                     ...textBox,
                     id: generateUUID(), // Generate new ID for translated version
                     value: textBox.value, // Set the detected text as the value
-                    placeholder: "Enter translation...", // Generic placeholder for translation
+                    // Preserve the original placeholder from OCR serializer (e.g., "Enter or Remove Text for Child's Name")
+                    // Only use generic placeholder if none was set
+                    placeholder: textBox.placeholder || "Enter translation...",
                   };
 
                   translatedTextBoxesToAdd.push(translatedTextBox);

@@ -200,7 +200,7 @@ export function serializeOcrEntities(
       width: Math.max(dimensions.box_width, measuredDimensions.width),
       height: Math.max(dimensions.box_height, measuredDimensions.height),
       value: entity.text,
-      placeholder: "Enter Text...",
+      placeholder: `Enter or Remove Text for ${entity.type}`,
       fontSize: styling.font_size,
       fontFamily: styling.font_family || "Arial, sans-serif",
       page: pageNumber,

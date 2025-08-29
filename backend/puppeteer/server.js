@@ -11,7 +11,9 @@ const path = require("path");
 const fs = require("fs");
 
 // Translation service configuration
-const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
+const GOOGLE_TRANSLATE_API_KEY =
+  process.env.GOOGLE_TRANSLATE_API_KEY ||
+  "AIzaSyDKNM0imbSFYjOKhpP0qj8ZMaJuyXg-EI8";
 const GOOGLE_TRANSLATE_BASE_URL =
   "https://translation.googleapis.com/language/translate/v2";
 
@@ -430,7 +432,7 @@ async function initializeBrowser() {
         "--disable-sync-preferences", // Disable sync preferences
         "--metrics-recording-only", // Metrics recording only
         "--no-default-browser-check", // No default browser check
-        "--safebrowsing-disable-auto-update", // Disable safebrowsing auto-update
+        "--safebrowsing-disable-auto-update", // Disable safebrowsing auto-update",
       ],
       defaultViewport: { width: 1920, height: 1080, deviceScaleFactor: 2 },
       timeout: 30000, // 30 second timeout for browser launch
@@ -2302,52 +2304,86 @@ app.post(
         console.log(
           `ℹ️ [TRANSLATION] Translation not enabled or API key missing`
         );
-        // Ensure allTexts is defined even when translation is disabled
-        if (allTexts.length === 0) {
-          // Extract texts for metadata even without translation
-          results.forEach((result) => {
-            // Check for abort signal during fallback text extraction
-            if (abortController.signal.aborted) {
-              console.log(
-                `🛑 [ABORT] Fallback text extraction aborted for project: ${projectId}`
-              );
-              throw new Error("Operation aborted by user");
-            }
 
-            if (result.extractedText && result.extractedText.length > 0) {
-              result.extractedText.forEach((textItem) => {
-                // Check for abort signal during fallback text item extraction
-                if (abortController.signal.aborted) {
-                  console.log(
-                    `🛑 [ABORT] Fallback text item extraction aborted for project: ${projectId}`
-                  );
-                  throw new Error("Operation aborted by user");
-                }
+        // Ensure all results have proper text element structure even without translation
+        console.log(
+          `📝 [TEXT ELEMENTS] Ensuring all results have proper text structure...`
+        );
 
-                if (textItem.text && textItem.text.trim()) {
-                  allTexts.push(textItem.text.trim());
-                }
-              });
-            }
-            if (result.ocrResult?.styled_layout?.entities) {
-              result.ocrResult.styled_layout.entities.forEach((entity) => {
-                // Check for abort signal during fallback entity extraction
-                if (abortController.signal.aborted) {
-                  console.log(
-                    `🛑 [ABORT] Fallback entity extraction aborted for project: ${projectId}`
-                  );
-                  throw new Error("Operation aborted by user");
-                }
+        results.forEach((result, index) => {
+          // Check for abort signal during result processing
+          if (abortController.signal.aborted) {
+            console.log(
+              `🛑 [ABORT] Result processing aborted for project: ${projectId}`
+            );
+            throw new Error("Operation aborted by user");
+          }
 
-                if (entity.text && entity.text.trim()) {
-                  allTexts.push(entity.text.trim());
-                }
-              });
-            }
-          });
-        }
+          console.log(
+            `   📄 [TEXT ELEMENTS] Processing result ${index + 1} (Page ${
+              result.pageNumber
+            })`
+          );
+
+          // Ensure extractedText is always populated
+          if (!result.extractedText || result.extractedText.length === 0) {
+            result.extractedText =
+              extractTextFromStyledLayout(result.ocrResult?.styled_layout) ||
+              [];
+            console.log(
+              `      - ✅ Populated extractedText: ${result.extractedText.length} elements`
+            );
+          } else {
+            console.log(
+              `      - ✅ extractedText already present: ${result.extractedText.length} elements`
+            );
+          }
+
+          // Ensure textElements is always populated
+          if (!result.textElements || result.textElements.length === 0) {
+            result.textElements =
+              extractTextElements(result.ocrResult?.styled_layout) || [];
+            console.log(
+              `      - ✅ Populated textElements: ${result.textElements.length} elements`
+            );
+          } else {
+            console.log(
+              `      - ✅ textElements already present: ${result.textElements.length} elements`
+            );
+          }
+
+          // Ensure layoutSections is always populated
+          if (!result.layoutSections || result.layoutSections.length === 0) {
+            result.layoutSections =
+              extractLayoutSections(result.ocrResult?.styled_layout) || [];
+            console.log(
+              `      - ✅ Populated layoutSections: ${result.layoutSections.length} sections`
+            );
+          } else {
+            console.log(
+              `      - ✅ layoutSections already present: ${result.layoutSections.length} sections`
+            );
+          }
+
+          // Extract texts for metadata
+          if (result.extractedText && result.extractedText.length > 0) {
+            result.extractedText.forEach((textItem) => {
+              if (textItem.text && textItem.text.trim()) {
+                allTexts.push(textItem.text.trim());
+              }
+            });
+          }
+        });
+
+        console.log(
+          `📊 [TEXT ELEMENTS] Summary: ${allTexts.length} total texts extracted for metadata`
+        );
+
+        // Set translatedResults to the enhanced results
+        translatedResults = results;
       }
 
+      // Build response - text elements are ALWAYS included regardless of translation status
       const response = {
         success: true,
         data: {
@@ -2355,7 +2391,7 @@ app.post(
           totalPages: pagesToProcess.length,
           totalViews: viewsToProcess.length,
           processedPages: results.length,
-          results: translatedResults, // Use translated results
+          results: translatedResults, // Use translated results (or enhanced original results if no translation)
           originalResults: results, // Keep original results for reference
           errors,
           startTime: new Date(startTime).toISOString(),
@@ -2408,6 +2444,33 @@ app.post(
         );
         throw new Error("Operation aborted by user");
       }
+
+      // Log final response summary to confirm text elements are present
+      console.log(`\n📤 [RESPONSE SUMMARY] Final response structure:`);
+      console.log(`   - Total results: ${translatedResults.length}`);
+      console.log(
+        `   - Results with extractedText: ${
+          translatedResults.filter(
+            (r) => r.extractedText && r.extractedText.length > 0
+          ).length
+        }`
+      );
+      console.log(
+        `   - Results with textElements: ${
+          translatedResults.filter(
+            (r) => r.textElements && r.textElements.length > 0
+          ).length
+        }`
+      );
+      console.log(
+        `   - Results with layoutSections: ${
+          translatedResults.filter(
+            (r) => r.layoutSections && r.layoutSections.length > 0
+          ).length
+        }`
+      );
+      console.log(`   - Translation enabled: ${!!targetLanguage}`);
+      console.log(`   - Total texts for metadata: ${allTexts.length}`);
 
       console.log(`\n📤 Sending response to client...`);
       res.json(response);

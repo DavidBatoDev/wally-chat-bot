@@ -188,6 +188,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         backgroundOpacity: 0, // Ensure full transparency
         color: "#000000",
         value: "", // Initially empty
+        placeholder: `Enter or Remove Text for Custom Textbox ${
+          customCount + 1
+        }`,
       }
     );
 
@@ -202,6 +205,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       height: 10,
       isCustomTextbox: true,
       status: "isEmpty",
+      placeholder: `Enter or Remove Text for Custom Textbox ${customCount + 1}`,
     });
   }, [onAddTextBox, onAddUntranslatedText, untranslatedTexts, currentPage]);
 
@@ -390,6 +394,16 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 const untranslatedText = untranslatedTexts.find(
                   (text) => text.translatedTextboxId === textbox.id
                 );
+
+                // Debug logging for placeholder linking
+                console.log(`🔍 [DEBUG] Textbox ${textbox.id} linking:`, {
+                  textboxId: textbox.id,
+                  untranslatedTextFound: !!untranslatedText,
+                  untranslatedTextId: untranslatedText?.id,
+                  untranslatedTextPlaceholder: untranslatedText?.placeholder,
+                  textboxPlaceholder: textbox.placeholder,
+                  originalText: originalText,
+                });
                 const effectiveStatus = getEffectiveStatus(
                   textbox,
                   untranslatedText
@@ -490,9 +504,26 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                                 "system-ui, -apple-system, sans-serif",
                               lineHeight: "1.3",
                             }}
-                            placeholder={
-                              textbox.placeholder || "Enter original text..."
-                            }
+                            placeholder={(() => {
+                              console.log(
+                                `🔍 [DEBUG] Placeholder for textbox ${textbox.id}:`,
+                                {
+                                  untranslatedTextPlaceholder:
+                                    untranslatedText?.placeholder,
+                                  textboxPlaceholder: textbox.placeholder,
+                                  fallback: "Enter original text...",
+                                  finalPlaceholder:
+                                    untranslatedText?.placeholder ||
+                                    textbox.placeholder ||
+                                    "Enter original text...",
+                                }
+                              );
+                              return (
+                                untranslatedText?.placeholder ||
+                                textbox.placeholder ||
+                                "Enter original text..."
+                              );
+                            })()}
                             spellCheck={false}
                           />
                         ) : originalText ? (
@@ -500,8 +531,27 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             {originalText}
                           </div>
                         ) : (
-                          <div className="flex items-center justify-center h-8 text-xs text-gray-400">
-                            No original text
+                          <div className="flex items-center justify-center h-8 text-xs text-gray-400 px-2 text-center">
+                            {(() => {
+                              console.log(
+                                `🔍 [DEBUG] No original text display for textbox ${textbox.id}:`,
+                                {
+                                  untranslatedTextPlaceholder:
+                                    untranslatedText?.placeholder,
+                                  textboxPlaceholder: textbox.placeholder,
+                                  fallback: "No original text",
+                                  finalDisplay:
+                                    untranslatedText?.placeholder ||
+                                    textbox.placeholder ||
+                                    "No original text",
+                                }
+                              );
+                              return (
+                                untranslatedText?.placeholder ||
+                                textbox.placeholder ||
+                                "No original text"
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
