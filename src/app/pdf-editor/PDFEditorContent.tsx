@@ -7158,8 +7158,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         </div>
 
                         {/* Gap between documents */}
-                        <div className="w-5 flex items-center justify-center">
-                          <div className="w-px h-full bg-gray-300"></div>
+                        <div className="shrink-0 w-5 flex items-center justify-center">
+                          <div className="w-px h-full bg-grey-300"></div>
                         </div>
 
                         {/* Translated Document Side */}
