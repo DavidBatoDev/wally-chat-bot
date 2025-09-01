@@ -304,9 +304,10 @@ const PageView: React.FC<{
         data-page-width={pageWidth}
         data-page-height={pageHeight}
         data-view-type={
-          translatedTemplateURL
+          // Always tag by the container/view being rendered so Puppeteer can target reliably
+          className?.includes("translated-page-container")
             ? "translated"
-            : finalLayoutUrl
+            : className?.includes("final-view-page-container") || finalLayoutUrl
             ? "final-layout"
             : "original"
         }
@@ -415,17 +416,35 @@ const PageView: React.FC<{
           />
         ) : (
           // Show white background for translated view or no content
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              width: "100%",
-              height: "100%",
-              background: "#ffffff",
-              zIndex: 0,
-            }}
-          />
+          <>
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                width: "100%",
+                height: "100%",
+                background: "#ffffff",
+                zIndex: 0,
+              }}
+            />
+            {/* Placeholder canvas to satisfy capture waiters that expect a canvas */}
+            <canvas
+              className="react-pdf__Page__canvas"
+              style={{
+                display: "block",
+                userSelect: "none",
+                width: pageWidth,
+                height: pageHeight,
+                position: "absolute",
+                left: 0,
+                top: 0,
+                opacity: 0.001, // practically invisible, keeps white background visible
+              }}
+              width={Math.round(pageWidth * 1.5)}
+              height={Math.round(pageHeight * 1.5)}
+            />
+          </>
         )}
 
         {/* Render all elements in correct layering order */}
