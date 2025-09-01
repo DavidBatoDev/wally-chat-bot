@@ -1188,6 +1188,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     }
 
     try {
+      // Toast-based progress UI
+      let toastCompleted = false;
+      const toastId = toast.loading("Preparing to create final layout...", {
+        duration: Infinity,
+      });
       // Reset cancellation flag at the very beginning
       snapshotCancelRef.current.cancelled = false;
       setIsCapturingSnapshots(true);
@@ -1221,6 +1226,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         documentState.numPages - documentState.deletedPages.size;
       const totalOperations = totalNonDeletedPages * 2; // original + translated for each page
       setSnapshotProgress({ current: 0, total: totalOperations });
+      toast.loading(`Creating Final Layout...`, {
+        id: toastId,
+        duration: Infinity,
+      });
 
       const captureResponse = await captureCurrentProjectPages(projectId, {
         quality: 2.0, // High quality capture
@@ -1244,6 +1253,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
       // Update progress to completed
       setSnapshotProgress({ current: totalOperations, total: totalOperations });
+      toast.loading(`Generating final layout PDF...`, {
+        id: toastId,
+        duration: Infinity,
+      });
 
       // Check if cancelled during capture
       if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
@@ -1369,12 +1382,19 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
         // Add interactive elements to the layout pages
         console.log("Adding interactive elements to layout...");
+        toast.loading(`Adding interactive elements...`, {
+          id: toastId,
+          duration: Infinity,
+        });
         await addInteractiveElementsToLayout(snapshots);
         console.log("Interactive elements added successfully");
 
-        toast.success(
-          "Created final layout with template page and interactive snapshots"
-        );
+        toast.success("Final layout created", {
+          id: toastId,
+          description:
+            "Template page generated and interactive snapshots added.",
+        });
+        toastCompleted = true;
         // Set view to final-layout and zoom to 100% after final layout creation
         setViewState((prev) => ({ ...prev, currentView: "final-layout" }));
         actions.updateScale(1.0);
@@ -1388,7 +1408,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             storeError.message.includes("worker")
           ) {
             toast.error(
-              "PDF worker error occurred. Please refresh the page and try again."
+              "PDF worker error occurred. Please refresh and try again."
             );
           } else {
             toast.error(
@@ -1400,6 +1420,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             "Created layout but failed to store final layout URL. Please try refreshing."
           );
         }
+        toastCompleted = true;
       }
     } catch (error) {
       console.error("Error creating final layout:", error);
@@ -1414,7 +1435,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             error.message.includes("worker")
           ) {
             toast.error(
-              "PDF worker error occurred. Please refresh the page and try again."
+              "PDF worker error occurred. Please refresh and try again."
             );
           } else {
             toast.error(`Failed to create final layout: ${error.message}`);
@@ -1422,14 +1443,23 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         } else {
           toast.error("Failed to create final layout due to an unknown error");
         }
-      } else {
-        toast.info("Snapshot capture cancelled");
+        // mark
       }
     } finally {
       setIsCapturingSnapshots(false);
       setIsCancellingSnapshots(false);
       setSnapshotProgress({ current: 0, total: 0 });
       snapshotCancelRef.current.cancelled = false;
+      // Ensure we don't leave a loading toast hanging
+      // If success/error already updated the toast, do nothing
+      // Otherwise dismiss
+      // Note: Sonner ignores dismiss for toasts already updated to success/error
+      try {
+        // @ts-ignore
+        if (typeof toastCompleted !== "undefined" && !toastCompleted) {
+          toast.dismiss();
+        }
+      } catch {}
     }
   }, [
     isCapturingSnapshots,
@@ -7911,22 +7941,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
       {/* Bulk OCR Loading Modal - Replaced with toast-based approach */}
 
-      {/* Snapshot Capturing Loading Modal */}
-      <LoadingModal
-        isOpen={isCapturingSnapshots}
-        title="Creating Final Layout"
-        message="Please wait while we capture page snapshots and create the final layout..."
-        progress={snapshotProgress}
-        onCancel={() => {
-          // Cancel snapshot capturing
-          snapshotCancelRef.current.cancelled = true;
-          setIsCancellingSnapshots(true);
-          toast.info("Cancelling snapshot capture...");
-          // Go back to layout step
-          handleWorkflowStepChange("layout", "final-layout");
-        }}
-        cancelText="Cancel"
-      />
+      {/* Snapshot Capturing: toast-based progress now; modal removed */}
 
       {/* PDF Export Loading Modal */}
       <LoadingModal
