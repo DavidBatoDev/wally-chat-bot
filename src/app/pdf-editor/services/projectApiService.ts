@@ -8,6 +8,7 @@ import {
   isSupabaseUrl,
   extractFilePathFromUrl,
   uploadFileToSupabase,
+  UploadProgressCallback,
 } from "./fileUploadService";
 import {
   getPdfPageCountFromFile,
@@ -366,10 +367,15 @@ export async function createProjectFromUpload(
     editorState: any;
     sourceLanguage: string;
     desiredLanguage: string;
-  }
+  },
+  onUploadProgress?: UploadProgressCallback
 ): Promise<ProjectResponse> {
   // First, upload the file to Supabase storage
-  const uploadResult = await uploadFileToSupabase(file, "project-uploads");
+  const uploadResult = await uploadFileToSupabase(
+    file,
+    "project-uploads",
+    onUploadProgress
+  );
 
   // Get file type information and page count
   const fileInfo = getFileTypeInfo(file);

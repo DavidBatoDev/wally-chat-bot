@@ -55,14 +55,30 @@ async function createFileObjectRecord(
   return data.id;
 }
 
+export interface UploadProgressCallback {
+  (progress: {
+    stage: "preparing" | "uploading" | "finalizing" | "complete";
+    percentage: number;
+    message: string;
+  }): void;
+}
+
 /**
  * Upload a file to Supabase storage and return its public URL
  */
 export async function uploadFileToSupabase(
   file: File,
-  folder: string = "documents"
+  folder: string = "documents",
+  onProgress?: UploadProgressCallback
 ): Promise<FileUploadResult> {
   try {
+    // Stage 1: Preparing
+    onProgress?.({
+      stage: "preparing",
+      percentage: 10,
+      message: "Preparing file for upload...",
+    });
+
     // Get current user
     const { user } = useAuthStore.getState();
     if (!user) {
@@ -77,6 +93,13 @@ export async function uploadFileToSupabase(
 
     // Create file path: userId/folder/uniqueFileName
     const filePath = `${user.id}/${folder}/${uniqueFileName}`;
+
+    // Stage 2: Uploading
+    onProgress?.({
+      stage: "uploading",
+      percentage: 30,
+      message: "Uploading to cloud storage...",
+    });
 
     // Upload file to storage
     const { data, error } = await supabase.storage
@@ -94,6 +117,13 @@ export async function uploadFileToSupabase(
       );
     }
 
+    // Stage 3: Getting URL
+    onProgress?.({
+      stage: "finalizing",
+      percentage: 70,
+      message: "Getting file URL...",
+    });
+
     // Get public URL
     const { data: publicUrlData } = supabase.storage
       .from("project-files")
@@ -102,6 +132,13 @@ export async function uploadFileToSupabase(
     if (!publicUrlData?.publicUrl) {
       throw new FileUploadError("Failed to get public URL for uploaded file");
     }
+
+    // Stage 4: Creating file record
+    onProgress?.({
+      stage: "finalizing",
+      percentage: 90,
+      message: "Creating file record...",
+    });
 
     // Create record in file_objects table
     let fileObjectId: string | undefined;
@@ -119,6 +156,13 @@ export async function uploadFileToSupabase(
       // Optionally, you could choose to fail the entire upload here
       // by re-throwing the error if file tracking is critical
     }
+
+    // Stage 5: Complete
+    onProgress?.({
+      stage: "complete",
+      percentage: 100,
+      message: "Upload complete!",
+    });
 
     return {
       publicUrl: publicUrlData.publicUrl,

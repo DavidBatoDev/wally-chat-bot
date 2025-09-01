@@ -6,20 +6,21 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Plus, 
-  FileText, 
-  Search, 
-  Filter, 
+import {
+  Plus,
+  FileText,
+  Search,
+  Filter,
   MoreVertical,
   Calendar,
   User,
   Globe,
   Lock,
   Eye,
-  Upload
+  Upload,
+  Loader2,
 } from "lucide-react";
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -31,13 +32,21 @@ import { getProject } from "./services/projectApiService";
 import { TextFormatProvider } from "@/components/editor/ElementFormatContext";
 import { PDFEditorContent } from "./PDFEditorContent";
 import ProjectPreview from "./components/ProjectPreview";
+import PDFTransformationLoader from "./components/PDFTransformationLoader";
+import UploadLoader from "./components/UploadLoader";
+import { toast } from "sonner";
+import {
+  transformPdfToA4Balanced,
+  needsA4Transformation,
+  TransformationProgress,
+} from "./services/pdfTransformService";
 
 // Import react-pdf CSS for text layer support
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 
 // Configure PDF.js worker
-import { pdfjs } from 'react-pdf';
+import { pdfjs } from "react-pdf";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -56,9 +65,29 @@ const PDFEditorDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreatingProject, setIsCreatingProject] = useState(false);
-  const [projectPreviews, setProjectPreviews] = useState<Record<string, any>>({});
-  const [previewsLoading, setPreviewsLoading] = useState<Record<string, boolean>>({});
+  const [projectPreviews, setProjectPreviews] = useState<Record<string, any>>(
+    {}
+  );
+  const [previewsLoading, setPreviewsLoading] = useState<
+    Record<string, boolean>
+  >({});
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // PDF Transformation state
+  const [isTransforming, setIsTransforming] = useState(false);
+  const [transformationProgress, setTransformationProgress] =
+    useState<TransformationProgress>({
+      stage: "loading",
+      message: "Initializing...",
+    });
+  const [currentFileName, setCurrentFileName] = useState<string>("");
+
+  // Upload state
+  const [uploadStage, setUploadStage] = useState<
+    "uploading" | "processing" | "complete" | "error"
+  >("uploading");
+  const [uploadMessage, setUploadMessage] = useState<string>("");
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   // Minimal project state setup just for getting saved projects
   const { getSavedProjects, deleteProject, loadProject } = useProjectState({
@@ -161,7 +190,7 @@ const PDFEditorDashboard: React.FC = () => {
   const {
     isCreatingProject: isCreatingProjectFromUpload,
     createProjectOnUpload,
-    projectCreationError
+    projectCreationError,
   } = useProjectCreation({
     documentState: {
       url: "",
@@ -271,16 +300,16 @@ const PDFEditorDashboard: React.FC = () => {
   // Load previews for database projects automatically
   useEffect(() => {
     const loadAllPreviews = async () => {
-      const databaseProjects = projects.filter(p => p.source === "database");
-      
+      const databaseProjects = projects.filter((p) => p.source === "database");
+
       // Load previews for first few projects to avoid overwhelming the API
       const projectsToLoad = databaseProjects.slice(0, 6);
-      
+
       for (const project of projectsToLoad) {
         if (!projectPreviews[project.id] && !previewsLoading[project.id]) {
           loadProjectPreview(project.id);
           // Add a small delay between requests to avoid overwhelming the server
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
     };
@@ -291,7 +320,7 @@ const PDFEditorDashboard: React.FC = () => {
   }, [projects]);
 
   // Filter projects based on search query
-  const filteredProjects = projects.filter(project =>
+  const filteredProjects = projects.filter((project) =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -301,20 +330,20 @@ const PDFEditorDashboard: React.FC = () => {
       return; // Already loaded or loading
     }
 
-    setPreviewsLoading(prev => ({ ...prev, [projectId]: true }));
-    
+    setPreviewsLoading((prev) => ({ ...prev, [projectId]: true }));
+
     try {
       const project = await getProject(projectId);
       if (project?.project_data) {
-        setProjectPreviews(prev => ({
+        setProjectPreviews((prev) => ({
           ...prev,
-          [projectId]: project.project_data
+          [projectId]: project.project_data,
         }));
       }
     } catch (error) {
       console.error("Error loading project preview:", error);
     } finally {
-      setPreviewsLoading(prev => ({ ...prev, [projectId]: false }));
+      setPreviewsLoading((prev) => ({ ...prev, [projectId]: false }));
     }
   };
 
@@ -323,35 +352,143 @@ const PDFEditorDashboard: React.FC = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsCreatingProject(true);
-    
+    setCurrentFileName(file.name);
+    let finalFile = file;
+
+    // Show initial upload toast
+    toast.info("Processing file upload...", {
+      description: `Preparing ${file.name} for upload`,
+      duration: 2000,
+    });
+
     try {
+      // Check if PDF needs A4 transformation
+      if (file.type === "application/pdf") {
+        const needsTransformation = await needsA4Transformation(file);
+
+        if (needsTransformation) {
+          setIsTransforming(true);
+          toast.info("Converting PDF to A4 format...", {
+            description: "This will ensure optimal viewing and editing",
+            duration: 3000,
+          });
+
+          // Transform PDF to A4 with balanced compression
+          const result = await transformPdfToA4Balanced(file, (progress) => {
+            setTransformationProgress(progress);
+          });
+
+          finalFile = result.transformedFile;
+          setIsTransforming(false);
+
+          // Show compression results
+          const compressionMessage =
+            result.compressionRatio > 0
+              ? `File size reduced by ${result.compressionRatio}%`
+              : "File optimized for upload";
+
+          toast.success("PDF transformed to A4 successfully!", {
+            description: compressionMessage,
+            duration: 3000,
+          });
+        }
+      }
+
+      // Now proceed with project creation
+      setIsCreatingProject(true);
+      setUploadStage("uploading");
+      setUploadMessage("Uploading file to cloud storage...");
+
       // Wait for the complete upload process to Supabase before redirecting
-      const projectId = await createProjectOnUpload(file);
+      const projectId = await createProjectOnUpload(finalFile, (progress) => {
+        // Update upload stage based on Supabase upload progress
+        setUploadProgress(progress.percentage);
+
+        if (progress.stage === "preparing") {
+          setUploadStage("uploading");
+          setUploadMessage("Preparing file for upload...");
+        } else if (progress.stage === "uploading") {
+          setUploadStage("uploading");
+          setUploadMessage(
+            `Uploading to cloud storage... ${progress.percentage}%`
+          );
+        } else if (progress.stage === "finalizing") {
+          setUploadStage("processing");
+          setUploadMessage(progress.message);
+        } else if (progress.stage === "complete") {
+          setUploadStage("processing");
+          setUploadMessage("File uploaded successfully, setting up project...");
+        }
+      });
       if (projectId) {
+        setUploadStage("processing");
+        setUploadMessage("Setting up your project...");
+
         // Refresh projects list to show the new project
         const savedProjects = await getSavedProjects();
         setProjects(savedProjects);
-        
-        // Navigate to the new project only after successful upload
-        router.push(`/pdf-editor/${projectId}`);
+
+        setUploadStage("complete");
+        setUploadMessage("Project created successfully!");
+
+        toast.success("File uploaded successfully!", {
+          description: "Redirecting to your new project...",
+          duration: 2000,
+        });
+
+        // Small delay to show completion state
+        setTimeout(() => {
+          router.push(`/pdf-editor/${projectId}`);
+        }, 1000);
       } else {
         // If projectId is null, the upload failed or user is not authenticated
         console.warn("Project creation failed - no project ID returned");
+        setUploadStage("error");
+        setUploadMessage("Project creation failed");
+
+        toast.error("Upload failed", {
+          description: "Please check your connection and try again",
+          duration: 4000,
+        });
       }
     } catch (error) {
       console.error("Error uploading file:", error);
-      // Don't redirect on error - let the user retry or handle the error
+      setUploadStage("error");
+      setUploadMessage("Upload failed - please try again");
+
+      toast.error("Upload failed", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        duration: 5000,
+      });
+
+      // Auto-hide error state after a delay
+      setTimeout(() => {
+        setIsCreatingProject(false);
+      }, 3000);
     } finally {
-      setIsCreatingProject(false);
-      // Reset file input
-      if (event.target) {
-        event.target.value = '';
-      }
+      // Only reset states if not showing error (to allow user to see error state)
+      setTimeout(
+        () => {
+          setIsTransforming(false);
+          setCurrentFileName("");
+          setUploadMessage("");
+          setUploadProgress(0);
+          // Reset file input
+          if (event.target) {
+            event.target.value = "";
+          }
+        },
+        uploadStage === "error" ? 3000 : 0
+      );
     }
   };
 
@@ -359,7 +496,10 @@ const PDFEditorDashboard: React.FC = () => {
     router.push(`/pdf-editor/${projectId}`);
   };
 
-  const handleDeleteProject = async (projectId: string, projectName: string) => {
+  const handleDeleteProject = async (
+    projectId: string,
+    projectName: string
+  ) => {
     if (window.confirm(`Are you sure you want to delete "${projectName}"?`)) {
       try {
         await deleteProject(projectId);
@@ -416,14 +556,30 @@ const PDFEditorDashboard: React.FC = () => {
           <div className="flex items-center space-x-4">
             <Button
               onClick={handleUploadNewFile}
-              disabled={isCreatingProject || isCreatingProjectFromUpload}
+              disabled={
+                isCreatingProject ||
+                isCreatingProjectFromUpload ||
+                isTransforming
+              }
               className="flex items-center space-x-2"
             >
-              <Upload className="h-4 w-4" />
-              <span>{isCreatingProject || isCreatingProjectFromUpload ? "Uploading..." : "Upload New File"}</span>
+              {isTransforming ||
+              isCreatingProject ||
+              isCreatingProjectFromUpload ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              <span>
+                {isTransforming
+                  ? "Transforming PDF..."
+                  : isCreatingProject || isCreatingProjectFromUpload
+                  ? "Uploading..."
+                  : "Upload New File"}
+              </span>
             </Button>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -461,9 +617,26 @@ const PDFEditorDashboard: React.FC = () => {
             <p className="text-gray-600 mb-6">
               Get started by uploading your first document.
             </p>
-            <Button onClick={handleUploadNewFile} disabled={isCreatingProject || isCreatingProjectFromUpload}>
-              <Upload className="h-4 w-4 mr-2" />
-              {isCreatingProject || isCreatingProjectFromUpload ? "Uploading..." : "Upload New File"}
+            <Button
+              onClick={handleUploadNewFile}
+              disabled={
+                isCreatingProject ||
+                isCreatingProjectFromUpload ||
+                isTransforming
+              }
+            >
+              {isTransforming ||
+              isCreatingProject ||
+              isCreatingProjectFromUpload ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              {isTransforming
+                ? "Transforming PDF..."
+                : isCreatingProject || isCreatingProjectFromUpload
+                ? "Uploading..."
+                : "Upload New File"}
             </Button>
           </div>
         )}
@@ -526,7 +699,7 @@ const PDFEditorDashboard: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Actions Menu */}
                   <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <DropdownMenu>
@@ -566,12 +739,18 @@ const PDFEditorDashboard: React.FC = () => {
                   {/* File Type Badge */}
                   <div className="absolute top-2 left-2">
                     {project.source === "database" ? (
-                      <Badge variant="default" className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 border-blue-200">
+                      <Badge
+                        variant="default"
+                        className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 border-blue-200"
+                      >
                         <Globe className="h-2.5 w-2.5 mr-1" />
                         Cloud
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="text-xs px-1.5 py-0.5">
+                      <Badge
+                        variant="secondary"
+                        className="text-xs px-1.5 py-0.5"
+                      >
                         <Lock className="h-2.5 w-2.5 mr-1" />
                         Local
                       </Badge>
@@ -600,7 +779,23 @@ const PDFEditorDashboard: React.FC = () => {
           type="file"
           accept=".pdf,.png,.jpg,.jpeg"
           onChange={handleFileUpload}
-          style={{ display: 'none' }}
+          style={{ display: "none" }}
+        />
+
+        {/* PDF Transformation Loader */}
+        <PDFTransformationLoader
+          isVisible={isTransforming}
+          progress={transformationProgress}
+          fileName={currentFileName}
+        />
+
+        {/* Upload Loader */}
+        <UploadLoader
+          isVisible={isCreatingProject && !isTransforming}
+          fileName={currentFileName}
+          stage={uploadStage}
+          message={uploadMessage}
+          progress={uploadStage === "uploading" ? uploadProgress : undefined}
         />
       </div>
     </div>

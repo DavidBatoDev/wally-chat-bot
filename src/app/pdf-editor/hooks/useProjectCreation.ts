@@ -8,6 +8,7 @@ import {
   createProjectFromUpload,
   ProjectApiError,
 } from "../services/projectApiService";
+import { UploadProgressCallback } from "../services/fileUploadService";
 import { useAuthStore } from "../../../lib/store/AuthStore";
 import {
   DocumentState,
@@ -59,7 +60,10 @@ export const useProjectCreation = (props: UseProjectCreationProps) => {
    * Create a new project automatically when a document is uploaded
    */
   const createProjectOnUpload = useCallback(
-    async (file: File): Promise<string | null> => {
+    async (
+      file: File,
+      onUploadProgress?: UploadProgressCallback
+    ): Promise<string | null> => {
       // Check if user is authenticated
       if (!isUserAuthenticated) {
         console.warn("User not authenticated, skipping project creation");
@@ -73,14 +77,19 @@ export const useProjectCreation = (props: UseProjectCreationProps) => {
       }));
 
       try {
-        const project = await createProjectFromUpload(file, documentState, {
-          viewState,
-          elementCollections,
-          layerState,
-          editorState,
-          sourceLanguage,
-          desiredLanguage,
-        });
+        const project = await createProjectFromUpload(
+          file,
+          documentState,
+          {
+            viewState,
+            elementCollections,
+            layerState,
+            editorState,
+            sourceLanguage,
+            desiredLanguage,
+          },
+          onUploadProgress
+        );
 
         setProjectCreationState({
           projectId: project.id,
