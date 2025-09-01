@@ -6041,9 +6041,21 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     ) => {
       setDocumentState((prev) => ({
         ...prev,
-        pages: prev.pages.map((page) =>
-          page.pageNumber === pageNumber ? { ...page, pageType } : page
-        ),
+        pages: prev.pages.map((page) => {
+          if (page.pageNumber !== pageNumber) return page;
+
+          // When page type changes, update template-related fields to reflect the new type
+          // We reset/remove any previously selected template so the UI can prompt/select appropriately
+          return {
+            ...page,
+            pageType,
+            template: null,
+            templateType: undefined,
+            translatedTemplateURL: undefined,
+            translatedTemplateWidth: undefined,
+            translatedTemplateHeight: undefined,
+          };
+        }),
       }));
     },
     []
