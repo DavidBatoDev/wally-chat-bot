@@ -541,6 +541,7 @@ app.get("/status", (req, res) => {
       : "not initialized",
     endpoints: [
       "POST /capture-and-ocr",
+      "POST /capture-all-pages",
       "POST /abort",
       "GET /health",
       "GET /status",
@@ -634,6 +635,389 @@ app.get("/debug", (req, res) => {
       puppeteerArgs: browser ? "configured" : "not configured",
     },
   });
+});
+
+// New API endpoint: Capture all non-deleted pages in both original and translated views
+app.post("/capture-all-pages", async (req, res) => {
+  let projectId;
+  let page = null;
+
+  try {
+    const {
+      projectId: reqProjectId,
+      captureUrl,
+      projectData,
+      quality = 1.0,
+      waitTime = 2000,
+    } = req.body;
+
+    projectId = reqProjectId;
+
+    console.log(
+      `\n📸 [${new Date().toISOString()}] Starting page capture session`
+    );
+    console.log(`📋 Request Details:`);
+    console.log(`   Project ID: ${projectId}`);
+    console.log(`   Capture URL: ${captureUrl}`);
+    console.log(`   Quality: ${quality}`);
+    console.log(`   Wait Time: ${waitTime}ms`);
+
+    const startTime = Date.now();
+
+    // Validate required parameters
+    if (!projectId || !captureUrl) {
+      console.error(`❌ Validation failed: Missing required parameters`);
+      return res.status(400).json({
+        success: false,
+        error: "Missing required parameters: projectId or captureUrl",
+      });
+    }
+
+    // Ensure browser is healthy
+    await ensureBrowserHealth();
+
+    // Create new page
+    page = await browser.newPage();
+
+    // Set page properties for high quality capture
+    await page.setViewport({
+      width: 1920,
+      height: 1080,
+      deviceScaleFactor: quality,
+    });
+
+    // Navigate to the capture URL
+    console.log(`🌐 Loading page: ${captureUrl}`);
+    await page.goto(captureUrl, {
+      waitUntil: ["networkidle0", "domcontentloaded"],
+      timeout: 60000,
+    });
+
+    // Wait for initial page load
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
+
+    // Get project state to determine pages and deleted pages
+    console.log(`📊 Fetching project state...`);
+    const projectState = await page.evaluate(() => {
+      // Try to access project state from the page
+      if (typeof window !== "undefined" && window.projectState) {
+        return window.projectState;
+      }
+      return null;
+    });
+
+    let totalPages = 0;
+    let deletedPages = new Set();
+    let pages = [];
+
+    // If project state is available, use it
+    if (projectState && projectState.documentState) {
+      totalPages = projectState.documentState.numPages || 0;
+      deletedPages = new Set(projectState.documentState.deletedPages || []);
+      pages = projectState.documentState.pages || [];
+    } else {
+      // Fallback: Try to determine pages from DOM
+      const domInfo = await page.evaluate(() => {
+        const pageElements = document.querySelectorAll("[data-page-number]");
+        const pageNumbers = Array.from(pageElements)
+          .map((el) => parseInt(el.getAttribute("data-page-number")))
+          .filter((num) => !isNaN(num));
+
+        return {
+          maxPage: pageNumbers.length > 0 ? Math.max(...pageNumbers) : 0,
+          detectedPages: pageNumbers,
+        };
+      });
+
+      totalPages = domInfo.maxPage;
+      console.log(`📄 Detected ${totalPages} pages from DOM`);
+    }
+
+    // Get list of non-deleted pages
+    const nonDeletedPages = [];
+    for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+      if (!deletedPages.has(pageNum)) {
+        nonDeletedPages.push(pageNum);
+      }
+    }
+
+    console.log(`📋 Total pages: ${totalPages}`);
+    console.log(`🗑️ Deleted pages: [${Array.from(deletedPages).join(", ")}]`);
+    console.log(`✅ Non-deleted pages: [${nonDeletedPages.join(", ")}]`);
+
+    if (nonDeletedPages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "No non-deleted pages found to capture",
+      });
+    }
+
+    const captures = [];
+    const viewTypes = ["original", "translated"];
+    const totalOperations = nonDeletedPages.length * viewTypes.length;
+    let completedOperations = 0;
+
+    // Capture each page in each view
+    for (const pageNum of nonDeletedPages) {
+      const pageData = pages.find((p) => p.pageNumber === pageNum);
+
+      for (const viewType of viewTypes) {
+        try {
+          console.log(`📸 Capturing page ${pageNum} - ${viewType} view...`);
+
+          // Use the proven capture method from the working OCR endpoint
+          console.log(
+            `📸 Using proven capture method for page ${pageNum} - ${viewType}...`
+          );
+
+          // Switch to the appropriate view first (if applicable)
+          if (viewType === "translated") {
+            try {
+              // Look for view switcher buttons and switch to translated view
+              await page.evaluate(() => {
+                // Try various possible selectors for translated view
+                const translatedButtons = [
+                  document.querySelector('[data-view="translated"]'),
+                  document.querySelector(".translated-view-btn"),
+                  document.querySelector('[aria-label*="Translated"]'),
+                  document.querySelector(
+                    '.view-toggle[data-view="translated"]'
+                  ),
+                ];
+
+                for (const button of translatedButtons) {
+                  if (button) {
+                    button.click();
+                    break;
+                  }
+                }
+              });
+
+              // Wait for view switch to complete
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            } catch (viewSwitchError) {
+              console.log(
+                `View switch to ${viewType} failed: ${viewSwitchError.message}`
+              );
+            }
+          }
+
+          // Inject dom-to-image library first (only once per page)
+          try {
+            await page.addScriptTag({
+              path: require.resolve("dom-to-image/dist/dom-to-image.min.js"),
+            });
+          } catch (injectError) {
+            // Library might already be injected, continue
+            console.log(
+              `dom-to-image already injected: ${injectError.message}`
+            );
+          }
+
+          // Wait for library to load
+          await page.waitForFunction(() => window.domtoimage, {
+            timeout: 10000,
+          });
+
+          // Build selectors scoped to the current view, with generic fallback
+          const scopedSelector =
+            viewType === "translated"
+              ? `.translated-page-container .react-pdf__Page[data-page-number="${pageNum}"]`
+              : `.original-page-container .react-pdf__Page[data-page-number="${pageNum}"]`;
+          const genericSelector = `.react-pdf__Page[data-page-number="${pageNum}"]`;
+
+          // Navigate to the specific page using proven navigation
+          let pageElement = await page.$(scopedSelector);
+          if (!pageElement) {
+            pageElement = await page.$(genericSelector);
+          }
+
+          if (!pageElement) {
+            console.log(
+              `⚠️ Page ${pageNum} not visible, attempting navigation...`
+            );
+
+            // Try click navigation first
+            try {
+              const pageNavButton = await page.$(
+                `[data-page-number="${pageNum}"]`
+              );
+              if (pageNavButton) {
+                await pageNavButton.click();
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+              }
+            } catch (clickError) {
+              console.log(`Click navigation failed: ${clickError.message}`);
+            }
+
+            // Try scroll navigation
+            try {
+              await page.evaluate((pageNumber) => {
+                const pageEl = document.querySelector(
+                  `.react-pdf__Page[data-page-number="${pageNumber}"]`
+                );
+                if (pageEl) {
+                  pageEl.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                }
+              }, pageNum);
+              await new Promise((resolve) => setTimeout(resolve, 1500));
+            } catch (scrollError) {
+              console.log(`Scroll navigation failed: ${scrollError.message}`);
+            }
+          }
+
+          // Wait for the page element to be available
+          try {
+            await page.waitForSelector(scopedSelector, { timeout: 20000 });
+          } catch (e) {
+            await page.waitForSelector(genericSelector, { timeout: 20000 });
+          }
+
+          // Wait for page to be ready for capture
+          await page.waitForFunction(
+            (sel) => {
+              const pageElement =
+                document.querySelector(sel) ||
+                document.querySelector(sel.replace(/^\.[^ ]+\s*/, ""));
+              if (!pageElement) return false;
+
+              const canvas = pageElement.querySelector("canvas");
+              const images = pageElement.querySelectorAll("img");
+
+              // Check if this is a PDF page or image page
+              const isPdfPage =
+                !!canvas && canvas.width > 100 && canvas.height > 100;
+              const isImagePage =
+                images.length > 0 &&
+                pageElement.offsetWidth > 100 &&
+                pageElement.offsetHeight > 100;
+
+              return isPdfPage || isImagePage;
+            },
+            { timeout: 25000 },
+            scopedSelector
+          );
+
+          // Capture using dom-to-image (proven method)
+          const captureData = await page.evaluate(
+            async (sel, fallbackSel) => {
+              const pageElement =
+                document.querySelector(sel) ||
+                document.querySelector(fallbackSel);
+              if (!pageElement) throw new Error("Page element not found");
+
+              // Use dom-to-image for capture
+              if (window.domtoimage && window.domtoimage.toPng) {
+                try {
+                  const dataUrl = await window.domtoimage.toPng(pageElement, {
+                    quality: 1.0,
+                    bgcolor: "#ffffff",
+                    width: pageElement.offsetWidth,
+                    height: pageElement.offsetHeight,
+                  });
+                  return dataUrl;
+                } catch (error) {
+                  throw new Error(
+                    `dom-to-image capture failed: ${error.message}`
+                  );
+                }
+              } else {
+                throw new Error("dom-to-image library not available");
+              }
+            },
+            scopedSelector,
+            genericSelector
+          );
+
+          captures.push({
+            pageNumber: pageNum,
+            viewType: viewType,
+            imageData: captureData,
+            timestamp: new Date().toISOString(),
+            pageType: pageData?.pageType || "dynamic_content",
+            isTranslated: pageData?.isTranslated || false,
+          });
+
+          completedOperations++;
+          console.log(
+            `✅ Captured page ${pageNum} - ${viewType} (${completedOperations}/${totalOperations})`
+          );
+        } catch (captureError) {
+          console.error(
+            `❌ Error capturing page ${pageNum} - ${viewType}:`,
+            captureError.message
+          );
+
+          // Add error capture entry
+          captures.push({
+            pageNumber: pageNum,
+            viewType: viewType,
+            error: captureError.message,
+            timestamp: new Date().toISOString(),
+            pageType: pageData?.pageType || "dynamic_content",
+            isTranslated: pageData?.isTranslated || false,
+          });
+
+          completedOperations++;
+        }
+      }
+    }
+
+    // Close the page
+    await page.close();
+    page = null;
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    console.log(`🎉 Page capture session completed!`);
+    console.log(`📊 Summary:`);
+    console.log(`   Total pages processed: ${nonDeletedPages.length}`);
+    console.log(
+      `   Total captures: ${captures.filter((c) => !c.error).length}`
+    );
+    console.log(`   Errors: ${captures.filter((c) => c.error).length}`);
+    console.log(`   Duration: ${duration}ms`);
+
+    // Return results
+    res.json({
+      success: true,
+      data: {
+        projectId: projectId,
+        totalPages: totalPages,
+        nonDeletedPages: nonDeletedPages,
+        deletedPages: Array.from(deletedPages),
+        captures: captures,
+        summary: {
+          totalPagesProcessed: nonDeletedPages.length,
+          totalCaptures: captures.filter((c) => !c.error).length,
+          totalErrors: captures.filter((c) => c.error).length,
+          processingTime: duration,
+        },
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`❌ [CAPTURE] Error in page capture:`, error);
+
+    // Close page if it exists
+    if (page) {
+      try {
+        await page.close();
+      } catch (closeError) {
+        console.error(`⚠️ Error closing page:`, closeError.message);
+      }
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || "Internal server error during page capture",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Main OCR capture endpoint

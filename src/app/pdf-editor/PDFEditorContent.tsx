@@ -124,11 +124,12 @@ import { useSpotlightTour } from "./hooks/useSpotlightTour";
 import { useLayoutTour } from "./hooks/useLayoutTour";
 import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
+import { createFinalLayoutPdf, SnapshotData } from "./services/snapshotService";
 import {
-  captureAllPageSnapshots,
-  createFinalLayoutPdf,
-  SnapshotData,
-} from "./services/snapshotService";
+  captureCurrentProjectPages,
+  convertCapturedPagesToSnapshots,
+  checkPuppeteerServiceHealth,
+} from "./services/pageCaptureService";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 // Import utilities
@@ -1198,26 +1199,51 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         snapshotCancelRef.current.cancelled
       );
 
-      // Capture all page snapshots with cancellation support
-      console.log("Starting snapshot capture...");
-      const snapshots = await captureAllPageSnapshots({
-        documentRef,
-        documentState,
-        pageState: {
-          deletedPages: documentState.deletedPages,
-        },
-        setViewState,
-        setDocumentState,
-        setEditorState,
-        editorState,
-        progressCallback: (current, total) => {
-          if (snapshotCancelRef.current.cancelled) {
-            console.log("Progress callback detected cancellation");
-            throw new Error("Snapshot capture cancelled");
-          }
-          setSnapshotProgress({ current, total });
-        },
+      // Check if Puppeteer service is available
+      const isPuppeteerAvailable = await checkPuppeteerServiceHealth();
+
+      if (!isPuppeteerAvailable) {
+        throw new Error(
+          "Puppeteer capture service is not available. Please ensure it's running on port 3001."
+        );
+      }
+
+      // Ensure we have a project ID
+      if (!projectId) {
+        throw new Error("Project ID is required for page capture");
+      }
+
+      // Capture all page snapshots using Puppeteer API
+      console.log("Starting Puppeteer page capture...");
+
+      // Set up progress tracking
+      const totalNonDeletedPages =
+        documentState.numPages - documentState.deletedPages.size;
+      const totalOperations = totalNonDeletedPages * 2; // original + translated for each page
+      setSnapshotProgress({ current: 0, total: totalOperations });
+
+      const captureResponse = await captureCurrentProjectPages(projectId, {
+        quality: 2.0, // High quality capture
+        waitTime: 2000, // Wait 2 seconds between captures
       });
+
+      // Check if cancelled during capture
+      if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
+        console.log("Snapshot capture was cancelled during capture phase");
+        return;
+      }
+
+      if (!captureResponse.success || !captureResponse.data) {
+        throw new Error(captureResponse.error || "Page capture failed");
+      }
+
+      // Convert captured pages to legacy snapshot format for compatibility
+      const snapshots = convertCapturedPagesToSnapshots(
+        captureResponse.data.captures
+      );
+
+      // Update progress to completed
+      setSnapshotProgress({ current: totalOperations, total: totalOperations });
 
       // Check if cancelled during capture
       if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
@@ -6226,11 +6252,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
             </svg>
-            <span className="text-blue-700 font-medium text-sm">
-              {bulkOcrProgress
-                ? `Transforming pages: ${bulkOcrProgress.current}/${bulkOcrProgress.total}`
-                : "Starting page transformation..."}
-            </span>
           </div>
         </div>
       )}
