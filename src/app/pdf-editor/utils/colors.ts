@@ -13,6 +13,11 @@ export const hexToRgba = (hex: string, opacity: number): string => {
 
 // Function to convert any color format to rgba with opacity
 export const colorToRgba = (color: string, opacity: number): string => {
+  // Explicitly support CSS 'transparent' and zero opacity
+  if (!color || color === "transparent" || opacity <= 0) {
+    return "transparent";
+  }
+
   // Handle hex colors
   if (color.startsWith("#")) {
     return hexToRgba(color, opacity);
@@ -42,8 +47,8 @@ export const colorToRgba = (color: string, opacity: number): string => {
     }
   }
 
-  // Fallback to black
-  return `rgba(0, 0, 0, ${opacity})`;
+  // Fallback to transparent to avoid unexpected black background
+  return opacity > 0 ? `rgba(0, 0, 0, ${opacity})` : "transparent";
 };
 
 // Function to convert rgb string to hex

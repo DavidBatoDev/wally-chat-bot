@@ -46,7 +46,12 @@ const renderTextBox = (tb: TextField, scale: number = 1) => (
       fontStyle: tb.italic ? "italic" : "normal",
       textDecoration: tb.underline ? "underline" : "none",
       color: tb.color || "#000",
-      background: colorToRgba(tb.backgroundColor, tb.backgroundOpacity ?? 0),
+      background:
+        tb.backgroundColor &&
+        tb.backgroundColor !== "transparent" &&
+        (tb.backgroundOpacity ?? 0) > 0
+          ? colorToRgba(tb.backgroundColor, tb.backgroundOpacity ?? 1)
+          : "transparent",
       border: tb.borderWidth
         ? `${tb.borderWidth * scale}px solid ${tb.borderColor || "#000"}`
         : "none",
