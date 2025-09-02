@@ -1233,8 +1233,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       });
 
       const captureResponse = await captureCurrentProjectPages(projectId, {
-        quality: 2.0, // High quality capture
-        waitTime: 2000, // Wait 2 seconds between captures
+        quality: 3.0, // Higher quality capture (3x scale)
+        waitTime: 2400, // Slightly longer to ensure render settles
       });
 
       // Check if cancelled during capture

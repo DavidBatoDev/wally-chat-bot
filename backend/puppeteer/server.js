@@ -914,7 +914,7 @@ app.post("/capture-all-pages", async (req, res) => {
 
           // Capture using dom-to-image (proven method)
           const captureData = await page.evaluate(
-            async (sel, fallbackSel) => {
+            async (sel, fallbackSel, captureScale) => {
               const pageElement =
                 document.querySelector(sel) ||
                 document.querySelector(fallbackSel);
@@ -923,11 +923,16 @@ app.post("/capture-all-pages", async (req, res) => {
               // Use dom-to-image for capture
               if (window.domtoimage && window.domtoimage.toPng) {
                 try {
+                  const scale = Math.max(2, Number(captureScale) || 2);
                   const dataUrl = await window.domtoimage.toPng(pageElement, {
                     quality: 1.0,
                     bgcolor: "#ffffff",
-                    width: pageElement.offsetWidth,
-                    height: pageElement.offsetHeight,
+                    width: Math.round(pageElement.offsetWidth * scale),
+                    height: Math.round(pageElement.offsetHeight * scale),
+                    style: {
+                      transform: `scale(${scale})`,
+                      transformOrigin: "top left",
+                    },
                   });
                   return dataUrl;
                 } catch (error) {
@@ -940,7 +945,8 @@ app.post("/capture-all-pages", async (req, res) => {
               }
             },
             scopedSelector,
-            genericSelector
+            genericSelector,
+            quality
           );
 
           captures.push({
@@ -3419,7 +3425,7 @@ async function capturePageView(
         let imageDataUrl;
         try {
           imageDataUrl = await page.evaluate(
-            async (pageNum, view) => {
+            async (pageNum, view, captureScale) => {
               const pageElement = document.querySelector(
                 `.react-pdf__Page[data-page-number="${pageNum}"]`
               );
@@ -3429,11 +3435,16 @@ async function capturePageView(
               if (window.domtoimage && window.domtoimage.toPng) {
                 try {
                   console.log(`      🎯 Using dom-to-image for capture...`);
+                  const scale = Math.max(2, Number(captureScale) || 2);
                   const dataUrl = await window.domtoimage.toPng(pageElement, {
                     quality: 1.0,
                     bgcolor: "#ffffff",
-                    width: pageElement.offsetWidth,
-                    height: pageElement.offsetHeight,
+                    width: Math.round(pageElement.offsetWidth * scale),
+                    height: Math.round(pageElement.offsetHeight * scale),
+                    style: {
+                      transform: `scale(${scale})`,
+                      transformOrigin: "top left",
+                    },
                   });
 
                   // Return the data URL as a string (no Buffer conversion in browser)
@@ -3448,7 +3459,8 @@ async function capturePageView(
               }
             },
             pageNumber,
-            viewType
+            viewType,
+            quality
           );
         } catch (captureError) {
           console.log(
@@ -3469,7 +3481,7 @@ async function capturePageView(
           );
           try {
             imageDataUrl = await page.evaluate(
-              async (pageNum, view) => {
+              async (pageNum, view, captureScale) => {
                 const pageElement = document.querySelector(
                   `.react-pdf__Page[data-page-number="${pageNum}"]`
                 );
@@ -3483,20 +3495,20 @@ async function capturePageView(
                     );
 
                     // For image-only pages, use optimized settings
+                    const scale = Math.max(2, Number(captureScale) || 2);
                     const captureOptions = {
-                      quality: 0.9, // Higher quality for image documents
+                      quality: 0.95, // Higher quality
                       bgcolor: "#ffffff",
-                      width: pageElement.offsetWidth,
-                      height: pageElement.offsetHeight,
+                      width: Math.round(pageElement.offsetWidth * scale),
+                      height: Math.round(pageElement.offsetHeight * scale),
+                      style: {
+                        transform: `scale(${scale})`,
+                        transformOrigin: "top left",
+                      },
                     };
 
                     // Add style options for better image capture
-                    if (pageElement.querySelectorAll("img").length > 0) {
-                      captureOptions.style = {
-                        transform: "scale(1)",
-                        "transform-origin": "top left",
-                      };
-                    }
+                    // (kept incorporated above)
 
                     const dataUrl = await window.domtoimage.toPng(
                       pageElement,
@@ -3513,7 +3525,8 @@ async function capturePageView(
                 }
               },
               pageNumber,
-              viewType
+              viewType,
+              quality
             );
             console.log(`      ✅ Fallback capture successful`);
           } catch (fallbackError) {
