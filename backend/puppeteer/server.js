@@ -9,6 +9,7 @@ const cors = require("cors");
 const FormData = require("form-data");
 const path = require("path");
 const fs = require("fs");
+const { createClient } = require("@supabase/supabase-js");
 
 // Translation service configuration
 const GOOGLE_TRANSLATE_API_KEY =
@@ -75,6 +76,25 @@ const upload = multer({
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Supabase client initialization (for storing OCR results)
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    console.log("✅ Supabase client initialized in Puppeteer service");
+  } catch (e) {
+    console.error("❌ Failed to initialize Supabase client:", e.message);
+  }
+} else {
+  console.warn(
+    "⚠️ SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Storage endpoint will be disabled."
+  );
+}
 
 // Initialize Puppeteer browser
 let browser;
@@ -3016,6 +3036,132 @@ app.post(
   }
 );
 
+// New endpoint: capture + OCR, then save serialized results to Supabase
+app.post("/capture-and-ocr-to-supabase", upload.single("project_data"), async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({
+      success: false,
+      error: "Supabase not configured in Puppeteer service",
+    });
+  }
+
+  const {
+    projectId,
+    captureUrl,
+    pageNumbers,
+    viewTypes,
+    ocrApiUrl = "http://localhost:8000/projects/process-file",
+    projectData,
+  } = req.body || {};
+
+  if (!projectId || !captureUrl || !pageNumbers) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing required parameters: projectId, captureUrl, pageNumbers",
+    });
+  }
+
+  try {
+    // Call existing flow to do the heavy lifting
+    const innerReq = {
+      body: { projectId, captureUrl, pageNumbers, viewTypes, ocrApiUrl, projectData },
+      headers: req.headers,
+    };
+    const ocrResult = await new Promise((resolve, reject) => {
+      // Reuse handler logic by invoking the existing endpoint handler functionally is complex.
+      // Instead, perform an HTTP call to this same service to avoid code duplication.
+      const serviceUrl = `http://localhost:${PORT}/capture-and-ocr`;
+      axios
+        .post(serviceUrl, innerReq.body, { headers: { "Content-Type": "application/json" } })
+        .then((r) => resolve(r.data))
+        .catch((e) => reject(e));
+    });
+
+    // Serialize like frontend
+    const { textBoxesByPage, pageDimensions, totalTextBoxes } = serializeOcrResponseNode(ocrResult);
+
+    // Build merge for projects.project_data.elementCollections
+    // We'll fetch the project first, then merge and update
+    const projectResp = await supabase.from("projects").select("id, project_data").eq("id", projectId).single();
+    if (projectResp.error) {
+      throw new Error(`Failed to load project: ${projectResp.error.message}`);
+    }
+    const existing = projectResp.data?.project_data || {};
+
+    const elementCollections = {
+      originalTextBoxes: existing.elementCollections?.originalTextBoxes || [],
+      originalShapes: existing.elementCollections?.originalShapes || [],
+      originalDeletionRectangles: existing.elementCollections?.originalDeletionRectangles || [],
+      originalImages: existing.elementCollections?.originalImages || [],
+      translatedTextBoxes: existing.elementCollections?.translatedTextBoxes || [],
+      translatedShapes: existing.elementCollections?.translatedShapes || [],
+      translatedDeletionRectangles: existing.elementCollections?.translatedDeletionRectangles || [],
+      translatedImages: existing.elementCollections?.translatedImages || [],
+      untranslatedTexts: existing.elementCollections?.untranslatedTexts || [],
+      finalLayoutTextboxes: existing.elementCollections?.finalLayoutTextboxes || [],
+      finalLayoutShapes: existing.elementCollections?.finalLayoutShapes || [],
+      finalLayoutDeletionRectangles: existing.elementCollections?.finalLayoutDeletionRectangles || [],
+      finalLayoutImages: existing.elementCollections?.finalLayoutImages || [],
+    };
+
+    // Flatten textBoxesByPage into respective view arrays
+    textBoxesByPage.forEach((viewMap, pageNumber) => {
+      viewMap.forEach((textBoxes, viewType) => {
+        if (viewType === "translated") {
+          elementCollections.translatedTextBoxes = [
+            ...elementCollections.translatedTextBoxes,
+            ...textBoxes,
+          ];
+        } else {
+          elementCollections.originalTextBoxes = [
+            ...elementCollections.originalTextBoxes,
+            ...textBoxes,
+          ];
+        }
+      });
+    });
+
+    const mergedProjectData = {
+      ...existing,
+      elementCollections,
+      documentState: {
+        ...(existing.documentState || {}),
+        pageWidth: existing.documentState?.pageWidth || [...pageDimensions.values()][0]?.width || existing.documentState?.pageWidth,
+        pageHeight: existing.documentState?.pageHeight || [...pageDimensions.values()][0]?.height || existing.documentState?.pageHeight,
+      },
+    };
+
+    // Update project row
+    const updateResp = await supabase
+      .from("projects")
+      .update({ project_data: mergedProjectData })
+      .eq("id", projectId)
+      .select("id")
+      .single();
+
+    if (updateResp.error) {
+      throw new Error(`Failed to update project: ${updateResp.error.message}`);
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        projectId,
+        totalTextBoxes,
+        updatedProjectId: updateResp.data.id,
+        ocrSummary: {
+          totalPages: ocrResult?.data?.totalPages,
+          processedPages: ocrResult?.data?.processedPages,
+          successRate: ocrResult?.data?.successRate,
+        },
+      },
+    });
+  } catch (e) {
+    console.error("❌ [/capture-and-ocr-to-supabase] Error:", e.message);
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Function to capture a specific page view
 async function capturePageView(
   page,
@@ -4209,6 +4355,131 @@ function extractTextFromStyledLayout(styledLayout) {
 
   console.log(`   - Total text elements extracted: ${textElements.length}`);
   return textElements;
+}
+
+// Minimal OCR serialization to TextFields compatible with frontend
+function rgbToHexNode(rgb) {
+  if (!rgb) return "transparent";
+  const r = Math.round((rgb.r ?? 0) * 255);
+  const g = Math.round((rgb.g ?? 0) * 255);
+  const b = Math.round((rgb.b ?? 0) * 255);
+  const a = rgb.a !== undefined ? rgb.a : 1;
+  if (a < 0.1) return "transparent";
+  return `#${r.toString(16).padStart(2, "0")}${g
+    .toString(16)
+    .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+function mapTextAlignmentNode(ocrAlignment) {
+  if (!ocrAlignment || typeof ocrAlignment !== "string") return "left";
+  const a = ocrAlignment.toLowerCase();
+  if (a === "center" || a === "right" || a === "justify") return a;
+  return "left";
+}
+
+function generateId() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0,
+      v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+function serializeEntitiesToTextFields(entities, pageNumber, pageWidth, pageHeight) {
+  if (!Array.isArray(entities)) return [];
+  const textBoxes = [];
+  for (const entity of entities) {
+    if (!entity || !entity.dimensions || !entity.styling) continue;
+    const { dimensions, styling } = entity;
+    const colors = styling.colors || {};
+
+    const backgroundColor = colors.background_color
+      ? rgbToHexNode(colors.background_color)
+      : "transparent";
+    const backgroundOpacity = colors.background_color?.a ?? 1;
+    const borderColor = colors.border_color ? rgbToHexNode(colors.border_color) : "#000000";
+    const textColor = colors.fill_color ? rgbToHexNode(colors.fill_color) : "#000000";
+
+    textBoxes.push({
+      id: generateId(),
+      x: dimensions.box_x ?? 0,
+      y: dimensions.box_y ?? 0,
+      width: Math.max(1, dimensions.box_width ?? 1),
+      height: Math.max(1, dimensions.box_height ?? 1),
+      value: entity.text ?? "",
+      placeholder: entity.type ? `Enter or Remove Text for ${entity.type}` : "",
+      fontSize: styling.font_size ?? 16,
+      fontFamily: styling.font_family || "Arial, sans-serif",
+      page: pageNumber,
+      type: entity.type || "text",
+      color: textColor,
+      bold: (styling.font_family || "").toLowerCase().includes("bold"),
+      italic: false,
+      underline: false,
+      textAlign: mapTextAlignmentNode(styling.text_alignment),
+      listType: "none",
+      letterSpacing: 0,
+      lineHeight: styling.line_spacing ?? 1.2,
+      rotation: 0,
+      backgroundColor,
+      backgroundOpacity,
+      borderColor: colors.border_color ? borderColor : "transparent",
+      borderWidth: colors.border_color ? 1 : 0,
+      borderRadius: styling.background?.border_radius || 0,
+      borderTopLeftRadius: styling.background?.border_radius || 0,
+      borderTopRightRadius: styling.background?.border_radius || 0,
+      borderBottomLeftRadius: styling.background?.border_radius || 0,
+      borderBottomRightRadius: styling.background?.border_radius || 0,
+      paddingTop: styling.text_padding || 0,
+      paddingRight: styling.text_padding || 0,
+      paddingBottom: styling.text_padding || 0,
+      paddingLeft: styling.text_padding || 0,
+      isEditing: false,
+      hasBeenManuallyResized: false,
+      zIndex: 1,
+    });
+  }
+  return textBoxes;
+}
+
+function serializeOcrResponseNode(ocrResponse) {
+  const textBoxesByPage = new Map();
+  const pageDimensions = new Map();
+  let totalTextBoxes = 0;
+
+  if (!ocrResponse || !ocrResponse.success || !ocrResponse.data?.results) {
+    return { textBoxesByPage, pageDimensions, totalTextBoxes };
+  }
+
+  for (const pageResult of ocrResponse.data.results) {
+    const { pageNumber, viewType, ocrResult, captureInfo } = pageResult || {};
+    if (captureInfo) {
+      pageDimensions.set(pageNumber, { width: captureInfo.width, height: captureInfo.height });
+    }
+    if (!textBoxesByPage.has(pageNumber)) textBoxesByPage.set(pageNumber, new Map());
+    const pageMap = textBoxesByPage.get(pageNumber);
+
+    let pageData = null;
+    if (ocrResult?.styled_layout?.pages && Array.isArray(ocrResult.styled_layout.pages)) {
+      pageData = ocrResult.styled_layout.pages.find((p) => p.page_number === pageNumber) || null;
+      if (!pageData && ocrResult.styled_layout.pages.length === 1) {
+        const sp = ocrResult.styled_layout.pages[0];
+        if (sp?.entities?.length) pageData = sp;
+      }
+    }
+
+    let entities = pageData?.entities || ocrResult?.styled_layout?.entities || [];
+    const textBoxes = serializeEntitiesToTextFields(
+      entities,
+      pageNumber,
+      captureInfo?.width || 0,
+      captureInfo?.height || 0
+    );
+    pageMap.set(viewType || "original", textBoxes);
+    totalTextBoxes += textBoxes.length;
+  }
+
+  return { textBoxesByPage, pageDimensions, totalTextBoxes };
 }
 
 // Function to extract text elements from styled_layout
