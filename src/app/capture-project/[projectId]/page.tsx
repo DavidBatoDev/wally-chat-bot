@@ -356,7 +356,7 @@ const PageView: React.FC<{
           >
             <Document file={translatedTemplateURL} loading={null} error={null}>
               <Page
-                pageNumber={pageNum}
+                pageNumber={1}
                 width={pageWidth}
                 scale={1}
                 renderAnnotationLayer={false}

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import { Document, Page } from "react-pdf";
 
 // Configure PDF.js worker
-import { pdfjs } from 'react-pdf';
+import { pdfjs } from "react-pdf";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -63,25 +63,24 @@ const DocumentView: React.FC<DocumentViewProps> = ({
   onTemplateLoadSuccess,
 }) => {
   const renderDocumentContent = () => {
-    
     if (isPdfFile(documentUrl)) {
       return (
-        <div 
+        <div
           className="pdf-container relative"
           style={{
             width: pageWidth * scale,
             height: pageHeight * scale,
-            overflow: 'hidden',
+            overflow: "hidden",
           }}
         >
           <div
             className="pdf-content"
             style={{
               transform: `scale(${scale})`,
-              transformOrigin: 'top left',
+              transformOrigin: "top left",
               width: pageWidth,
               height: pageHeight,
-              position: 'absolute',
+              position: "absolute",
               top: 0,
               left: 0,
             }}
@@ -102,12 +101,15 @@ const DocumentView: React.FC<DocumentViewProps> = ({
               loading={null}
             >
               <Page
-                pageNumber={currentPage}
+                pageNumber={viewType === "translated" ? 1 : currentPage}
                 scale={1.0} // Render at base scale
                 onLoadSuccess={(page) => {
                   if (viewType === "original") {
                     handlers.handlePageLoadSuccess(page);
-                  } else if (viewType === "translated" && onTemplateLoadSuccess) {
+                  } else if (
+                    viewType === "translated" &&
+                    onTemplateLoadSuccess
+                  ) {
                     const viewport = page.getViewport({ scale: 1 });
                     onTemplateLoadSuccess(
                       currentPage,
@@ -167,8 +169,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
           style={{
             width: pageWidth * scale,
             height: pageHeight * scale,
-            overflow: 'hidden',
-            position: 'relative',
+            overflow: "hidden",
+            position: "relative",
           }}
         >
           <img

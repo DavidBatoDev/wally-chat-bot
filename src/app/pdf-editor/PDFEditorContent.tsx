@@ -127,6 +127,12 @@ import { generateUUID } from "./utils/measurements";
 import { UntranslatedText } from "./types/pdf-editor.types";
 import { createFinalLayoutPdf, SnapshotData } from "./services/snapshotService";
 import {
+  transformPdfToA4Balanced,
+  needsA4Transformation,
+  convertImageToA4Pdf,
+  convertDocxToA4Pdf,
+} from "./services/pdfTransformService";
+import {
   captureCurrentProjectPages,
   convertCapturedPagesToSnapshots,
   checkPuppeteerServiceHealth,
@@ -4615,20 +4621,42 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       const file = event.target.files?.[0];
       if (!file) return;
 
-      const fileType = getFileType(file.name);
-
       if (!documentState.url) {
         toast.error("Please upload a document first before appending.");
         return;
       }
 
       try {
-        if (fileType === "image") {
-          // For images, add a new page with the image as an interactive element
-          await appendImageAsNewPage(file);
+        let fileToMerge: File | null = null;
+        const isImage = file.type.startsWith("image/");
+        const isDocx =
+          file.type.includes("officedocument.wordprocessingml") ||
+          file.name.toLowerCase().endsWith(".docx");
+        const isPdf = file.type === "application/pdf";
+
+        // 1) Normalize to A4 PDF
+        if (isImage) {
+          const { transformedFile } = await convertImageToA4Pdf(file);
+          fileToMerge = transformedFile;
+        } else if (isDocx) {
+          const { transformedFile } = await convertDocxToA4Pdf(file);
+          fileToMerge = transformedFile;
+        } else if (isPdf) {
+          const needsTransform = await needsA4Transformation(file);
+          if (needsTransform) {
+            const { transformedFile } = await transformPdfToA4Balanced(file);
+            fileToMerge = transformedFile;
+          } else {
+            fileToMerge = file;
+          }
         } else {
-          // For PDFs, merge the documents
-          await appendPdfDocument(file);
+          toast.error("Unsupported file type for appending.");
+          return;
+        }
+
+        // 2) Merge normalized A4 PDF into existing document
+        if (fileToMerge) {
+          await appendPdfDocument(fileToMerge);
         }
 
         // Switch to pages tab
@@ -5005,31 +5033,42 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     [currentProjectId]
   );
 
-  // Enhanced file upload handler with automatic project creation
+  // Enhanced file upload handler with A4 transformation pipeline (mirrors dashboard upload)
   const handleFileUpload = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
 
-      // Start upload loading state
       setIsUploadingFile(true);
+      let finalFile = file;
 
       try {
-        const fileType = getFileType(file.name);
-
         // Clear all elements and state when uploading a new document
         clearAllElementsAndState();
 
-        // Load the document directly without creating a project
-        if (fileType === "image") {
-          createBlankPdfAndAddImage(file);
-        } else {
-          actions.loadDocument(file);
-          setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+        // Apply same A4 transformation pipeline used in dashboard page
+        if (file.type.startsWith("image/")) {
+          const result = await convertImageToA4Pdf(file, () => {});
+          finalFile = result.transformedFile;
+        } else if (
+          file.type.includes("officedocument.wordprocessingml") ||
+          file.name.toLowerCase().endsWith(".docx")
+        ) {
+          const result = await convertDocxToA4Pdf(file, () => {});
+          finalFile = result.transformedFile;
+        } else if (file.type === "application/pdf") {
+          const needsTransform = await needsA4Transformation(file);
+          if (needsTransform) {
+            const result = await transformPdfToA4Balanced(file, () => {});
+            finalFile = result.transformedFile;
+          }
         }
 
+        // Load transformed (or original) document
+        actions.loadDocument(finalFile);
+        setViewState((prev) => ({ ...prev, activeSidebarTab: "pages" }));
+
         if (!isUserAuthenticated) {
-          // Show a toast suggesting the user to sign in for project management
           toast.info("Sign in to automatically save your projects!", {
             description:
               "You can still work on your document, but it won't be saved to your account. Click here to sign in.",
@@ -5037,7 +5076,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             action: {
               label: "Sign In",
               onClick: () => {
-                // Redirect to login page
                 window.location.href = "/auth/login";
               },
             },
@@ -5048,18 +5086,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         toast.error("Failed to upload file");
         setIsUploadingFile(false);
       }
-
-      // Note: setIsUploadingFile(false) will be called when document is loaded
-      // in the useEffect that monitors documentState.isDocumentLoaded
+      // setIsUploadingFile(false) is handled after document load effect
     },
-    [
-      getFileType,
-      createBlankPdfAndAddImage,
-      actions,
-      clearAllElementsAndState,
-      isUserAuthenticated,
-      setViewState,
-    ]
+    [actions, clearAllElementsAndState, isUserAuthenticated, setViewState]
   );
 
   // State for export confirmation modal
