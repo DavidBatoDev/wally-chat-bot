@@ -50,7 +50,7 @@ Captures all non-deleted pages of a document in both original and translated vie
         "viewType": "original|translated",
         "imageData": "base64 data URL",
         "timestamp": "ISO string",
-        "pageType": "social_media|birth_cert|nbi_clearance|dynamic_content",
+        "pageType": "social_media|birth_cert|nbi_clearance|apostille|dynamic_content",
         "isTranslated": "boolean"
       }
     ],

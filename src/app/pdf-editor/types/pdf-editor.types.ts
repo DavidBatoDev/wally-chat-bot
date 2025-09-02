@@ -20,6 +20,7 @@ export interface PageData {
     | "social_media"
     | "birth_cert"
     | "nbi_clearance"
+    | "apostille"
     | "dynamic_content";
   // Universal template data for all document types
   template?: Template | null;
@@ -308,10 +309,12 @@ export interface SidebarProps {
       | "social_media"
       | "birth_cert"
       | "nbi_clearance"
+      | "apostille"
       | "dynamic_content"
   ) => void;
   onBirthCertModalOpen?: (pageNumber?: number) => void;
   onNBIClearanceModalOpen?: (pageNumber?: number) => void;
+  onApostilleModalOpen?: (pageNumber?: number) => void;
   onResetTour?: () => void;
   documentRef?: React.RefObject<HTMLDivElement | null>;
   sourceLanguage?: string;

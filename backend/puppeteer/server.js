@@ -3767,7 +3767,8 @@ async function sendToOcrService(
           if (
             currentPageData &&
             (currentPageData.pageType === "birth_cert" ||
-              currentPageData.pageType === "nbi_clearance")
+              currentPageData.pageType === "nbi_clearance" ||
+              currentPageData.pageType === "apostille")
           ) {
             useTemplateOcr = true;
 
@@ -3787,7 +3788,9 @@ async function sendToOcrService(
               templateId =
                 currentPageData.pageType === "birth_cert"
                   ? "birth_cert_english_1993"
-                  : "nbi_clearance_default";
+                  : currentPageData.pageType === "nbi_clearance"
+                  ? "nbi_clearance_default"
+                  : "apostille_default";
               console.log(
                 `      ⚠️ [TEMPLATE OCR] No template ID found, using default: ${templateId}`
               );
@@ -3857,7 +3860,8 @@ async function sendToOcrService(
           if (
             currentPageData &&
             (currentPageData.pageType === "birth_cert" ||
-              currentPageData.pageType === "nbi_clearance")
+              currentPageData.pageType === "nbi_clearance" ||
+              currentPageData.pageType === "apostille")
           ) {
             useTemplateOcr = true;
 
@@ -3877,7 +3881,9 @@ async function sendToOcrService(
               templateId =
                 currentPageData.pageType === "birth_cert"
                   ? "birth_cert_english_1993"
-                  : "nbi_clearance_default";
+                  : currentPageData.pageType === "nbi_clearance"
+                  ? "nbi_clearance_default"
+                  : "apostille_default";
               console.log(
                 `      ⚠️ [TEMPLATE OCR] No template ID found, using default: ${templateId}`
               );

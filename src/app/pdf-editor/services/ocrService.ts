@@ -98,6 +98,7 @@ export interface OcrOptions {
     | "social_media"
     | "birth_cert"
     | "nbi_clearance"
+    | "apostille"
     | "dynamic_content";
   templateId?: string; // Template ID for all document types
   // Add complete project data for template detection
@@ -158,7 +159,11 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                   type:
                     options.pageType === "birth_cert"
                       ? "birth_certificate"
-                      : "nbi_clearance",
+                      : options.pageType === "nbi_clearance"
+                      ? "nbi_clearance"
+                      : options.pageType === "apostille"
+                      ? "apostille"
+                      : "dynamic_content",
                   variation: "template",
                 }
               : null,
@@ -167,6 +172,8 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
                 ? "birth_cert_template"
                 : options.pageType === "nbi_clearance"
                 ? "nbi_clearance_template"
+                : options.pageType === "apostille"
+                ? "apostille_template"
                 : undefined,
           },
         ],

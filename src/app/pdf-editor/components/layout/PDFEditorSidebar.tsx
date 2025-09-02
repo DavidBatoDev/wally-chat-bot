@@ -47,6 +47,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
   onPageTypeChange,
   onBirthCertModalOpen,
   onNBIClearanceModalOpen,
+  onApostilleModalOpen,
   onResetTour,
 }) => {
   // Determine if we're in final layout mode
@@ -238,7 +239,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                   {/* Show current template name for template pages */}
                   {!isFinalLayout &&
                     (currentPageType === "birth_cert" ||
-                      currentPageType === "nbi_clearance") &&
+                      currentPageType === "nbi_clearance" ||
+                      currentPageType === "apostille") &&
                     pageData?.templateType && (
                       <div className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border">
                         {pageData.templateType}
@@ -257,6 +259,18 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                       <Settings className="w-3 h-3 text-gray-400" />
                     </button>
                   )}
+                  {!isFinalLayout && currentPageType === "apostille" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onApostilleModalOpen?.(pageNum);
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Configure Apostille Template"
+                    >
+                      <Settings className="w-3 h-3 text-gray-400" />
+                    </button>
+                  )}
                   {!isFinalLayout ? (
                     permissions.shouldShowDocumentTypeSelector() ? (
                       <Select
@@ -269,6 +283,7 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                                 | "social_media"
                                 | "birth_cert"
                                 | "nbi_clearance"
+                                | "apostille"
                                 | "dynamic_content"
                             );
                           }
@@ -288,6 +303,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                               ? "bg-yellow-100 text-yellow-800 border-yellow-200"
                               : currentPageType === "nbi_clearance"
                               ? "bg-green-100 text-green-800 border-green-200"
+                              : currentPageType === "apostille"
+                              ? "bg-purple-100 text-purple-800 border-purple-200"
                               : "bg-gray-100 text-gray-800 border-gray-200"
                           }`}
                         >
@@ -297,6 +314,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                             ) : currentPageType === "birth_cert" ? (
                               <FileText className="w-3 h-3" />
                             ) : currentPageType === "nbi_clearance" ? (
+                              <FileText className="w-3 h-3" />
+                            ) : currentPageType === "apostille" ? (
                               <FileText className="w-3 h-3" />
                             ) : (
                               <Zap className="w-3 h-3" />
@@ -308,6 +327,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                                 ? "Birth Certificate"
                                 : currentPageType === "nbi_clearance"
                                 ? "NBI Clearance"
+                                : currentPageType === "apostille"
+                                ? "Apostille"
                                 : "Dynamic Content"}
                             </span>
                           </div>
@@ -331,6 +352,12 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                               <span>NBI Clearance</span>
                             </div>
                           </SelectItem>
+                          <SelectItem value="apostille">
+                            <div className="flex items-center space-x-2">
+                              <FileText className="w-3 h-3" />
+                              <span>Apostille</span>
+                            </div>
+                          </SelectItem>
                           <SelectItem value="dynamic_content">
                             <div className="flex items-center space-x-2">
                               <Zap className="w-3 h-3" />
@@ -347,6 +374,8 @@ export const PDFEditorSidebar: React.FC<SidebarProps> = ({
                           ? "Birth Certificate"
                           : currentPageType === "nbi_clearance"
                           ? "NBI Clearance"
+                          : currentPageType === "apostille"
+                          ? "Apostille"
                           : "Dynamic Content"}{" "}
                         (Read-only)
                       </div>

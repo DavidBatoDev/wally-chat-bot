@@ -15,6 +15,7 @@ export interface SnapshotData {
     | "social_media"
     | "birth_cert"
     | "nbi_clearance"
+    | "apostille"
     | "dynamic_content";
 }
 
@@ -30,6 +31,7 @@ export interface CaptureSnapshotsOptions {
         | "social_media"
         | "birth_cert"
         | "nbi_clearance"
+        | "apostille"
         | "dynamic_content";
       isTranslated: boolean;
     }>;
@@ -296,10 +298,10 @@ export async function createFinalLayoutPdf(snapshots: SnapshotData[]): Promise<{
 
     // Separate snapshots by page type
     const birthCertSnapshots = snapshots.filter(
-      (s) => s.pageType === "birth_cert"
+      (s) => s.pageType === "birth_cert" || s.pageType === "apostille"
     );
     const dynamicContentSnapshots = snapshots.filter(
-      (s) => s.pageType !== "birth_cert"
+      (s) => s.pageType !== "birth_cert" && s.pageType !== "apostille"
     );
 
     // Sort birth cert snapshots by page number (birth certs go first)

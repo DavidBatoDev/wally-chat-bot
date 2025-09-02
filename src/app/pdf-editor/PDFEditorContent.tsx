@@ -113,6 +113,7 @@ import { FinalLayoutSettings } from "./components/FinalLayoutSettings";
 import { UntranslatedTextHighlight } from "./components/UntranslatedTextHighlight";
 import { BirthCertificateSelectionModal } from "./components/BirthCertificateSelectionModal";
 import { NBIClearanceSelectionModal } from "./components/NBIClearanceSelectionModal";
+import { ApostilleSelectionModal } from "./components/ApostilleSelectionModal";
 import { LoadingModal } from "@/components/ui/loading-modal";
 import { ProjectSelectionModal } from "./components/ProjectSelectionModal";
 import {
@@ -415,7 +416,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     (
       pageNumber: number,
       template: any,
-      pageType: "birth_cert" | "nbi_clearance"
+      pageType: "birth_cert" | "nbi_clearance" | "apostille"
     ) => {
       console.log(
         `Setting ${pageType} template for page:`,
@@ -6032,6 +6033,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   const [showNBIClearanceModal, setShowNBIClearanceModal] = useState(false);
   const [nbiClearanceModalPage, setNBIClearanceModalPage] = useState<number>(1);
 
+  // Add state for apostille modal
+  const [showApostilleModal, setShowApostilleModal] = useState(false);
+  const [apostilleModalPage, setApostilleModalPage] = useState<number>(1);
+
   // Intercept file upload to show confirmation if a document is loaded
   const handleFileUploadIntercept = useCallback(() => {
     if (documentState.url) {
@@ -6067,6 +6072,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         | "social_media"
         | "birth_cert"
         | "nbi_clearance"
+        | "apostille"
         | "dynamic_content"
     ) => {
       setDocumentState((prev) => ({
@@ -6105,6 +6111,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     (pageNumber?: number) => {
       setNBIClearanceModalPage(pageNumber || documentState.currentPage);
       setShowNBIClearanceModal(true);
+    },
+    [documentState.currentPage]
+  );
+
+  // Apostille modal handler
+  const handleApostilleModalOpen = useCallback(
+    (pageNumber?: number) => {
+      setApostilleModalPage(pageNumber || documentState.currentPage);
+      setShowApostilleModal(true);
     },
     [documentState.currentPage]
   );
@@ -6367,6 +6382,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           onPageTypeChange={handlePageTypeChange}
           onBirthCertModalOpen={handleBirthCertModalOpen}
           onNBIClearanceModalOpen={handleNBIClearanceModalOpen}
+          onApostilleModalOpen={handleApostilleModalOpen}
           onResetTour={resetTour}
           documentRef={documentRef}
           sourceLanguage={sourceLanguage}
@@ -7921,6 +7937,35 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           );
 
           setShowNBIClearanceModal(false);
+        }}
+      />
+
+      {/* Apostille Selection Modal */}
+      <ApostilleSelectionModal
+        isOpen={showApostilleModal}
+        onClose={() => setShowApostilleModal(false)}
+        documentUrl={documentState.url}
+        currentPage={documentState.currentPage}
+        pageWidth={documentState.pageWidth}
+        pageHeight={documentState.pageHeight}
+        sourceLanguage={sourceLanguage}
+        desiredLanguage={desiredLanguage}
+        pageNumber={apostilleModalPage}
+        currentTemplate={getPageTemplate(apostilleModalPage)}
+        originalTextBoxes={elementCollections.originalTextBoxes}
+        originalShapes={elementCollections.originalShapes}
+        originalImages={elementCollections.originalImages}
+        pdfBackgroundColor={documentState.pdfBackgroundColor}
+        onTemplateSelect={(template, pageNumber) => {
+          // Update the specific page with the template information
+          setPageTemplate(pageNumber, template, "apostille");
+
+          // Show success message
+          toast.success(
+            `Template "${template.variation}" applied to page ${pageNumber}`
+          );
+
+          setShowApostilleModal(false);
         }}
       />
 
