@@ -285,7 +285,7 @@ export const MemoizedImage = memo(
             <img
               src={image.src}
               alt="Document image"
-              className="w-full h-full object-cover select-none"
+              className="w-full h-full object-contain select-none"
               style={{
                 opacity: image.opacity || 1,
                 border: image.borderWidth
@@ -294,6 +294,8 @@ export const MemoizedImage = memo(
                     }`
                   : "none",
                 borderRadius: `${(image.borderRadius || 0) * scale}px`,
+                objectPosition: "center",
+                backgroundColor: "#ffffff",
               }}
               draggable={false}
             />
