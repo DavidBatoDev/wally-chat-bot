@@ -715,6 +715,17 @@ app.post("/capture-all-pages", async (req, res) => {
       totalPages = projectState.documentState.numPages || 0;
       deletedPages = new Set(projectState.documentState.deletedPages || []);
       pages = projectState.documentState.pages || [];
+    } else if (
+      req.body &&
+      req.body.projectData &&
+      req.body.projectData.documentState
+    ) {
+      // Fallback to projectData provided by client
+      const ds = req.body.projectData.documentState;
+      totalPages = ds.numPages || 0;
+      deletedPages = new Set(ds.deletedPages || []);
+      pages = ds.pages || [];
+      console.log("📦 Using projectData.documentState from request body");
     } else {
       // Fallback: Try to determine pages from DOM
       const domInfo = await page.evaluate(() => {

@@ -46,12 +46,7 @@ const renderTextBox = (tb: TextField, scale: number = 1) => (
       fontStyle: tb.italic ? "italic" : "normal",
       textDecoration: tb.underline ? "underline" : "none",
       color: tb.color || "#000",
-      background:
-        tb.backgroundColor &&
-        tb.backgroundColor !== "transparent" &&
-        (tb.backgroundOpacity ?? 0) > 0
-          ? colorToRgba(tb.backgroundColor, tb.backgroundOpacity ?? 1)
-          : "transparent",
+      background: colorToRgba(tb.backgroundColor, tb.backgroundOpacity ?? 0),
       border: tb.borderWidth
         ? `${tb.borderWidth * scale}px solid ${tb.borderColor || "#000"}`
         : "none",
@@ -304,10 +299,9 @@ const PageView: React.FC<{
         data-page-width={pageWidth}
         data-page-height={pageHeight}
         data-view-type={
-          // Always tag by the container/view being rendered so Puppeteer can target reliably
-          className?.includes("translated-page-container")
+          translatedTemplateURL
             ? "translated"
-            : className?.includes("final-view-page-container") || finalLayoutUrl
+            : finalLayoutUrl
             ? "final-layout"
             : "original"
         }
@@ -416,35 +410,17 @@ const PageView: React.FC<{
           />
         ) : (
           // Show white background for translated view or no content
-          <>
-            <div
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                width: "100%",
-                height: "100%",
-                background: "#ffffff",
-                zIndex: 0,
-              }}
-            />
-            {/* Placeholder canvas to satisfy capture waiters that expect a canvas */}
-            <canvas
-              className="react-pdf__Page__canvas"
-              style={{
-                display: "block",
-                userSelect: "none",
-                width: pageWidth,
-                height: pageHeight,
-                position: "absolute",
-                left: 0,
-                top: 0,
-                opacity: 0.001, // practically invisible, keeps white background visible
-              }}
-              width={Math.round(pageWidth * 1.5)}
-              height={Math.round(pageHeight * 1.5)}
-            />
-          </>
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              width: "100%",
+              height: "100%",
+              background: "#ffffff",
+              zIndex: 0,
+            }}
+          />
         )}
 
         {/* Render all elements in correct layering order */}
@@ -1323,6 +1299,27 @@ const ProjectPageView: React.FC<ProjectPageViewProps> = ({ params }) => {
         getCurrentPageDimensions;
     }
   }, [project, getCurrentPageDimensions]);
+
+  // Expose minimal project state for Puppeteer capture to read pageType and pages
+  useEffect(() => {
+    if (project) {
+      try {
+        const deletedPages = Array.isArray(project.documentState.deletedPages)
+          ? project.documentState.deletedPages
+          : Array.from((project.documentState.deletedPages as any) || []);
+
+        (window as any).projectState = {
+          documentState: {
+            numPages: project.documentState.numPages,
+            deletedPages,
+            pages: project.documentState.pages,
+          },
+        };
+        // Optional: quick sanity log
+        // console.log("[Capture Page] window.projectState ready:", (window as any).projectState);
+      } catch {}
+    }
+  }, [project]);
 
   if (loading) {
     return (

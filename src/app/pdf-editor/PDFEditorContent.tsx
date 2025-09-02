@@ -1268,11 +1268,63 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       }
 
       console.log("Captured snapshots:", snapshots.length, "snapshots");
-      setCapturedSnapshots(snapshots);
+      // Align/derive pageType from document state and template metadata if available
+      const correctedSnapshots = snapshots.map((s) => {
+        const pageMeta = documentState.pages?.find(
+          (p: any) => p.pageNumber === s.pageNumber
+        );
+
+        const normalize = (v?: string) => (v || "").toLowerCase();
+        const pageType = normalize(pageMeta?.pageType as any);
+        const docType = normalize((pageMeta as any)?.template?.doc_type);
+        const templateType = normalize((pageMeta as any)?.templateType);
+
+        let derivedType = s.pageType as any;
+        if (
+          pageType === "birth_cert" ||
+          pageType === "nbi_clearance" ||
+          pageType === "apostille"
+        ) {
+          derivedType = pageType;
+        } else if (
+          docType.includes("birth_certificate") ||
+          docType.includes("birth_cert")
+        ) {
+          derivedType = "birth_cert";
+        } else if (docType.includes("nbi_clearance")) {
+          derivedType = "nbi_clearance";
+        } else if (docType.includes("apostille")) {
+          derivedType = "apostille";
+        } else if (
+          templateType.includes("birth") ||
+          templateType.includes("birth_cert")
+        ) {
+          derivedType = "birth_cert";
+        } else if (templateType.includes("nbi")) {
+          derivedType = "nbi_clearance";
+        } else if (templateType.includes("apostille")) {
+          derivedType = "apostille";
+        }
+
+        return derivedType && derivedType !== s.pageType
+          ? { ...s, pageType: derivedType }
+          : s;
+      });
+
+      try {
+        const typeCounts: Record<string, number> = {};
+        correctedSnapshots.forEach((s: any) => {
+          const t = s.pageType || "(unset)";
+          typeCounts[t] = (typeCounts[t] || 0) + 1;
+        });
+        console.log("🔎 Corrected snapshots pageType counts:", typeCounts);
+      } catch {}
+
+      setCapturedSnapshots(correctedSnapshots);
 
       // Create final layout PDF with template page and snapshots
       console.log("Creating final layout PDF with template page...");
-      const finalLayoutResult = await createFinalLayoutPdf(snapshots);
+      const finalLayoutResult = await createFinalLayoutPdf(correctedSnapshots);
 
       // Check if cancelled after PDF creation
       if (snapshotCancelRef.current.cancelled || isCancellingSnapshots) {
@@ -1396,8 +1448,17 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             "Template page generated and interactive snapshots added.",
         });
         toastCompleted = true;
-        // Set view to final-layout and zoom to 100% after final layout creation
-        setViewState((prev) => ({ ...prev, currentView: "final-layout" }));
+        // After successful creation, move to final-layout step and view
+        setViewState((prev) => ({
+          ...prev,
+          currentView: "final-layout",
+          currentWorkflowStep: "final-layout",
+          activeSidebarTab: "pages",
+        }));
+        // Clear any deferred workflow change
+        try {
+          setPendingWorkflowStep(null);
+        } catch {}
         actions.updateScale(1.0);
       } catch (storeError) {
         console.error("Error storing final layout URL:", storeError);
@@ -1852,27 +1913,33 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       );
 
       // Separate snapshots by page type (matching the PDF creation logic)
-      const birthCertSnapshots = snapshots.filter(
-        (s) => s.pageType === "birth_cert"
+      const documentsSnapshot = snapshots.filter(
+        (s) =>
+          s.pageType === "birth_cert" ||
+          s.pageType === "nbi_clearance" ||
+          s.pageType === "apostille"
       );
-      const dynamicContentSnapshots = snapshots.filter(
-        (s) => s.pageType !== "birth_cert"
+      const SocialMediaSnapshots = snapshots.filter(
+        (s) =>
+          s.pageType !== "birth_cert" &&
+          s.pageType !== "nbi_clearance" &&
+          s.pageType !== "apostille"
       );
 
       // Sort both arrays by page number
-      birthCertSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
-      dynamicContentSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
+      documentsSnapshot.sort((a, b) => a.pageNumber - b.pageNumber);
+      SocialMediaSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
 
       console.log(
-        `Processing ${birthCertSnapshots.length} birth cert snapshots and ${dynamicContentSnapshots.length} dynamic content snapshots`
+        `Processing ${documentsSnapshot.length} document snapshots and ${SocialMediaSnapshots.length} social media/dynamic snapshots`
       );
 
       let currentPdfPageNumber = 2; // Start after template page (page 1)
 
-      // 1. Process birth certificate pages (2 PDF pages per birth cert: original + translated)
-      for (const snapshot of birthCertSnapshots) {
+      // 1. Process document pages (2 PDF pages per doc: original + translated)
+      for (const snapshot of documentsSnapshot) {
         console.log(
-          `Adding birth cert elements for original page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`
+          `Adding document elements for original page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`
         );
 
         // Add full-page original image
@@ -1881,12 +1948,12 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           snapshot.originalWidth,
           snapshot.originalHeight,
           currentPdfPageNumber,
-          `birth-cert-original-${snapshot.pageNumber}`
+          `document-original-${snapshot.pageNumber}`
         );
         currentPdfPageNumber++;
 
         console.log(
-          `Adding birth cert elements for translated page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`
+          `Adding document elements for translated page ${snapshot.pageNumber} -> PDF page ${currentPdfPageNumber}`
         );
 
         // Add full-page translated image
@@ -1895,37 +1962,37 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           snapshot.translatedWidth,
           snapshot.translatedHeight,
           currentPdfPageNumber,
-          `birth-cert-translated-${snapshot.pageNumber}`
+          `document-translated-${snapshot.pageNumber}`
         );
         currentPdfPageNumber++;
       }
 
-      // 2. Process dynamic content pages (2x2 grid layout)
-      if (dynamicContentSnapshots.length > 0) {
+      // 2. Process social media/dynamic content pages (2x2 grid layout)
+      if (SocialMediaSnapshots.length > 0) {
         console.log(
           `Starting dynamic content layout from PDF page ${currentPdfPageNumber}`
         );
 
-        const dynamicPagesNeeded = Math.ceil(
-          dynamicContentSnapshots.length / 2
+        const socialMediaPageNeeded = Math.ceil(
+          SocialMediaSnapshots.length / 2
         );
 
         for (
           let pdfPageIndex = 0;
-          pdfPageIndex < dynamicPagesNeeded;
+          pdfPageIndex < socialMediaPageNeeded;
           pdfPageIndex++
         ) {
           const pageNumber = currentPdfPageNumber + pdfPageIndex;
-          const snapshot1 = dynamicContentSnapshots[pdfPageIndex * 2];
-          const snapshot2 = dynamicContentSnapshots[pdfPageIndex * 2 + 1];
+          const snapshot1 = SocialMediaSnapshots[pdfPageIndex * 2];
+          const snapshot2 = SocialMediaSnapshots[pdfPageIndex * 2 + 1];
 
           console.log(
             `Adding dynamic content elements to PDF page ${pageNumber}`
           );
 
-          // Calculate layout dimensions (matching the PDF creation logic)
-          const pageWidth = 612; // Letter size in points
-          const pageHeight = 792;
+          // Calculate layout dimensions (matching the PDF creation logic) - A4 size in points
+          const pageWidth = 595.28;
+          const pageHeight = 841.89;
           const gridMargin = 10;
           const gridSpacing = 8;
           const labelSpace = 15;
@@ -2089,13 +2156,35 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
 
       // Handle entering final-layout step
       if (step === "final-layout" && prev !== "final-layout") {
-        // Disable edit mode for final layout to prevent editing
+        // Gate transition until final layout assets are ready
+        const hasFinalLayoutElements =
+          elementCollections.finalLayoutTextboxes.length > 0 ||
+          elementCollections.finalLayoutShapes.length > 0 ||
+          elementCollections.finalLayoutImages.length > 0 ||
+          elementCollections.finalLayoutDeletionRectangles.length > 0;
+        const hasFinalLayoutUrl = !!documentState.finalLayoutUrl;
+
+        if (!hasFinalLayoutElements || !hasFinalLayoutUrl) {
+          if (!isCapturingSnapshots) {
+            console.log(
+              "Final layout not ready. Starting createFinalLayoutWithSnapshots and deferring step change."
+            );
+            setPendingWorkflowStep("final-layout");
+            createFinalLayoutWithSnapshots();
+          } else {
+            console.log(
+              "Final layout generation already in progress. Deferring step change."
+            );
+          }
+          return; // Block switching to final-layout until ready
+        }
+
+        // Final layout is ready: now switch view and UI state
         setEditorState((prev) => ({
           ...prev,
           isEditMode: false,
         }));
 
-        // Set view to final-layout and zoom to 100%
         setViewState((prev) => ({
           ...prev,
           currentView: "final-layout",
@@ -2112,27 +2201,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           "Entering final-layout step, setting showFinalLayoutSettings to true"
         );
         setShowFinalLayoutSettings(true);
-
-        // Check if final layout elements exist
-        const hasFinalLayoutElements =
-          elementCollections.finalLayoutTextboxes.length > 0 ||
-          elementCollections.finalLayoutShapes.length > 0 ||
-          elementCollections.finalLayoutImages.length > 0 ||
-          elementCollections.finalLayoutDeletionRectangles.length > 0;
-
-        if (!hasFinalLayoutElements && !isCapturingSnapshots) {
-          // Only capture snapshots if no final layout elements exist and not already capturing
-          console.log(
-            "No final layout elements found, capturing fresh snapshots for final layout"
-          );
-          createFinalLayoutWithSnapshots();
-        } else if (hasFinalLayoutElements) {
-          console.log(
-            "Final layout elements already exist, skipping snapshot capture"
-          );
-        } else {
-          console.log("Snapshot capture already in progress, skipping");
-        }
       }
 
       // Update workflow step first

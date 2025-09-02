@@ -99,6 +99,25 @@ export async function captureAllPages(
     console.log(`   Total captures: ${result.data?.summary.totalCaptures}`);
     console.log(`   Errors: ${result.data?.summary.totalErrors}`);
 
+    try {
+      const captures = result.data?.captures || [];
+      const typeCounts: Record<string, number> = {};
+      captures.forEach((c) => {
+        const t = c.pageType || "(unset)";
+        typeCounts[t] = (typeCounts[t] || 0) + 1;
+      });
+      console.log("🔎 Capture pageType counts:", typeCounts);
+      console.log(
+        "🔎 Sample captures:",
+        captures.slice(0, 6).map((c) => ({
+          pageNumber: c.pageNumber,
+          viewType: c.viewType,
+          pageType: c.pageType,
+          hasError: !!c.error,
+        }))
+      );
+    } catch {}
+
     return result;
   } catch (error) {
     const errorMessage =
@@ -126,10 +145,20 @@ export async function captureCurrentProjectPages(
     captureUrl = `${baseUrl}/capture-project/${projectId}`;
   }
 
+  // Try to include minimal projectData for Puppeteer (documentState only)
+  let projectData = options.projectData;
+  try {
+    const docState = (window as any)?.__WALLY_DOC_STATE__;
+    if (!projectData && docState) {
+      projectData = { documentState: docState };
+    }
+  } catch {}
+
   return captureAllPages({
     projectId,
     captureUrl,
     ...options,
+    projectData,
   });
 }
 
@@ -350,6 +379,21 @@ export function convertCapturedPagesToSnapshots(
       });
     }
   });
+
+  try {
+    const typeCounts: Record<string, number> = {};
+    snapshots.forEach((s) => {
+      const t = s.pageType || "(unset)";
+      typeCounts[t] = (typeCounts[t] || 0) + 1;
+    });
+    console.log("🔎 Snapshots pageType counts:", typeCounts);
+    console.log(
+      "🔎 Snapshot sample:",
+      snapshots
+        .slice(0, 6)
+        .map((s) => ({ pageNumber: s.pageNumber, pageType: s.pageType }))
+    );
+  } catch {}
 
   return snapshots;
 }

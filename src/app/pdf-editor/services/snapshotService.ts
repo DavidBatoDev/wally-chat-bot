@@ -274,6 +274,24 @@ export async function createFinalLayoutPdf(snapshots: SnapshotData[]): Promise<{
 }> {
   try {
     const pdfDoc = await PDFDocument.create();
+    // A4 size in PDF points (72 DPI): 595.28 x 841.89
+    const A4_WIDTH = 595.28;
+    const A4_HEIGHT = 841.89;
+
+    try {
+      const typeCounts: Record<string, number> = {};
+      snapshots.forEach((s) => {
+        const t = s.pageType || "(unset)";
+        typeCounts[t] = (typeCounts[t] || 0) + 1;
+      });
+      console.log("🔎 Input snapshots pageType counts:", typeCounts);
+      console.log(
+        "🔎 Input snapshot sample:",
+        snapshots
+          .slice(0, 6)
+          .map((s) => ({ pageNumber: s.pageNumber, pageType: s.pageType }))
+      );
+    } catch {}
 
     // Load and add the export_first_page.pdf as the first page
     try {
@@ -297,31 +315,35 @@ export async function createFinalLayoutPdf(snapshots: SnapshotData[]): Promise<{
     }
 
     // Separate snapshots by page type
-    const birthCertSnapshots = snapshots.filter(
-      (s) => s.pageType === "birth_cert" || s.pageType === "apostille"
+    const documentsSnapshot = snapshots.filter(
+      (s) =>
+        s.pageType === "birth_cert" ||
+        s.pageType === "nbi_clearance" ||
+        s.pageType === "apostille"
     );
-    const dynamicContentSnapshots = snapshots.filter(
-      (s) => s.pageType !== "birth_cert" && s.pageType !== "apostille"
+    const SocialMediaSnapshots = snapshots.filter(
+      (s) =>
+        s.pageType !== "birth_cert" &&
+        s.pageType !== "nbi_clearance" &&
+        s.pageType !== "apostille"
     );
 
-    // Sort birth cert snapshots by page number (birth certs go first)
-    birthCertSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
-
-    // Sort dynamic content snapshots by page number
-    dynamicContentSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
+    // Sort snapshots by page number
+    documentsSnapshot.sort((a, b) => a.pageNumber - b.pageNumber);
+    SocialMediaSnapshots.sort((a, b) => a.pageNumber - b.pageNumber);
 
     console.log(
-      `Processing ${birthCertSnapshots.length} birth certificate pages and ${dynamicContentSnapshots.length} dynamic content pages`
+      `Processing ${documentsSnapshot.length} document pages and ${SocialMediaSnapshots.length} social media/dynamic pages`
     );
 
-    // Process birth certificate pages first (each gets 2 full pages: original + translated)
-    for (const snapshot of birthCertSnapshots) {
+    // Process document pages first (each gets 2 full A4 pages: original + translated)
+    for (const snapshot of documentsSnapshot) {
       console.log(
-        `DEBUG: Creating birth cert pages for page ${snapshot.pageNumber}`
+        `DEBUG: Creating document pages (A4) for page ${snapshot.pageNumber}`
       );
 
-      // Add original page (blank)
-      const originalPage = pdfDoc.addPage([612, 792]); // Letter size
+      // Add original page (blank, A4)
+      const originalPage = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
       const { width: pageWidth, height: pageHeight } = originalPage.getSize();
 
       // Create a clean white background
@@ -333,8 +355,8 @@ export async function createFinalLayoutPdf(snapshots: SnapshotData[]): Promise<{
         color: rgb(1, 1, 1), // White background
       });
 
-      // Add translated page (blank)
-      const translatedPage = pdfDoc.addPage([612, 792]); // Letter size
+      // Add translated page (blank, A4)
+      const translatedPage = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
 
       // Create a clean white background
       translatedPage.drawRectangle({
@@ -346,20 +368,20 @@ export async function createFinalLayoutPdf(snapshots: SnapshotData[]): Promise<{
       });
     }
 
-    // Process dynamic content pages in 2x2 grid layout (blank pages)
-    const dynamicPagesNeeded = Math.ceil(dynamicContentSnapshots.length / 2);
+    // Process social media/dynamic content pages in 2x2 layout (2 snapshots per PDF page)
+    const socialMediaPageNeeded = Math.ceil(SocialMediaSnapshots.length / 2);
 
     for (
       let pdfPageIndex = 0;
-      pdfPageIndex < dynamicPagesNeeded;
+      pdfPageIndex < socialMediaPageNeeded;
       pdfPageIndex++
     ) {
-      const page = pdfDoc.addPage([612, 792]); // Letter size
+      const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
       const { width: pageWidth, height: pageHeight } = page.getSize();
 
       // Get snapshots for this PDF page (2 snapshots per PDF page for dynamic content)
-      const snapshot1 = dynamicContentSnapshots[pdfPageIndex * 2];
-      const snapshot2 = dynamicContentSnapshots[pdfPageIndex * 2 + 1];
+      const snapshot1 = SocialMediaSnapshots[pdfPageIndex * 2];
+      const snapshot2 = SocialMediaSnapshots[pdfPageIndex * 2 + 1];
 
       // Create a clean white background
       page.drawRectangle({
