@@ -38,6 +38,8 @@ import { toast } from "sonner";
 import {
   transformPdfToA4Balanced,
   needsA4Transformation,
+  convertImageToA4Pdf,
+  convertDocxToA4Pdf,
   TransformationProgress,
 } from "./services/pdfTransformService";
 
@@ -368,8 +370,53 @@ const PDFEditorDashboard: React.FC = () => {
     });
 
     try {
+      // Check if image needs conversion to A4 PDF
+      if (file.type.startsWith("image/")) {
+        setIsTransforming(true);
+        toast.info("Converting image to A4 PDF format...", {
+          description: "This will ensure optimal viewing and editing",
+          duration: 3000,
+        });
+
+        // Convert image to A4 PDF
+        const result = await convertImageToA4Pdf(file, (progress) => {
+          setTransformationProgress(progress);
+        });
+
+        finalFile = result.transformedFile;
+        setIsTransforming(false);
+
+        toast.success("Image converted to A4 PDF successfully!", {
+          description: `Converted to PDF format for processing`,
+          duration: 3000,
+        });
+      }
+      // Check if DOCX needs conversion to A4 PDF
+      else if (
+        file.type.includes("officedocument.wordprocessingml") ||
+        file.name.toLowerCase().endsWith(".docx")
+      ) {
+        setIsTransforming(true);
+        toast.info("Converting DOCX to A4 PDF format...", {
+          description: "This will ensure optimal viewing and editing",
+          duration: 3000,
+        });
+
+        // Convert DOCX to A4 PDF
+        const result = await convertDocxToA4Pdf(file, (progress) => {
+          setTransformationProgress(progress);
+        });
+
+        finalFile = result.transformedFile;
+        setIsTransforming(false);
+
+        toast.success("DOCX converted to A4 PDF successfully!", {
+          description: `Converted to PDF format for processing`,
+          duration: 3000,
+        });
+      }
       // Check if PDF needs A4 transformation
-      if (file.type === "application/pdf") {
+      else if (file.type === "application/pdf") {
         const needsTransformation = await needsA4Transformation(file);
 
         if (needsTransformation) {
@@ -534,7 +581,7 @@ const PDFEditorDashboard: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold text-gray-900">PDF Editor</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Wally Editor</h1>
               <Badge variant="secondary">Documents</Badge>
             </div>
             <div className="flex items-center space-x-4">
@@ -777,7 +824,7 @@ const PDFEditorDashboard: React.FC = () => {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.png,.jpg,.jpeg"
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif,.docx"
           onChange={handleFileUpload}
           style={{ display: "none" }}
         />
