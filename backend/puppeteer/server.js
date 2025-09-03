@@ -3103,6 +3103,10 @@ app.post(
       // Serialize like frontend
       const { textBoxesByPage, pageDimensions, totalTextBoxes } =
         serializeOcrResponseNode(ocrResult);
+      const untranslatedTexts = buildUntranslatedTextsFromOcrNode(
+        ocrResult,
+        textBoxesByPage
+      );
 
       // Build merge for projects.project_data.elementCollections
       // We'll fetch the project first, then merge and update
@@ -3152,10 +3156,10 @@ app.post(
       // Always add text boxes and all elements to the translatedTextBoxes array
       textBoxesByPage.forEach((viewMap, pageNumber) => {
         viewMap.forEach((textBoxes, viewType) => {
-            elementCollections.translatedTextBoxes = [
-              ...elementCollections.translatedTextBoxes,
-              ...textBoxes,
-            ];
+          elementCollections.translatedTextBoxes = [
+            ...elementCollections.translatedTextBoxes,
+            ...textBoxes,
+          ];
         });
       });
 
@@ -3174,6 +3178,18 @@ app.post(
             existing.documentState?.pageHeight,
         },
       };
+      // Merge untranslated texts into project_data
+      try {
+        const prevUT = Array.isArray(
+          existing?.elementCollections?.untranslatedTexts
+        )
+          ? existing.elementCollections.untranslatedTexts
+          : [];
+        mergedProjectData.elementCollections = {
+          ...mergedProjectData.elementCollections,
+          untranslatedTexts: [...prevUT, ...untranslatedTexts],
+        };
+      } catch {}
 
       // Update project row
       const updateResp = await supabase
@@ -3199,6 +3215,10 @@ app.post(
             totalPages: ocrResult?.data?.totalPages,
             processedPages: ocrResult?.data?.processedPages,
             successRate: ocrResult?.data?.successRate,
+          },
+          counts: {
+            textBoxes: totalTextBoxes,
+            untranslatedTexts: untranslatedTexts.length,
           },
         },
       });
@@ -4547,6 +4567,71 @@ function serializeOcrResponseNode(ocrResponse) {
   }
 
   return { textBoxesByPage, pageDimensions, totalTextBoxes };
+}
+
+// Build UntranslatedText objects from OCR entities and link to translated textboxes by position
+function buildUntranslatedTextsFromOcrNode(ocrResponse, textBoxesByPage) {
+  const untranslatedTexts = [];
+  if (!ocrResponse || !ocrResponse.success || !ocrResponse.data?.results) {
+    return untranslatedTexts;
+  }
+
+  const getPageTextboxes = (pageNumber) => {
+    const pageMap = textBoxesByPage.get(pageNumber);
+    if (!pageMap) return [];
+    // Prefer translated view for linking; fallback to original
+    const translated = pageMap.get("translated") || [];
+    if (translated.length > 0) return translated;
+    return pageMap.get("original") || [];
+  };
+
+  const findMatchingTextbox = (pageNumber, x, y) => {
+    const tbs = getPageTextboxes(pageNumber);
+    for (const tb of tbs) {
+      if (
+        Math.abs((tb.x || 0) - (x || 0)) < 5 &&
+        Math.abs((tb.y || 0) - (y || 0)) < 5
+      ) {
+        return tb;
+      }
+    }
+    return null;
+  };
+
+  for (const pageResult of ocrResponse.data.results) {
+    const pageNumber = pageResult.pageNumber;
+    const ocr = pageResult.ocrResult;
+    if (!ocr?.styled_layout?.pages) continue;
+    for (const page of ocr.styled_layout.pages) {
+      if (!page?.entities) continue;
+      for (const entity of page.entities) {
+        if (!entity?.originalText || !entity.dimensions) continue;
+        const mx = entity.dimensions.box_x;
+        const my = entity.dimensions.box_y;
+        const match = findMatchingTextbox(pageNumber, mx, my);
+        untranslatedTexts.push({
+          id: generateId(),
+          translatedTextboxId: match?.id || "",
+          originalText: entity.originalText,
+          page: pageNumber,
+          x: mx || 0,
+          y: my || 0,
+          width: entity.dimensions.box_width || 0,
+          height: entity.dimensions.box_height || 0,
+          isCustomTextbox: false,
+          status:
+            entity.originalText && String(entity.originalText).trim()
+              ? "needsChecking"
+              : "isEmpty",
+          placeholder:
+            (match && match.placeholder) ||
+            `Enter or Remove Text for ${entity.type || "Field"}`,
+        });
+      }
+    }
+  }
+
+  return untranslatedTexts;
 }
 
 // Function to extract text elements from styled_layout
