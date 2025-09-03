@@ -63,6 +63,21 @@ const DocumentView: React.FC<DocumentViewProps> = ({
   onTemplateLoadSuccess,
 }) => {
   const renderDocumentContent = () => {
+    const isTranslatedView = viewType === "translated";
+    // For translated view, render once at highest needed resolution (max zoom * device pixel ratio)
+    const deviceRatio =
+      typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+    const maxUiZoom = 5.0; // Editor's max zoom
+    const backingScale = isTranslatedView
+      ? Math.max(pdfRenderScale, maxUiZoom) * deviceRatio
+      : 1;
+    const targetPdfWidth = isTranslatedView
+      ? pageWidth * backingScale
+      : pageWidth;
+    const targetPdfHeight = isTranslatedView
+      ? pageHeight * backingScale
+      : pageHeight;
+    const effectiveCssScale = isTranslatedView ? scale / backingScale : scale;
     if (isPdfFile(documentUrl)) {
       return (
         <div
@@ -76,10 +91,10 @@ const DocumentView: React.FC<DocumentViewProps> = ({
           <div
             className="pdf-content"
             style={{
-              transform: `scale(${scale})`,
+              transform: `scale(${effectiveCssScale})`,
               transformOrigin: "top left",
-              width: pageWidth,
-              height: pageHeight,
+              width: targetPdfWidth,
+              height: targetPdfHeight,
               position: "absolute",
               top: 0,
               left: 0,
@@ -102,7 +117,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
             >
               <Page
                 pageNumber={viewType === "translated" ? 1 : currentPage}
-                scale={1.0} // Render at base scale
+                scale={1.0} // Render at base scale; width controls render resolution
                 onLoadSuccess={(page) => {
                   if (viewType === "original") {
                     handlers.handlePageLoadSuccess(page);
@@ -145,8 +160,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                   <div
                     className="flex items-center justify-center bg-gray-50"
                     style={{
-                      width: pageWidth,
-                      height: pageHeight,
+                      width: targetPdfWidth,
+                      height: targetPdfHeight,
                     }}
                   >
                     <div className="text-center">
@@ -157,7 +172,7 @@ const DocumentView: React.FC<DocumentViewProps> = ({
                     </div>
                   </div>
                 }
-                width={pageWidth}
+                width={targetPdfWidth}
               />
             </Document>
           </div>
