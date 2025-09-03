@@ -56,9 +56,11 @@ NEXT_PUBLIC_OCR_API_KEY=your-api-key-here
          "projectId": "<uuid>",
          "captureUrl": "http://localhost:3000/capture-project/<id>",
          "pageNumbers": "1,2,3",
-         "viewTypes": ["original","translated"],
+         "viewTypes": ["original", "translated"],
          "ocrApiUrl": "http://localhost:8000/projects/process-file",
-         "projectData": { /* optional ProjectState */ }
+         "projectData": {
+           /* optional ProjectState */
+         }
        }
        ```
      - Effect: Captures pages, runs OCR, serializes to TextFields compatible with the editor, and merges into `projects.project_data.elementCollections` in Supabase.
@@ -70,4 +72,3 @@ NEXT_PUBLIC_OCR_API_KEY=your-api-key-here
 - **Frontend connection errors:** Verify `NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL` is correct
 - **OCR API errors:** Verify `NEXT_PUBLIC_OCR_API_URL` points to your existing OCR service
 - **Supabase errors:** Ensure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set. Use a Service Role key only on trusted backend services.
-

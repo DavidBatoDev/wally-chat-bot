@@ -123,6 +123,43 @@ export interface BulkOcrOptions extends Omit<OcrOptions, "pageNumber"> {
   ocrApiUrl?: string; // Add OCR API URL for background service
 }
 
+export async function runBulkOcrAndSaveToDb(params: {
+  projectId: string;
+  pageNumbers: number[] | string;
+  viewTypes?: Array<"original" | "translated">;
+  ocrApiUrl?: string;
+  projectData?: any;
+}): Promise<{ success: boolean; error?: string }> {
+  const backgroundServiceUrl = process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL;
+  if (!backgroundServiceUrl) {
+    return { success: false, error: "OCR Capture Service URL not configured" };
+  }
+  const payload = {
+    projectId: params.projectId,
+    captureUrl: `http://localhost:3000/capture-project/${params.projectId}`,
+    pageNumbers: Array.isArray(params.pageNumbers)
+      ? params.pageNumbers.join(",")
+      : params.pageNumbers,
+    viewTypes: params.viewTypes || ["original", "translated"],
+    ocrApiUrl:
+      params.ocrApiUrl || "http://localhost:8000/projects/process-file",
+    projectData: params.projectData,
+  };
+  const res = await fetch(
+    `${backgroundServiceUrl}/capture-and-ocr-to-supabase`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { success: false, error: data?.error || `HTTP ${res.status}` };
+  }
+  return { success: true };
+}
+
 export const performPageOcr = async (options: OcrOptions): Promise<any> => {
   try {
     console.log("🚀 [OCR Service] Starting single page OCR...");

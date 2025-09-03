@@ -28,7 +28,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useProjectState } from "./hooks/states/useProjectState";
 import { useProjectCreation } from "./hooks/useProjectCreation";
-import { getProject } from "./services/projectApiService";
+import { PageTemplateSelectionModal } from "./components/PageTemplateSelectionModal";
+import { runBulkOcrAndSaveToDb } from "./services/ocrService";
+import { getProject, updateProject } from "./services/projectApiService";
 import { TextFormatProvider } from "@/components/editor/ElementFormatContext";
 import { PDFEditorContent } from "./PDFEditorContent";
 import ProjectPreview from "./components/ProjectPreview";
@@ -489,10 +491,121 @@ const PDFEditorDashboard: React.FC = () => {
           duration: 2000,
         });
 
-        // Small delay to show completion state
-        setTimeout(() => {
+        // Open modal to select page types/templates then run OCR into DB
+        try {
+          const project = await getProject(projectId);
+          const totalPages =
+            project?.project_data?.documentState?.numPages || 1;
+          const existingPages =
+            project?.project_data?.documentState?.pages || [];
+
+          // Local state-driven inline modal handler
+          const ModalLauncher: React.FC<{ pid: string }> = ({ pid }) => {
+            const [open, setOpen] = React.useState(true);
+            const initial = existingPages.map((p: any) => ({
+              pageNumber: p.pageNumber,
+              pageType: p.pageType || null,
+              templateId: p.template?.id || null,
+            }));
+            return (
+              <PageTemplateSelectionModal
+                open={open}
+                onClose={() => setOpen(false)}
+                totalPages={totalPages}
+                initialPages={initial}
+                onConfirm={async (pages) => {
+                  // Build projectData.pages payload for template-aware OCR
+                  // Fetch templates to enrich with metadata (variation, file_url)
+                  let templateIndex: Record<string, any> = {};
+                  try {
+                    const res = await fetch("/api/proxy/templates/");
+                    if (res.ok) {
+                      const all = await res.json();
+                      if (Array.isArray(all)) {
+                        templateIndex = Object.fromEntries(
+                          all.map((t: any) => [t.id, t])
+                        );
+                      }
+                    }
+                  } catch {}
+
+                  const pagesData = pages.map((p) => {
+                    const base: any = {
+                      pageNumber: p.pageNumber,
+                      pageType: p.pageType || "dynamic_content",
+                    };
+                    if (p.templateId) {
+                      const t = templateIndex[p.templateId];
+                      base.template = t
+                        ? {
+                            id: t.id,
+                            doc_type: t.doc_type,
+                            variation: t.variation,
+                            file_url: t.file_url,
+                          }
+                        : { id: p.templateId };
+                      if (t) {
+                        base.templateType = t.variation;
+                        base.translatedTemplateURL = t.file_url;
+                        // Dimensions will be detected on load and saved later
+                      }
+                    } else {
+                      base.template = null;
+                    }
+                    return base;
+                  });
+
+                  // 1) Save updated pages to DB and wait
+                  const updatedProjectData = {
+                    ...(project?.project_data || {}),
+                    documentState: {
+                      ...((project?.project_data?.documentState as any) || {}),
+                      pages: pagesData,
+                    },
+                  };
+                  const updateResp = await updateProject(pid, {
+                    project_data: updatedProjectData,
+                  });
+                  if (!updateResp?.id) {
+                    toast.error("Failed to save page settings", {
+                      description: "Could not update project in database",
+                    });
+                    throw new Error("updateProject failed");
+                  }
+
+                  // 2) Run capture + OCR into Supabase and wait
+                  const result = await runBulkOcrAndSaveToDb({
+                    projectId: pid,
+                    pageNumbers: pages.map((p) => p.pageNumber),
+                    viewTypes: ["original", "translated"],
+                    projectData: updatedProjectData,
+                  });
+                  if (!result.success) {
+                    toast.error("OCR failed", {
+                      description:
+                        result.error || "Capture and OCR did not complete",
+                    });
+                    throw new Error(result.error || "OCR failed");
+                  }
+                  toast.success("OCR complete", {
+                    description: "Results saved to project",
+                  });
+                  // After OCR save, navigate to editor
+                  router.push(`/pdf-editor/${pid}`);
+                }}
+              />
+            );
+          };
+
+          // Mount a temporary portal-root for the modal
+          const container = document.createElement("div");
+          document.body.appendChild(container);
+          const root = (await import("react-dom/client")).createRoot(container);
+          root.render(<ModalLauncher pid={projectId} />);
+        } catch (e) {
+          console.error("Failed to open page/template modal:", e);
           router.push(`/pdf-editor/${projectId}`);
-        }, 1000);
+        }
       } else {
         // If projectId is null, the upload failed or user is not authenticated
         console.warn("Project creation failed - no project ID returned");
