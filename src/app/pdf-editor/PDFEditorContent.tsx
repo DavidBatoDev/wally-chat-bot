@@ -629,6 +629,110 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     isPreviewMode: false,
   });
 
+  // Dirty tracking: snapshot of persistable content (exclude selection, zoom, view toggles)
+  const lastSavedSnapshotRef = useRef<string>("");
+
+  const buildPersistedSnapshot = useCallback(() => {
+    const detectedPageBackgroundsEntries = Array.from(
+      documentState.detectedPageBackgrounds.entries()
+    ).sort((a, b) => a[0] - b[0]);
+    const deletedPages = Array.from(documentState.deletedPages).sort(
+      (a, b) => a - b
+    );
+    const finalLayoutDeletedPages = Array.from(
+      documentState.finalLayoutDeletedPages || new Set<number>()
+    ).sort((a, b) => a - b);
+
+    return {
+      doc: {
+        url: documentState.url,
+        fileType: documentState.fileType,
+        pages: documentState.pages,
+        deletedPages,
+        pdfBackgroundColor: documentState.pdfBackgroundColor,
+        detectedPageBackgrounds: detectedPageBackgroundsEntries,
+        finalLayoutUrl: documentState.finalLayoutUrl,
+        finalLayoutNumPages: documentState.finalLayoutNumPages,
+        finalLayoutDeletedPages,
+      },
+      elements: elementCollections,
+      layers: {
+        originalLayerOrder: [...layerState.originalLayerOrder],
+        translatedLayerOrder: [...layerState.translatedLayerOrder],
+        finalLayoutLayerOrder: [...layerState.finalLayoutLayerOrder],
+      },
+      langs: { sourceLanguage, desiredLanguage },
+      extra:
+        viewState.currentWorkflowStep === "final-layout"
+          ? { finalLayoutSettings }
+          : undefined,
+    };
+  }, [
+    documentState.url,
+    documentState.fileType,
+    documentState.pages,
+    documentState.deletedPages,
+    documentState.pdfBackgroundColor,
+    documentState.detectedPageBackgrounds,
+    documentState.finalLayoutUrl,
+    documentState.finalLayoutNumPages,
+    documentState.finalLayoutDeletedPages,
+    elementCollections,
+    layerState.originalLayerOrder,
+    layerState.translatedLayerOrder,
+    layerState.finalLayoutLayerOrder,
+    sourceLanguage,
+    desiredLanguage,
+    viewState.currentWorkflowStep,
+    finalLayoutSettings,
+  ]);
+
+  const persistedSnapshotString = useMemo(() => {
+    try {
+      return JSON.stringify(buildPersistedSnapshot());
+    } catch {
+      return Math.random().toString();
+    }
+  }, [buildPersistedSnapshot]);
+
+  // Initialize baseline once
+  useEffect(() => {
+    if (!lastSavedSnapshotRef.current) {
+      lastSavedSnapshotRef.current = persistedSnapshotString;
+    }
+  }, [persistedSnapshotString]);
+
+  // Update dirty flag when persisted content changes
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setHasUnsavedChanges(
+        persistedSnapshotString !== lastSavedSnapshotRef.current
+      );
+    }, 150);
+    return () => clearTimeout(t);
+  }, [persistedSnapshotString]);
+
+  const markAsSaved = useCallback(() => {
+    lastSavedSnapshotRef.current = persistedSnapshotString;
+    setHasUnsavedChanges(false);
+  }, [persistedSnapshotString]);
+
+  // Warn on tab close/refresh if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      // Some browsers require setting returnValue
+      event.returnValue = "You have unsaved changes.";
+      return "You have unsaved changes.";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
   // Update the ref whenever the state changes
   useEffect(() => {
     isCapturingSnapshotsRef.current = isCapturingSnapshots;
@@ -2978,26 +3082,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     };
   }, []); // Empty dependency array to only run on actual mount/unmount
 
-  // Track changes for unsaved changes highlighting
-  useEffect(() => {
-    // Mark as having unsaved changes when important states change
-    setHasUnsavedChanges(true);
-  }, [
-    elementCollections,
-    documentState.currentPage,
-    documentState.scale,
-    viewState.currentView,
-    viewState.currentWorkflowStep,
-    editorState,
-    sourceLanguage,
-    desiredLanguage,
-  ]);
-
-  // Reset unsaved changes after successful save
-  const markAsSaved = useCallback(() => {
-    setHasUnsavedChanges(false);
-  }, []);
-
   // Editor-specific functions for shared projects (defined early to avoid initialization order issues)
   const isEditorMode = useCallback(() => {
     if (typeof window === "undefined") return false;
@@ -4844,9 +4928,18 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   useEffect(() => {
     if (projectId && !currentProjectId) {
       console.log("Auto-loading project with ID:", projectId);
-      actualLoadProject(projectId);
+      (async () => {
+        try {
+          const success = await actualLoadProject(projectId);
+          if (success) {
+            markAsSaved();
+          }
+        } catch (e) {
+          console.error("Auto-load failed:", e);
+        }
+      })();
     }
-  }, [projectId, currentProjectId, actualLoadProject]);
+  }, [projectId, currentProjectId, actualLoadProject, markAsSaved]);
 
   // Auto-load shared project from localStorage (run only once on mount)
   useLayoutEffect(() => {
@@ -4888,6 +4981,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
               console.log(
                 "Successfully loaded project from database for editor"
               );
+              markAsSaved();
             } else {
               console.error("Failed to load project from database for editor");
             }
@@ -4916,6 +5010,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
             .then((success) => {
               if (success) {
                 console.log("Successfully loaded shared project for viewer");
+                markAsSaved();
               } else {
                 console.error("Failed to load shared project for viewer");
               }
