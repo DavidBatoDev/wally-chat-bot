@@ -35,7 +35,6 @@ export interface DocumentState {
   url: string; // This now contains the actual URL (Supabase public URL or blob URL)
   currentPage: number;
   numPages: number;
-  scale: number;
   pdfRenderScale: number; // The scale at which PDF is actually rendered (for high quality)
   pageWidth: number;
   pageHeight: number;
@@ -326,10 +325,6 @@ export interface StatusBarProps {
   viewState: ViewState;
   elementCollections: ElementCollections;
   pageState: PageState;
-  onZoomChange: (scale: number) => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onZoomReset: () => void;
 }
 
 // Element collections
@@ -461,10 +456,6 @@ export interface StatusBarProps {
   viewState: ViewState;
   elementCollections: ElementCollections;
   pageState: PageState;
-  onZoomChange: (scale: number) => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onZoomReset: () => void;
 }
 
 // Utility function types

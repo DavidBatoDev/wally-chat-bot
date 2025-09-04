@@ -6,7 +6,7 @@ import { isPdfFile } from "../utils/measurements";
 import { FileText } from "lucide-react";
 
 // Configure PDF.js worker
-import { pdfjs } from 'react-pdf';
+import { pdfjs } from "react-pdf";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -20,7 +20,6 @@ interface ProjectPreviewProps {
       originalDeletionRectangles: any[];
     };
   };
-  scale?: number;
 }
 
 const renderTextBox = (tb: TextField, scale: number) => (
@@ -159,12 +158,9 @@ const renderDeletionRectangle = (rect: any, scale: number) => (
   />
 );
 
-const ProjectPreview: React.FC<ProjectPreviewProps> = ({
-  projectData,
-  scale = 0.2,
-}) => {
+const ProjectPreview: React.FC<ProjectPreviewProps> = ({ projectData }) => {
   const { documentState, elementCollections } = projectData;
-  
+
   // Get first page elements only
   const firstPageTextBoxes = elementCollections.originalTextBoxes.filter(
     (tb) => tb.page === 1
@@ -175,9 +171,8 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
   const firstPageImages = elementCollections.originalImages.filter(
     (img) => img.page === 1
   );
-  const firstPageDeletions = elementCollections.originalDeletionRectangles.filter(
-    (r) => r.page === 1
-  );
+  const firstPageDeletions =
+    elementCollections.originalDeletionRectangles.filter((r) => r.page === 1);
 
   // Create sorted elements array
   const createSortedElements = () => {
@@ -250,18 +245,18 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
   };
 
   const isPdf = documentState.url && isPdfFile(documentState.url);
-  
+
   // Use standard letter size aspect ratio (8.5:11 = 0.773)
   const letterAspectRatio = 8.5 / 11;
-  
+
   // Max container dimensions for the card
   const maxWidth = 160;
   const maxHeight = 200;
-  
+
   // Calculate dimensions maintaining letter size aspect ratio
   let previewWidth: number;
   let previewHeight: number;
-  
+
   if (letterAspectRatio > maxWidth / maxHeight) {
     // Width is the limiting factor
     previewWidth = maxWidth;
@@ -271,11 +266,14 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
     previewHeight = maxHeight;
     previewWidth = maxHeight * letterAspectRatio;
   }
-  
+
   // Calculate scale based on the document's actual dimensions
   const originalWidth = documentState.pageWidth || 600;
   const originalHeight = documentState.pageHeight || 800;
-  const actualScale = Math.min(previewWidth / originalWidth, previewHeight / originalHeight);
+  const actualScale = Math.min(
+    previewWidth / originalWidth,
+    previewHeight / originalHeight
+  );
 
   return (
     <div
@@ -353,7 +351,7 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
           </div>
         </div>
       )}
-      
+
       {/* Render all elements in correct layering order */}
       {sortedElements.map((item, index) => (
         <React.Fragment key={`${item.type}-${item.element.id || index}`}>

@@ -18,7 +18,6 @@ interface TextBoxProps {
   textBox: TextField;
   isSelected: boolean;
   isEditMode: boolean;
-  scale: number;
   showPaddingIndicator?: boolean;
   onSelect: (id: string) => void;
   onUpdate: (
@@ -98,7 +97,6 @@ const arePropsEqual = (prevProps: TextBoxProps, nextProps: TextBoxProps) => {
   if (
     prevProps.isSelected !== nextProps.isSelected ||
     prevProps.isEditMode !== nextProps.isEditMode ||
-    prevProps.scale !== nextProps.scale ||
     prevProps.showPaddingIndicator !== nextProps.showPaddingIndicator ||
     prevProps.isTextSelectionMode !== nextProps.isTextSelectionMode ||
     prevProps.isSelectedInTextMode !== nextProps.isSelectedInTextMode ||
@@ -141,7 +139,6 @@ export const MemoizedTextBox = memo(
     textBox,
     isSelected,
     isEditMode,
-    scale,
     showPaddingIndicator,
     onSelect,
     onUpdate,
@@ -548,8 +545,8 @@ export const MemoizedTextBox = memo(
           selectedElementIds.length > 1 &&
           onMultiSelectDrag
         ) {
-          const deltaX = (d.x - textBox.x * scale) / scale;
-          const deltaY = (d.y - textBox.y * scale) / scale;
+          const deltaX = d.x - textBox.x;
+          const deltaY = d.y - textBox.y;
           onMultiSelectDrag(textBoxProps.id, deltaX, deltaY);
         }
       },
@@ -560,7 +557,7 @@ export const MemoizedTextBox = memo(
         textBoxProps.id,
         textBox.x,
         textBox.y,
-        scale,
+        1,
       ]
     );
 
@@ -571,12 +568,12 @@ export const MemoizedTextBox = memo(
           selectedElementIds.length > 1 &&
           onMultiSelectDragStop
         ) {
-          const deltaX = (d.x - textBox.x * scale) / scale;
-          const deltaY = (d.y - textBox.y * scale) / scale;
+          const deltaX = d.x - textBox.x;
+          const deltaY = d.y - textBox.y;
           onMultiSelectDragStop(textBoxProps.id, deltaX, deltaY);
         } else {
           // Regular single element update
-          onUpdate(textBoxProps.id, { x: d.x / scale, y: d.y / scale }, true); // Mark as ongoing operation
+          onUpdate(textBoxProps.id, { x: d.x, y: d.y }, true); // Mark as ongoing operation
         }
       },
       [
@@ -586,7 +583,7 @@ export const MemoizedTextBox = memo(
         textBoxProps.id,
         textBox.x,
         textBox.y,
-        scale,
+        1,
         onUpdate,
       ]
     );
@@ -680,16 +677,16 @@ export const MemoizedTextBox = memo(
       onUpdate,
     ]);
 
-    const dragOffsetX = (dragOffset?.x || 0) * scale;
-    const dragOffsetY = (dragOffset?.y || 0) * scale;
+    const dragOffsetX = dragOffset?.x || 0;
+    const dragOffsetY = dragOffset?.y || 0;
 
     return (
       <Rnd
         key={textBoxProps.id}
-        position={{ x: textBox.x * scale, y: textBox.y * scale }}
+        position={{ x: textBox.x, y: textBox.y }}
         size={{
-          width: textBoxProps.width * scale,
-          height: textBoxProps.height * scale,
+          width: textBoxProps.width,
+          height: textBoxProps.height,
         }}
         bounds="parent"
         disableDragging={isTextSelectionMode || !permissions.canEditContent()}
@@ -715,8 +712,8 @@ export const MemoizedTextBox = memo(
           handleDragStop(e, d);
         }}
         onResizeStop={(e, direction, ref, delta, position) => {
-          const newWidth = parseInt(ref.style.width) / scale;
-          const userSetHeight = parseInt(ref.style.height) / scale;
+          const newWidth = parseInt(ref.style.width);
+          const userSetHeight = parseInt(ref.style.height);
           const minHeight = measureWrappedTextHeight(
             textBox.value,
             textBoxProps.fontSize,
@@ -731,8 +728,8 @@ export const MemoizedTextBox = memo(
             onUpdate(
               textBoxProps.id,
               {
-                x: position.x / scale,
-                y: position.y / scale,
+                x: position.x,
+                y: position.y,
                 width: newWidth,
                 height: finalHeight,
                 hasBeenManuallyResized: true, // Mark as manually resized
@@ -797,7 +794,7 @@ export const MemoizedTextBox = memo(
               className="absolute -bottom-7 left-1 transform transition-all duration-300 flex items-center space-x-1"
               style={{ zIndex: 20 }}
             >
-              <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+              <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:1-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
               </div>
               {onDuplicate && (
@@ -806,7 +803,7 @@ export const MemoizedTextBox = memo(
                     e.stopPropagation();
                     onDuplicate(textBox.id);
                   }}
-                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200"
+                  className="bg-blue-500 hover:bg-blue-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:1-105 transition-all duration-200"
                   title="Duplicate text field"
                 >
                   <Copy size={10} />
@@ -818,7 +815,7 @@ export const MemoizedTextBox = memo(
           {/* Resize handle - only show when selected and in edit mode and NOT in text selection mode */}
           {isEditMode && isSelected && !isTextSelectionMode && (
             <div
-              className="absolute bottom-0 right-0 w-4 h-4 bg-gray-600 border-2 border-white rounded-full shadow-lg cursor-se-resize transform translate-x-1 translate-y-1 flex items-center justify-center hover:scale-110 transition-transform duration-200"
+              className="absolute bottom-0 right-0 w-4 h-4 bg-gray-600 border-2 border-white rounded-full shadow-lg cursor-se-resize transform translate-x-1 translate-y-1 flex items-center justify-center hover:1-110 transition-transform duration-200"
               style={{
                 backgroundImage: `
                 linear-gradient(45deg, transparent 30%, white 30%, white 40%, transparent 40%),
@@ -837,13 +834,13 @@ export const MemoizedTextBox = memo(
 
                 const startX = e.clientX;
                 const startY = e.clientY;
-                const startWidth = textBoxProps.width * scale;
-                const startHeight = textBoxProps.height * scale;
+                const startWidth = textBoxProps.width;
+                const startHeight = textBoxProps.height;
 
                 const handleMouseMove = (moveEvent: MouseEvent) => {
                   const deltaX = moveEvent.clientX - startX;
                   const deltaY = moveEvent.clientY - startY;
-                  const newWidth = Math.max(50, startWidth + deltaX) / scale;
+                  const newWidth = Math.max(50, startWidth + deltaX);
                   const minHeight = measureWrappedTextHeight(
                     textBox.value,
                     textBoxProps.fontSize,
@@ -853,7 +850,7 @@ export const MemoizedTextBox = memo(
                   );
                   const userSetHeight = Math.max(
                     minHeight,
-                    Math.max(20, startHeight + deltaY) / scale
+                    Math.max(20, startHeight + deltaY)
                   );
                   const finalHeight = Math.max(userSetHeight, minHeight);
 
@@ -879,9 +876,10 @@ export const MemoizedTextBox = memo(
                   document.body.classList.remove("resizing-element");
 
                   // Create final undo command when resize ends
-                  const finalWidth =
-                    Math.max(50, startWidth + (upEvent.clientX - startX)) /
-                    scale;
+                  const finalWidth = Math.max(
+                    50,
+                    startWidth + (upEvent.clientX - startX)
+                  );
                   const minHeight = measureWrappedTextHeight(
                     textBox.value,
                     textBox.fontSize,
@@ -891,8 +889,7 @@ export const MemoizedTextBox = memo(
                   );
                   const userSetHeight = Math.max(
                     minHeight,
-                    Math.max(20, startHeight + (upEvent.clientY - startY)) /
-                      scale
+                    Math.max(20, startHeight + (upEvent.clientY - startY))
                   );
                   const finalHeight = Math.max(userSetHeight, minHeight);
 
@@ -950,7 +947,7 @@ export const MemoizedTextBox = memo(
               data-textbox-id={textBoxProps.id}
               className="absolute top-0 left-0 w-full h-full bg-transparent overflow-hidden border-none outline-none cursor-text resize-none"
               style={{
-                fontSize: `${textBoxProps.fontSize * scale}px`,
+                fontSize: `${textBoxProps.fontSize}px`,
                 fontFamily: textBoxProps.fontFamily,
                 fontWeight: textBox.bold ? "bold" : "normal",
                 fontStyle: textBox.italic ? "italic" : "normal",
@@ -974,7 +971,7 @@ export const MemoizedTextBox = memo(
                           ? textBox.textOpacity
                           : 1
                       })`,
-                letterSpacing: `${(textBox.letterSpacing || 0) * scale}px`,
+                letterSpacing: `${textBox.letterSpacing || 0}px`,
                 textAlign: textBox.textAlign || "left",
                 textDecoration: textBox.underline ? "underline" : "none",
                 lineHeight: textBox.lineHeight || 1.1,
@@ -997,7 +994,7 @@ export const MemoizedTextBox = memo(
                       : textBox.backgroundColor
                     : "transparent",
                 border: textBox.borderWidth
-                  ? `${textBox.borderWidth * scale}px solid ${
+                  ? `${textBox.borderWidth}px solid ${
                       textBox.borderColor || "#000000"
                     }`
                   : "none",
@@ -1006,16 +1003,16 @@ export const MemoizedTextBox = memo(
                   textBox.borderTopRightRadius !== undefined ||
                   textBox.borderBottomLeftRadius !== undefined ||
                   textBox.borderBottomRightRadius !== undefined
-                    ? `${(textBox.borderTopLeftRadius || 0) * scale}px ${
-                        (textBox.borderTopRightRadius || 0) * scale
-                      }px ${(textBox.borderBottomRightRadius || 0) * scale}px ${
-                        (textBox.borderBottomLeftRadius || 0) * scale
+                    ? `${textBox.borderTopLeftRadius || 0}px ${
+                        textBox.borderTopRightRadius || 0
+                      }px ${textBox.borderBottomRightRadius || 0}px ${
+                        textBox.borderBottomLeftRadius || 0
                       }px`
-                    : `${(textBox.borderRadius || 0) * scale}px`,
-                padding: `${(textBox.paddingTop || 0) * scale}px ${
-                  (textBox.paddingRight || 0) * scale
-                }px ${(textBox.paddingBottom || 0) * scale}px ${
-                  (textBox.paddingLeft || 0) * scale
+                    : `${textBox.borderRadius || 0}px`,
+                padding: `${textBox.paddingTop || 0}px ${
+                  textBox.paddingRight || 0
+                }px ${textBox.paddingBottom || 0}px ${
+                  textBox.paddingLeft || 0
                 }px`,
                 overflow: "hidden",
                 whiteSpace: "pre-wrap",
@@ -1036,7 +1033,7 @@ export const MemoizedTextBox = memo(
                   <div
                     className="absolute top-0 left-0 right-0 bg-yellow-300 bg-opacity-40 border-t-2 border-yellow-500"
                     style={{
-                      height: `${(textBox.paddingTop || 0) * scale}px`,
+                      height: `${textBox.paddingTop || 0}px`,
                     }}
                   />
                 )}
@@ -1046,7 +1043,7 @@ export const MemoizedTextBox = memo(
                   <div
                     className="absolute top-0 right-0 bottom-0 bg-yellow-300 bg-opacity-40 border-r-2 border-yellow-500"
                     style={{
-                      width: `${(textBox.paddingRight || 0) * scale}px`,
+                      width: `${textBox.paddingRight || 0}px`,
                     }}
                   />
                 )}
@@ -1056,7 +1053,7 @@ export const MemoizedTextBox = memo(
                   <div
                     className="absolute bottom-0 left-0 right-0 bg-yellow-300 bg-opacity-40 border-b-2 border-yellow-500"
                     style={{
-                      height: `${(textBox.paddingBottom || 0) * scale}px`,
+                      height: `${textBox.paddingBottom || 0}px`,
                     }}
                   />
                 )}
@@ -1066,7 +1063,7 @@ export const MemoizedTextBox = memo(
                   <div
                     className="absolute top-0 bottom-0 left-0 bg-yellow-300 bg-opacity-40 border-l-2 border-yellow-500"
                     style={{
-                      width: `${(textBox.paddingLeft || 0) * scale}px`,
+                      width: `${textBox.paddingLeft || 0}px`,
                     }}
                   />
                 )}

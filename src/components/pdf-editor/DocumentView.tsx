@@ -12,8 +12,7 @@ interface DocumentViewProps {
   currentPage: number;
   pageWidth: number;
   pageHeight: number;
-  scale: number;
-  pdfRenderScale: number; // Add PDF render scale
+  pdfRenderScale: number; // Add PDF render 1
   isScaleChanging: boolean;
   isAddTextBoxMode: boolean;
   isTextSpanZooming: boolean;
@@ -49,7 +48,6 @@ const DocumentView: React.FC<DocumentViewProps> = ({
   currentPage,
   pageWidth,
   pageHeight,
-  scale,
   pdfRenderScale,
   isScaleChanging,
   isAddTextBoxMode,
@@ -77,14 +75,14 @@ const DocumentView: React.FC<DocumentViewProps> = ({
     const targetPdfHeight = isTranslatedView
       ? pageHeight * backingScale
       : pageHeight;
-    const effectiveCssScale = isTranslatedView ? scale / backingScale : scale;
+    const effectiveCssScale = isTranslatedView ? 1 / backingScale : 1;
     if (isPdfFile(documentUrl)) {
       return (
         <div
           className="pdf-container relative"
           style={{
-            width: pageWidth * scale,
-            height: pageHeight * scale,
+            width: pageWidth,
+            height: pageHeight,
             overflow: "hidden",
           }}
         >
@@ -182,8 +180,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
       return (
         <div
           style={{
-            width: pageWidth * scale,
-            height: pageHeight * scale,
+            width: pageWidth,
+            height: pageHeight,
             overflow: "hidden",
             position: "relative",
           }}
@@ -196,8 +194,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
             onLoad={handlers.handleImageLoadSuccess}
             onError={handlers.handleImageLoadError}
             style={{
-              width: pageWidth * scale,
-              height: pageHeight * scale,
+              width: pageWidth,
+              height: pageHeight,
               maxWidth: "none",
               display: "block",
             }}
@@ -212,8 +210,8 @@ const DocumentView: React.FC<DocumentViewProps> = ({
     <div
       className="relative bg-white border border-gray-200 shadow-sm"
       style={{
-        width: pageWidth * scale,
-        height: pageHeight * scale,
+        width: pageWidth,
+        height: pageHeight,
       }}
     >
       {/* Header */}

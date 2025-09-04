@@ -99,7 +99,6 @@ const PDFEditorDashboard: React.FC = () => {
       url: "",
       currentPage: 1,
       numPages: 0,
-      scale: 1,
       pageWidth: 600,
       pageHeight: 800,
       isDocumentLoaded: false,
@@ -200,7 +199,6 @@ const PDFEditorDashboard: React.FC = () => {
       url: "",
       currentPage: 1,
       numPages: 0,
-      scale: 1,
       pageWidth: 600,
       pageHeight: 800,
       isDocumentLoaded: false,
@@ -839,7 +837,6 @@ const PDFEditorDashboard: React.FC = () => {
                         <div className="w-full h-full flex items-center justify-center">
                           <ProjectPreview
                             projectData={projectPreviews[project.id]}
-                            scale={0.25}
                           />
                         </div>
                       ) : (

@@ -9,7 +9,6 @@ export const useDocumentState = () => {
     url: "",
     currentPage: 1,
     numPages: 0,
-    scale: 1.0,
     pdfRenderScale: 3.0, // Initialize with high quality render scale
     pageWidth: 612,
     pageHeight: 792,
@@ -213,12 +212,10 @@ export const useDocumentState = () => {
     setDocumentState((prevState) => {
       const oldUrl = prevState.url;
 
-      // Clean up old blob URL if it exists and is a blob URL
       if (oldUrl && oldUrl.startsWith("blob:") && !prevState.isSupabaseUrl) {
         URL.revokeObjectURL(oldUrl);
       }
 
-      // Set initial loading state
       return {
         ...prevState,
         isLoading: true,
@@ -226,17 +223,15 @@ export const useDocumentState = () => {
         error: "",
         pdfBackgroundColor: "white",
         detectedPageBackgrounds: new Map(),
-        pages: [], // Clear pages when loading new document
-        deletedPages: new Set(), // Clear deleted pages when loading new document
-        isTransforming: false, // Reset transforming state
+        pages: [],
+        deletedPages: new Set(),
+        isTransforming: false,
       };
     });
 
     try {
-      // Upload file to Supabase or use blob URL as fallback
       const uploadResult = await uploadFileWithFallback(file);
 
-      // Only proceed if the file was successfully uploaded to cloud storage
       if (!uploadResult.isSupabaseUrl) {
         setDocumentState((prev) => ({
           ...prev,
@@ -255,7 +250,6 @@ export const useDocumentState = () => {
         url: uploadResult.url,
         fileType,
         isLoading: false,
-        // Store additional metadata for cleanup later
         supabaseFilePath: uploadResult.filePath,
         isSupabaseUrl: uploadResult.isSupabaseUrl,
       }));
@@ -282,7 +276,6 @@ export const useDocumentState = () => {
       fileType: "pdf" | "image" | null,
       supabaseFilePath?: string
     ) => {
-      // Set loading state
       setDocumentState((prev) => ({
         ...prev,
         isLoading: true,
@@ -296,7 +289,6 @@ export const useDocumentState = () => {
           fileType,
           isLoading: false,
           isDocumentLoaded: true,
-          // Store Supabase metadata if available
           supabaseFilePath,
           isSupabaseUrl:
             url.includes("supabase.co") && url.includes("/storage/"),
@@ -317,33 +309,22 @@ export const useDocumentState = () => {
     []
   );
 
-  // Update scale with debouncing
+  // Update scale with debouncing - forced to 1.0
   const updateScale = useCallback((newScale: number) => {
     setDocumentState((prev) => ({
       ...prev,
-      scale: Math.max(0.1, Math.min(5.0, newScale)),
-      isScaleChanging: true,
+      isScaleChanging: false,
     }));
-
-    // Reset scale changing state after a delay
-    setTimeout(() => {
-      setDocumentState((prev) => ({
-        ...prev,
-        isScaleChanging: false,
-      }));
-    }, 150);
   }, []);
 
-  // Update scale without triggering re-rendering (for smooth zoom)
+  // Update scale without re-render - forced to 1.0
   const updateScaleWithoutRerender = useCallback((newScale: number) => {
     setDocumentState((prev) => ({
       ...prev,
-      scale: Math.max(0.1, Math.min(5.0, newScale)),
-      // Don't set isScaleChanging to avoid PDF re-rendering
     }));
   }, []);
 
-  // Update PDF render scale (causes re-render but improves quality)
+  // Update PDF render scale (kept intact)
   const updatePdfRenderScale = useCallback((newRenderScale: number) => {
     setDocumentState((prev) => ({
       ...prev,
@@ -351,7 +332,6 @@ export const useDocumentState = () => {
       isScaleChanging: true,
     }));
 
-    // Reset scale changing state after a delay
     setTimeout(() => {
       setDocumentState((prev) => ({
         ...prev,
@@ -364,16 +344,12 @@ export const useDocumentState = () => {
   const changePage = useCallback(
     (page: number, isFinalLayout = false) => {
       if (isFinalLayout) {
-        // Handle final layout page change
         if (page >= 1 && page <= (documentState.finalLayoutNumPages || 0)) {
-          setDocumentState((prev) => {
-            const newState = {
-              ...prev,
-              finalLayoutCurrentPage: page,
-              isPageLoading: true,
-            };
-            return newState;
-          });
+          setDocumentState((prev) => ({
+            ...prev,
+            finalLayoutCurrentPage: page,
+            isPageLoading: true,
+          }));
         } else {
           console.log("❌ Final layout page change invalid:", {
             page,
@@ -381,20 +357,16 @@ export const useDocumentState = () => {
           });
         }
       } else {
-        // Handle regular document page change
         if (page >= 1 && page <= documentState.numPages) {
           console.log("✅ Regular page change valid:", {
             page,
             numPages: documentState.numPages,
           });
-          setDocumentState((prev) => {
-            const newState = {
-              ...prev,
-              currentPage: page,
-              isPageLoading: true,
-            };
-            return newState;
-          });
+          setDocumentState((prev) => ({
+            ...prev,
+            currentPage: page,
+            isPageLoading: true,
+          }));
         } else {
           console.log("❌ Regular page change invalid:", {
             page,
@@ -488,7 +460,6 @@ export const useDocumentState = () => {
     (pageNumber: number, isFinalLayout = false) => {
       setDocumentState((prev) => {
         if (isFinalLayout) {
-          // Handle final layout page deletion
           const finalLayoutDeletedPages =
             prev.finalLayoutDeletedPages || new Set();
           const remainingPages =
@@ -507,7 +478,6 @@ export const useDocumentState = () => {
             ]),
           };
         } else {
-          // Handle regular document page deletion
           const remainingPages = prev.numPages - prev.deletedPages.size;
 
           if (remainingPages <= 1) {
@@ -632,7 +602,6 @@ export const useDocumentState = () => {
   // Cleanup effect for blob URLs
   useEffect(() => {
     return () => {
-      // Cleanup blob URL on unmount
       if (
         documentState.url &&
         documentState.url.startsWith("blob:") &&

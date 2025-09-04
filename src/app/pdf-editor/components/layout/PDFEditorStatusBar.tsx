@@ -1,5 +1,4 @@
 import React from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
 import { StatusBarProps } from "../../types/pdf-editor.types";
 
 export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
@@ -7,10 +6,6 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
   viewState,
   elementCollections,
   pageState,
-  onZoomChange,
-  onZoomIn,
-  onZoomOut,
-  onZoomReset,
 }) => {
   // Calculate element counts for current page
   const getCurrentPageCounts = () => {
@@ -58,7 +53,7 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
           images: translatedImages,
           deletions: translatedDeletions,
         },
-      };
+      } as any;
     } else {
       const textBoxes =
         viewState.currentView === "original"
@@ -81,16 +76,14 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
       const deletions =
         viewState.currentView === "original"
           ? elementCollections.originalDeletionRectangles
-          : viewState.currentView === "translated"
-          ? elementCollections.translatedDeletionRectangles
-          : elementCollections.finalLayoutDeletionRectangles;
+          : elementCollections.translatedDeletionRectangles;
 
       return {
         textBoxes: textBoxes.filter((box) => box.page === currentPage).length,
         shapes: shapes.filter((shape) => shape.page === currentPage).length,
         images: images.filter((image) => image.page === currentPage).length,
         deletions: deletions.filter((rect) => rect.page === currentPage).length,
-      };
+      } as any;
     }
   };
 
@@ -101,48 +94,52 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
 
   // Get current page and total pages based on view mode
   const currentPage = isFinalLayout
-    ? documentState.finalLayoutCurrentPage
+    ? documentState.finalLayoutCurrentPage || 1
     : documentState.currentPage;
   const totalPages = isFinalLayout
-    ? documentState.finalLayoutNumPages
-    : documentState.numPages;
-  const deletedPages = isFinalLayout
-    ? documentState.finalLayoutDeletedPages
-    : pageState.deletedPages;
+    ? documentState.finalLayoutNumPages || 0
+    : documentState.numPages || 0;
+  const deletedPages = (
+    isFinalLayout
+      ? documentState.finalLayoutDeletedPages
+      : pageState.deletedPages
+  ) as Set<number> | undefined;
   const documentUrl = isFinalLayout
     ? documentState.finalLayoutUrl
     : documentState.url;
+
+  const availableCount = Math.max(0, totalPages - (deletedPages?.size || 0));
 
   return (
     <div className="bg-white border-t border-gray-200 px-4 py-2">
       <div className="flex items-center justify-between text-sm text-gray-600">
         <div className="flex items-center space-x-4">
           {viewState.currentView === "split" &&
-          counts.original &&
-          counts.translated ? (
+          (counts as any).original &&
+          (counts as any).translated ? (
             <>
               <span className="flex items-center space-x-2">
                 <span className="text-primary font-medium">Original:</span>
-                <span>{counts.original.textBoxes} text</span>
-                <span>{counts.original.shapes} shapes</span>
-                <span>{counts.original.images} images</span>
-                <span>{counts.original.deletions} deletions</span>
+                <span>{(counts as any).original.textBoxes} text</span>
+                <span>{(counts as any).original.shapes} shapes</span>
+                <span>{(counts as any).original.images} images</span>
+                <span>{(counts as any).original.deletions} deletions</span>
               </span>
               <span className="text-gray-400">|</span>
               <span className="flex items-center space-x-2">
                 <span className="text-green-600 font-medium">Translated:</span>
-                <span>{counts.translated.textBoxes} text</span>
-                <span>{counts.translated.shapes} shapes</span>
-                <span>{counts.translated.images} images</span>
-                <span>{counts.translated.deletions} deletions</span>
+                <span>{(counts as any).translated.textBoxes} text</span>
+                <span>{(counts as any).translated.shapes} shapes</span>
+                <span>{(counts as any).translated.images} images</span>
+                <span>{(counts as any).translated.deletions} deletions</span>
               </span>
             </>
           ) : (
             <>
-              <span>Text Boxes: {counts.textBoxes}</span>
-              <span>Shapes: {counts.shapes}</span>
-              <span>Images: {counts.images}</span>
-              <span>Deletion Areas: {counts.deletions}</span>
+              <span>Text Boxes: {(counts as any).textBoxes}</span>
+              <span>Shapes: {(counts as any).shapes}</span>
+              <span>Images: {(counts as any).images}</span>
+              <span>Deletion Areas: {(counts as any).deletions}</span>
             </>
           )}
 
@@ -164,58 +161,9 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
         <div className="flex items-center space-x-4">
           {documentUrl && (
             <span>
-              Page {currentPage} of {totalPages} (
-              {totalPages - (deletedPages?.size || 0)} available)
+              Page {currentPage} of {totalPages} ({availableCount} available)
             </span>
           )}
-
-          {/* Zoom Controls */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={onZoomOut}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="Zoom out (Ctrl+-)"
-            >
-              <ZoomOut className="w-3 h-3" />
-            </button>
-
-            <div className="flex items-center space-x-2">
-              <input
-                type="range"
-                min="10"
-                max="500"
-                step="10"
-                value={Math.round(documentState.scale * 100)}
-                onChange={(e) => onZoomChange(parseInt(e.target.value) / 100)}
-                className="zoom-slider w-20 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                title="Zoom level"
-                style={
-                  {
-                    "--value": `${
-                      ((Math.round(documentState.scale * 100) - 10) /
-                        (500 - 10)) *
-                      100
-                    }%`,
-                  } as React.CSSProperties
-                }
-              />
-              <button
-                onClick={onZoomReset}
-                className="text-xs px-2 py-1 hover:bg-gray-100 rounded transition-colors min-w-[40px] text-center"
-                title="Reset zoom to 100% (Ctrl+0)"
-              >
-                {Math.round(documentState.scale * 100)}%
-              </button>
-            </div>
-
-            <button
-              onClick={onZoomIn}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="Zoom in (Ctrl++)"
-            >
-              <ZoomIn className="w-3 h-3" />
-            </button>
-          </div>
         </div>
       </div>
     </div>

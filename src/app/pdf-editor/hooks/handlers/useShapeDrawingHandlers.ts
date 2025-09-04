@@ -13,7 +13,6 @@ interface UseShapeDrawingHandlersProps {
   setEditorState: React.Dispatch<React.SetStateAction<EditorState>>;
   setErasureState: React.Dispatch<React.SetStateAction<ErasureState>>;
   documentState: {
-    scale: number;
     pageWidth: number;
     currentPage: number;
     finalLayoutCurrentPage?: number;
@@ -61,7 +60,7 @@ export const useShapeDrawingHandlers = ({
 
   // Performance optimization: Memoize scale factors to avoid recalculating on every move
   const memoizedScaleFactors = useMemo(() => {
-    const baseScale = documentState.scale;
+    const baseScale = 1;
     const templateScale =
       getTranslatedTemplateScaleFactor?.(documentState.currentPage) || 1;
     const effectiveScale =
@@ -78,7 +77,6 @@ export const useShapeDrawingHandlers = ({
       isTranslated: viewState.currentWorkflowStep === "translate",
     };
   }, [
-    documentState.scale,
     documentState.currentPage,
     viewState.currentView,
     viewState.currentWorkflowStep,
@@ -119,7 +117,7 @@ export const useShapeDrawingHandlers = ({
       let targetView: "original" | "translated" | "final-layout" | null = null;
       if (viewState.currentView === "split") {
         const clickX = e.clientX - rect.left;
-        const singleDocWidth = documentState.pageWidth * documentState.scale;
+        const singleDocWidth = documentState.pageWidth;
         const gap = 20;
 
         if (clickX > singleDocWidth + gap) {
@@ -138,7 +136,6 @@ export const useShapeDrawingHandlers = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         targetView === "final-layout" ? null : targetView,
         viewState.currentView,
         documentState.pageWidth,
@@ -167,7 +164,6 @@ export const useShapeDrawingHandlers = ({
     },
     [
       toolState.shapeDrawingMode,
-      documentState.scale,
       documentState.pageWidth,
       documentState.currentPage,
       viewState.currentView,
@@ -202,7 +198,6 @@ export const useShapeDrawingHandlers = ({
           e.clientX,
           e.clientY,
           rect,
-          documentState.scale,
           toolState.shapeDrawTargetView === "final-layout"
             ? null
             : toolState.shapeDrawTargetView,
@@ -233,7 +228,6 @@ export const useShapeDrawingHandlers = ({
       toolState.isDrawingShape,
       toolState.shapeDrawStart,
       toolState.shapeDrawTargetView,
-      documentState.scale,
       documentState.pageWidth,
       documentState.currentPage,
       viewState.currentView,

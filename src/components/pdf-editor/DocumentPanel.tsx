@@ -17,7 +17,6 @@ interface DocumentPanelProps {
   currentPage: number;
   pageWidth: number;
   pageHeight: number;
-  scale: number;
   pdfRenderScale: number; // Add PDF render scale
   numPages: number;
   isScaleChanging: boolean;
@@ -121,7 +120,6 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
   currentPage,
   pageWidth,
   pageHeight,
-  scale,
   pdfRenderScale,
   numPages,
   isScaleChanging,
@@ -195,7 +193,6 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
       currentPage={currentPage}
       pageWidth={effectivePageWidth}
       pageHeight={effectivePageHeight}
-      scale={scale}
       pdfRenderScale={pdfRenderScale}
       isScaleChanging={isScaleChanging}
       isAddTextBoxMode={isAddTextBoxMode}
@@ -225,7 +222,6 @@ const DocumentPanel: React.FC<DocumentPanelProps> = ({
       <DocumentElementsLayer
         viewType={viewType}
         currentPage={currentPage}
-        scale={scale}
         pageWidth={pageWidth}
         pageHeight={pageHeight}
         templateWidth={templateWidth}

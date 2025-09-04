@@ -16,7 +16,6 @@ interface UseDocumentMouseHandlersProps {
   selectionState: SelectionState;
   setSelectionState: React.Dispatch<React.SetStateAction<SelectionState>>;
   documentState: {
-    scale: number;
     pageWidth: number;
     currentPage: number;
     pdfBackgroundColor: string;
@@ -94,7 +93,7 @@ export const useDocumentMouseHandlers = ({
           undefined;
         if (viewState.currentView === "split") {
           const clickX = e.clientX - rect.left;
-          const singleDocWidth = documentState.pageWidth * documentState.scale;
+          const singleDocWidth = documentState.pageWidth;
           const gap = 20;
 
           if (clickX > singleDocWidth + gap) {
@@ -113,7 +112,6 @@ export const useDocumentMouseHandlers = ({
           e.clientX,
           e.clientY,
           rect,
-          documentState.scale,
           targetView,
           viewState.currentView,
           documentState.pageWidth,
@@ -136,7 +134,6 @@ export const useDocumentMouseHandlers = ({
     [
       editorState.isTextSelectionMode,
       erasureState.isErasureMode,
-      documentState.scale,
       documentState.pageWidth,
       viewState.currentView,
       setEditorState,
@@ -176,7 +173,6 @@ export const useDocumentMouseHandlers = ({
           e.clientX,
           e.clientY,
           rect,
-          documentState.scale,
           erasureState.erasureDrawTargetView,
           viewState.currentView,
           documentState.pageWidth,
@@ -198,7 +194,6 @@ export const useDocumentMouseHandlers = ({
       erasureState.isDrawingErasure,
       erasureState.erasureDrawStart,
       erasureState.erasureDrawTargetView,
-      documentState.scale,
       documentState.pageWidth,
       viewState.currentView,
       setEditorState,
@@ -222,12 +217,11 @@ export const useDocumentMouseHandlers = ({
         if (editorState.selectionRect) {
           const rect = documentRef.current?.getBoundingClientRect();
           if (rect) {
-            const scale = documentState.scale;
             const selectionInDoc = {
-              x: (editorState.selectionRect.left - rect.left) / scale,
-              y: (editorState.selectionRect.top - rect.top) / scale,
-              width: editorState.selectionRect.width / scale,
-              height: editorState.selectionRect.height / scale,
+              x: editorState.selectionRect.left - rect.left,
+              y: editorState.selectionRect.top - rect.top,
+              width: editorState.selectionRect.width,
+              height: editorState.selectionRect.height,
             };
 
             // Find overlapping textboxes
@@ -299,7 +293,13 @@ export const useDocumentMouseHandlers = ({
             width,
             height,
             documentState.currentPage,
-            targetView || viewState.currentView,
+            (targetView ||
+              (viewState.currentView === "split"
+                ? "original"
+                : viewState.currentView)) as
+              | "original"
+              | "translated"
+              | "final-layout",
             documentState.pdfBackgroundColor,
             erasureState.erasureSettings.opacity
           );
@@ -315,7 +315,6 @@ export const useDocumentMouseHandlers = ({
       erasureState.erasureDrawEnd,
       erasureState.erasureDrawTargetView,
       erasureState.erasureSettings.opacity,
-      documentState.scale,
       documentState.currentPage,
       documentState.pdfBackgroundColor,
       viewState.currentView,

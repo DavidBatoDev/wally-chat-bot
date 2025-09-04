@@ -19,7 +19,6 @@ interface UseMultiSelectionHandlersProps {
     Record<string, { x: number; y: number }>
   >;
   documentState: {
-    scale: number;
     pageWidth: number;
     pageHeight: number;
     currentPage: number;
@@ -461,20 +460,20 @@ export const useMultiSelectionHandlers = ({
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       if (!rect) return;
 
-      let x = (e.clientX - rect.left) / documentState.scale;
-      let y = (e.clientY - rect.top) / documentState.scale;
+      let x = e.clientX - rect.left;
+      let y = e.clientY - rect.top;
       let targetView: "original" | "translated" | "final-layout" | null = null;
 
       // Determine target view in split mode
       if (viewState.currentView === "split") {
         const clickX = e.clientX - rect.left;
-        const singleDocWidth = documentState.pageWidth * documentState.scale;
+        const singleDocWidth = documentState.pageWidth;
         const gap = 20;
 
         if (clickX > singleDocWidth + gap) {
           // Click on translated side
           targetView = "translated";
-          x = (clickX - singleDocWidth - gap) / documentState.scale;
+          x = clickX - singleDocWidth - gap;
         } else if (clickX <= singleDocWidth) {
           // Click on original side
           targetView = "original";
@@ -501,7 +500,6 @@ export const useMultiSelectionHandlers = ({
     },
     [
       editorState.isSelectionMode,
-      documentState.scale,
       documentState.pageWidth,
       viewState.currentView,
       setEditorState,
@@ -534,8 +532,8 @@ export const useMultiSelectionHandlers = ({
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         if (!rect) return;
 
-        let x = (last.x - rect.left) / documentState.scale;
-        let y = (last.y - rect.top) / documentState.scale;
+        let x = last.x - rect.left;
+        let y = last.y - rect.top;
 
         // Adjust coordinates for split view
         if (
@@ -544,21 +542,15 @@ export const useMultiSelectionHandlers = ({
             editorState.multiSelection.targetView === "final-layout")
         ) {
           const clickX = last.x - rect.left;
-          const singleDocWidth = documentState.pageWidth * documentState.scale;
+          const singleDocWidth = documentState.pageWidth;
           const gap = 20;
-          x = (clickX - singleDocWidth - gap) / documentState.scale;
+          x = clickX - singleDocWidth - gap;
         }
 
         // Imperatively update a CSS variable for the preview to avoid state churn
         const container = e.currentTarget as HTMLElement;
-        container.style.setProperty(
-          "--selection-end-x",
-          `${x * documentState.scale}px`
-        );
-        container.style.setProperty(
-          "--selection-end-y",
-          `${y * documentState.scale}px`
-        );
+        container.style.setProperty("--selection-end-x", `${x}px`);
+        container.style.setProperty("--selection-end-y", `${y}px`);
 
         // Update React state less frequently (every RAF) which we're already inside
         setEditorState((prev) => ({
@@ -575,7 +567,6 @@ export const useMultiSelectionHandlers = ({
       editorState.multiSelection.isDrawingSelection,
       editorState.multiSelection.selectionStart,
       editorState.multiSelection.targetView,
-      documentState.scale,
       documentState.pageWidth,
       viewState.currentView,
       setEditorState,

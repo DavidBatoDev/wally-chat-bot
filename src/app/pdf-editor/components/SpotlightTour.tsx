@@ -403,7 +403,7 @@ export const SpotlightTour: React.FC<SpotlightTourProps> = ({
                   className="fixed z-40 pointer-events-none"
                   style={{
                     top: rect.top + 80, // 125px from top of table (slightly below textarea)
-                    left: rect.left + rect.width * 1 - 80, // Right side of table - button width
+                    left: rect.left + rect.width - 80, // Right side of table - button width
                     width: 70, // Fixed width for action buttons
                     height: 40, // Estimated height for action buttons
                     boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.6)",

@@ -9,7 +9,6 @@ interface SelectionRectangleProps {
     width: number;
     height: number;
   };
-  scale: number;
   onMove: () => void;
   onDelete: () => void;
   isMoving: boolean;
@@ -19,7 +18,6 @@ interface SelectionRectangleProps {
 
 export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
   bounds,
-  scale,
   onMove,
   onDelete,
   isMoving,
@@ -37,18 +35,18 @@ export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
 
   const handleDragStart: RndDragCallback = useCallback(
     (e, data) => {
-      startXRef.current = bounds.x * scale;
-      startYRef.current = bounds.y * scale;
+      startXRef.current = bounds.x;
+      startYRef.current = bounds.y;
       setLocalOffset({ x: 0, y: 0 });
     },
-    [bounds.x, bounds.y, scale]
+    [bounds.x, bounds.y, 1]
   );
 
   // Called during drag - update position in real time
   const handleDrag: RndDragCallback = (e, data) => {
     if (startXRef.current === null || startYRef.current === null) return;
-    const deltaX = (data.x - startXRef.current) / scale;
-    const deltaY = (data.y - startYRef.current) / scale;
+    const deltaX = data.x - startXRef.current;
+    const deltaY = data.y - startYRef.current;
     setLocalOffset({
       x: data.x - startXRef.current,
       y: data.y - startYRef.current,
@@ -58,10 +56,10 @@ export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
 
   // Called when drag stops - only update position when drag ends, like textbox
   const handleDragStop: RndDragCallback = (e, data) => {
-    const effectiveStartX = startXRef.current ?? bounds.x * scale;
-    const effectiveStartY = startYRef.current ?? bounds.y * scale;
-    const deltaX = (data.x - effectiveStartX) / scale;
-    const deltaY = (data.y - effectiveStartY) / scale;
+    const effectiveStartX = startXRef.current ?? bounds.x;
+    const effectiveStartY = startYRef.current ?? bounds.y;
+    const deltaX = data.x - effectiveStartX;
+    const deltaY = data.y - effectiveStartY;
     onDragStopSelection(deltaX, deltaY);
     // Reset for next drag
     startXRef.current = null;
@@ -72,10 +70,10 @@ export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
   return (
     <Rnd
       position={{
-        x: bounds.x * scale + localOffset.x,
-        y: bounds.y * scale + localOffset.y,
+        x: bounds.x + localOffset.x,
+        y: bounds.y + localOffset.y,
       }}
-      size={{ width: bounds.width * scale, height: bounds.height * scale }}
+      size={{ width: bounds.width, height: bounds.height }}
       disableDragging={false}
       enableResizing={false}
       className="selection-rectangle-rnd"
@@ -111,12 +109,12 @@ export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
           }`}
           style={{
             left: -5,
-            top: bounds.height * scale + 5,
+            top: bounds.height + 5,
             pointerEvents: "auto",
           }}
         >
           <div
-            className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move"
+            className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:1-105 transition-all duration-200 cursor-move"
             title="Click and drag to move selection"
           >
             <Move size={10} />
@@ -127,7 +125,7 @@ export const SelectionRectangle: React.FC<SelectionRectangleProps> = ({
         <div
           className="absolute cursor-pointer bg-white border border-gray-300 rounded shadow-md hover:shadow-lg hover:bg-red-50 hover:border-red-300 transition-all"
           style={{
-            left: bounds.width * scale + iconOffset,
+            left: bounds.width + iconOffset,
             top: -iconOffset,
             width: iconSize,
             height: iconSize,

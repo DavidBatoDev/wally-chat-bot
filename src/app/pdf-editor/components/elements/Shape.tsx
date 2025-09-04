@@ -10,7 +10,6 @@ interface ShapeProps {
   shape: Shape;
   isSelected: boolean;
   isEditMode: boolean;
-  scale: number;
   pageWidth: number;
   pageHeight: number;
   onSelect: (id: string) => void;
@@ -33,7 +32,6 @@ export const MemoizedShape = memo(
     shape,
     isSelected,
     isEditMode,
-    scale,
     pageWidth,
     pageHeight,
     onSelect,
@@ -75,7 +73,6 @@ export const MemoizedShape = memo(
           shape={shape}
           isSelected={isSelected}
           isEditMode={isEditMode}
-          scale={scale}
           pageWidth={pageWidth}
           pageHeight={pageHeight}
           onSelect={onSelect}
@@ -86,14 +83,14 @@ export const MemoizedShape = memo(
       );
     }
 
-    const dragOffsetX = (dragOffset?.x || 0) * scale;
-    const dragOffsetY = (dragOffset?.y || 0) * scale;
+    const dragOffsetX = dragOffset?.x || 0;
+    const dragOffsetY = dragOffset?.y || 0;
 
     return (
       <Rnd
         key={shape.id}
-        position={{ x: shape.x * scale, y: shape.y * scale }}
-        size={{ width: shape.width * scale, height: shape.height * scale }}
+        position={{ x: shape.x, y: shape.y }}
+        size={{ width: shape.width, height: shape.height }}
         bounds="parent"
         dragHandleClassName="drag-handle"
         enableResizing={
@@ -122,8 +119,8 @@ export const MemoizedShape = memo(
           onUpdate(
             shape.id,
             {
-              x: d.x / scale,
-              y: d.y / scale,
+              x: d.x,
+              y: d.y,
               type: shape.type,
             },
             true
@@ -133,10 +130,10 @@ export const MemoizedShape = memo(
           onUpdate(
             shape.id,
             {
-              x: position.x / scale,
-              y: position.y / scale,
-              width: parseInt(ref.style.width) / scale,
-              height: parseInt(ref.style.height) / scale,
+              x: position.x,
+              y: position.y,
+              width: parseInt(ref.style.width),
+              height: parseInt(ref.style.height),
               type: shape.type,
             },
             false
@@ -171,14 +168,12 @@ export const MemoizedShape = memo(
             className="w-full h-full"
             style={{
               backgroundColor: hexToRgba(shape.fillColor, shape.fillOpacity),
-              border: `${shape.borderWidth * scale}px solid ${
-                shape.borderColor
-              }`,
+              border: `${shape.borderWidth}px solid ${shape.borderColor}`,
               borderRadius:
                 shape.type === "circle"
                   ? "50%"
                   : shape.borderRadius !== undefined
-                  ? `${shape.borderRadius * scale}px`
+                  ? `${shape.borderRadius}px`
                   : "0",
               transform: shape.rotation
                 ? `rotate(${shape.rotation}deg)`
@@ -195,7 +190,7 @@ export const MemoizedShape = memo(
                 className="absolute -bottom-7 left-1 transform transition-all duration-300 flex items-center space-x-1"
                 style={{ zIndex: 20 }}
               >
-                <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:1-105 transition-all duration-200 cursor-move">
                   <Move size={10} />
                 </div>
               </div>

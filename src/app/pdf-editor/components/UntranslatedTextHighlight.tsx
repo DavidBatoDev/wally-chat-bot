@@ -5,15 +5,11 @@ interface UntranslatedTextHighlightProps {
   untranslatedTexts: UntranslatedText[];
   highlightedId: string | null;
   currentPage: number;
-  scale: number;
 }
 
-export const UntranslatedTextHighlight: React.FC<UntranslatedTextHighlightProps> = ({
-  untranslatedTexts,
-  highlightedId,
-  currentPage,
-  scale,
-}) => {
+export const UntranslatedTextHighlight: React.FC<
+  UntranslatedTextHighlightProps
+> = ({ untranslatedTexts, highlightedId, currentPage }) => {
   if (!highlightedId) return null;
 
   const highlightedText = untranslatedTexts.find(
@@ -24,10 +20,10 @@ export const UntranslatedTextHighlight: React.FC<UntranslatedTextHighlightProps>
 
   // Add buffer to make the bounding box more visible
   const buffer = 10; // pixels of buffer around the text
-  const bufferedLeft = Math.max(0, (highlightedText.x * scale) - buffer);
-  const bufferedTop = Math.max(0, (highlightedText.y * scale) - buffer);
-  const bufferedWidth = (highlightedText.width * scale) + (buffer * 2);
-  const bufferedHeight = (highlightedText.height * scale) + (buffer * 2);
+  const bufferedLeft = Math.max(0, highlightedText.x - buffer);
+  const bufferedTop = Math.max(0, highlightedText.y - buffer);
+  const bufferedWidth = highlightedText.width + buffer * 2;
+  const bufferedHeight = highlightedText.height + buffer * 2;
 
   return (
     <div
@@ -44,7 +40,7 @@ export const UntranslatedTextHighlight: React.FC<UntranslatedTextHighlightProps>
       <div
         className="absolute -top-8 left-0 bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap max-w-xs overflow-hidden text-ellipsis"
         style={{
-          fontSize: Math.max(10, 12 / scale), // Scale font size inversely to maintain readability
+          fontSize: Math.max(10, 12), // Font size for label
           left: buffer, // Adjust label position to account for buffer
         }}
       >

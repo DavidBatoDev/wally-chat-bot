@@ -90,7 +90,6 @@ import { ShapePreview } from "./components/elements/ShapePreview";
 import { useDocumentMouseHandlers } from "./hooks/handlers/useDocumentMouseHandlers";
 import { useFormatHandlers } from "./hooks/handlers/useFormatHandlers";
 import { useKeyboardHandlers } from "./hooks/handlers/useKeyboardHandlers";
-import { useZoomHandlers } from "./hooks/handlers/useZoomHandlers";
 
 // Import components
 import { PDFEditorHeader } from "./components/layout/PDFEditorHeader";
@@ -472,23 +471,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     currentWorkflowStep: "translate",
   });
 
-  // Helper function to get effective scale for translated view in split mode
+  // Helper function to get effective scale (fixed to 1)
   const getEffectiveScale = useCallback(
-    (targetView: "original" | "translated" | null) => {
-      if (targetView === "translated" && viewState.currentView === "split") {
-        return (
-          documentState.scale *
-          (getTranslatedTemplateScaleFactor(documentState.currentPage) || 1)
-        );
-      }
-      return documentState.scale;
-    },
-    [
-      documentState.scale,
-      viewState.currentView,
-      getTranslatedTemplateScaleFactor,
-      documentState.currentPage,
-    ]
+    (_targetView: "original" | "translated" | null) => 1,
+    []
   );
   // Performance optimization: Track ongoing operations to batch updates
   const [ongoingOperations, setOngoingOperations] = useState<{
@@ -2463,7 +2449,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   // Text span handling hook
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
     isAddTextBoxMode: editorState.isAddTextBoxMode,
-    scale: documentState.scale,
     currentPage: documentState.currentPage,
     pdfBackgroundColor: documentState.pdfBackgroundColor,
     erasureSettings: erasureState.erasureSettings,
@@ -2476,9 +2461,17 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         pdfPageEl,
         documentState.currentPage,
         viewState.currentView,
-        documentState.scale,
         documentState.pageWidth,
-        (x, y, width, height, page, view, background, opacity) => {
+        (
+          x: number,
+          y: number,
+          width: number,
+          height: number,
+          page: number,
+          view: "original" | "translated" | "final-layout",
+          background: string,
+          opacity?: number
+        ) => {
           const result = handleAddDeletionRectangleWithUndo(
             x,
             y,
@@ -2505,9 +2498,15 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         pdfPageEl,
         documentState.currentPage,
         viewState.currentView,
-        documentState.scale,
         documentState.pageWidth,
-        (x, y, page, view, targetView, initialProperties) => {
+        (
+          x: number,
+          y: number,
+          page: number,
+          view: "original" | "translated" | "final-layout",
+          targetView?: "original" | "translated" | "final-layout",
+          initialProperties?: any
+        ) => {
           const result = handleAddTextBoxWithUndo(
             x,
             y,
@@ -2518,7 +2517,16 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           );
           return result || "";
         },
-        (x, y, width, height, page, view, background, opacity) => {
+        (
+          x: number,
+          y: number,
+          width: number,
+          height: number,
+          page: number,
+          view: "original" | "translated" | "final-layout",
+          background: string,
+          opacity?: number
+        ) => {
           const result = handleAddDeletionRectangleWithUndo(
             x,
             y,
@@ -2555,15 +2563,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     setAutoFocusTextBoxId,
   });
 
-  // Zoom functionality (optimized)
-  useZoomHandlers({
-    viewState,
-    setViewState,
-    documentState,
-    actions,
-    containerRef,
-    documentRef,
-  });
+  // Zoom removed
 
   // Format handlers (extracted to custom hook)
   const { calculateTextboxDimensionsForFontChange, handleFormatChange } =
@@ -2985,7 +2985,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   }, [
     elementCollections,
     documentState.currentPage,
-    documentState.scale,
     viewState.currentView,
     viewState.currentWorkflowStep,
     editorState,
@@ -3190,7 +3189,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         erasureState.erasureDrawTargetView,
         viewState.currentView,
         documentState.pageWidth,
@@ -3209,7 +3207,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       erasureState.isDrawingErasure,
       erasureState.erasureDrawStart,
       erasureState.erasureDrawTargetView,
-      documentState.scale,
       documentState.pageWidth,
       viewState.currentView,
     ]
@@ -3318,7 +3315,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       let clickedView: "original" | "translated" | "final-layout" = "original";
       if (viewState.currentView === "split") {
         const clickX = e.clientX - rect.left;
-        const singleDocWidth = documentState.pageWidth * documentState.scale;
+        const singleDocWidth = documentState.pageWidth;
         const gap = 20; // Gap between documents
 
         if (clickX > singleDocWidth + gap) {
@@ -3342,7 +3339,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         clickedView,
         viewState.currentView,
         documentState.pageWidth,
@@ -3388,7 +3384,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     },
     [
       editorState.isSelectionMode,
-      documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
     ]
@@ -3412,7 +3407,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         editorState.multiSelection.targetView,
         viewState.currentView,
         documentState.pageWidth,
@@ -3437,7 +3431,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       editorState.multiSelection.isDrawingSelection,
       editorState.multiSelection.selectionStart,
       editorState.multiSelection.targetView,
-      documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
     ]
@@ -3684,8 +3677,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         }
 
         // Imperatively set CSS variables to avoid React re-renders during drag
-        const pxX = `${clampedDeltaX * documentState.scale}px`;
-        const pxY = `${clampedDeltaY * documentState.scale}px`;
+        const pxX = `${clampedDeltaX}px`;
+        const pxY = `${clampedDeltaY}px`;
         const nodes = selectionDragElementsRef.current;
         for (let i = 0; i < nodes.length; i += 1) {
           const node = nodes[i];
@@ -3699,7 +3692,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       documentState.pageHeight,
       editorState.multiSelection.selectedElements,
       ensureSelectionDragInitialized,
-      documentState.scale,
     ]
   );
 
@@ -3882,7 +3874,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         editorState.multiSelection.targetView,
         viewState.currentView,
         documentState.pageWidth,
@@ -3905,7 +3896,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     [
       editorState.multiSelection.isMovingSelection,
       editorState.multiSelection.targetView,
-      documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
     ]
@@ -3927,7 +3917,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         editorState.multiSelection.targetView,
         viewState.currentView,
         documentState.pageWidth,
@@ -3953,7 +3942,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       editorState.multiSelection.moveStart,
       editorState.multiSelection.selectedElements,
       editorState.multiSelection.targetView,
-      documentState.scale,
       viewState.currentView,
       documentState.pageWidth,
       updateSelectionDragOffsets,
@@ -3998,11 +3986,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       // Determine which view was clicked in split mode
       const targetView =
         viewState.currentView === "split"
-          ? determineClickedView(
-              clickX,
-              documentState.pageWidth,
-              documentState.scale
-            )
+          ? determineClickedView(clickX, documentState.pageWidth)
           : null;
 
       // Convert to document coordinates
@@ -4010,7 +3994,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         e.clientX,
         e.clientY,
         rect,
-        documentState.scale,
         targetView,
         viewState.currentView,
         documentState.pageWidth,
@@ -5251,7 +5234,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         url: documentState.url,
         currentPage: documentState.currentPage,
         numPages: documentState.numPages,
-        scale: documentState.scale,
+        // scale removed
         pageWidth: documentState.pageWidth,
         pageHeight: documentState.pageHeight,
       },
@@ -5508,9 +5491,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       targetView === "translated" &&
       viewState.currentView === "split" &&
       getTranslatedTemplateScaleFactor(documentState.currentPage)
-        ? documentState.scale *
-          getTranslatedTemplateScaleFactor(documentState.currentPage)
-        : documentState.scale;
+        ? 1 * getTranslatedTemplateScaleFactor(documentState.currentPage)
+        : 1;
 
     // Get elements that would be captured in the current selection preview
     // Optimize: avoid recomputing preview set while user is drawing the selection
@@ -5540,7 +5522,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           textBox={textBox}
           isSelected={editorState.selectedFieldId === textBox.id}
           isEditMode={editorState.isEditMode}
-          scale={effectiveScale}
           showPaddingIndicator={showPaddingPopup}
           onSelect={handleTextBoxSelect}
           onUpdate={updateFunction}
@@ -5578,7 +5559,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           shape={shape}
           isSelected={editorState.selectedShapeId === shape.id}
           isEditMode={editorState.isEditMode}
-          scale={effectiveScale}
           pageWidth={documentState.pageWidth}
           pageHeight={documentState.pageHeight}
           onSelect={handleShapeSelect}
@@ -5604,7 +5584,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           image={image}
           isSelected={selectedElementId === image.id}
           isEditMode={editorState.isEditMode}
-          scale={effectiveScale}
           pageWidth={documentState.pageWidth}
           pageHeight={documentState.pageHeight}
           onSelect={handleImageSelect}
@@ -5633,7 +5612,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     currentPageSortedElements,
     editorState.selectedFieldId,
     editorState.isEditMode,
-    documentState.scale,
     showPaddingPopup,
     editorState.isTextSelectionMode,
     selectionState.selectedTextBoxes.textBoxIds,
@@ -6690,27 +6668,22 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                   style={{
                     minHeight: `${Math.max(
                       100,
-                      documentState.pageHeight * documentState.scale + 80
+                      documentState.pageHeight + 80
                     )}px`,
-                    height: `${Math.max(
-                      100,
-                      documentState.pageHeight * documentState.scale + 80
-                    )}px`,
+                    height: `${Math.max(100, documentState.pageHeight + 80)}px`,
                     width: `${Math.max(
                       100,
                       viewState.currentView === "split" &&
                         viewState.currentWorkflowStep == "layout"
-                        ? documentState.pageWidth * documentState.scale * 2 +
-                            100 // Double width for split view plus gap and padding
-                        : documentState.pageWidth * documentState.scale + 80
+                        ? documentState.pageWidth * 2 + 100 // Double width for split view plus gap and padding
+                        : documentState.pageWidth + 80
                     )}px`,
                     minWidth: `${Math.max(
                       100,
                       viewState.currentView === "split" &&
                         viewState.currentWorkflowStep == "layout"
-                        ? documentState.pageWidth * documentState.scale * 2 +
-                            100
-                        : documentState.pageWidth * documentState.scale + 80
+                        ? documentState.pageWidth * 2 + 100
+                        : documentState.pageWidth + 80
                     )}px`,
                     display: "flex",
                     justifyContent: "center",
@@ -6794,18 +6767,16 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         viewState.currentView === "split" &&
                         viewState.currentWorkflowStep !== "translate" &&
                         viewState.currentWorkflowStep !== "final-layout"
-                          ? documentState.pageWidth * documentState.scale * 2 +
-                            20 // Double width plus gap for split view
-                          : documentState.pageWidth * documentState.scale,
-                      height: documentState.pageHeight * documentState.scale,
+                          ? documentState.pageWidth * 2 + 20 // Double width plus gap for split view
+                          : documentState.pageWidth,
+                      height: documentState.pageHeight,
                       minWidth:
                         viewState.currentView === "split" &&
                         viewState.currentWorkflowStep !== "translate" &&
                         viewState.currentWorkflowStep !== "final-layout"
-                          ? documentState.pageWidth * documentState.scale * 2 +
-                            20
-                          : documentState.pageWidth * documentState.scale,
-                      minHeight: documentState.pageHeight * documentState.scale,
+                          ? documentState.pageWidth * 2 + 20
+                          : documentState.pageWidth,
+                      minHeight: documentState.pageHeight,
                       display: "block",
                     }}
                   >
@@ -6817,7 +6788,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                         currentPage={documentState.currentPage}
                         pageWidth={documentState.pageWidth}
                         pageHeight={documentState.pageHeight}
-                        scale={documentState.scale}
                         pdfRenderScale={documentState.pdfRenderScale}
                         numPages={documentState.numPages}
                         isScaleChanging={documentState.isScaleChanging}
@@ -6893,7 +6863,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                           }
                           pageWidth={documentState.pageWidth}
                           pageHeight={documentState.pageHeight}
-                          scale={documentState.scale}
                           pdfRenderScale={documentState.pdfRenderScale}
                           numPages={documentState.finalLayoutNumPages || 1}
                           isScaleChanging={documentState.isScaleChanging}
@@ -6977,7 +6946,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                             currentPage={documentState.currentPage}
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
-                            scale={documentState.scale}
                             pdfRenderScale={documentState.pdfRenderScale}
                             numPages={documentState.numPages}
                             isScaleChanging={documentState.isScaleChanging}
@@ -7081,10 +7049,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                       <div
                         className="flex relative"
                         style={{
-                          width:
-                            documentState.pageWidth * documentState.scale + 20, // Double width plus gap
-                          height:
-                            documentState.pageHeight * documentState.scale,
+                          width: documentState.pageWidth + 20, // Double width plus gap
+                          height: documentState.pageHeight,
                         }}
                       >
                         {/* Original Document Side */}
@@ -7095,7 +7061,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                             currentPage={documentState.currentPage}
                             pageWidth={documentState.pageWidth}
                             pageHeight={documentState.pageHeight}
-                            scale={documentState.scale}
                             pdfRenderScale={documentState.pdfRenderScale}
                             numPages={documentState.numPages}
                             isScaleChanging={documentState.isScaleChanging}
@@ -7198,10 +7163,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                           <div
                             className="absolute top-0 left-0 interactive-elements-wrapper"
                             style={{
-                              width:
-                                documentState.pageWidth * documentState.scale,
-                              height:
-                                documentState.pageHeight * documentState.scale,
+                              width: documentState.pageWidth,
+                              height: documentState.pageHeight,
                               pointerEvents: "auto",
                               zIndex: 10000,
                             }}
@@ -7221,10 +7184,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                       : ""
                                   }`}
                                   style={{
-                                    left: rect.x * documentState.scale,
-                                    top: rect.y * documentState.scale,
-                                    width: rect.width * documentState.scale,
-                                    height: rect.height * documentState.scale,
+                                    left: rect.x,
+                                    top: rect.y,
+                                    width: rect.width,
+                                    height: rect.height,
                                     zIndex: editorState.showDeletionRectangles
                                       ? -10
                                       : -20,
@@ -7261,7 +7224,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                               }
                               highlightedId={highlightedUntranslatedTextId}
                               currentPage={documentState.currentPage}
-                              scale={documentState.scale}
                             />
 
                             {/* Render all elements in layer order */}
@@ -7280,7 +7242,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                     editorState.multiSelection.selectionStart
                                   }
                                   end={editorState.multiSelection.selectionEnd}
-                                  scale={documentState.scale}
                                 />
                               )}
                             {editorState.isSelectionMode &&
@@ -7293,7 +7254,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                   bounds={
                                     editorState.multiSelection.selectionBounds
                                   }
-                                  scale={documentState.scale}
                                   onMove={handleMoveSelection}
                                   onDelete={handleDeleteSelection}
                                   isMoving={
@@ -7330,7 +7290,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                               currentPage={documentState.currentPage}
                               pageWidth={documentState.pageWidth}
                               pageHeight={documentState.pageHeight}
-                              scale={documentState.scale}
                               pdfRenderScale={documentState.pdfRenderScale}
                               numPages={documentState.numPages}
                               isScaleChanging={documentState.isScaleChanging}
@@ -7446,7 +7405,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                   getTranslatedTemplateDimensions(
                                     documentState.currentPage
                                   ).width *
-                                  documentState.scale *
+                                  1 *
                                   getTranslatedTemplateScaleFactor(
                                     documentState.currentPage
                                   ),
@@ -7454,7 +7413,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                   getTranslatedTemplateDimensions(
                                     documentState.currentPage
                                   ).height *
-                                  documentState.scale *
+                                  1 *
                                   getTranslatedTemplateScaleFactor(
                                     documentState.currentPage
                                   ),
@@ -7479,25 +7438,25 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                     style={{
                                       left:
                                         rect.x *
-                                        documentState.scale *
+                                        1 *
                                         getTranslatedTemplateScaleFactor(
                                           documentState.currentPage
                                         ),
                                       top:
                                         rect.y *
-                                        documentState.scale *
+                                        1 *
                                         getTranslatedTemplateScaleFactor(
                                           documentState.currentPage
                                         ),
                                       width:
                                         rect.width *
-                                        documentState.scale *
+                                        1 *
                                         getTranslatedTemplateScaleFactor(
                                           documentState.currentPage
                                         ),
                                       height:
                                         rect.height *
-                                        documentState.scale *
+                                        1 *
                                         getTranslatedTemplateScaleFactor(
                                           documentState.currentPage
                                         ),
@@ -7547,12 +7506,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                     end={
                                       editorState.multiSelection.selectionEnd
                                     }
-                                    scale={
-                                      documentState.scale *
-                                      getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      )
-                                    }
                                   />
                                 )}
                               {editorState.isSelectionMode &&
@@ -7564,12 +7517,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                   <SelectionRectangle
                                     bounds={
                                       editorState.multiSelection.selectionBounds
-                                    }
-                                    scale={
-                                      documentState.scale *
-                                      getTranslatedTemplateScaleFactor(
-                                        documentState.currentPage
-                                      )
                                     }
                                     onMove={handleMoveSelection}
                                     onDelete={handleDeleteSelection}
@@ -7609,14 +7556,14 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                             viewState.currentView === "translated"
                               ? getTranslatedTemplateDimensions(
                                   documentState.currentPage
-                                ).width * documentState.scale
-                              : documentState.pageWidth * documentState.scale,
+                                ).width
+                              : documentState.pageWidth,
                           height:
                             viewState.currentView === "translated"
                               ? getTranslatedTemplateDimensions(
                                   documentState.currentPage
-                                ).height * documentState.scale
-                              : documentState.pageHeight * documentState.scale,
+                                ).height
+                              : documentState.pageHeight,
                           zIndex:
                             editorState.isTextSelectionMode ||
                             editorState.isAddTextBoxMode
@@ -7639,10 +7586,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                 : ""
                             }`}
                             style={{
-                              left: rect.x * documentState.scale,
-                              top: rect.y * documentState.scale,
-                              width: rect.width * documentState.scale,
-                              height: rect.height * documentState.scale,
+                              left: rect.x,
+                              top: rect.y,
+                              width: rect.width,
+                              height: rect.height,
                               zIndex: editorState.showDeletionRectangles
                                 ? -10
                                 : -20,
@@ -7695,7 +7642,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                     editorState.multiSelection.selectionStart
                                   }
                                   end={editorState.multiSelection.selectionEnd}
-                                  scale={documentState.scale}
                                 />
                               )}
 
@@ -7713,7 +7659,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                   bounds={
                                     editorState.multiSelection.selectionBounds
                                   }
-                                  scale={documentState.scale}
                                   onMove={handleMoveSelection}
                                   onDelete={handleDeleteSelection}
                                   isMoving={
@@ -7747,7 +7692,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                           targetView={toolState.shapeDrawTargetView}
                           currentView={viewState.currentView}
                           pageWidth={documentState.pageWidth}
-                          scale={documentState.scale}
                           templateScaleFactor={
                             toolState.shapeDrawTargetView === "translated"
                               ? getTranslatedTemplateScaleFactor?.(
@@ -7776,7 +7720,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                                 : viewState.currentView === "translated",
                               viewState.currentView,
                               documentState.pageWidth,
-                              documentState.scale,
                               erasureState.erasureDrawTargetView ===
                                 "translated"
                                 ? getTranslatedTemplateScaleFactor(
@@ -7792,11 +7735,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                               (erasureState.erasureDrawTargetView ===
                                 "translated" &&
                               viewState.currentView === "split"
-                                ? documentState.scale *
+                                ? 1 *
                                   (getTranslatedTemplateScaleFactor(
                                     documentState.currentPage
                                   ) || 1)
-                                : documentState.scale),
+                                : 1),
                             width:
                               Math.abs(
                                 erasureState.erasureDrawEnd.x -
@@ -7805,11 +7748,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                               (erasureState.erasureDrawTargetView ===
                                 "translated" &&
                               viewState.currentView === "split"
-                                ? documentState.scale *
+                                ? 1 *
                                   (getTranslatedTemplateScaleFactor(
                                     documentState.currentPage
                                   ) || 1)
-                                : documentState.scale),
+                                : 1),
                             height:
                               Math.abs(
                                 erasureState.erasureDrawEnd.y -
@@ -7818,11 +7761,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                               (erasureState.erasureDrawTargetView ===
                                 "translated" &&
                               viewState.currentView === "split"
-                                ? documentState.scale *
+                                ? 1 *
                                   (getTranslatedTemplateScaleFactor(
                                     documentState.currentPage
                                   ) || 1)
-                                : documentState.scale),
+                                : 1),
                             backgroundColor: colorToRgba(
                               documentState.pdfBackgroundColor,
                               erasureState.erasureSettings.opacity
@@ -7880,7 +7823,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                     onAddUntranslatedText={handleAddCustomUntranslatedText}
                     pageWidth={documentState.pageWidth}
                     pageHeight={documentState.pageHeight}
-                    scale={1}
                     currentPage={documentState.currentPage}
                     sourceLanguage={sourceLanguage}
                     desiredLanguage={desiredLanguage}
@@ -7927,22 +7869,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           ),
           isTransforming: documentState.isTransforming,
         }}
-        onZoomChange={(scale) =>
-          actions.updateScaleWithoutRerender(
-            Math.max(0.1, Math.round(scale * 10) / 10)
-          )
-        }
-        onZoomIn={() =>
-          actions.updateScaleWithoutRerender(
-            Math.min(5.0, Math.round((documentState.scale + 0.1) * 10) / 10)
-          )
-        }
-        onZoomOut={() =>
-          actions.updateScaleWithoutRerender(
-            Math.max(0.1, Math.round((documentState.scale - 0.1) * 10) / 10)
-          )
-        }
-        onZoomReset={() => actions.updateScaleWithoutRerender(1.0)}
       />
 
       {/* Confirmation Modal */}

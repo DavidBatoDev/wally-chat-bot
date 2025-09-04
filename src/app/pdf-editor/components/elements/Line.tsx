@@ -7,7 +7,6 @@ interface LineProps {
   shape: Shape;
   isSelected: boolean;
   isEditMode: boolean;
-  scale: number;
   pageWidth: number;
   pageHeight: number;
   onSelect: (id: string) => void;
@@ -25,7 +24,6 @@ export const MemoizedLine = memo(
     shape,
     isSelected,
     isEditMode,
-    scale,
     pageWidth,
     pageHeight,
     onSelect,
@@ -34,10 +32,10 @@ export const MemoizedLine = memo(
     isInSelectionPreview = false,
   }: LineProps) => {
     // For lines, use the line coordinates if available, otherwise fallback to bounding box
-    const x1 = (shape.x1 ?? shape.x) * scale;
-    const y1 = (shape.y1 ?? shape.y) * scale;
-    const x2 = (shape.x2 ?? shape.x + shape.width) * scale;
-    const y2 = (shape.y2 ?? shape.y + shape.height) * scale;
+    const x1 = shape.x1 ?? shape.x;
+    const y1 = shape.y1 ?? shape.y;
+    const x2 = shape.x2 ?? shape.x + shape.width;
+    const y2 = shape.y2 ?? shape.y + shape.height;
 
     // Calculate bounding box for the container
     const minX = Math.min(x1, x2);
@@ -75,8 +73,8 @@ export const MemoizedLine = memo(
         const originalY2 = shape.y2 ?? shape.y + shape.height;
 
         const handleAnchorMove = (e: MouseEvent) => {
-          const deltaX = (e.clientX - startX) / scale;
-          const deltaY = (e.clientY - startY) / scale;
+          const deltaX = e.clientX - startX;
+          const deltaY = e.clientY - startY;
 
           if (isStart) {
             // Constrain start point within page boundaries
@@ -115,8 +113,8 @@ export const MemoizedLine = memo(
 
         const handleAnchorUp = (upEvent: MouseEvent) => {
           // Final update without ongoing flag
-          const deltaX = (upEvent.clientX - startX) / scale;
-          const deltaY = (upEvent.clientY - startY) / scale;
+          const deltaX = upEvent.clientX - startX;
+          const deltaY = upEvent.clientY - startY;
 
           if (isStart) {
             // Constrain start point within page boundaries
@@ -159,7 +157,7 @@ export const MemoizedLine = memo(
         document.addEventListener("mousemove", handleAnchorMove);
         document.addEventListener("mouseup", handleAnchorUp);
       },
-      [isEditMode, isSelected, onUpdate, shape, scale, pageWidth, pageHeight]
+      [isEditMode, isSelected, onUpdate, shape, 1, pageWidth, pageHeight]
     );
 
     return (
@@ -178,8 +176,8 @@ export const MemoizedLine = memo(
         enableResizing={false} // Lines don't resize like rectangles
         onDragStop={(e, d) => {
           // Calculate the offset from the original position
-          const deltaX = (d.x - (minX - 10)) / scale;
-          const deltaY = (d.y - (minY - 10)) / scale;
+          const deltaX = d.x - (minX - 10);
+          const deltaY = d.y - (minY - 10);
 
           // Update both line points
           onUpdate(
@@ -217,7 +215,7 @@ export const MemoizedLine = memo(
               x2={relativeX2}
               y2={relativeY2}
               stroke="transparent"
-              strokeWidth={Math.max(8, shape.borderWidth * scale + 4)} // Minimum 8px click area
+              strokeWidth={Math.max(8, shape.borderWidth + 4)} // Minimum 8px click area
               strokeLinecap="round"
               style={{
                 pointerEvents: "auto", // Allow clicking on the invisible line
@@ -241,8 +239,8 @@ export const MemoizedLine = memo(
               }
               strokeWidth={
                 isSelected
-                  ? Math.max(shape.borderWidth * scale + 1, 2) // Slightly thicker when selected
-                  : shape.borderWidth * scale
+                  ? Math.max(shape.borderWidth + 1, 2) // Slightly thicker when selected
+                  : shape.borderWidth
               }
               strokeLinecap="round"
               style={{
@@ -287,7 +285,7 @@ export const MemoizedLine = memo(
                   top: (relativeY1 + relativeY2) / 2 + 20, // Slightly below the line center
                 }}
               >
-                <div className="line-drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+                <div className="line-drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:1-105 transition-all duration-200 cursor-move">
                   <Move size={10} />
                 </div>
               </div>

@@ -34,7 +34,6 @@ export interface ProjectState {
     url: string;
     currentPage: number;
     numPages: number;
-    scale: number;
     pageWidth: number;
     pageHeight: number;
     isLoading: boolean;
@@ -171,13 +170,13 @@ const safeToArray = (value: any): any[] => {
   if (Array.isArray(value)) {
     return value;
   }
-  if (value && typeof value === 'object') {
+  if (value && typeof value === "object") {
     // Handle Set-like objects
-    if (value.size !== undefined && typeof value.forEach === 'function') {
+    if (value.size !== undefined && typeof value.forEach === "function") {
       return Array.from(value);
     }
     // Handle plain objects that might have numeric keys
-    if (Object.keys(value).every(key => !isNaN(Number(key)))) {
+    if (Object.keys(value).every((key) => !isNaN(Number(key)))) {
       return Object.values(value);
     }
   }
@@ -209,7 +208,9 @@ export const useProjectState = (props: UseProjectStateProps) => {
 
   // State for tracking current project (no localStorage persistence)
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [currentProjectName, setCurrentProjectName] = useState<string | null>(null);
+  const [currentProjectName, setCurrentProjectName] = useState<string | null>(
+    null
+  );
 
   // Debug: Log when currentProjectId changes
   useEffect(() => {
@@ -237,7 +238,7 @@ export const useProjectState = (props: UseProjectStateProps) => {
       url: docState.url,
       currentPage: docState.currentPage,
       numPages: docState.numPages,
-      scale: docState.scale,
+      // scale removed
       pageWidth: docState.pageWidth,
       pageHeight: docState.pageHeight,
       isLoading: docState.isLoading,
@@ -260,7 +261,9 @@ export const useProjectState = (props: UseProjectStateProps) => {
       finalLayoutUrl: docState.finalLayoutUrl,
       finalLayoutCurrentPage: docState.finalLayoutCurrentPage,
       finalLayoutNumPages: docState.finalLayoutNumPages,
-      finalLayoutDeletedPages: Array.from(docState.finalLayoutDeletedPages || []),
+      finalLayoutDeletedPages: Array.from(
+        docState.finalLayoutDeletedPages || []
+      ),
     };
 
     return cleanDocState;
@@ -519,12 +522,15 @@ export const useProjectState = (props: UseProjectStateProps) => {
 
             if (originalProjectId && currentProjectId) {
               // First, verify the project still exists before attempting to update
-              console.log("DEBUG: Verifying project exists before update:", currentProjectId);
-              
+              console.log(
+                "DEBUG: Verifying project exists before update:",
+                currentProjectId
+              );
+
               try {
                 await getProject(currentProjectId);
                 console.log("DEBUG: Project exists, proceeding with update");
-                
+
                 // Update existing project
                 console.log("DEBUG: Updating existing project:", {
                   projectId: currentProjectId,
@@ -558,14 +564,20 @@ export const useProjectState = (props: UseProjectStateProps) => {
                   setCurrentProjectId(result.id);
                 }
               } catch (verifyError) {
-                console.log("DEBUG: Project no longer exists, creating new one instead:", {
-                  originalProjectId: currentProjectId,
-                  error: verifyError instanceof Error ? verifyError.message : String(verifyError),
-                });
-                
+                console.log(
+                  "DEBUG: Project no longer exists, creating new one instead:",
+                  {
+                    originalProjectId: currentProjectId,
+                    error:
+                      verifyError instanceof Error
+                        ? verifyError.message
+                        : String(verifyError),
+                  }
+                );
+
                 // Clear the invalid project ID
                 setCurrentProjectId(null);
-                
+
                 // Fall through to create new project
                 result = await createProject({
                   name: projectState.name,
@@ -575,7 +587,10 @@ export const useProjectState = (props: UseProjectStateProps) => {
                   is_public: false,
                 });
 
-                console.log("DEBUG: Create result (from failed update):", result);
+                console.log(
+                  "DEBUG: Create result (from failed update):",
+                  result
+                );
 
                 // Set the current project ID for future saves
                 setCurrentProjectId(result.id);
@@ -790,7 +805,9 @@ export const useProjectState = (props: UseProjectStateProps) => {
           hasDocumentState: !!projectState.documentState,
           deletedPagesType: typeof projectState.documentState?.deletedPages,
           deletedPagesValue: projectState.documentState?.deletedPages,
-          isDeletedPagesArray: Array.isArray(projectState.documentState?.deletedPages),
+          isDeletedPagesArray: Array.isArray(
+            projectState.documentState?.deletedPages
+          ),
         });
 
         // Restore document state (similar to importFromJson)
@@ -798,15 +815,20 @@ export const useProjectState = (props: UseProjectStateProps) => {
           ...prev,
           ...projectState.documentState,
           // Convert arrays back to Sets/Maps where needed
-          deletedPages: new Set(safeToArray(projectState.documentState.deletedPages)),
+          deletedPages: new Set(
+            safeToArray(projectState.documentState.deletedPages)
+          ),
           detectedPageBackgrounds: new Map(
             Object.entries(
               projectState.documentState.detectedPageBackgrounds || {}
             ).map(([key, value]) => [parseInt(key), value])
           ),
           // Convert final layout deleted pages back to Set if it exists
-          finalLayoutDeletedPages: projectState.documentState.finalLayoutDeletedPages 
-            ? new Set(safeToArray(projectState.documentState.finalLayoutDeletedPages))
+          finalLayoutDeletedPages: projectState.documentState
+            .finalLayoutDeletedPages
+            ? new Set(
+                safeToArray(projectState.documentState.finalLayoutDeletedPages)
+              )
             : new Set<number>(),
           // Ensure fileType is properly typed
           fileType:
@@ -818,8 +840,14 @@ export const useProjectState = (props: UseProjectStateProps) => {
         }));
 
         // Actually load the document into the PDF viewer if URL exists
-        if (projectState.documentState.url && documentActions?.loadDocumentFromUrl) {
-          console.log("DEBUG: Loading document from URL:", projectState.documentState.url);
+        if (
+          projectState.documentState.url &&
+          documentActions?.loadDocumentFromUrl
+        ) {
+          console.log(
+            "DEBUG: Loading document from URL:",
+            projectState.documentState.url
+          );
           try {
             await documentActions.loadDocumentFromUrl(
               projectState.documentState.url,
@@ -828,14 +856,23 @@ export const useProjectState = (props: UseProjectStateProps) => {
             );
             console.log("DEBUG: Document loaded successfully into PDF viewer");
           } catch (error) {
-            console.error("DEBUG: Failed to load document into PDF viewer:", error);
+            console.error(
+              "DEBUG: Failed to load document into PDF viewer:",
+              error
+            );
             // Don't fail the entire project load if document loading fails
           }
         }
 
         // Load final layout if it exists
-        if (projectState.documentState.finalLayoutUrl && documentActions?.loadFinalLayoutFromUrl) {
-          console.log("DEBUG: Loading final layout from URL:", projectState.documentState.finalLayoutUrl);
+        if (
+          projectState.documentState.finalLayoutUrl &&
+          documentActions?.loadFinalLayoutFromUrl
+        ) {
+          console.log(
+            "DEBUG: Loading final layout from URL:",
+            projectState.documentState.finalLayoutUrl
+          );
           try {
             await documentActions.loadFinalLayoutFromUrl(
               projectState.documentState.finalLayoutUrl,
@@ -877,7 +914,9 @@ export const useProjectState = (props: UseProjectStateProps) => {
           translatedLayerOrder: [
             ...projectState.layerState.translatedLayerOrder,
           ],
-          finalLayoutLayerOrder: [...(projectState.layerState.finalLayoutLayerOrder || [])],
+          finalLayoutLayerOrder: [
+            ...(projectState.layerState.finalLayoutLayerOrder || []),
+          ],
         });
 
         // Restore editor state (similar to importFromJson)
@@ -920,15 +959,14 @@ export const useProjectState = (props: UseProjectStateProps) => {
 
         // Log final layout URL restoration
         if (projectState.documentState.finalLayoutUrl) {
-          console.log(
-            "DEBUG: Final layout URL restored:",
-            {
-              finalLayoutUrl: projectState.documentState.finalLayoutUrl,
-              finalLayoutCurrentPage: projectState.documentState.finalLayoutCurrentPage,
-              finalLayoutNumPages: projectState.documentState.finalLayoutNumPages,
-              finalLayoutDeletedPages: projectState.documentState.finalLayoutDeletedPages,
-            }
-          );
+          console.log("DEBUG: Final layout URL restored:", {
+            finalLayoutUrl: projectState.documentState.finalLayoutUrl,
+            finalLayoutCurrentPage:
+              projectState.documentState.finalLayoutCurrentPage,
+            finalLayoutNumPages: projectState.documentState.finalLayoutNumPages,
+            finalLayoutDeletedPages:
+              projectState.documentState.finalLayoutDeletedPages,
+          });
         } else {
           console.log("DEBUG: No final layout URL found in project data");
         }
@@ -1334,15 +1372,20 @@ export const useProjectState = (props: UseProjectStateProps) => {
           ...prev,
           ...projectData.documentState,
           // Convert arrays back to Sets/Maps where needed
-          deletedPages: new Set(safeToArray(projectData.documentState.deletedPages)),
+          deletedPages: new Set(
+            safeToArray(projectData.documentState.deletedPages)
+          ),
           detectedPageBackgrounds: new Map(
             Object.entries(
               projectData.documentState.detectedPageBackgrounds || {}
             ).map(([key, value]) => [parseInt(key), value])
           ),
           // Convert final layout deleted pages back to Set if it exists
-          finalLayoutDeletedPages: projectData.documentState.finalLayoutDeletedPages 
-            ? new Set(safeToArray(projectData.documentState.finalLayoutDeletedPages))
+          finalLayoutDeletedPages: projectData.documentState
+            .finalLayoutDeletedPages
+            ? new Set(
+                safeToArray(projectData.documentState.finalLayoutDeletedPages)
+              )
             : new Set<number>(),
           // Ensure fileType is properly typed
           fileType:
@@ -1379,7 +1422,9 @@ export const useProjectState = (props: UseProjectStateProps) => {
           translatedLayerOrder: [
             ...projectData.layerState.translatedLayerOrder,
           ],
-          finalLayoutLayerOrder: [...(projectData.layerState.finalLayoutLayerOrder || [])],
+          finalLayoutLayerOrder: [
+            ...(projectData.layerState.finalLayoutLayerOrder || []),
+          ],
         });
 
         // Restore editor state
@@ -1407,17 +1452,18 @@ export const useProjectState = (props: UseProjectStateProps) => {
 
         // Log final layout URL restoration for import
         if (projectData.documentState.finalLayoutUrl) {
-          console.log(
-            "DEBUG: Final layout URL imported:",
-            {
-              finalLayoutUrl: projectData.documentState.finalLayoutUrl,
-              finalLayoutCurrentPage: projectData.documentState.finalLayoutCurrentPage,
-              finalLayoutNumPages: projectData.documentState.finalLayoutNumPages,
-              finalLayoutDeletedPages: projectData.documentState.finalLayoutDeletedPages,
-            }
-          );
+          console.log("DEBUG: Final layout URL imported:", {
+            finalLayoutUrl: projectData.documentState.finalLayoutUrl,
+            finalLayoutCurrentPage:
+              projectData.documentState.finalLayoutCurrentPage,
+            finalLayoutNumPages: projectData.documentState.finalLayoutNumPages,
+            finalLayoutDeletedPages:
+              projectData.documentState.finalLayoutDeletedPages,
+          });
         } else {
-          console.log("DEBUG: No final layout URL found in imported project data");
+          console.log(
+            "DEBUG: No final layout URL found in imported project data"
+          );
         }
 
         // Update current project info

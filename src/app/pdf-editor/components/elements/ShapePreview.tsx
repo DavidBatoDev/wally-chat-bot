@@ -8,7 +8,6 @@ interface ShapePreviewProps {
   targetView: "original" | "translated" | "final-layout" | null;
   currentView: "original" | "translated" | "split" | "final-layout";
   pageWidth: number;
-  scale: number;
   templateScaleFactor?: number;
   className?: string;
 }
@@ -22,7 +21,6 @@ export const ShapePreview = memo(
     targetView,
     currentView,
     pageWidth,
-    scale,
     templateScaleFactor,
     className = "",
   }: ShapePreviewProps) => {
@@ -31,17 +29,17 @@ export const ShapePreview = memo(
     const lastRenderTimeRef = useRef(0);
     const RENDER_THROTTLE_MS = 8; // ~120fps for smoother rendering
 
-    // Performance optimization: Memoize effective scale calculation
+    // Performance optimization: Memoize effective 1 calculation
     const effectiveScale = useMemo(() => {
       if (
         currentView === "split" &&
         targetView === "translated" &&
         templateScaleFactor
       ) {
-        return scale * templateScaleFactor;
+        return 1 * templateScaleFactor;
       }
-      return scale;
-    }, [currentView, targetView, scale, templateScaleFactor]);
+      return 1;
+    }, [currentView, targetView, 1, templateScaleFactor]);
 
     // Performance optimization: Memoize split view check
     const isSplitTranslated = useMemo(() => {
@@ -59,7 +57,7 @@ export const ShapePreview = memo(
         // For split view translated side, offset by page width + gap
         left =
           Math.min(startCoords.x, endCoords.x) * effectiveScale +
-          pageWidth * scale +
+          pageWidth +
           20;
         top = Math.min(startCoords.y, endCoords.y) * effectiveScale;
       } else {
@@ -76,7 +74,7 @@ export const ShapePreview = memo(
       endCoords,
       isSplitTranslated,
       pageWidth,
-      scale,
+      1,
       effectiveScale,
     ]);
 
@@ -102,32 +100,32 @@ export const ShapePreview = memo(
       let top: number;
 
       if (isSplitTranslated) {
-        left = boundingBoxX * effectiveScale + pageWidth * scale + 20;
+        left = boundingBoxX * effectiveScale + pageWidth + 20;
         top = boundingBoxY * effectiveScale;
       } else {
         left = boundingBoxX * effectiveScale;
         top = boundingBoxY * effectiveScale;
       }
 
-      const scaledWidth = width * effectiveScale;
-      const scaledHeight = height * effectiveScale;
+      const dWidth = width * effectiveScale;
+      const dHeight = height * effectiveScale;
 
       return {
         left,
         top,
-        width: scaledWidth,
-        height: scaledHeight,
-        centerX: scaledWidth / 2, // Center within the canvas
-        centerY: scaledHeight / 2, // Center within the canvas
-        radiusX: scaledWidth / 2, // X radius for oval
-        radiusY: scaledHeight / 2, // Y radius for oval
+        width: dWidth,
+        height: dHeight,
+        centerX: dWidth / 2, // Center within the canvas
+        centerY: dHeight / 2, // Center within the canvas
+        radiusX: dWidth / 2, // X radius for oval
+        radiusY: dHeight / 2, // Y radius for oval
       };
     }, [
       startCoords,
       endCoords,
       isSplitTranslated,
       pageWidth,
-      scale,
+      1,
       effectiveScale,
     ]);
 

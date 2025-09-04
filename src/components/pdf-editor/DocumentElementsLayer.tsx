@@ -14,13 +14,12 @@ import {
 interface DocumentElementsLayerProps {
   viewType: "original" | "translated" | "final-layout";
   currentPage: number;
-  scale: number;
   pageWidth: number;
   pageHeight: number;
   // Template dimensions for translated view
   templateWidth?: number;
   templateHeight?: number;
-  // Template scale factor for split view (to scale template to match original document size)
+  // Template 1 factor for split view (to 1 template to match original document size)
   templateScaleFactor?: number;
 
   // Deletion rectangles
@@ -81,7 +80,6 @@ interface DocumentElementsLayerProps {
 const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   viewType,
   currentPage,
-  scale,
   pageWidth,
   pageHeight,
   templateWidth,
@@ -120,7 +118,7 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
   onDragStopSelection,
 }) => {
   // Use template dimensions for translated view if available, otherwise use original dimensions
-  // In split view, we want to scale the template to match original document size
+  // In split view, we want to 1 the template to match original document size
   const isSplitView = currentView === "split";
   const effectivePageWidth =
     viewType === "translated" && templateWidth
@@ -135,22 +133,22 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
         : templateHeight
       : pageHeight;
 
-  // For interactive elements in split view, we scale them proportionally with the template
-  // This ensures elements appear at the same relative size as the scaled template
+  // For interactive elements in split view, we 1 them proportionally with the template
+  // This ensures elements appear at the same relative size as the 1d template
   const elementPositioningWidth = effectivePageWidth;
   const elementPositioningHeight = effectivePageHeight;
 
   const elementsInSelectionPreview = getElementsInSelectionPreview();
 
-  // Calculate the effective scale for components in split view
-  // In split view, we need to scale elements by the same factor as the template
-  // This ensures elements appear at the same relative size as the scaled template
+  // Calculate the effective 1 for components in split view
+  // In split view, we need to 1 elements by the same factor as the template
+  // This ensures elements appear at the same relative size as the 1d template
   const effectiveScale =
     isSplitView && viewType === "translated" && templateScaleFactor
-      ? scale * templateScaleFactor
-      : scale;
+      ? 1 * templateScaleFactor
+      : 1;
 
-  // Helper function to scale element coordinates and dimensions for split view
+  // Helper function to 1 element coordinates and dimensions for split view
   const getScaledElementStyle = (element: any) => {
     return {
       left: element.x * effectiveScale,
@@ -222,7 +220,6 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               textBox={textBox}
               isSelected={selectedFieldId === textBox.id}
               isEditMode={isEditMode}
-              scale={effectiveScale}
               showPaddingIndicator={showPaddingIndicator}
               onSelect={onTextBoxSelect}
               onUpdate={onUpdateTextBox}
@@ -246,7 +243,6 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               shape={shape}
               isSelected={selectedShapeId === shape.id}
               isEditMode={isEditMode}
-              scale={effectiveScale}
               pageWidth={elementPositioningWidth}
               pageHeight={elementPositioningHeight}
               onSelect={onShapeSelect}
@@ -265,7 +261,6 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               image={image}
               isSelected={selectedElementId === image.id}
               isEditMode={isEditMode}
-              scale={effectiveScale}
               pageWidth={elementPositioningWidth}
               pageHeight={elementPositioningHeight}
               onSelect={onImageSelect}
@@ -289,7 +284,6 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
               <SelectionPreview
                 start={multiSelection.selectionStart}
                 end={multiSelection.selectionEnd}
-                scale={effectiveScale}
               />
             )}
 
@@ -298,7 +292,6 @@ const DocumentElementsLayer: React.FC<DocumentElementsLayerProps> = ({
             multiSelection.selectedElements.length > 0 && (
               <SelectionRectangle
                 bounds={multiSelection.selectionBounds}
-                scale={effectiveScale}
                 onMove={onMoveSelection}
                 onDelete={onDeleteSelection}
                 isMoving={multiSelection.isMovingSelection}

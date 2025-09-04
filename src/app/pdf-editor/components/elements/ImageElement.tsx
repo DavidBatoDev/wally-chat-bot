@@ -8,7 +8,6 @@ interface ImageElementProps {
   image: Image;
   isSelected: boolean;
   isEditMode: boolean;
-  scale: number;
   pageWidth: number;
   pageHeight: number;
   onSelect: (id: string) => void;
@@ -27,7 +26,6 @@ export const MemoizedImage = memo(
     image,
     isSelected,
     isEditMode,
-    scale,
     pageWidth,
     pageHeight,
     onSelect,
@@ -73,20 +71,20 @@ export const MemoizedImage = memo(
 
         const startX = e.clientX;
         const startY = e.clientY;
-        const startWidth = image.width * scale;
-        const startHeight = image.height * scale;
-        const startXPos = image.x * scale;
-        const startYPos = image.y * scale;
+        const startWidth = image.width;
+        const startHeight = image.height;
+        const startXPos = image.x;
+        const startYPos = image.y;
         const originalAspectRatio = image.width / image.height;
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
-          const deltaX = (moveEvent.clientX - startX) / scale;
-          const deltaY = (moveEvent.clientY - startY) / scale;
+          const deltaX = moveEvent.clientX - startX;
+          const deltaY = moveEvent.clientY - startY;
 
-          let newWidth = startWidth / scale;
-          let newHeight = startHeight / scale;
-          let newX = startXPos / scale;
-          let newY = startYPos / scale;
+          let newWidth = startWidth;
+          let newHeight = startHeight;
+          let newX = startXPos;
+          let newY = startYPos;
 
           // Handle different resize directions
           switch (direction) {
@@ -94,20 +92,20 @@ export const MemoizedImage = memo(
               // Corner: proportional resize
               newWidth = Math.max(20, newWidth - deltaX);
               newHeight = newWidth / originalAspectRatio;
-              newX = startXPos / scale + deltaX;
-              newY = startYPos / scale + (startHeight / scale - newHeight);
+              newX = startXPos + deltaX;
+              newY = startYPos + (startHeight - newHeight);
               break;
             case "ne":
               // Corner: proportional resize
               newWidth = Math.max(20, newWidth + deltaX);
               newHeight = newWidth / originalAspectRatio;
-              newY = startYPos / scale + (startHeight / scale - newHeight);
+              newY = startYPos + (startHeight - newHeight);
               break;
             case "sw":
               // Corner: proportional resize
               newWidth = Math.max(20, newWidth - deltaX);
               newHeight = newWidth / originalAspectRatio;
-              newX = startXPos / scale + deltaX;
+              newX = startXPos + deltaX;
               break;
             case "se":
               // Corner: proportional resize
@@ -117,7 +115,7 @@ export const MemoizedImage = memo(
             case "n":
               // Edge: only height, maintain width
               newHeight = Math.max(20, newHeight - deltaY);
-              newY = startYPos / scale + deltaY;
+              newY = startYPos + deltaY;
               break;
             case "s":
               // Edge: only height, maintain width
@@ -130,7 +128,7 @@ export const MemoizedImage = memo(
             case "w":
               // Edge: only width, maintain height
               newWidth = Math.max(20, newWidth - deltaX);
-              newX = startXPos / scale + deltaX;
+              newX = startXPos + deltaX;
               break;
           }
 
@@ -196,17 +194,17 @@ export const MemoizedImage = memo(
         document.addEventListener("mousemove", handleMouseMove);
         document.addEventListener("mouseup", handleMouseUp);
       },
-      [image.id, image.width, image.height, image.x, image.y, scale, onUpdate]
+      [image.id, image.width, image.height, image.x, image.y, 1, onUpdate]
     );
 
-    const dragOffsetX = (dragOffset?.x || 0) * scale;
-    const dragOffsetY = (dragOffset?.y || 0) * scale;
+    const dragOffsetX = dragOffset?.x || 0;
+    const dragOffsetY = dragOffset?.y || 0;
 
     return (
       <Rnd
         key={image.id}
-        position={{ x: image.x * scale, y: image.y * scale }}
-        size={{ width: image.width * scale, height: image.height * scale }}
+        position={{ x: image.x, y: image.y }}
+        size={{ width: image.width, height: image.height }}
         bounds="parent"
         dragHandleClassName="drag-handle"
         disableDragging={!isEditMode || !permissions.canEditContent()}
@@ -219,7 +217,7 @@ export const MemoizedImage = memo(
           setTimeout(() => {
             document.body.classList.remove("dragging-element");
           }, 50);
-          onUpdate(image.id, { x: d.x / scale, y: d.y / scale });
+          onUpdate(image.id, { x: d.x, y: d.y });
         }}
         className={`image-element select-none ${
           isSelected ? "ring-2 ring-blue-500 selected" : ""
@@ -266,7 +264,7 @@ export const MemoizedImage = memo(
               className="absolute -bottom-7 left-1 transform transition-all duration-300"
               style={{ zIndex: 20 }}
             >
-              <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:scale-105 transition-all duration-200 cursor-move">
+              <div className="drag-handle bg-gray-500 hover:bg-gray-600 text-white p-1 rounded-md shadow-lg flex items-center justify-center transform hover:1-105 transition-all duration-200 cursor-move">
                 <Move size={10} />
               </div>
             </div>
@@ -289,11 +287,11 @@ export const MemoizedImage = memo(
               style={{
                 opacity: image.opacity || 1,
                 border: image.borderWidth
-                  ? `${image.borderWidth * scale}px solid ${
+                  ? `${image.borderWidth}px solid ${
                       image.borderColor || "#000000"
                     }`
                   : "none",
-                borderRadius: `${(image.borderRadius || 0) * scale}px`,
+                borderRadius: `${image.borderRadius || 0}px`,
                 objectPosition: "center",
                 backgroundColor: "#ffffff",
               }}

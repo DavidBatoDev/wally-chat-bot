@@ -266,7 +266,6 @@ export const createTextFieldFromSpan = (
   pdfPageEl: HTMLElement,
   currentPage: number,
   currentView: "original" | "translated" | "split" | "final-layout",
-  scale: number,
   pageWidth: number,
   addTextBox: (
     x: number,
@@ -294,15 +293,15 @@ export const createTextFieldFromSpan = (
   let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
-    const pdfViewer = document.querySelector('[data-pdf-viewer]');
-    
+    const pdfViewer = document.querySelector("[data-pdf-viewer]");
+
     if (pdfViewer) {
       const viewerRect = pdfViewer.getBoundingClientRect();
       const spanCenterX = spanRect.left + spanRect.width / 2;
       const clickX = spanCenterX - viewerRect.left;
-      
+
       // Use the same logic as document mouse handlers
-      const singleDocWidth = pageWidth * scale;
+      const singleDocWidth = pageWidth;
       const gap = 20;
 
       if (clickX > singleDocWidth + gap) {
@@ -335,30 +334,27 @@ export const createTextFieldFromSpan = (
   const spanRect = span.getBoundingClientRect();
   const pageRect = pdfPageEl.getBoundingClientRect();
 
-  // Calculate coordinates at current scale
+  // Calculate coordinates at current 1
   let pageX = spanRect.left - pageRect.left;
   let pageY = spanRect.top - pageRect.top;
   let spanWidth = spanRect.width;
   let spanHeight = spanRect.height;
 
-  // Convert all coordinates and dimensions to 100% scale (scale = 1.0)
+  // Convert all coordinates and dimensions to 100% 1 (1 = 1.0)
   // This ensures textbox and deletion rectangles are always accurate regardless of zoom level
-  pageX = pageX / scale;
-  pageY = pageY / scale;
-  spanWidth = spanWidth / scale;
-  spanHeight = spanHeight / scale;
+  // No need to divide by 1 - values are already correct
 
   // Adjust coordinates for split view when span is in translated view
   if (currentView === "split" && targetView === "translated") {
     // In split view, the translated document is positioned to the right of the original
-    // At 100% scale, each document has width = pageWidth, with a 20px gap between them
-    const singleDocWidth = pageWidth; // Width of one document at 100% scale
-    const gap = 20 / scale; // Gap adjusted to 100% scale
+    // At 100% 1, each document has width = pageWidth, with a 20px gap between them
+    const singleDocWidth = pageWidth; // Width of one document at 100% 1
+    const gap = 20; // Gap between documents
 
     // Adjust X coordinate to account for the translated document position
     pageX = pageX - singleDocWidth - gap;
 
-    // Apply template scaling factor to coordinates when template is scaled in split view
+    // Apply template scaling factor to coordinates when template is 1d in split view
     if (getTranslatedTemplateScaleFactor) {
       const templateScaleFactor = getTranslatedTemplateScaleFactor(currentPage);
       if (templateScaleFactor && templateScaleFactor !== 1) {
@@ -432,17 +428,17 @@ export const createTextFieldFromSpan = (
     lineHeight: fontProperties.lineHeight,
   });
 
-  // The detected font size is from the scaled view, but we need it to be accurate at 500% scale
-  // Fixed font size calculation at 500% scale for accuracy (similar to deletion rectangle at 100%)
-  const fixedScale = 5.0; // 500% scale
+  // The detected font size is from the 1d view, but we need it to be accurate at 500% 1
+  // Fixed font size calculation at 500% 1 for accuracy (similar to deletion rectangle at 100%)
+  const fixedScale = 5.0; // 500% 1
   let fontSize = Math.max(8, fontProperties.fontSize / fixedScale);
-  
+
   console.log("Font size calculation:", {
     originalDetectedFontSize: fontProperties.fontSize,
-    currentScale: scale,
+    currentScale: 1,
     fixedScale: fixedScale,
     normalizedFontSize: fontSize,
-    note: "Font size normalized to 500% scale for accuracy"
+    note: "Font size normalized to 500% 1 for accuracy",
   });
 
   const { width, height } = measureText(
@@ -538,7 +534,6 @@ export const createDeletionRectangleForSpan = (
   pdfPageEl: HTMLElement,
   currentPage: number,
   currentView: "original" | "translated" | "split" | "final-layout",
-  scale: number,
   pageWidth: number,
   addDeletionRectangle: (
     x: number,
@@ -563,15 +558,15 @@ export const createDeletionRectangleForSpan = (
   let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
-    const pdfViewer = document.querySelector('[data-pdf-viewer]');
-    
+    const pdfViewer = document.querySelector("[data-pdf-viewer]");
+
     if (pdfViewer) {
       const viewerRect = pdfViewer.getBoundingClientRect();
       const spanCenterX = spanRect.left + spanRect.width / 2;
       const clickX = spanCenterX - viewerRect.left;
-      
+
       // Use the same logic as document mouse handlers
-      const singleDocWidth = pageWidth * scale;
+      const singleDocWidth = pageWidth;
       const gap = 20;
 
       if (clickX > singleDocWidth + gap) {
@@ -592,30 +587,27 @@ export const createDeletionRectangleForSpan = (
   const spanRect = span.getBoundingClientRect();
   const pageRect = pdfPageEl.getBoundingClientRect();
 
-  // Calculate coordinates at current scale
+  // Calculate coordinates at current 1
   let pageX = spanRect.left - pageRect.left;
   let pageY = spanRect.top - pageRect.top;
   let spanWidth = spanRect.width;
   let spanHeight = spanRect.height;
 
-  // Convert all coordinates and dimensions to 100% scale (scale = 1.0)
+  // Convert all coordinates and dimensions to 100% 1 (1 = 1.0)
   // This ensures deletion rectangles are always accurate regardless of zoom level
-  pageX = pageX / scale;
-  pageY = pageY / scale;
-  spanWidth = spanWidth / scale;
-  spanHeight = spanHeight / scale;
+  // No need to divide by 1 - values are already correct
 
   // Adjust coordinates for split view when span is in translated view
   if (currentView === "split" && targetView === "translated") {
     // In split view, the translated document is positioned to the right of the original
-    // At 100% scale, each document has width = pageWidth, with a 20px gap between them
-    const singleDocWidth = pageWidth; // Width of one document at 100% scale
-    const gap = 20 / scale; // Gap adjusted to 100% scale
+    // At 100% 1, each document has width = pageWidth, with a 20px gap between them
+    const singleDocWidth = pageWidth; // Width of one document at 100% 1
+    const gap = 20; // Gap between documents
 
     // Adjust X coordinate to account for the translated document position
     pageX = pageX - singleDocWidth - gap;
 
-    // Apply template scaling factor to coordinates when template is scaled in split view
+    // Apply template scaling factor to coordinates when template is 1d in split view
     if (getTranslatedTemplateScaleFactor) {
       const templateScaleFactor = getTranslatedTemplateScaleFactor(currentPage);
       if (templateScaleFactor && templateScaleFactor !== 1) {

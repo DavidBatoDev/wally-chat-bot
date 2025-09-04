@@ -7,7 +7,6 @@ import JSZip from "jszip";
 export interface PdfExportOptions {
   documentRef: React.RefObject<HTMLDivElement | null>;
   documentState: {
-    scale: number;
     numPages: number;
     pageWidth: number;
     pageHeight: number;
@@ -35,7 +34,6 @@ export interface PdfExportOptions {
 export interface ImageExportOptions {
   documentRef: React.RefObject<HTMLDivElement | null>;
   documentState: {
-    scale: number;
     numPages: number;
     pageWidth: number;
     pageHeight: number;
@@ -132,7 +130,7 @@ export async function exportPdfDocument(
   }
 
   // Save current state
-  const originalScale = documentState.scale;
+  // Scale removed - always 1
   const originalView = viewState.currentView;
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
@@ -141,7 +139,7 @@ export async function exportPdfDocument(
   const loadingToast = toast.loading("Generating PDF from final layout...");
 
   try {
-    // Set up for export - hide UI elements and set optimal scale
+    // Set up for export - hide UI elements
     setEditorState((prev) => ({
       ...prev,
       selectedFieldId: null,
@@ -151,12 +149,6 @@ export async function exportPdfDocument(
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
-
-    // Set zoom to 300% for high quality (DOM-to-image handles scaling differently)
-    setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
-
-    // Wait for zoom to update
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Switch to final-layout view for export
     setViewState((prev) => ({ ...prev, currentView: "final-layout" }));
@@ -201,7 +193,7 @@ export async function exportPdfDocument(
       setDocumentState,
       setViewState,
       setEditorState,
-      originalScale,
+      // scale removed
       originalView,
       originalSelectedField,
       originalSelectedShape,
@@ -220,7 +212,7 @@ export async function exportPdfDocument(
       setDocumentState,
       setViewState,
       setEditorState,
-      originalScale,
+      // scale removed
       originalView,
       originalSelectedField,
       originalSelectedShape,
@@ -253,7 +245,7 @@ export async function exportPngImages(
   }
 
   // Save current state
-  const originalScale = documentState.scale;
+  // Scale removed - always 1
   const originalView = viewState.currentView;
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
@@ -262,7 +254,7 @@ export async function exportPngImages(
   const loadingToast = toast.loading("Generating PNG images...");
 
   try {
-    // Set up for export - hide UI elements and set optimal scale
+    // Set up for export - hide UI elements
     setEditorState((prev) => ({
       ...prev,
       selectedFieldId: null,
@@ -272,12 +264,6 @@ export async function exportPngImages(
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
-
-    // Set zoom to 300% for high quality
-    setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
-
-    // Wait for zoom to update
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Get pages to export based on settings
     const pagesToExport = getPagesToExport(
@@ -292,7 +278,11 @@ export async function exportPngImages(
     }
 
     // Capture and export each page
-    const exportedFiles = [];
+    const exportedFiles = [] as Array<{
+      canvas: HTMLCanvasElement;
+      filename: string;
+      viewType: string;
+    }>;
     for (const pageNumber of pagesToExport) {
       const pageImages = await capturePageAsImages(
         documentRef,
@@ -315,7 +305,7 @@ export async function exportPngImages(
       setDocumentState,
       setViewState,
       setEditorState,
-      originalScale,
+      // scale removed
       originalView,
       originalSelectedField,
       originalSelectedShape,
@@ -334,7 +324,7 @@ export async function exportPngImages(
       setDocumentState,
       setViewState,
       setEditorState,
-      originalScale,
+      // scale removed
       originalView,
       originalSelectedField,
       originalSelectedShape,
@@ -367,7 +357,7 @@ export async function exportJpegImages(
   }
 
   // Save current state
-  const originalScale = documentState.scale;
+  // Scale removed - always 1
   const originalView = viewState.currentView;
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
@@ -376,7 +366,7 @@ export async function exportJpegImages(
   const loadingToast = toast.loading("Generating JPEG images...");
 
   try {
-    // Set up for export - hide UI elements and set optimal scale
+    // Set up for export - hide UI elements
     setEditorState((prev) => ({
       ...prev,
       selectedFieldId: null,
@@ -386,12 +376,6 @@ export async function exportJpegImages(
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
-
-    // Set zoom to 300% for high quality
-    setDocumentState((prev) => ({ ...prev, scale: 3.0 }));
-
-    // Wait for zoom to update
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Get pages to export based on settings
     const pagesToExport = getPagesToExport(
@@ -406,7 +390,11 @@ export async function exportJpegImages(
     }
 
     // Capture and export each page
-    const exportedFiles = [];
+    const exportedFiles = [] as Array<{
+      canvas: HTMLCanvasElement;
+      filename: string;
+      viewType: string;
+    }>;
     for (const pageNumber of pagesToExport) {
       const pageImages = await capturePageAsImages(
         documentRef,
@@ -429,7 +417,7 @@ export async function exportJpegImages(
       setDocumentState,
       setViewState,
       setEditorState,
-      originalScale,
+      // scale removed
       originalView,
       originalSelectedField,
       originalSelectedShape,
@@ -448,7 +436,7 @@ export async function exportJpegImages(
       setDocumentState,
       setViewState,
       setEditorState,
-      originalScale,
+      // scale removed
       originalView,
       originalSelectedField,
       originalSelectedShape,
@@ -798,10 +786,10 @@ async function captureAllPagesWithDomToImage(
     documentState.finalLayoutNumPages || documentState.numPages;
   const deletedPages =
     documentState.finalLayoutDeletedPages || pageState.deletedPages;
-  const allCaptures = [];
+  const allCaptures = [] as any[];
 
   // Get all non-deleted page numbers
-  const nonDeletedPages = [];
+  const nonDeletedPages = [] as number[];
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
     if (!deletedPages.has(pageNumber)) {
       nonDeletedPages.push(pageNumber);
@@ -1029,7 +1017,7 @@ async function createPdfPagesFromCaptures(
     const { pageNumber, captures: pageCaptures } = pageData;
 
     // Convert captures to images and embed in PDF
-    const embeddedImages = [];
+    const embeddedImages = [] as Array<{ image: any; dims: any }>;
 
     for (const capture of pageCaptures) {
       const dataUrl = capture.canvas.toDataURL("image/png", 1.0);
@@ -1105,13 +1093,13 @@ function restoreOriginalState(
   setDocumentState: (updater: (prev: any) => any) => void,
   setViewState: (updater: (prev: any) => any) => void,
   setEditorState: (updater: (prev: any) => any) => void,
-  originalScale: number,
+  // scale removed
   originalView: string,
   originalSelectedField: string | null,
   originalSelectedShape: string | null,
   originalEditMode: boolean
 ): void {
-  setDocumentState((prev) => ({ ...prev, scale: originalScale }));
+  // Scale removed - no need to restore
   setViewState((prev) => ({ ...prev, currentView: originalView }));
   setEditorState((prev) => ({
     ...prev,
@@ -1472,7 +1460,7 @@ export async function exportToPDFService({
     return;
   }
 
-  const originalScale = documentState.scale;
+  // Scale removed - always 1
   const originalView = viewState.currentView;
   const originalCurrentPage = documentState.currentPage;
   const originalSelectedField = editorState.selectedFieldId;
@@ -1482,7 +1470,7 @@ export async function exportToPDFService({
   const loadingToast = toast.loading("Generating PDF from final layout...");
 
   try {
-    // Set up for export - hide UI elements and set optimal scale
+    // Set up for export - hide UI elements
     setEditorState((prev: any) => ({
       ...prev,
       selectedFieldId: null,
@@ -1492,12 +1480,6 @@ export async function exportToPDFService({
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
-
-    // Set zoom to 300% for high quality
-    setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
-
-    // Wait for zoom to update
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Switch to final-layout view
     setViewState((prev: any) => ({ ...prev, currentView: "final-layout" }));
@@ -1513,7 +1495,7 @@ export async function exportToPDFService({
       documentState.finalLayoutNumPages || documentState.numPages;
     const deletedPages =
       documentState.finalLayoutDeletedPages || documentState.deletedPages;
-    const nonDeletedPages = [];
+    const nonDeletedPages = [] as number[];
 
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
@@ -1569,7 +1551,6 @@ export async function exportToPDFService({
         console.warn(`Document container not found for page ${pageNumber}`);
         continue;
       }
-
       try {
         // Use DOM-to-image to capture the final-layout view
         const dataUrl = await domtoimage.toPng(documentContainer, {
@@ -1666,7 +1647,7 @@ export async function exportToPDFService({
     // Restore original state
     setDocumentState((prev: any) => ({
       ...prev,
-      scale: originalScale,
+      // scale removed
       currentPage: originalCurrentPage,
     }));
     setViewState((prev: any) => ({ ...prev, currentView: originalView }));
@@ -1702,7 +1683,7 @@ export async function exportToPNGService({
     toast.error("Document not loaded");
     return;
   }
-  const originalScale = documentState.scale;
+  // Scale removed - always 1
   const originalView = viewState.currentView;
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
@@ -1720,8 +1701,6 @@ export async function exportToPNGService({
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
-    setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Switch to final-layout view
     setViewState((prev: any) => ({ ...prev, currentView: "final-layout" }));
@@ -1732,7 +1711,7 @@ export async function exportToPNGService({
       documentState.finalLayoutNumPages || documentState.numPages;
     const deletedPages =
       documentState.finalLayoutDeletedPages || documentState.deletedPages;
-    const nonDeletedPages = [];
+    const nonDeletedPages = [] as number[];
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
         nonDeletedPages.push(pageNumber);
@@ -1745,7 +1724,11 @@ export async function exportToPNGService({
 
     setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const images = [];
+    const images = [] as Array<{
+      canvas: HTMLCanvasElement;
+      filename: string;
+      viewType: string;
+    }>;
     console.log(
       `Starting capture of ${nonDeletedPages.length} final layout pages for PNG export:`,
       nonDeletedPages
@@ -1816,7 +1799,7 @@ export async function exportToPNGService({
         const img = new window.Image();
         img.src = dataUrl;
         await new Promise((resolve) => {
-          img.onload = resolve;
+          img.onload = resolve as any;
         });
         const canvas = document.createElement("canvas");
         canvas.width = img.width;
@@ -1846,7 +1829,7 @@ export async function exportToPNGService({
   } finally {
     setDocumentState((prev: any) => ({
       ...prev,
-      scale: originalScale,
+      // scale removed
       currentPage: documentState.currentPage,
     }));
     setViewState((prev: any) => ({ ...prev, currentView: originalView }));
@@ -1882,7 +1865,7 @@ export async function exportToJPEGService({
     toast.error("Document not loaded");
     return;
   }
-  const originalScale = documentState.scale;
+  // Scale removed - always 1
   const originalView = viewState.currentView;
   const originalSelectedField = editorState.selectedFieldId;
   const originalSelectedShape = editorState.selectedShapeId;
@@ -1900,8 +1883,6 @@ export async function exportToJPEGService({
       isAddTextBoxMode: false,
       isSelectionMode: false,
     }));
-    setDocumentState((prev: any) => ({ ...prev, scale: 3.0 }));
-    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Switch to final-layout view
     setViewState((prev: any) => ({ ...prev, currentView: "final-layout" }));
@@ -1912,7 +1893,7 @@ export async function exportToJPEGService({
       documentState.finalLayoutNumPages || documentState.numPages;
     const deletedPages =
       documentState.finalLayoutDeletedPages || documentState.deletedPages;
-    const nonDeletedPages = [];
+    const nonDeletedPages = [] as number[];
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber++) {
       if (!deletedPages.has(pageNumber)) {
         nonDeletedPages.push(pageNumber);
@@ -1925,7 +1906,11 @@ export async function exportToJPEGService({
 
     setEditorState((prev: any) => ({ ...prev, isAddTextBoxMode: false }));
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const images = [];
+    const images = [] as Array<{
+      canvas: HTMLCanvasElement;
+      filename: string;
+      viewType: string;
+    }>;
     console.log(
       `Starting capture of ${nonDeletedPages.length} final layout pages for JPEG export:`,
       nonDeletedPages
@@ -1996,7 +1981,7 @@ export async function exportToJPEGService({
         const img = new window.Image();
         img.src = dataUrl;
         await new Promise((resolve) => {
-          img.onload = resolve;
+          img.onload = resolve as any;
         });
         const canvas = document.createElement("canvas");
         canvas.width = img.width;
@@ -2026,7 +2011,7 @@ export async function exportToJPEGService({
   } finally {
     setDocumentState((prev: any) => ({
       ...prev,
-      scale: originalScale,
+      // scale removed
       currentPage: documentState.currentPage,
     }));
     setViewState((prev: any) => ({ ...prev, currentView: originalView }));

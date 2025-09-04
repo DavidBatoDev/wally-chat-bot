@@ -3,7 +3,6 @@ import { TextField, DeletionRectangle } from "../../types/pdf-editor.types";
 
 interface UseTextSpanHandlingProps {
   isAddTextBoxMode: boolean;
-  scale: number;
   currentPage: number;
   pdfBackgroundColor: string;
   erasureSettings: {
@@ -32,7 +31,6 @@ interface UseTextSpanHandlingProps {
 
 export const useTextSpanHandling = ({
   isAddTextBoxMode,
-  scale,
   currentPage,
   pdfBackgroundColor,
   erasureSettings,
@@ -168,7 +166,7 @@ export const useTextSpanHandling = ({
         clearTimeout(zoomTimeoutRef.current);
       }
     };
-  }, [scale]);
+  }, []);
 
   // Attach click handlers to text spans for add text field mode
   useEffect(() => {
