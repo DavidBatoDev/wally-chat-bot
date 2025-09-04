@@ -29,7 +29,7 @@ export const useZoomHandlers = ({
 }: UseZoomHandlersProps) => {
   // Store the current scale in a ref for immediate access
   const currentScaleRef = useRef<number>(documentState.scale);
-  
+
   // Update ref when documentState.scale changes
   useEffect(() => {
     currentScaleRef.current = documentState.scale;
@@ -49,58 +49,63 @@ export const useZoomHandlers = ({
   }, [documentState.scale, containerRef]);
 
   // Main zoom handler with correct zoom-to-cursor
-  const handleWheel = useCallback((e: WheelEvent) => {
-    // Only zoom if CTRL or CMD is pressed
-    if (!e.ctrlKey && !e.metaKey) return;
-    
-    // CRITICAL: Prevent default scrolling behavior
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const container = containerRef.current;
-    if (!container) return;
-    
-    // Get the current scale
-    const oldScale = currentScaleRef.current;
-    
-    // Calculate zoom factor
-    const delta = e.deltaY;
-    const zoomSpeed = 0.001;
-    const zoomFactor = 1 - (delta * zoomSpeed);
-    const newScale = Math.max(0.1, Math.min(5.0, oldScale * zoomFactor));
-    
-    // If scale hasn't changed, skip
-    if (Math.abs(newScale - oldScale) < 0.0001) return;
-    
-    // Get container rect for mouse position
-    const containerRect = container.getBoundingClientRect();
-    
-    // Mouse position relative to container viewport
-    const mouseX = e.clientX - containerRect.left;
-    const mouseY = e.clientY - containerRect.top;
-    
-    // Current scroll position
-    const oldScrollLeft = container.scrollLeft;
-    const oldScrollTop = container.scrollTop;
-    
-    // Calculate the document point under the cursor
-    // Since the container is scaled (width = pageWidth * scale),
-    // we need to unscale to get the actual document coordinates
-    const docX = (oldScrollLeft + mouseX) / oldScale;
-    const docY = (oldScrollTop + mouseY) / oldScale;
-    
-    // Calculate new scroll position to keep the document point under the cursor
-    const newScrollLeft = Math.max(0, (docX * newScale) - mouseX);
-    const newScrollTop = Math.max(0, (docY * newScale) - mouseY);
-    
-    // Store the pending scroll position
-    pendingScrollRef.current = { left: newScrollLeft, top: newScrollTop };
-    
-    // Update scale (this will trigger the useEffect to apply scroll)
-    currentScaleRef.current = newScale;
-    actions.updateScale(newScale);
-    
-  }, [containerRef, actions]);
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      // Only zoom if CTRL or CMD is pressed
+      if (!e.ctrlKey && !e.metaKey) return;
+
+      // CRITICAL: Prevent default scrolling behavior
+      e.preventDefault();
+      e.stopPropagation();
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      // Get the current scale
+      const oldScale = currentScaleRef.current;
+
+      // Step-based zoom: 25% increments per wheel tick
+      const direction = e.deltaY < 0 ? 1 : -1; // up = zoom in, down = zoom out
+      const step = 0.25;
+      const targetScaleRaw = oldScale + direction * step;
+      const newScale = Math.max(
+        0.25,
+        Math.min(5.0, Math.round(targetScaleRaw * 4) / 4)
+      );
+
+      // If scale hasn't changed, skip
+      if (Math.abs(newScale - oldScale) < 0.0001) return;
+
+      // Get container rect for mouse position
+      const containerRect = container.getBoundingClientRect();
+
+      // Mouse position relative to container viewport
+      const mouseX = e.clientX - containerRect.left;
+      const mouseY = e.clientY - containerRect.top;
+
+      // Current scroll position
+      const oldScrollLeft = container.scrollLeft;
+      const oldScrollTop = container.scrollTop;
+
+      // Calculate the document point under the cursor
+      // Since the container is scaled (width = pageWidth * scale),
+      // we need to unscale to get the actual document coordinates
+      const docX = (oldScrollLeft + mouseX) / oldScale;
+      const docY = (oldScrollTop + mouseY) / oldScale;
+
+      // Calculate new scroll position to keep the document point under the cursor
+      const newScrollLeft = Math.max(0, docX * newScale - mouseX);
+      const newScrollTop = Math.max(0, docY * newScale - mouseY);
+
+      // Store the pending scroll position
+      pendingScrollRef.current = { left: newScrollLeft, top: newScrollTop };
+
+      // Update scale (this will trigger the useEffect to apply scroll)
+      currentScaleRef.current = newScale;
+      actions.updateScale(newScale);
+    },
+    [containerRef, actions]
+  );
 
   // Set up event listeners
   useEffect(() => {
@@ -115,30 +120,37 @@ export const useZoomHandlers = ({
     };
 
     // Add listeners
-    window.addEventListener('wheel', windowWheelHandler, { 
-      passive: false, 
-      capture: true 
-    });
-    
-    container.addEventListener('wheel', handleWheel, { 
+    window.addEventListener("wheel", windowWheelHandler, {
       passive: false,
-      capture: false 
+      capture: true,
     });
-    
+
+    container.addEventListener("wheel", handleWheel, {
+      passive: false,
+      capture: false,
+    });
+
     // Prevent browser zoom
     const preventBrowserZoom = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '0')) {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === "+" || e.key === "-" || e.key === "0")
+      ) {
         e.preventDefault();
       }
     };
-    
-    document.addEventListener('keydown', preventBrowserZoom, { passive: false });
-    
+
+    document.addEventListener("keydown", preventBrowserZoom, {
+      passive: false,
+    });
+
     // Cleanup
     return () => {
-      window.removeEventListener('wheel', windowWheelHandler, { capture: true });
-      container.removeEventListener('wheel', handleWheel);
-      document.removeEventListener('keydown', preventBrowserZoom);
+      window.removeEventListener("wheel", windowWheelHandler, {
+        capture: true,
+      });
+      container.removeEventListener("wheel", handleWheel);
+      document.removeEventListener("keydown", preventBrowserZoom);
     };
   }, [handleWheel]);
 

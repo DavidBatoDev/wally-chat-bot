@@ -103,9 +103,10 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
   const currentPage = isFinalLayout
     ? documentState.finalLayoutCurrentPage
     : documentState.currentPage;
-  const totalPages = isFinalLayout
-    ? documentState.finalLayoutNumPages
-    : documentState.numPages;
+  const totalPages =
+    (isFinalLayout
+      ? documentState.finalLayoutNumPages
+      : documentState.numPages) ?? 0;
   const deletedPages = isFinalLayout
     ? documentState.finalLayoutDeletedPages
     : pageState.deletedPages;
@@ -182,18 +183,20 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
             <div className="flex items-center space-x-2">
               <input
                 type="range"
-                min="10"
+                min="25"
                 max="500"
-                step="10"
+                step="25"
                 value={Math.round(documentState.scale * 100)}
-                onChange={(e) => onZoomChange(parseInt(e.target.value) / 100)}
+                onChange={(e) =>
+                  onZoomChange(parseInt(e.target.value, 10) / 100)
+                }
                 className="zoom-slider w-20 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 title="Zoom level"
                 style={
                   {
                     "--value": `${
-                      ((Math.round(documentState.scale * 100) - 10) /
-                        (500 - 10)) *
+                      ((Math.round(documentState.scale * 100) - 25) /
+                        (500 - 25)) *
                       100
                     }%`,
                   } as React.CSSProperties

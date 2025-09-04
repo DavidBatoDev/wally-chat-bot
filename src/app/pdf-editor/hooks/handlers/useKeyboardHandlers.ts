@@ -105,7 +105,9 @@ export const useKeyboardHandlers = ({
             transformOrigin: "center center",
             zoomMode: "page",
           }));
-          actions.updateScale(Math.min(5.0, documentState.scale + 0.1));
+          actions.updateScale(
+            Math.min(5.0, Math.round((documentState.scale + 0.25) * 4) / 4)
+          );
           actions.resetScaleChanging();
         }
 
@@ -117,7 +119,9 @@ export const useKeyboardHandlers = ({
             transformOrigin: "center center",
             zoomMode: "page",
           }));
-          actions.updateScale(Math.max(1.0, documentState.scale - 0.1)); // Prevent below 100%
+          actions.updateScale(
+            Math.max(0.25, Math.round((documentState.scale - 0.25) * 4) / 4)
+          );
           actions.resetScaleChanging();
         }
 
@@ -143,7 +147,7 @@ export const useKeyboardHandlers = ({
                   documentState.pdfBackgroundColor,
                   erasureState.erasureSettings.opacity
                 );
-                
+
                 // Delete the text box
                 handleDeleteTextBoxWithUndo(textBoxId);
               }
@@ -157,36 +161,62 @@ export const useKeyboardHandlers = ({
         // Delete key to delete selected elements
         if (e.key === "Delete" && !e.ctrlKey && !e.metaKey) {
           e.preventDefault();
-          
+
           // Check for multi-selection first
           if (editorState.multiSelection.selectedElements.length > 0) {
-            console.log('[KeyboardHandlers] Delete key pressed for multi-selection');
+            console.log(
+              "[KeyboardHandlers] Delete key pressed for multi-selection"
+            );
             // Use the multi-delete handler
             handleDeleteSelection();
           } else if (editorState.selectedFieldId) {
-            console.log('[KeyboardHandlers] Delete key pressed for single textbox:', editorState.selectedFieldId);
+            console.log(
+              "[KeyboardHandlers] Delete key pressed for single textbox:",
+              editorState.selectedFieldId
+            );
             // Single textbox selected
-            const textBoxView = elementCollections.originalTextBoxes.some((tb: any) => tb.id === editorState.selectedFieldId)
+            const textBoxView = elementCollections.originalTextBoxes.some(
+              (tb: any) => tb.id === editorState.selectedFieldId
+            )
               ? "original"
-              : elementCollections.translatedTextBoxes.some((tb: any) => tb.id === editorState.selectedFieldId)
+              : elementCollections.translatedTextBoxes.some(
+                  (tb: any) => tb.id === editorState.selectedFieldId
+                )
               ? "translated"
               : "final-layout";
-            handleDeleteTextBoxWithUndo(editorState.selectedFieldId, textBoxView);
+            handleDeleteTextBoxWithUndo(
+              editorState.selectedFieldId,
+              textBoxView
+            );
           } else if (editorState.selectedShapeId) {
-            console.log('[KeyboardHandlers] Delete key pressed for single shape:', editorState.selectedShapeId);
+            console.log(
+              "[KeyboardHandlers] Delete key pressed for single shape:",
+              editorState.selectedShapeId
+            );
             // Single shape selected
-            const shapeView = elementCollections.originalShapes.some((s: any) => s.id === editorState.selectedShapeId)
+            const shapeView = elementCollections.originalShapes.some(
+              (s: any) => s.id === editorState.selectedShapeId
+            )
               ? "original"
-              : elementCollections.translatedShapes.some((s: any) => s.id === editorState.selectedShapeId)
+              : elementCollections.translatedShapes.some(
+                  (s: any) => s.id === editorState.selectedShapeId
+                )
               ? "translated"
               : "final-layout";
             handleDeleteShapeWithUndo(editorState.selectedShapeId, shapeView);
           } else if (editorState.selectedImageId) {
-            console.log('[KeyboardHandlers] Delete key pressed for single image:', editorState.selectedImageId);
+            console.log(
+              "[KeyboardHandlers] Delete key pressed for single image:",
+              editorState.selectedImageId
+            );
             // Single image selected
-            const imageView = elementCollections.originalImages.some((img: any) => img.id === editorState.selectedImageId)
+            const imageView = elementCollections.originalImages.some(
+              (img: any) => img.id === editorState.selectedImageId
+            )
               ? "original"
-              : elementCollections.translatedImages.some((img: any) => img.id === editorState.selectedImageId)
+              : elementCollections.translatedImages.some(
+                  (img: any) => img.id === editorState.selectedImageId
+                )
               ? "translated"
               : "final-layout";
             handleDeleteImageWithUndo(editorState.selectedImageId, imageView);
@@ -203,7 +233,7 @@ export const useKeyboardHandlers = ({
 
           // End any ongoing batch before undo
           history.endBatch();
-          
+
           if (history.canUndo()) {
             if (history.undo()) {
               lastUndoTime = now;
@@ -226,7 +256,7 @@ export const useKeyboardHandlers = ({
 
           // End any ongoing batch before redo
           history.endBatch();
-          
+
           if (history.canRedo()) {
             if (history.redo()) {
               lastRedoTime = now;
