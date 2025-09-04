@@ -35,7 +35,6 @@ import { TextFormatProvider } from "@/components/editor/ElementFormatContext";
 import { PDFEditorContent } from "./PDFEditorContent";
 import ProjectPreview from "./components/ProjectPreview";
 import PDFTransformationLoader from "./components/PDFTransformationLoader";
-import UploadLoader from "./components/UploadLoader";
 import { toast } from "sonner";
 import {
   transformPdfToA4Balanced,
@@ -495,11 +494,52 @@ const PDFEditorDashboard: React.FC = () => {
 
         // Open modal to select page types/templates then run OCR into DB
         try {
-          const project = await getProject(projectId);
+          // Wait for project to be fully loaded with document URL
+          let project = await getProject(projectId);
+          let attempts = 0;
+          const maxAttempts = 10;
+
+          // Retry until we get a project with a document URL or max attempts reached
+          while (
+            (!project?.project_data?.documentState?.url ||
+              project?.project_data?.documentState?.url === "") &&
+            attempts < maxAttempts
+          ) {
+            console.log(`Waiting for document URL... attempt ${attempts + 1}`);
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+            project = await getProject(projectId);
+            attempts++;
+          }
+
+          if (!project?.project_data?.documentState?.url) {
+            console.error(
+              "Failed to get document URL after",
+              maxAttempts,
+              "attempts"
+            );
+            toast.error("Failed to load document. Please try again.");
+            router.push(`/pdf-editor/${projectId}`);
+            return;
+          }
+
           const totalPages =
             project?.project_data?.documentState?.numPages || 1;
           const existingPages =
             project?.project_data?.documentState?.pages || [];
+
+          // Debug logging
+          console.log("Project data:", project);
+          console.log(
+            "Document URL:",
+            project?.project_data?.documentState?.url
+          );
+          if (typeof window !== "undefined") {
+            try {
+              (window as any).__recentDocumentUrl =
+                project?.project_data?.documentState?.url || null;
+            } catch {}
+          }
+          console.log("Total pages:", totalPages);
 
           // Local state-driven inline modal handler
           const ModalLauncher: React.FC<{ pid: string }> = ({ pid }) => {
@@ -512,10 +552,31 @@ const PDFEditorDashboard: React.FC = () => {
             return (
               <PageTemplateSelectionModal
                 open={open}
-                onClose={() => setOpen(false)}
+                onClose={async () => {
+                  setOpen(false);
+                  setIsCreatingProject(false);
+                  try {
+                    // Refresh projects after potential deletion
+                    const saved = await getSavedProjects();
+                    setProjects(saved);
+                  } catch (e) {
+                    // Fallback: optimistically remove the project card
+                    setProjects((prev) => prev.filter((p) => p.id !== pid));
+                  }
+                }}
                 totalPages={totalPages}
                 initialPages={initial}
-                onConfirm={async (pages) => {
+                projectId={pid}
+                documentUrl={project?.project_data?.documentState?.url}
+                pageWidth={
+                  project?.project_data?.documentState?.pageWidth || 600
+                }
+                pageHeight={
+                  project?.project_data?.documentState?.pageHeight || 800
+                }
+                sourceLanguage="English"
+                desiredLanguage="Spanish"
+                onConfirm={async (pages, sourceLanguage, desiredLanguage) => {
                   // Build projectData.pages payload for template-aware OCR
                   // Fetch templates to enrich with metadata (variation, file_url)
                   let templateIndex: Record<string, any> = {};
@@ -951,14 +1012,7 @@ const PDFEditorDashboard: React.FC = () => {
           fileName={currentFileName}
         />
 
-        {/* Upload Loader */}
-        <UploadLoader
-          isVisible={isCreatingProject && !isTransforming}
-          fileName={currentFileName}
-          stage={uploadStage}
-          message={uploadMessage}
-          progress={uploadStage === "uploading" ? uploadProgress : undefined}
-        />
+        {/* Upload Loader removed */}
       </div>
     </div>
   );

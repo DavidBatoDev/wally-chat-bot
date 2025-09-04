@@ -121,9 +121,12 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
       if (updateTimersRef.current[key]) {
         clearTimeout(updateTimersRef.current[key]);
       }
+      // Use requestAnimationFrame for smoother coalescing of rapid inputs
       updateTimersRef.current[key] = setTimeout(() => {
-        onUpdateTextBox(id, { value: newValue });
-        delete updateTimersRef.current[key];
+        requestAnimationFrame(() => {
+          onUpdateTextBox(id, { value: newValue });
+          delete updateTimersRef.current[key];
+        });
       }, DEBOUNCE_MS);
     },
     [onUpdateTextBox]
@@ -137,10 +140,12 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         clearTimeout(updateTimersRef.current[key]);
       }
       updateTimersRef.current[key] = setTimeout(() => {
-        onUpdateUntranslatedText(untranslatedTextId, {
-          originalText: newValue,
+        requestAnimationFrame(() => {
+          onUpdateUntranslatedText(untranslatedTextId, {
+            originalText: newValue,
+          });
+          delete updateTimersRef.current[key];
         });
-        delete updateTimersRef.current[key];
       }, DEBOUNCE_MS);
     },
     [onUpdateUntranslatedText]
@@ -163,41 +168,66 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   }, []);
 
   const handleApprove = useCallback(
-    (textboxId: string) => {
-      // Find the corresponding untranslated text and toggle its status
-      const untranslatedText = untranslatedTexts.find(
-        (text) => text.translatedTextboxId === textboxId
+    (textbox: TextField, originalFallback?: string, page?: number) => {
+      // Find existing untranslated record for this textbox
+      const existing = untranslatedTexts.find(
+        (text) => text.translatedTextboxId === textbox.id
       );
 
-      if (untranslatedText && onUpdateUntranslatedText) {
+      if (existing && onUpdateUntranslatedText) {
         // Toggle between checked and needsChecking
         const newStatus =
-          untranslatedText.status === "checked" ? "needsChecking" : "checked";
-        onUpdateUntranslatedText(untranslatedText.id, { status: newStatus });
+          existing.status === "checked" ? "needsChecking" : "checked";
+        onUpdateUntranslatedText(existing.id, { status: newStatus });
+        return;
+      }
+
+      // If missing, create one if we have both original and translation text
+      if (!existing && onAddUntranslatedText) {
+        const originalTextCandidate = originalFallback || "";
+        const translationCandidate = textbox.value || "";
+        if (
+          originalTextCandidate.trim() !== "" &&
+          translationCandidate.trim() !== ""
+        ) {
+          onAddUntranslatedText({
+            translatedTextboxId: textbox.id,
+            originalText: originalTextCandidate,
+            page: page ?? textbox.page,
+            x: textbox.x,
+            y: textbox.y,
+            width: textbox.width,
+            height: textbox.height,
+            isCustomTextbox: false,
+            status: "checked",
+          });
+        }
       }
     },
-    [untranslatedTexts, onUpdateUntranslatedText]
+    [untranslatedTexts, onUpdateUntranslatedText, onAddUntranslatedText]
   );
 
   // Helper function to get the effective status based on textbox content
   const getEffectiveStatus = useCallback(
-    (textbox: TextField, untranslatedText?: UntranslatedText) => {
+    (
+      textbox: TextField,
+      untranslatedText?: UntranslatedText,
+      originalFallback?: string
+    ) => {
       // If translated textbox is empty, status is always isEmpty regardless of stored status
       if (!textbox.value || textbox.value.trim() === "") {
         return "isEmpty";
       }
-      // If untranslated text is also empty, status is isEmpty
-      if (
-        !untranslatedText?.originalText ||
-        untranslatedText.originalText.trim() === ""
-      ) {
+      // Determine original content either from untranslatedText or provided fallback
+      const originalTextCandidate =
+        untranslatedText?.originalText ?? originalFallback ?? "";
+      // If original text is empty, status is isEmpty
+      if (!originalTextCandidate || originalTextCandidate.trim() === "") {
         return "isEmpty";
       }
       // For custom textboxes, only allow 'isEmpty' or 'checked'
       if (untranslatedText?.isCustomTextbox) {
-        return untranslatedText.originalText.trim() === ""
-          ? "isEmpty"
-          : "checked";
+        return originalTextCandidate.trim() === "" ? "isEmpty" : "checked";
       }
       // Otherwise, use the stored status
       return untranslatedText?.status || "needsChecking";
@@ -286,9 +316,11 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     });
   }, []);
 
+  // Initialize textarea heights once (and when row count changes),
+  // avoid resizing all textareas on every keystroke to reduce lag
   useEffect(() => {
     Object.values(textareaRefs.current).forEach(autoResizeTextarea);
-  }, [translatedTextBoxes, autoResizeTextarea]);
+  }, [textboxesForTable.length, autoResizeTextarea]);
 
   if (textboxesForTable.length === 0) {
     return (
@@ -380,7 +412,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                 // Debug logging removed for performance
                 const effectiveStatus = getEffectiveStatus(
                   textbox,
-                  untranslatedText
+                  untranslatedText,
+                  originalText
                 );
                 const isEditing =
                   editingId === textbox.id ||
@@ -674,7 +707,11 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleApprove(textbox.id);
+                                handleApprove(
+                                  textbox,
+                                  originalText,
+                                  currentPage
+                                );
                               }}
                               disabled={effectiveStatus === "isEmpty"}
                               className={`w-5 h-5 rounded flex items-center justify-center transition-all duration-200 text-xs bg-white border ${
