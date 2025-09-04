@@ -625,6 +625,13 @@ const PDFEditorDashboard: React.FC = () => {
                       ...((project?.project_data?.documentState as any) || {}),
                       pages: pagesData,
                     },
+                    viewState: {
+                      ...((project?.project_data as any)?.viewState || {}),
+                      currentView: "split",
+                      currentWorkflowStep:
+                        ((project?.project_data as any)?.viewState
+                          ?.currentWorkflowStep as any) || "translate",
+                    },
                   };
                   const updateResp = await updateProject(pid, {
                     project_data: updatedProjectData,
