@@ -159,6 +159,7 @@ const PDFEditorDashboard: React.FC = () => {
     editorState: {
       selectedFieldId: null,
       selectedShapeId: null,
+      selectedImageId: null,
       isEditMode: false,
       isAddTextBoxMode: false,
       isTextSelectionMode: false,
@@ -256,6 +257,7 @@ const PDFEditorDashboard: React.FC = () => {
     editorState: {
       selectedFieldId: null,
       selectedShapeId: null,
+      selectedImageId: null,
       isEditMode: false,
       isAddTextBoxMode: false,
       isTextSelectionMode: false,

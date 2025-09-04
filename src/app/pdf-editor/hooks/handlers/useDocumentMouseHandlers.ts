@@ -299,7 +299,7 @@ export const useDocumentMouseHandlers = ({
             width,
             height,
             documentState.currentPage,
-            targetView || viewState.currentView,
+            targetView || "original",
             documentState.pdfBackgroundColor,
             erasureState.erasureSettings.opacity
           );

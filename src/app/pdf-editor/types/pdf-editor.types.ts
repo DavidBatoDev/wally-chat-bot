@@ -177,6 +177,7 @@ export interface UntranslatedText {
 export interface EditorState {
   selectedFieldId: string | null;
   selectedShapeId: string | null;
+  selectedImageId: string | null;
   isEditMode: boolean;
   isAddTextBoxMode: boolean;
   isTextSelectionMode: boolean;

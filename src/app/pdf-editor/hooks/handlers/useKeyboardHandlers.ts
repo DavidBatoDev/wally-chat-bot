@@ -136,6 +136,17 @@ export const useKeyboardHandlers = ({
                 (tb) => tb.id === textBoxId
               );
               if (textBox) {
+                // Determine which view this textbox belongs to
+                const textBoxView = elementCollections.originalTextBoxes.some(
+                  (tb: any) => tb.id === textBoxId
+                )
+                  ? ("original" as ViewMode)
+                  : elementCollections.translatedTextBoxes.some(
+                      (tb: any) => tb.id === textBoxId
+                    )
+                  ? ("translated" as ViewMode)
+                  : ("final-layout" as ViewMode);
+
                 // Create deletion rectangle covering the text box
                 handleAddDeletionRectangleWithUndo(
                   textBox.x,
@@ -143,13 +154,13 @@ export const useKeyboardHandlers = ({
                   textBox.width,
                   textBox.height,
                   documentState.currentPage,
-                  viewState.currentView,
+                  textBoxView,
                   documentState.pdfBackgroundColor,
                   erasureState.erasureSettings.opacity
                 );
 
                 // Delete the text box
-                handleDeleteTextBoxWithUndo(textBoxId);
+                handleDeleteTextBoxWithUndo(textBoxId, textBoxView);
               }
             });
             toast.success(

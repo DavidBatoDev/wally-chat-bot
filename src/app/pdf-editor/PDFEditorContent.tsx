@@ -274,6 +274,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   const [editorState, setEditorState] = useState<EditorState>({
     selectedFieldId: null,
     selectedShapeId: null,
+    selectedImageId: null,
     isEditMode: true,
     isAddTextBoxMode: false,
     isTextSelectionMode: false,
