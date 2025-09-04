@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { TextFormatProvider } from "@/components/editor/ElementFormatContext";
 import { PDFEditorContent } from "../PDFEditorContent";
 import { useRouter } from "next/navigation";
@@ -10,6 +10,8 @@ import { ArrowLeft } from "lucide-react";
 // Import react-pdf CSS for text layer support
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
+
+export const dynamic = "force-dynamic";
 
 const CreateNewProject: React.FC = () => {
   const router = useRouter();
@@ -34,9 +36,7 @@ const CreateNewProject: React.FC = () => {
           </Button>
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-500">|</span>
-            <h1 className="text-lg font-semibold text-gray-900">
-              New Project
-            </h1>
+            <h1 className="text-lg font-semibold text-gray-900">New Project</h1>
           </div>
         </div>
       </div>
@@ -44,7 +44,9 @@ const CreateNewProject: React.FC = () => {
       {/* PDF Editor Content */}
       <div className="flex-1">
         <TextFormatProvider>
-          <PDFEditorContent />
+          <Suspense fallback={null}>
+            <PDFEditorContent />
+          </Suspense>
         </TextFormatProvider>
       </div>
     </div>

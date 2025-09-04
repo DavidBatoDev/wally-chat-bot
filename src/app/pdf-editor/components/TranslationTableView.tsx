@@ -24,13 +24,6 @@ interface TranslationTableViewProps {
   ) => void;
   onDeleteTextBox?: (textboxId: string) => void;
   onRowClick?: (textboxId: string) => void;
-  onAddTextBox?: (
-    x: number,
-    y: number,
-    page: number,
-    targetView: "original" | "translated",
-    customInitialState?: Partial<TextField>
-  ) => string;
   onAddUntranslatedText?: (
     untranslatedText: Omit<UntranslatedText, "id">
   ) => void;
@@ -52,7 +45,6 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   onUpdateUntranslatedText,
   onDeleteTextBox,
   onRowClick,
-  onAddTextBox,
   onAddUntranslatedText,
   pageWidth = 800,
   pageHeight = 1000,
@@ -213,50 +205,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     []
   );
 
-  const handleAddCustomTextbox = useCallback(() => {
-    if (!onAddTextBox || !onAddUntranslatedText) return;
-
-    // Count how many custom textboxes are on the current page
-    const customCount = untranslatedTexts.filter(
-      (t) => t.isCustomTextbox && t.page === currentPage
-    ).length;
-
-    // Apply offset based on count
-    const offset = 20 + customCount * 10;
-
-    // Create a new textbox with custom properties
-    const textboxId = onAddTextBox(
-      offset, // x position
-      offset, // y position
-      currentPage,
-      "translated",
-      {
-        fontSize: 10,
-        fontFamily: "Arial",
-        backgroundColor: "transparent", // Use transparent background by default
-        backgroundOpacity: 0, // Ensure full transparency
-        color: "#000000",
-        value: "", // Initially empty
-        placeholder: `Enter or Remove Text for Custom Textbox ${
-          customCount + 1
-        }`,
-      }
-    );
-
-    // Create corresponding untranslated text with 'Custom Textbox' as value
-    onAddUntranslatedText({
-      translatedTextboxId: textboxId,
-      originalText: `Custom Textbox ${customCount + 1}`,
-      page: currentPage,
-      x: offset,
-      y: offset,
-      width: 30,
-      height: 10,
-      isCustomTextbox: true,
-      status: "isEmpty",
-      placeholder: `Enter or Remove Text for Custom Textbox ${customCount + 1}`,
-    });
-  }, [onAddTextBox, onAddUntranslatedText, untranslatedTexts, currentPage]);
+  // Removed Add Text Box handler and UI per requirement
 
   const handleDelete = useCallback(
     (textboxId: string) => {
@@ -356,31 +305,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
           </div>
         </div>
 
-        {/* Add Button at Bottom */}
-        {onAddTextBox && onAddUntranslatedText && (
-          <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
-            <button
-              onClick={handleAddCustomTextbox}
-              className="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-lg hover:border-gray-400 hover:text-gray-600 transition-colors bg-transparent"
-              title="Add custom text box"
-            >
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Add Text Box
-            </button>
-          </div>
-        )}
+        {/* Removed Add Text Box button (empty state) */}
       </div>
     );
   }
@@ -812,31 +737,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
         </div>
       </div>
 
-      {/* Add Button - Original style */}
-      {onAddTextBox && onAddUntranslatedText && (
-        <div className="p-6 border-t border-gray-200 bg-white flex-shrink-0">
-          <button
-            onClick={handleAddCustomTextbox}
-            className="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm font-medium rounded-lg hover:border-gray-400 hover:text-gray-600 transition-colors bg-transparent"
-            title="Add custom text box"
-          >
-            <svg
-              className="w-4 h-4 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Add Text Box
-          </button>
-        </div>
-      )}
+      {/* Removed Add Text Box button (footer) */}
 
       {/* Footer - Excel-style status bar */}
       <div className="px-4 py-1 border-t border-gray-300 bg-gray-100 flex-shrink-0">

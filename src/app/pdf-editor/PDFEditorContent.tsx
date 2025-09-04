@@ -7972,7 +7972,6 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                     onUpdateUntranslatedText={updateUntranslatedText}
                     onDeleteTextBox={handleDeleteTextBoxAndUntranslatedText}
                     onRowClick={handleTranslationRowClick}
-                    onAddTextBox={handleAddCustomTextBox}
                     onAddUntranslatedText={handleAddCustomUntranslatedText}
                     pageWidth={documentState.pageWidth}
                     pageHeight={documentState.pageHeight}
