@@ -1,6 +1,18 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
 import { TextField, UntranslatedText } from "../types/pdf-editor.types";
-import { Languages } from "lucide-react";
+import { Languages, Eye, Maximize2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Document, Page, pdfjs } from "react-pdf";
+import { isPdfFile } from "../utils/measurements";
+
+// Configure PDF.js worker to match ProjectPreview behavior
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface TranslationTableViewProps {
   translatedTextBoxes: TextField[];
@@ -28,6 +40,9 @@ interface TranslationTableViewProps {
   currentPage: number;
   sourceLanguage?: string;
   desiredLanguage?: string;
+  translatedTemplateURL?: string;
+  translatedTemplateWidth?: number;
+  translatedTemplateHeight?: number;
 }
 
 export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
@@ -45,6 +60,9 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   currentPage,
   sourceLanguage,
   desiredLanguage,
+  translatedTemplateURL,
+  translatedTemplateWidth,
+  translatedTemplateHeight,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingOriginalId, setEditingOriginalId] = useState<string | null>(
@@ -58,6 +76,26 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
     {}
   );
   const resizeRef = useRef<HTMLDivElement>(null);
+
+  const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
+  const [previewText, setPreviewText] = useState<UntranslatedText | null>(null);
+  const [isImageLoading, setIsImageLoading] = useState<boolean>(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const updateTimersRef = useRef<{ [key: string]: any }>({});
+  const DEBOUNCE_MS = 200;
+
+  useEffect(() => {
+    if (!isPreviewOpen) return;
+    const update = () => {
+      const w = previewContainerRef.current?.clientWidth || 0;
+      setContainerWidth(w);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [isPreviewOpen]);
 
   // Filter textboxes to show only those on the current page
   const textboxesForTable = translatedTextBoxes.filter(
@@ -87,18 +125,31 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
 
   const handleTextChange = useCallback(
     (id: string, newValue: string) => {
-      onUpdateTextBox(id, { value: newValue });
+      const key = `t-${id}`;
+      if (updateTimersRef.current[key]) {
+        clearTimeout(updateTimersRef.current[key]);
+      }
+      updateTimersRef.current[key] = setTimeout(() => {
+        onUpdateTextBox(id, { value: newValue });
+        delete updateTimersRef.current[key];
+      }, DEBOUNCE_MS);
     },
     [onUpdateTextBox]
   );
 
   const handleOriginalTextChange = useCallback(
     (untranslatedTextId: string, newValue: string) => {
-      if (onUpdateUntranslatedText) {
+      if (!onUpdateUntranslatedText) return;
+      const key = `o-${untranslatedTextId}`;
+      if (updateTimersRef.current[key]) {
+        clearTimeout(updateTimersRef.current[key]);
+      }
+      updateTimersRef.current[key] = setTimeout(() => {
         onUpdateUntranslatedText(untranslatedTextId, {
           originalText: newValue,
         });
-      }
+        delete updateTimersRef.current[key];
+      }, DEBOUNCE_MS);
     },
     [onUpdateUntranslatedText]
   );
@@ -273,9 +324,17 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
   );
 
   // Auto-resize textarea
+  const resizeRAF = useRef<{ [key: string]: number }>({});
   const autoResizeTextarea = useCallback((textarea: HTMLTextAreaElement) => {
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.max(32, textarea.scrollHeight)}px`;
+    if (!textarea) return;
+    const key = (textarea as any).id || (textarea as any).dataset?.rid || "_";
+    if (resizeRAF.current[key]) {
+      cancelAnimationFrame(resizeRAF.current[key]);
+    }
+    resizeRAF.current[key] = requestAnimationFrame(() => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.max(32, textarea.scrollHeight)}px`;
+    });
   }, []);
 
   useEffect(() => {
@@ -393,15 +452,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                   (text) => text.translatedTextboxId === textbox.id
                 );
 
-                // Debug logging for placeholder linking
-                console.log(`🔍 [DEBUG] Textbox ${textbox.id} linking:`, {
-                  textboxId: textbox.id,
-                  untranslatedTextFound: !!untranslatedText,
-                  untranslatedTextId: untranslatedText?.id,
-                  untranslatedTextPlaceholder: untranslatedText?.placeholder,
-                  textboxPlaceholder: textbox.placeholder,
-                  originalText: originalText,
-                });
+                // Debug logging removed for performance
                 const effectiveStatus = getEffectiveStatus(
                   textbox,
                   untranslatedText
@@ -444,7 +495,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                                 autoResizeTextarea(el);
                               }
                             }}
-                            value={originalText || ""}
+                            defaultValue={originalText || ""}
                             onChange={(e) => {
                               if (untranslatedText) {
                                 handleOriginalTextChange(
@@ -503,19 +554,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               lineHeight: "1.3",
                             }}
                             placeholder={(() => {
-                              console.log(
-                                `🔍 [DEBUG] Placeholder for textbox ${textbox.id}:`,
-                                {
-                                  untranslatedTextPlaceholder:
-                                    untranslatedText?.placeholder,
-                                  textboxPlaceholder: textbox.placeholder,
-                                  fallback: "Enter original text...",
-                                  finalPlaceholder:
-                                    untranslatedText?.placeholder ||
-                                    textbox.placeholder ||
-                                    "Enter original text...",
-                                }
-                              );
+                              // Debug removed
                               return (
                                 untranslatedText?.placeholder ||
                                 textbox.placeholder ||
@@ -523,6 +562,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               );
                             })()}
                             spellCheck={false}
+                            onCompositionStart={(e) => e.stopPropagation()}
+                            onCompositionEnd={(e) => e.stopPropagation()}
                           />
                         ) : originalText ? (
                           <div className="p-2 text-sm text-gray-800 leading-snug min-h-[32px] flex items-start">
@@ -531,19 +572,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                         ) : (
                           <div className="flex items-center justify-center h-8 text-xs text-gray-400 px-2 text-center">
                             {(() => {
-                              console.log(
-                                `🔍 [DEBUG] No original text display for textbox ${textbox.id}:`,
-                                {
-                                  untranslatedTextPlaceholder:
-                                    untranslatedText?.placeholder,
-                                  textboxPlaceholder: textbox.placeholder,
-                                  fallback: "No original text",
-                                  finalDisplay:
-                                    untranslatedText?.placeholder ||
-                                    textbox.placeholder ||
-                                    "No original text",
-                                }
-                              );
+                              // Debug removed
                               return (
                                 untranslatedText?.placeholder ||
                                 textbox.placeholder ||
@@ -553,6 +582,111 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                           </div>
                         )}
                       </div>
+                      {/* Highlight + Preview buttons */}
+                      {(onRowClick || translatedTemplateURL) && (
+                        <div className="absolute top-1 right-1 flex items-center gap-0.5">
+                          {onRowClick && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const existing = untranslatedTexts.find(
+                                  (t) => t.translatedTextboxId === textbox.id
+                                );
+                                if (!existing && onAddUntranslatedText) {
+                                  onAddUntranslatedText({
+                                    translatedTextboxId: textbox.id,
+                                    originalText: "",
+                                    page: currentPage,
+                                    x: textbox.x,
+                                    y: textbox.y,
+                                    width: textbox.width,
+                                    height: textbox.height,
+                                    isCustomTextbox: false,
+                                    status: "isEmpty",
+                                    placeholder: textbox.placeholder,
+                                  });
+                                }
+                                onRowClick(textbox.id);
+                              }}
+                              className="w-5 h-5 rounded flex items-center justify-center bg-white border border-gray-300 text-gray-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 transition-all duration-200"
+                              title="Highlight original text"
+                            >
+                              <Eye className="w-3 h-3" />
+                            </button>
+                          )}
+                          {translatedTemplateURL && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                let ut = untranslatedTexts.find(
+                                  (t) => t.translatedTextboxId === textbox.id
+                                );
+                                if (!ut) {
+                                  const temp: UntranslatedText = {
+                                    id: `temp-${textbox.id}`,
+                                    translatedTextboxId: textbox.id,
+                                    originalText: "",
+                                    page: currentPage,
+                                    x: textbox.x,
+                                    y: textbox.y,
+                                    width: textbox.width,
+                                    height: textbox.height,
+                                    isCustomTextbox: false,
+                                    status: "isEmpty",
+                                    placeholder: textbox.placeholder,
+                                  };
+                                  ut = temp;
+                                  if (onAddUntranslatedText) {
+                                    onAddUntranslatedText({
+                                      translatedTextboxId: textbox.id,
+                                      originalText: "",
+                                      page: currentPage,
+                                      x: textbox.x,
+                                      y: textbox.y,
+                                      width: textbox.width,
+                                      height: textbox.height,
+                                      isCustomTextbox: false,
+                                      status: "isEmpty",
+                                      placeholder: textbox.placeholder,
+                                    });
+                                  }
+                                }
+                                setPreviewText(ut);
+                                setIsImageLoading(true);
+                                setImageError(null);
+                                setIsPreviewOpen(true);
+                              }}
+                              className="w-5 h-5 rounded flex items-center justify-center bg-white border border-gray-300 text-gray-600 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all duration-200"
+                              title="Preview on template"
+                            >
+                              <Maximize2 className="w-3 h-3" />
+                            </button>
+                          )}
+                          {/* Delete Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(textbox.id);
+                            }}
+                            className="w-5 h-5 rounded flex items-center justify-center bg-white border border-gray-300 text-gray-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all duration-200"
+                            title="Delete text box"
+                          >
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
                     </td>
 
                     {/* Translation Column */}
@@ -571,7 +705,7 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               autoResizeTextarea(el);
                             }
                           }}
-                          value={textbox.value || ""}
+                          defaultValue={textbox.value || ""}
                           onChange={(e) =>
                             handleTextChange(textbox.id, e.target.value)
                           }
@@ -601,6 +735,8 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                           }}
                           placeholder="Enter translation..."
                           spellCheck={false}
+                          onCompositionStart={(e) => e.stopPropagation()}
+                          onCompositionEnd={(e) => e.stopPropagation()}
                         />
 
                         {/* Action buttons - positioned in top right corner */}
@@ -634,29 +770,6 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
                               {effectiveStatus === "checked" ? "✗" : "✓"}
                             </button>
                           )}
-                          {/* Delete Button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(textbox.id);
-                            }}
-                            className="w-5 h-5 rounded flex items-center justify-center bg-white border border-gray-300 text-gray-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300 transition-all duration-200"
-                            title="Delete text box"
-                          >
-                            <svg
-                              className="w-3 h-3"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </button>
                         </div>
 
                         {/* Status indicator in bottom right corner */}
@@ -735,6 +848,225 @@ export const TranslationTableView: React.FC<TranslationTableViewProps> = ({
           <span>Ready</span>
         </div>
       </div>
+
+      {/* Modal preview with overlay */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Template Preview</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const clean = (s?: string) =>
+                  (s || "").replace(/^Enter or Remove Text for\s*/i, "").trim();
+
+                const rawLabel = previewText?.placeholder || "Unnamed field";
+                const label = clean(rawLabel) || rawLabel;
+
+                const tb = previewText
+                  ? findTranslatedTextBox(previewText)
+                  : undefined;
+                const rawEditorLabel = tb?.placeholder || "";
+                const editorLabel =
+                  clean(rawEditorLabel) || rawEditorLabel || "";
+                const hasEditorLabel = editorLabel.trim() !== "";
+                const matches = hasEditorLabel
+                  ? editorLabel.trim() === label.trim()
+                  : false;
+
+                return (
+                  <span>
+                    This textarea is located in{" "}
+                    <span className="font-medium text-gray-800">{`"${label}"`}</span>{" "}
+                    in our template.
+                    <span className="ml-1 inline-flex items-center text-gray-700">
+                      Please correct the value/translation if wrong, or remove
+                      if not in the document.
+                    </span>
+                  </span>
+                );
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="w-full" ref={previewContainerRef}>
+            {!translatedTemplateURL ? (
+              <div className="p-4 text-sm text-gray-600">
+                No template available for this page.
+              </div>
+            ) : !previewText ? (
+              <div className="p-4 text-sm text-gray-600">
+                No selection to preview.
+              </div>
+            ) : (
+              <div className="w-full">
+                {(() => {
+                  const isPdf = isPdfFile(translatedTemplateURL);
+                  const tplW = translatedTemplateWidth || pageWidth || 1;
+                  const tplH = translatedTemplateHeight || pageHeight || 1;
+                  const ratio = tplW > 0 ? tplH / tplW : 1;
+                  const containerW = Math.max(
+                    1,
+                    previewContainerRef.current?.clientWidth ||
+                      containerWidth ||
+                      600
+                  );
+                  const padding = 24; // inner padding for visual spacing
+                  const desiredScale = 0.6; // scale down further
+                  const maxRenderableW = Math.max(1, containerW - padding * 2);
+                  const displayW = Math.round(maxRenderableW * desiredScale);
+                  const displayH = Math.max(1, Math.round(displayW * ratio));
+
+                  // Compute bounding box in display space
+                  const bx =
+                    ((previewText.x || 0) / (pageWidth || 1)) * displayW;
+                  const by =
+                    ((previewText.y || 0) / (pageHeight || 1)) * displayH;
+                  const bw =
+                    ((previewText.width || 0) / (pageWidth || 1)) * displayW;
+                  const bh =
+                    ((previewText.height || 0) / (pageHeight || 1)) * displayH;
+
+                  // Determine zoom to make bbox fill ~40% of viewport (zoomed out more)
+                  const targetFill = 0.2;
+                  const zoomX = bw > 0 ? (displayW * targetFill) / bw : 1;
+                  const zoomY = bh > 0 ? (displayH * targetFill) / bh : 1;
+                  const zoom = Math.max(
+                    0.4,
+                    Math.min(4, Math.min(zoomX, zoomY))
+                  );
+
+                  // Center the bbox
+                  const cx = bx + bw / 2;
+                  const cy = by + bh / 2;
+                  let tx = Math.round(displayW / 2 - cx * zoom);
+                  let ty = Math.round(displayH / 2 - cy * zoom);
+                  const minTx = displayW - displayW * zoom;
+                  const minTy = displayH - displayH * zoom;
+                  tx = Math.max(minTx, Math.min(0, tx));
+                  ty = Math.max(minTy, Math.min(0, ty));
+
+                  // High resolution render space (render larger, scale down)
+                  const qualityScale = 4; // increase for crisper PDF/image
+                  const renderW = Math.round(displayW * qualityScale);
+                  const renderH = Math.round(displayH * qualityScale);
+                  const rbx = Math.round(bx * qualityScale);
+                  const rby = Math.round(by * qualityScale);
+                  const rbw = Math.round(bw * qualityScale);
+                  const rbh = Math.round(bh * qualityScale);
+
+                  return (
+                    <div className="w-full flex justify-center">
+                      <div
+                        className="relative border border-gray-300 rounded-md bg-white overflow-hidden"
+                        style={{ width: displayW, height: displayH }}
+                      >
+                        <div
+                          className="absolute left-0 top-0"
+                          style={{
+                            width: displayW,
+                            height: displayH,
+                            transform: `translate(${tx}px, ${ty}px) scale(${zoom})`,
+                            transformOrigin: "0 0",
+                            willChange: "transform",
+                          }}
+                        >
+                          <div
+                            className="relative"
+                            style={{
+                              width: renderW,
+                              height: renderH,
+                              transform: `scale(${1 / qualityScale})`,
+                              transformOrigin: "0 0",
+                            }}
+                          >
+                            {isPdf ? (
+                              <Document
+                                file={translatedTemplateURL}
+                                loading={null}
+                                error={null}
+                              >
+                                <Page
+                                  pageNumber={1}
+                                  width={renderW}
+                                  renderAnnotationLayer={false}
+                                  renderTextLayer={false}
+                                  loading={null}
+                                  error={null}
+                                />
+                              </Document>
+                            ) : imageError ? (
+                              <div className="p-4 text-sm text-red-600">
+                                Failed to load template image.
+                                {translatedTemplateURL && (
+                                  <div className="mt-2 text-xs break-all text-gray-700">
+                                    <div className="mb-1">URL:</div>
+                                    <a
+                                      href={translatedTemplateURL}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="underline text-blue-600 hover:text-blue-700"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {translatedTemplateURL}
+                                    </a>
+                                    <button
+                                      className="ml-2 px-2 py-0.5 text-xs border rounded hover:bg-gray-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard?.writeText(
+                                          translatedTemplateURL
+                                        );
+                                      }}
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <>
+                                {isImageLoading && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="text-xs text-gray-500">
+                                      Loading…
+                                    </div>
+                                  </div>
+                                )}
+                                <img
+                                  src={translatedTemplateURL}
+                                  alt="Translated template"
+                                  style={{
+                                    width: renderW,
+                                    height: renderH,
+                                    display: "block",
+                                  }}
+                                  onLoad={() => setIsImageLoading(false)}
+                                  onError={() => {
+                                    setIsImageLoading(false);
+                                    setImageError("error");
+                                  }}
+                                />
+                              </>
+                            )}
+                            <div
+                              className="absolute border-2 border-blue-500 bg-blue-400/20 animate-pulse pointer-events-none z-10"
+                              style={{
+                                left: `${rbx}px`,
+                                top: `${rby}px`,
+                                width: `${rbw}px`,
+                                height: `${rbh}px`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

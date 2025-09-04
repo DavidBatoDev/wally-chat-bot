@@ -749,7 +749,7 @@ export const MemoizedTextBox = memo(
       >
         <div
           className={`w-full h-full relative group ${
-            isSelected ? "ring-2 ring-gray-500 selected" : ""
+            isSelected && isEditMode ? "ring-2 ring-gray-500 selected" : ""
           } ${isEditMode ? "edit-mode" : ""} ${
             isEditMode && !isSelected ? "edit-mode-unselected" : ""
           } ${

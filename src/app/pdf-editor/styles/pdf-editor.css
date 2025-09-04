@@ -914,16 +914,15 @@ body.resizing-element {
   background-color: rgba(59, 130, 246, 0.1) !important;
 }
 
-/* Light border for textboxes in edit mode when not selected */
+/* Light ring for textboxes in edit mode when not selected */
 .edit-mode-unselected {
-  border: 1px solid rgba(156, 163, 175, 0.3) !important;
-  box-shadow: 0 0 0 1px rgba(156, 163, 175, 0.2) !important;
-  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out !important;
+  border: none !important;
+  box-shadow: 0 0 0 2px rgba(156, 163, 175, 0.3) !important;
+  transition: box-shadow 0.2s ease-out !important;
 }
 
 .edit-mode-unselected:hover {
-  border-color: rgba(0, 94, 255, 0.5) !important;
-  box-shadow: 0 0 0 1px rgba(0, 94, 255, 0.4) !important;
+  box-shadow: 0 0 0 2px rgba(0, 94, 255, 0.5) !important;
 }
 
 /* Textarea scrollbar styling */

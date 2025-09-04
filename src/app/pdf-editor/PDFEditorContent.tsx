@@ -7884,6 +7884,17 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
                     currentPage={documentState.currentPage}
                     sourceLanguage={sourceLanguage}
                     desiredLanguage={desiredLanguage}
+                    translatedTemplateURL={getTranslatedDocumentUrl(
+                      documentState.currentPage
+                    )}
+                    translatedTemplateWidth={
+                      getTranslatedTemplateDimensions(documentState.currentPage)
+                        .width
+                    }
+                    translatedTemplateHeight={
+                      getTranslatedTemplateDimensions(documentState.currentPage)
+                        .height
+                    }
                   />
                 </div>
               )}
