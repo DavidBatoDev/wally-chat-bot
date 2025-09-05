@@ -74,6 +74,10 @@ const PDFEditorDashboard: React.FC = () => {
   const [previewsLoading, setPreviewsLoading] = useState<
     Record<string, boolean>
   >({});
+  // Track projects currently being deleted to block navigation
+  const [deletingProjectIds, setDeletingProjectIds] = useState<
+    Record<string, boolean>
+  >({});
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // PDF Transformation state
@@ -933,7 +937,18 @@ const PDFEditorDashboard: React.FC = () => {
                 <div
                   key={project.id}
                   className="group cursor-pointer"
-                  onClick={() => handleOpenProject(project.id)}
+                  onClick={(e) => {
+                    if (isOcrRunning || deletingProjectIds[project.id]) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      // Don't show toast during deletion to avoid confusion
+                      if (!deletingProjectIds[project.id]) {
+                        toast.info("OCR is running. Please wait or cancel.");
+                      }
+                      return;
+                    }
+                    handleOpenProject(project.id);
+                  }}
                   style={{ position: "relative" }}
                 >
                   {/* Document Preview Card */}
@@ -1028,79 +1043,150 @@ const PDFEditorDashboard: React.FC = () => {
                         </Badge>
                       )}
                     </div>
-                    {/* Full-card OCR overlay */}
+                    {/* Running OCR overlay across the entire group card */}
                     {isOcrRunning && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          zIndex: 50,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          overflow: "hidden",
-                          borderTopLeftRadius: 8,
-                          borderTopRightRadius: 8,
-                        }}
-                      >
+                      <>
                         <div
                           style={{
                             position: "absolute",
                             inset: 0,
-                            background: "rgba(17,24,39,0.7)",
+                            zIndex: 9990,
+                            background: "rgba(17,24,39,0.65)",
+                            borderRadius: 8,
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                           }}
                         />
                         <div
+                          className="opacity-0 group-hover:opacity-100 transition-opacity"
                           style={{
-                            position: "relative",
+                            position: "absolute",
+                            top: 8,
+                            right: 8,
+                            zIndex: 10000,
+                          }}
+                        >
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const bgUrl =
+                                process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL;
+                              if (bgUrl) {
+                                fetch(`${bgUrl}/abort`, {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({
+                                    projectId: project.id,
+                                  }),
+                                }).catch(() => {});
+                              }
+                              // Optimistically remove from UI immediately
+                              setProjects((prev) =>
+                                prev.filter((p) => p.id !== project.id)
+                              );
+                              setProjectPreviews((prev) => {
+                                const next = { ...prev } as any;
+                                try {
+                                  delete next[project.id];
+                                } catch {}
+                                return next;
+                              });
+                              setPreviewsLoading((prev) => {
+                                const next = { ...prev } as any;
+                                try {
+                                  delete next[project.id];
+                                } catch {}
+                                return next;
+                              });
+                              // Prevent navigation while deleting
+                              setDeletingProjectIds((prev) => ({
+                                ...prev,
+                                [project.id]: true,
+                              }));
+                              handleDeleteProject(
+                                project.id,
+                                project.name
+                              ).finally(() => {
+                                setDeletingProjectIds((prev) => ({
+                                  ...prev,
+                                  [project.id]: false,
+                                }));
+                              });
+                            }}
+                            title="Cancel OCR and delete project"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                          >
+                            Cancel & Delete
+                          </Button>
+                        </div>
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            zIndex: 9995,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                             color: "#fff",
+                            pointerEvents: "none",
                             textAlign: "center",
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 600,
-                              letterSpacing: 0,
-                              marginBottom: 8,
-                            }}
-                          >
-                            Running OCR
-                          </div>
-                          <div
-                            style={{
-                              width: 18,
-                              height: 18,
-                              borderRadius: "50%",
-                              border: "2px solid rgba(255,255,255,0.35)",
-                              borderTopColor: "#ffffff",
-                              margin: "0 auto 8px",
-                              animation: "spin 0.9s linear infinite",
-                            }}
-                          />
-                          <div
-                            style={{
-                              width: 120,
-                              height: 4,
-                              borderRadius: 999,
-                              margin: "0 auto",
-                              background: "rgba(255,255,255,0.25)",
-                              overflow: "hidden",
-                            }}
-                          >
+                          <div>
                             <div
                               style={{
-                                height: "100%",
-                                width: "40%",
-                                background: "#ffffff",
-                                transform: "translateX(-100%)",
-                                animation: "bar 1.6s ease-in-out infinite",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                marginBottom: 8,
+                              }}
+                            >
+                              Running OCR
+                            </div>
+                            <div
+                              style={{
+                                width: 18,
+                                height: 18,
+                                borderRadius: "50%",
+                                border: "2px solid rgba(255,255,255,0.35)",
+                                borderTopColor: "#ffffff",
+                                margin: "0 auto 8px",
+                                animation: "spin 0.9s linear infinite",
                               }}
                             />
+                            <div
+                              style={{
+                                width: 140,
+                                height: 4,
+                                borderRadius: 999,
+                                margin: "0 auto",
+                                background: "rgba(255,255,255,0.25)",
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height: "100%",
+                                  width: "40%",
+                                  background: "#ffffff",
+                                  transform: "translateX(-100%)",
+                                  animation: "bar 1.6s ease-in-out infinite",
+                                }}
+                              />
+                            </div>
+                            <style>{`@keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} } @keyframes bar { 0% { transform: translateX(-100%);} 50% { transform: translateX(50%);} 100% { transform: translateX(120%);} }`}</style>
                           </div>
-                          <style>{`@keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} } @keyframes bar { 0% { transform: translateX(-100%);} 50% { transform: translateX(50%);} 100% { transform: translateX(120%);} }`}</style>
                         </div>
-                      </div>
+                      </>
                     )}
                   </div>
 

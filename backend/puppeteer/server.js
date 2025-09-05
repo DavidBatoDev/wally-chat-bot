@@ -3076,6 +3076,15 @@ app.post(
     }
 
     try {
+      // Create and register abort controller for this operation (mirrors /capture-and-ocr)
+      const abortController = new AbortController();
+      abortControllers.set(projectId, abortController);
+      activeOperations.set(projectId, {
+        status: "running",
+        startTime: new Date().toISOString(),
+        totalOperations: 0,
+        currentOperation: 0,
+      });
       // Call existing flow to do the heavy lifting
       const innerReq = {
         body: {
@@ -3095,6 +3104,7 @@ app.post(
         axios
           .post(serviceUrl, innerReq.body, {
             headers: { "Content-Type": "application/json" },
+            signal: abortController.signal,
           })
           .then((r) => resolve(r.data))
           .catch((e) => reject(e));
@@ -3211,6 +3221,13 @@ app.post(
         );
       }
 
+      // Mark operation as complete
+      activeOperations.set(projectId, {
+        status: "completed",
+        timestamp: new Date().toISOString(),
+      });
+      abortControllers.delete(projectId);
+
       return res.json({
         success: true,
         data: {
@@ -3229,7 +3246,27 @@ app.post(
         },
       });
     } catch (e) {
+      // If aborted, report accordingly
+      if (e?.name === "CanceledError" || e?.message?.includes("aborted")) {
+        console.log(
+          `🛑 [/capture-and-ocr-to-supabase] Aborted for ${projectId}`
+        );
+        activeOperations.set(projectId, {
+          status: "aborted",
+          timestamp: new Date().toISOString(),
+        });
+        abortControllers.delete(projectId);
+        return res
+          .status(499)
+          .json({ success: false, error: "Operation aborted" });
+      }
       console.error("❌ [/capture-and-ocr-to-supabase] Error:", e.message);
+      activeOperations.set(projectId, {
+        status: "failed",
+        timestamp: new Date().toISOString(),
+        error: e?.message || String(e),
+      });
+      abortControllers.delete(projectId);
       return res.status(500).json({ success: false, error: e.message });
     }
   }
