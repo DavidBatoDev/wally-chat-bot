@@ -179,23 +179,23 @@ Look for these logs in the frontend:
 ### **Test Single Page**
 
 ```bash
-curl -X POST http://localhost:3001/capture-and-ocr \
+curl -X POST https://wally-puppet-523614903618.us-central1.run.app/capture-and-ocr \
   -H "Content-Type: application/json" \
-  -d '{"projectId":"test","captureUrl":"http://localhost:3000/capture-project/test","pageNumbers":"1"}'
+  -d '{"projectId":"test","captureUrl":"https://wally-frontend-523614903618.us-central1.run.app/capture-project/test","pageNumbers":"1"}'
 ```
 
 ### **Test Multiple Pages**
 
 ```bash
-curl -X POST http://localhost:3001/capture-and-ocr \
+curl -X POST https://wally-puppet-523614903618.us-central1.run.app/capture-and-ocr \
   -H "Content-Type: application/json" \
-  -d '{"projectId":"test","captureUrl":"http://localhost:3000/capture-project/test","pageNumbers":"1,2"}'
+  -d '{"projectId":"test","captureUrl":"https://wally-frontend-523614903618.us-central1.run.app/capture-project/test","pageNumbers":"1,2"}'
 ```
 
 ### **Check Service Health**
 
 ```bash
-curl http://localhost:3001/health
+curl https://wally-puppet-523614903618.us-central1.run.app/health
 ```
 
 ## 📊 **Expected Log Flow**
@@ -263,4 +263,3 @@ curl http://localhost:3001/health
 ---
 
 **Note**: This debugging guide will help identify exactly where the multi-page OCR process is failing. The enhanced logging will show whether the issue is in page navigation, capture, OCR processing, or frontend serialization.
-

@@ -16,7 +16,7 @@ Your Puppeteer service now includes comprehensive real-time debugging with:
 ### 1. **Health Check** - Basic Service Status
 
 ```bash
-GET http://localhost:3001/health
+GET https://wally-puppet-523614903618.us-central1.run.app/health
 ```
 
 **Response:**
@@ -32,7 +32,7 @@ GET http://localhost:3001/health
 ### 2. **Service Status** - Detailed Service Info
 
 ```bash
-GET http://localhost:3001/status
+GET https://wally-puppet-523614903618.us-central1.run.app/status
 ```
 
 **Response:**
@@ -61,7 +61,7 @@ GET http://localhost:3001/status
 ### 3. **Debug Info** - Comprehensive System Status
 
 ```bash
-GET http://localhost:3001/debug
+GET https://wally-puppet-523614903618.us-central1.run.app/debug
 ```
 
 **Response:**
@@ -99,10 +99,10 @@ When you run an OCR capture, you'll see detailed real-time output like this:
 🚀 [2024-01-15T10:30:00.000Z] Starting OCR capture session
 📋 Request Details:
    Project ID: project-123
-   Capture URL: http://localhost:3000/capture-project/project-123
+   Capture URL: https://wally-frontend-523614903618.us-central1.run.app/capture-project/project-123
    Page Numbers: 1,2,3
    View Types: original,translated
-   OCR API URL: http://localhost:8000/projects/process-file
+   OCR API URL: https://wally-backend-523614903618.us-central1.run.app/projects/process-file
    Project Data: ✅ Provided
 
 📊 Processing Summary:
@@ -116,7 +116,7 @@ When you run an OCR capture, you'll see detailed real-time output like this:
 🖥️  [2024-01-15T10:30:01.500Z] Setting viewport and navigating...
    Viewport: 1920x1080 with 2x device scale factor
 ✅ Viewport set successfully
-   Navigating to: http://localhost:3000/capture-project/project-123
+   Navigating to: https://wally-frontend-523614903618.us-central1.run.app/capture-project/project-123
 ✅ Navigation completed successfully
 
 ⏳ [2024-01-15T10:30:02.000Z] Waiting for content to load...
@@ -144,7 +144,7 @@ When you run an OCR capture, you'll see detailed real-time output like this:
       📤 [2024-01-15T10:30:05.400Z] Preparing OCR service request...
       📎 File prepared: page-1-original.png
       📏 Dimensions added: 800x1000
-      🌐 Sending to OCR service: http://localhost:8000/process-file
+      🌐 Sending to OCR service: https://wally-backend-523614903618.us-central1.run.app/process-file
       📊 Request details:
          - Image size: 245760 bytes
          - Page dimensions: 800x1000
@@ -225,7 +225,9 @@ You can create a simple monitoring dashboard by polling the debug endpoints:
 // Example monitoring script
 setInterval(async () => {
   try {
-    const response = await fetch("http://localhost:3001/debug");
+    const response = await fetch(
+      "https://wally-puppet-523614903618.us-central1.run.app/debug"
+    );
     const status = await response.json();
 
     console.log(`Service Status: ${status.browser.isConnected ? "🟢" : "🔴"}`);

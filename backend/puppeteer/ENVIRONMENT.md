@@ -22,10 +22,10 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 ```bash
 # OCR Capture Service URL (Puppeteer service)
-NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL=http://localhost:3001
+NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL=https://wally-puppet-523614903618.us-central1.run.app
 
 # OCR API URL (your existing OCR backend)
-NEXT_PUBLIC_OCR_API_URL=http://localhost:8000/api/ocr/process
+NEXT_PUBLIC_OCR_API_URL=https://wally-backend-523614903618.us-central1.run.app/api/ocr/process
 
 # Optional: API Key for OCR service
 NEXT_PUBLIC_OCR_API_KEY=your-api-key-here
@@ -47,17 +47,17 @@ NEXT_PUBLIC_OCR_API_KEY=your-api-key-here
    - Add the required environment variables above
 
 3. **Test the Service:**
-   - Health check: `http://localhost:3001/health`
-   - Status: `http://localhost:3001/status`
-   - Store to Supabase: POST `http://localhost:3001/capture-and-ocr-to-supabase`
+   - Health check: `https://wally-puppet-523614903618.us-central1.run.app/health`
+   - Status: `https://wally-puppet-523614903618.us-central1.run.app/status`
+   - Store to Supabase: POST `https://wally-puppet-523614903618.us-central1.run.app/capture-and-ocr-to-supabase`
      - Body (JSON):
        ```json
        {
          "projectId": "<uuid>",
-         "captureUrl": "http://localhost:3000/capture-project/<id>",
+         "captureUrl": "https://wally-frontend-523614903618.us-central1.run.app/capture-project/<id>",
          "pageNumbers": "1,2,3",
          "viewTypes": ["original", "translated"],
-         "ocrApiUrl": "http://localhost:8000/projects/process-file",
+         "ocrApiUrl": "https://wally-backend-523614903618.us-central1.run.app/projects/process-file",
          "projectData": {
            /* optional ProjectState */
          }

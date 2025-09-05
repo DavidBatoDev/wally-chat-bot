@@ -2,7 +2,8 @@ import { toast } from "sonner";
 
 // Configuration
 const PUPPETEER_SERVICE_URL =
-  process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL || "http://localhost:3001";
+  process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL ||
+  "https://wally-puppet-523614903618.us-central1.run.app";
 
 export interface CapturedPage {
   pageNumber: number;

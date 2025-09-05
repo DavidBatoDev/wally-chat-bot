@@ -12,7 +12,8 @@ export async function GET(
   try {
     // Forward the request to the backend
     const backendUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      "https://wally-backend-523614903618.us-central1.run.app";
     const backendEndpoint = `${backendUrl}/templates/by-type/${params.doc_type}`;
 
     console.log("Backend URL:", backendEndpoint);

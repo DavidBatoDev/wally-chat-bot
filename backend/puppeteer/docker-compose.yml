@@ -15,7 +15,13 @@ services:
       - ./uploads:/usr/src/app/uploads
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "https://wally-puppet-523614903618.us-central1.run.app/health",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -26,4 +32,3 @@ services:
 networks:
   ocr-network:
     driver: bridge
-

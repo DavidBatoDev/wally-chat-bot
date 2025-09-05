@@ -1080,7 +1080,7 @@ app.post(
         captureUrl,
         pageNumbers,
         viewTypes,
-        ocrApiUrl = "http://localhost:8000/projects/process-file", // Default to our OCR service
+        ocrApiUrl = "https://wally-backend-523614903618.us-central1.run.app/projects/process-file", // Default to our OCR service
         projectData,
       } = req.body;
 
@@ -3063,7 +3063,7 @@ app.post(
       captureUrl,
       pageNumbers,
       viewTypes,
-      ocrApiUrl = "http://localhost:8000/projects/process-file",
+      ocrApiUrl = "https://wally-backend-523614903618.us-central1.run.app/projects/process-file",
       projectData,
     } = req.body || {};
 
@@ -4082,7 +4082,7 @@ async function sendToOcrService(
             }
 
             if (useTemplateOcr) {
-              finalOcrApiUrl = `http://localhost:8000/projects/template-ocr/${templateId}`;
+              finalOcrApiUrl = `https://wally-backend-523614903618.us-central1.run.app/projects/template-ocr/${templateId}`;
               console.log(
                 `      🎯 [TEMPLATE OCR] Using ${currentPageData.pageType} template: ${templateId}`
               );
@@ -4175,7 +4175,7 @@ async function sendToOcrService(
             }
 
             if (useTemplateOcr) {
-              finalOcrApiUrl = `http://localhost:8000/projects/template-ocr/${templateId}`;
+              finalOcrApiUrl = `https://wally-backend-523614903618.us-central1.run.app/projects/template-ocr/${templateId}`;
               console.log(
                 `      🎯 [TEMPLATE OCR] Using ${currentPageData.pageType} template: ${templateId}`
               );

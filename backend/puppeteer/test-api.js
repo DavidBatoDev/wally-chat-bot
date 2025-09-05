@@ -8,10 +8,11 @@
 const axios = require("axios");
 
 // Configuration
-const API_BASE_URL = "http://localhost:3001";
+const API_BASE_URL = "https://wally-puppet-523614903618.us-central1.run.app";
 const TEST_PROJECT_ID = "test-project-" + Date.now();
 const TEST_CAPTURE_URL =
-  "http://localhost:3000/capture-project/" + TEST_PROJECT_ID; // Replace with actual URL
+  "https://wally-frontend-523614903618.us-central1.run.app/capture-project/" +
+  TEST_PROJECT_ID; // Replace with actual URL
 
 async function testHealthCheck() {
   console.log("\n🏥 Testing health check...");

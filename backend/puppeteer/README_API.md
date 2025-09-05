@@ -27,7 +27,7 @@ Captures all non-deleted pages of a document in both original and translated vie
 #### Parameters:
 
 - **projectId** (required): Unique identifier for the project
-- **captureUrl** (required): URL of the page to capture (e.g., `http://localhost:3000/capture-project/project-id`)
+- **captureUrl** (required): URL of the page to capture (e.g., `https://wally-frontend-523614903618.us-central1.run.app/capture-project/project-id`)
 - **quality** (optional): Device scale factor for high-quality captures (1.0 = normal, 2.0 = high quality)
 - **waitTime** (optional): Milliseconds to wait between page transitions (default: 2000)
 - **projectData** (optional): Additional project data if needed
@@ -122,7 +122,8 @@ import { captureAllPages } from "./services/pageCaptureService";
 
 const result = await captureAllPages({
   projectId: "project-123",
-  captureUrl: "http://localhost:3000/capture-project/project-123",
+  captureUrl:
+    "https://wally-frontend-523614903618.us-central1.run.app/capture-project/project-123",
   quality: 1.5,
   waitTime: 2500,
 });

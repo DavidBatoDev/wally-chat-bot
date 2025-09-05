@@ -31,6 +31,7 @@ This backend provides a comprehensive API for handling image uploads, OCR proces
 ## API Endpoints
 
 ### Authentication
+
 - `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - Login user
 - `GET /api/v1/auth/me` - Get current user
@@ -38,6 +39,7 @@ This backend provides a comprehensive API for handling image uploads, OCR proces
 - `POST /api/v1/auth/change-password` - Change password
 
 ### Images
+
 - `POST /api/v1/images/upload` - Upload image
 - `GET /api/v1/images/` - List user images
 - `GET /api/v1/images/{id}` - Get image details
@@ -45,12 +47,14 @@ This backend provides a comprehensive API for handling image uploads, OCR proces
 - `DELETE /api/v1/images/{id}` - Delete image
 
 ### OCR Processing
+
 - `POST /api/v1/ocr/process/{image_id}` - Process image with OCR
 - `GET /api/v1/ocr/results/{image_id}` - Get OCR results
 - `GET /api/v1/ocr/results/` - List OCR results
 - `DELETE /api/v1/ocr/results/{image_id}` - Delete OCR result
 
 ### Layout Management
+
 - `POST /api/v1/layouts/` - Create layout
 - `GET /api/v1/layouts/` - List layouts
 - `GET /api/v1/layouts/{id}` - Get layout details
@@ -59,6 +63,7 @@ This backend provides a comprehensive API for handling image uploads, OCR proces
 - `DELETE /api/v1/layouts/{id}` - Delete layout
 
 ### Users
+
 - `GET /api/v1/users/profile` - Get user profile
 - `PUT /api/v1/users/profile` - Update user profile
 - `GET /api/v1/users/{id}` - Get user by ID
@@ -66,23 +71,27 @@ This backend provides a comprehensive API for handling image uploads, OCR proces
 ## Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd SocMedOCR/wally-soc-med/backend
    ```
 
 2. **Create virtual environment**
+
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
 3. **Install dependencies**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 4. **Set up environment variables**
+
    ```bash
    cp environment.example .env
    # Edit .env with your configuration
@@ -149,8 +158,9 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
 ### API Documentation
 
 Once the server is running, visit:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+
+- Swagger UI: `https://wally-backend-523614903618.us-central1.run.app/docs`
+- ReDoc: `https://wally-backend-523614903618.us-central1.run.app/redoc`
 
 ## Database Setup
 
@@ -179,7 +189,7 @@ import requests
 # Upload image
 with open('social_media_screenshot.png', 'rb') as f:
     response = requests.post(
-        'http://localhost:8000/api/v1/images/upload',
+        'https://wally-backend-523614903618.us-central1.run.app/api/v1/images/upload',
         files={'file': f},
         headers={'Authorization': 'Bearer YOUR_JWT_TOKEN'}
     )
@@ -187,7 +197,7 @@ with open('social_media_screenshot.png', 'rb') as f:
 
 # Process with OCR
 response = requests.post(
-    f'http://localhost:8000/api/v1/ocr/process/{image_data["id"]}',
+    f'https://wally-backend-523614903618.us-central1.run.app/api/v1/ocr/process/{image_data["id"]}',
     headers={'Authorization': 'Bearer YOUR_JWT_TOKEN'}
 )
 ocr_result = response.json()
@@ -206,7 +216,7 @@ layout_data = {
 }
 
 response = requests.post(
-    'http://localhost:8000/api/v1/layouts/',
+    'https://wally-backend-523614903618.us-central1.run.app/api/v1/layouts/',
     json=layout_data,
     headers={'Authorization': 'Bearer YOUR_JWT_TOKEN'}
 )
@@ -281,4 +291,4 @@ This project is licensed under the MIT License.
 
 ## Support
 
-For support, please open an issue in the repository or contact the development team. 
+For support, please open an issue in the repository or contact the development team.

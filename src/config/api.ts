@@ -4,7 +4,9 @@
 
 export const API_CONFIG = {
   // Base URL for the backend API
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  BASE_URL:
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://wally-backend-523614903618.us-central1.run.app",
 
   // Project state endpoints
   PROJECT_STATE: {

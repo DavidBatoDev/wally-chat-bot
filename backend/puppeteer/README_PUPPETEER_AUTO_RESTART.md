@@ -113,13 +113,13 @@ POST /capture-and-ocr
 
 ```bash
 # Check service health
-curl http://localhost:3001/health
+curl https://wally-puppet-523614903618.us-central1.run.app/health
 
 # Monitor debug info
-curl http://localhost:3001/debug
+curl https://wally-puppet-523614903618.us-central1.run.app/debug
 
 # Check service status
-curl http://localhost:3001/status
+curl https://wally-puppet-523614903618.us-central1.run.app/status
 ```
 
 ### Log Analysis
@@ -263,4 +263,3 @@ For issues or questions:
 ---
 
 **Note**: This service is designed to be self-healing and should require minimal manual intervention. Most connection issues will be automatically resolved through the restart mechanism.
-

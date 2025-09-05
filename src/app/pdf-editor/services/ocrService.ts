@@ -138,13 +138,14 @@ export async function runBulkOcrAndSaveToDb(params: {
   }
   const payload = {
     projectId: params.projectId,
-    captureUrl: `http://localhost:3000/capture-project/${params.projectId}`,
+    captureUrl: `https://wally-frontend-523614903618.us-central1.run.app/capture-project/${params.projectId}`,
     pageNumbers: Array.isArray(params.pageNumbers)
       ? params.pageNumbers.join(",")
       : params.pageNumbers,
     viewTypes: params.viewTypes || ["original", "translated"],
     ocrApiUrl:
-      params.ocrApiUrl || "http://localhost:8000/projects/process-file",
+      params.ocrApiUrl ||
+      "https://wally-backend-523614903618.us-central1.run.app/projects/process-file",
     projectData: params.projectData,
     // Forward translation preferences to backend
     translateFrom: params.sourceLanguage,
@@ -177,12 +178,13 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
 
     const requestPayload = {
       projectId: options.projectId,
-      captureUrl: `http://localhost:3000/capture-project/${
+      captureUrl: `https://wally-frontend-523614903618.us-central1.run.app/capture-project/${
         options.projectId || `single-page-${Date.now()}`
       }`, // Include project ID
       pageNumbers: options.pageNumber,
       viewTypes: [options.viewType || "original"],
-      ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
+      ocrApiUrl:
+        "https://wally-backend-523614903618.us-central1.run.app/projects/process-file", // Direct call to backend
       projectData: options.projectData || {
         totalPages: 1,
         sourceLanguage: options.sourceLanguage || "auto",
@@ -244,13 +246,16 @@ export const performPageOcr = async (options: OcrOptions): Promise<any> => {
       requestPayload
     );
 
-    const response = await fetch("http://localhost:3001/capture-and-ocr", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestPayload),
-    });
+    const response = await fetch(
+      "https://wally-puppet-523614903618.us-central1.run.app/capture-and-ocr",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestPayload),
+      }
+    );
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -680,12 +685,13 @@ export async function performBulkOcr(options: BulkOcrOptions): Promise<{
     // Prepare the request payload for the background service
     const requestPayload = {
       projectId: projectId || `bulk-ocr-${Date.now()}`,
-      captureUrl: `http://localhost:3000/capture-project/${
+      captureUrl: `https://wally-frontend-523614903618.us-central1.run.app/capture-project/${
         projectId || `bulk-ocr-${Date.now()}`
       }`, // Include project ID
       pageNumbers: pagesToProcess,
       viewTypes: ["original"], // Only process original view for OCR
-      ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to your backend
+      ocrApiUrl:
+        "https://wally-backend-523614903618.us-central1.run.app/projects/process-file", // Direct call to your backend
       projectData: options.projectData || {
         totalPages: pagesToProcess.length,
         sourceLanguage: options.sourceLanguage,

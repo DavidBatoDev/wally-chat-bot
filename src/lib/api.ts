@@ -4,7 +4,9 @@ import axios from "axios";
 import { useAuthStore } from "@/lib/store/AuthStore";
 import { clearAuthTokens } from "@/utils/clearAuth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://wally-backend-523614903618.us-central1.run.app";
 
 // Create axios instance with base URL
 const api = axios.create({

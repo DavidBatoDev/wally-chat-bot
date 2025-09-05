@@ -62,10 +62,10 @@ Captures web pages and processes them through OCR.
 ```json
 {
   "projectId": "uuid-string",
-  "captureUrl": "http://localhost:3000/capture-project/project-id",
+  "captureUrl": "https://wally-frontend-523614903618.us-central1.run.app/capture-project/project-id",
   "pageNumbers": [1, 2, 3, 4, 5],
   "viewTypes": ["original", "translated"],
-  "ocrApiUrl": "http://localhost:8000/process-file", // Optional, defaults to this
+  "ocrApiUrl": "https://wally-backend-523614903618.us-central1.run.app/process-file", // Optional, defaults to this
   "ocrApiKey": "optional-api-key",
   "projectData": "file-upload-data"
 }

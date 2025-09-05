@@ -448,7 +448,7 @@ async def update_project_share_settings(
         share_url = None
         if result.get("is_public") and result.get("share_id"):
             # In production, use your actual domain
-            base_url = "http://localhost:3000"  # Update this in production
+            base_url = "https://wally-frontend-523614903618.us-central1.run.app"  # Update this in production
             share_url = f"{base_url}/pdf-editor/shared/{result['share_id']}"
         
         return ShareSettingsResponse(
@@ -493,7 +493,7 @@ async def get_project_share_settings(
         share_url = None
         if settings.get("is_public") and settings.get("share_id"):
             # In production, use your actual domain
-            base_url = "http://localhost:3000"  # Update this in production
+            base_url = "https://wally-frontend-523614903618.us-central1.run.app"  # Update this in production
             share_url = f"{base_url}/pdf-editor/shared/{settings['share_id']}"
         
         return ShareSettingsResponse(

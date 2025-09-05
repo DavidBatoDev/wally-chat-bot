@@ -118,7 +118,7 @@ The following endpoints are available for project management:
 Create a `.env.local` file with:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=https://wally-backend-523614903618.us-central1.run.app
 ```
 
 ### API Configuration
@@ -127,7 +127,9 @@ The API configuration is centralized in `src/config/api.ts`:
 
 ```typescript
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  BASE_URL:
+    process.env.NEXT_PUBLIC_API_URL ||
+    "https://wally-backend-523614903618.us-central1.run.app",
   PROJECT_STATE: {
     BASE: "/api/v1/project-state",
     PROJECTS: "/api/v1/project-state/projects",

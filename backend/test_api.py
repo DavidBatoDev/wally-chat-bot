@@ -14,7 +14,7 @@ def test_templates_endpoint():
     
     try:
         # Test the templates endpoint
-        url = "http://localhost:8000/templates/"
+        url = "https://wally-backend-523614903618.us-central1.run.app/templates/"
         
         print(f"📡 Making request to: {url}")
         response = requests.get(url, timeout=10)
@@ -36,7 +36,7 @@ def test_templates_endpoint():
             print(f"Response: {response.text}")
             
     except requests.exceptions.ConnectionError:
-        print("❌ Connection failed. Is the server running on http://localhost:8000?")
+        print("❌ Connection failed. Is the server running on https://wally-backend-523614903618.us-central1.run.app?")
     except Exception as e:
         print(f"❌ Error: {e}")
 
@@ -47,7 +47,7 @@ def test_health_endpoint():
     print("=" * 30)
     
     try:
-        url = "http://localhost:8000/health"
+        url = "https://wally-backend-523614903618.us-central1.run.app/health"
         response = requests.get(url, timeout=5)
         
         print(f"Status Code: {response.status_code}")

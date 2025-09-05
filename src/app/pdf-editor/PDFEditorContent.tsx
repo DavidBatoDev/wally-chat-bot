@@ -5923,8 +5923,10 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         addUntranslatedText,
         // Add required parameters for background OCR service
         projectId: currentProjectId || `bulk-ocr-${Date.now()}`,
-        captureUrl: "http://localhost:3000/capture-project/", // Point to capture-project page
-        ocrApiUrl: "http://localhost:8000/projects/process-file", // Direct call to backend
+        captureUrl:
+          "https://wally-frontend-523614903618.us-central1.run.app/capture-project/", // Point to capture-project page
+        ocrApiUrl:
+          "https://wally-backend-523614903618.us-central1.run.app/projects/process-file", // Direct call to backend
         // Add required project data for template detection
         projectData: completeProjectData,
       });

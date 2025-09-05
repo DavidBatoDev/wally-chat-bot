@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
   try {
     // Forward the request to the backend
     const backendUrl =
-      process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      "https://wally-backend-523614903618.us-central1.run.app";
     const backendEndpoint = `${backendUrl}/templates/`;
 
     console.log("Backend URL:", backendEndpoint);

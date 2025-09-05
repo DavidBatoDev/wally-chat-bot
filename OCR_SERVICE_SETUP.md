@@ -9,7 +9,7 @@ The OCR system has been simplified to directly call your backend OCR service wit
 Only **one** environment variable is needed:
 
 ```bash
-NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL=http://localhost:3001
+NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL=https://wally-puppet-523614903618.us-central1.run.app
 ```
 
 ## What Was Removed
@@ -27,9 +27,9 @@ NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL=http://localhost:3001
 
 ### 2. **Puppeteer Service** → **Your Backend**
 
-- Puppeteer navigates to `http://localhost:3000/capture-project/[projectId]` (with actual project ID)
+- Puppeteer navigates to `https://wally-frontend-523614903618.us-central1.run.app/capture-project/[projectId]` (with actual project ID)
 - Captures images from the capture-project page (which renders all project pages)
-- Sends images directly to `http://localhost:8000/process-file`
+- Sends images directly to `https://wally-backend-523614903618.us-central1.run.app/process-file`
 - No authentication required
 
 ### 3. **Backend** → **Frontend**
@@ -40,20 +40,20 @@ NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL=http://localhost:3001
 
 ## Service URLs
 
-| Service                  | URL                                                 | Purpose               |
-| ------------------------ | --------------------------------------------------- | --------------------- |
-| **Puppeteer Service**    | `http://localhost:3001`                             | Captures DOM content  |
-| **Capture Project Page** | `http://localhost:3000/capture-project/[projectId]` | Renders project pages |
-| **Your Backend OCR**     | `http://localhost:8000/projects/process-file`       | Processes images      |
-| **Frontend**             | `http://localhost:3000`                             | User interface        |
+| Service                  | URL                                                                                   | Purpose               |
+| ------------------------ | ------------------------------------------------------------------------------------- | --------------------- |
+| **Puppeteer Service**    | `https://wally-puppet-523614903618.us-central1.run.app`                               | Captures DOM content  |
+| **Capture Project Page** | `https://wally-frontend-523614903618.us-central1.run.app/capture-project/[projectId]` | Renders project pages |
+| **Your Backend OCR**     | `https://wally-backend-523614903618.us-central1.run.app/projects/process-file`        | Processes images      |
+| **Frontend**             | `https://wally-frontend-523614903618.us-central1.run.app`                             | User interface        |
 
 ## ✅ **Recent Fixes**
 
 ### **Fixed Capture URL Issue**
 
-- **Problem**: Puppeteer was navigating to `http://localhost:3000/capture-project/` (without project ID)
+- **Problem**: Puppeteer was navigating to `https://wally-frontend-523614903618.us-central1.run.app/capture-project/` (without project ID)
 - **Solution**: Updated OCR service to include project ID in capture URL
-- **Result**: Puppeteer now correctly navigates to `http://localhost:3000/capture-project/[actual-project-id]`
+- **Result**: Puppeteer now correctly navigates to `https://wally-frontend-523614903618.us-central1.run.app/capture-project/[actual-project-id]`
 
 ### **Updated Files**
 

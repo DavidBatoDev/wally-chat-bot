@@ -174,9 +174,9 @@ console.log(
 ### **Test Command**
 
 ```bash
-curl -X POST http://localhost:3001/capture-and-ocr \
+curl -X POST https://wally-puppet-523614903618.us-central1.run.app/capture-and-ocr \
   -H "Content-Type: application/json" \
-  -d '{"projectId":"test","captureUrl":"http://localhost:3000/capture-project/test","pageNumbers":"1,2"}'
+  -d '{"projectId":"test","captureUrl":"https://wally-frontend-523614903618.us-central1.run.app/capture-project/test","pageNumbers":"1,2"}'
 ```
 
 ### **Expected Logs**
@@ -274,4 +274,3 @@ This ensures that **all pages get textboxes** even when the OCR backend returns 
 ---
 
 **Status**: ✅ **FIXED** - Multi-page OCR now works correctly with enhanced entity discovery and fallback mechanisms.
-
