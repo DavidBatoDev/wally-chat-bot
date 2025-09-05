@@ -9,7 +9,6 @@ import {
   RotateCcw,
   FileText,
   Settings,
-  Check,
   RefreshCw,
   Share2,
   ArrowLeft,
@@ -123,11 +122,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   }`}
                   onClick={() => onWorkflowStepChange("translate")}
                 >
-                  {currentWorkflowStep !== "translate" ? (
-                    "1"
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
+                  {"1"}
                 </div>
                 <span
                   className={`text-sm font-medium cursor-pointer transition-colors ${
@@ -154,11 +149,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                   }`}
                   onClick={() => onWorkflowStepChange("layout")}
                 >
-                  {currentWorkflowStep !== "layout" ? (
-                    "2"
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
+                  {"2"}
                 </div>
                 <span
                   className={`text-sm font-medium cursor-pointer transition-colors ${
@@ -192,11 +183,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
                     onWorkflowStepChange("final-layout")
                   }
                 >
-                  {currentWorkflowStep !== "final-layout" ? (
-                    "3"
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
+                  {"3"}
                 </div>
                 <span
                   className={`text-sm font-medium transition-colors ${
