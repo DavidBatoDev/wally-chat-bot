@@ -4444,6 +4444,77 @@ function mapTextAlignmentNode(ocrAlignment) {
   return "left";
 }
 
+// Approximate text measurement for Node (no DOM/canvas dependency)
+// Returns width/height including provided padding
+function measureTextNode(
+  text,
+  fontSize,
+  fontFamily,
+  characterSpacing = 0,
+  maxWidth,
+  padding = { top: 0, right: 0, bottom: 0, left: 0 }
+) {
+  try {
+    const family = (fontFamily || "Arial, sans-serif").toLowerCase();
+    // Average glyph width ratios by family category (very rough but stable)
+    const familyFactor =
+      family.includes("mono") || family.includes("courier")
+        ? 0.6
+        : family.includes("serif") || family.includes("times")
+        ? 0.55
+        : 0.53; // default sans-serif
+
+    const spaceFactor = 0.33; // spaces are usually narrower
+    const punctuationFactor = 0.35; // punctuation generally narrow
+    const uppercaseBoost = 1.08; // uppercase slightly wider
+
+    const lines = String(text || "").split("\n");
+    let maxLineWidth = 0;
+    for (const line of lines) {
+      let widthPx = 0;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        let ratio = familyFactor;
+        const code = ch.charCodeAt(0);
+        if (ch === " ") ratio = spaceFactor;
+        else if (
+          (code >= 33 && code <= 47) || // punctuation !"#$%&'()*+,-./
+          (code >= 58 && code <= 64) || // :;<=>?@
+          (code >= 91 && code <= 96) || // [\]^_`
+          (code >= 123 && code <= 126) // {|}~
+        ) {
+          ratio = punctuationFactor;
+        } else if (ch >= "A" && ch <= "Z") {
+          ratio *= uppercaseBoost;
+        }
+        widthPx += ratio * fontSize;
+        if (i > 0 && characterSpacing) widthPx += characterSpacing;
+      }
+      if (widthPx > maxLineWidth) maxLineWidth = widthPx;
+    }
+
+    // Rough line height estimate similar to typical canvas metrics
+    const lineHeight = Math.max(fontSize * 1.2, fontSize);
+    const heightPx = lines.length * lineHeight;
+
+    const result = {
+      width:
+        Math.max(0, maxLineWidth) + (padding.left || 0) + (padding.right || 0),
+      height:
+        Math.max(0, heightPx) + (padding.top || 0) + (padding.bottom || 0),
+    };
+    return result;
+  } catch (e) {
+    // Fallback in case of unexpected input
+    const lineCount = String(text || "").split("\n").length;
+    const lineHeight = Math.max(fontSize * 1.2, fontSize);
+    return {
+      width: fontSize * 4,
+      height: lineCount * lineHeight,
+    };
+  }
+}
+
 function generateId() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0,
@@ -4476,12 +4547,27 @@ function serializeEntitiesToTextFields(
       ? rgbToHexNode(colors.fill_color)
       : "#000000";
 
+    // Measure text to optimize dimensions, similar to frontend's measureText
+    const measured = measureTextNode(
+      entity.text || "",
+      styling.font_size ?? 16,
+      styling.font_family || "Arial, sans-serif",
+      0,
+      undefined,
+      {
+        top: styling.text_padding || 0,
+        right: styling.text_padding || 0,
+        bottom: styling.text_padding || 0,
+        left: styling.text_padding || 0,
+      }
+    );
+
     textBoxes.push({
       id: generateId(),
       x: dimensions.box_x ?? 0,
       y: dimensions.box_y ?? 0,
-      width: Math.max(1, dimensions.box_width ?? 1),
-      height: Math.max(1, dimensions.box_height ?? 1),
+      width: Math.max(1, dimensions.box_width ?? 1, measured.width || 0),
+      height: Math.max(1, dimensions.box_height ?? 1, measured.height || 0),
       value: entity.text ?? "",
       placeholder: entity.type ? `Enter or Remove Text for ${entity.type}` : "",
       fontSize: styling.font_size ?? 16,
