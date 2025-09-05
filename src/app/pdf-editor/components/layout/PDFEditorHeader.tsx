@@ -323,7 +323,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
               <Settings className="w-4 h-4" />
             </Button>
           )}
-          {onStartTutorial && (
+          {onStartTutorial && currentWorkflowStep !== "final-layout" && (
             <Button
               id="start-tutorial-button"
               onClick={onStartTutorial}

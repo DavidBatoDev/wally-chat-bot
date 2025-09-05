@@ -2362,7 +2362,11 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     isFirstStep,
     isLastStep,
     totalSteps,
-  } = useSpotlightTour(handleWorkflowStepChange, handleViewChange);
+  } = useSpotlightTour(
+    handleWorkflowStepChange,
+    handleViewChange,
+    viewState.currentWorkflowStep
+  );
 
   // Layout tour hook (for layout workflow)
   const layoutTour = useLayoutTour(
@@ -2546,8 +2550,37 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           }));
         }
       }
-    }
+    },
+    viewState.currentWorkflowStep
   );
+
+  // Auto-check tutorials on workflow step change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (viewState.currentWorkflowStep === "translate") {
+      const completed = localStorage.getItem("tutorial-translate");
+      if (!completed && !isTourOpen && !hasCompletedTour) {
+        startTour();
+      }
+    } else if (viewState.currentWorkflowStep === "layout") {
+      const completed = localStorage.getItem("tutorial-layout");
+      if (
+        !completed &&
+        !layoutTour.isTourOpen &&
+        !layoutTour.hasCompletedTour
+      ) {
+        layoutTour.startTour();
+      }
+    }
+  }, [
+    viewState.currentWorkflowStep,
+    isTourOpen,
+    hasCompletedTour,
+    startTour,
+    layoutTour.isTourOpen,
+    layoutTour.hasCompletedTour,
+    layoutTour.startTour,
+  ]);
 
   // Ensure view is always split when in layout step
   useEffect(() => {
