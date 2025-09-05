@@ -1,6 +1,5 @@
 import { TextField, DeletionRectangle } from "../types/pdf-editor.types";
-import { generateUUID, measureText } from "./measurements";
-import { colorToRgba } from "./colors";
+import { measureText } from "./measurements";
 
 // Detect font properties from a text span element
 export const detectFontProperties = (span: HTMLSpanElement) => {
@@ -230,8 +229,72 @@ export const detectFontProperties = (span: HTMLSpanElement) => {
     }
   }
 
-  // Get text alignment - always return "left"
-  const textAlign = "left";
+  // Get text alignment with fallbacks (span → parents → classes/inline)
+  const normalizeAlign = (align: string | null, dir: string | null) => {
+    const a = (align || "").toLowerCase();
+    const d = (dir || "ltr").toLowerCase();
+    if (a === "start") return d === "rtl" ? "right" : "left";
+    if (a === "end") return d === "rtl" ? "left" : "right";
+    if (a === "center" || a === "right" || a === "left" || a === "justify")
+      return a;
+    return "left";
+  };
+
+  let textAlign = normalizeAlign(
+    computedStyle.textAlign,
+    computedStyle.direction
+  );
+
+  // If still left, look up the DOM tree for a stronger alignment
+  if (textAlign === "left") {
+    let parentAlignEl: HTMLElement | null = span.parentElement;
+    let level = 0;
+    while (parentAlignEl && parentAlignEl !== document.body && level < 5) {
+      const ps = window.getComputedStyle(parentAlignEl);
+      const pa = normalizeAlign(ps.textAlign, ps.direction);
+      if (pa === "center" || pa === "right" || pa === "justify") {
+        textAlign = pa;
+        break;
+      }
+      parentAlignEl = parentAlignEl.parentElement;
+      level++;
+    }
+  }
+
+  // Heuristics: classes and inline styles commonly used by UIs
+  if (textAlign === "left") {
+    const styleAttr = span.getAttribute("style") || "";
+    const classes = Array.from(span.classList).map((c) => c.toLowerCase());
+    if (
+      /(text-align\s*:\s*center)/i.test(styleAttr) ||
+      classes.some(
+        (c) =>
+          c.includes("text-center") ||
+          c.includes("align-center") ||
+          c === "center"
+      )
+    ) {
+      textAlign = "center";
+    } else if (
+      /(text-align\s*:\s*right)/i.test(styleAttr) ||
+      classes.some(
+        (c) =>
+          c.includes("text-right") || c.includes("align-right") || c === "right"
+      )
+    ) {
+      textAlign = "right";
+    } else if (
+      /(text-align\s*:\s*justify)/i.test(styleAttr) ||
+      classes.some(
+        (c) =>
+          c.includes("text-justify") ||
+          c.includes("align-justify") ||
+          c === "justify"
+      )
+    ) {
+      textAlign = "justify";
+    }
+  }
 
   // Get letter spacing (character spacing)
   const letterSpacing = parseFloat(computedStyle.letterSpacing) || 0;
@@ -294,13 +357,13 @@ export const createTextFieldFromSpan = (
   let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
-    const pdfViewer = document.querySelector('[data-pdf-viewer]');
-    
+    const pdfViewer = document.querySelector("[data-pdf-viewer]");
+
     if (pdfViewer) {
       const viewerRect = pdfViewer.getBoundingClientRect();
       const spanCenterX = spanRect.left + spanRect.width / 2;
       const clickX = spanCenterX - viewerRect.left;
-      
+
       // Use the same logic as document mouse handlers
       const singleDocWidth = pageWidth * scale;
       const gap = 20;
@@ -432,29 +495,36 @@ export const createTextFieldFromSpan = (
     lineHeight: fontProperties.lineHeight,
   });
 
-  // The detected font size is from the scaled view, but we need it to be accurate at 500% scale
-  // Fixed font size calculation at 500% scale for accuracy (similar to deletion rectangle at 100%)
-  const fixedScale = 5.0; // 500% scale
-  let fontSize = Math.max(8, fontProperties.fontSize / fixedScale);
-  
-  console.log("Font size calculation:", {
-    originalDetectedFontSize: fontProperties.fontSize,
-    currentScale: scale,
-    fixedScale: fixedScale,
-    normalizedFontSize: fontSize,
-    note: "Font size normalized to 500% scale for accuracy"
-  });
-
-  const { width, height } = measureText(
+  // Normalize font size to document coordinate space (100% scale)
+  // Then dynamically fit it to the span's normalized box so it's not oversized
+  let fontSize = Math.max(6, fontProperties.fontSize / scale);
+  let measured = measureText(
     cleanedTextContent,
     fontSize,
     fontProperties.fontFamily,
     fontProperties.letterSpacing
   );
-
-  // Ensure minimum dimensions for the text field using normalized dimensions
-  const minWidth = Math.max(spanWidth, width || 50);
-  const minHeight = Math.max(spanHeight, height || 20);
+  // Compute scale factors to fit within span bounds
+  const widthScale = measured.width > 0 ? spanWidth / measured.width : 1;
+  const heightScale = measured.height > 0 ? spanHeight / measured.height : 1;
+  const fitScale = Math.min(1, widthScale, heightScale);
+  if (fitScale > 0 && fitScale !== 1) {
+    fontSize = Math.max(6, fontSize * fitScale);
+    measured = measureText(
+      cleanedTextContent,
+      fontSize,
+      fontProperties.fontFamily,
+      fontProperties.letterSpacing
+    );
+  }
+  console.log("Font size calculation:", {
+    originalDetectedFontSize: fontProperties.fontSize,
+    currentScale: scale,
+    widthScale,
+    heightScale,
+    appliedScale: fitScale,
+    normalizedFontSize: fontSize,
+  });
 
   // Final validation to ensure we have valid text content
   const finalTextContent =
@@ -478,8 +548,9 @@ export const createTextFieldFromSpan = (
       | "justify",
     letterSpacing: fontProperties.letterSpacing,
     lineHeight: fontProperties.lineHeight,
-    width: minWidth,
-    height: minHeight,
+    // Use the span's normalized dimensions so textbox aligns with deletion rectangle
+    width: spanWidth,
+    height: spanHeight,
   };
 
   const textFieldId = addTextBox(
@@ -521,8 +592,8 @@ export const createTextFieldFromSpan = (
     textAlign: fontProperties.textAlign,
     letterSpacing: fontProperties.letterSpacing,
     lineHeight: fontProperties.lineHeight,
-    width: minWidth,
-    height: minHeight,
+    width: spanWidth,
+    height: spanHeight,
   });
 
   // Return the text field ID and properties for updating (though they should already be set)
@@ -563,13 +634,13 @@ export const createDeletionRectangleForSpan = (
   let targetView: "original" | "translated" | "final-layout" = "original";
   if (currentView === "split") {
     const spanRect = span.getBoundingClientRect();
-    const pdfViewer = document.querySelector('[data-pdf-viewer]');
-    
+    const pdfViewer = document.querySelector("[data-pdf-viewer]");
+
     if (pdfViewer) {
       const viewerRect = pdfViewer.getBoundingClientRect();
       const spanCenterX = spanRect.left + spanRect.width / 2;
       const clickX = spanCenterX - viewerRect.left;
-      
+
       // Use the same logic as document mouse handlers
       const singleDocWidth = pageWidth * scale;
       const gap = 20;
