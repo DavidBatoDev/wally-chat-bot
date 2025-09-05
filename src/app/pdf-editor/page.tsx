@@ -577,6 +577,19 @@ const PDFEditorDashboard: React.FC = () => {
                 sourceLanguage="English"
                 desiredLanguage="Spanish"
                 onConfirm={async (pages, sourceLanguage, desiredLanguage) => {
+                  // Immediately set preview to show OCR running
+                  setProjectPreviews((prev) => ({
+                    ...prev,
+                    [pid]: {
+                      ...(project?.project_data || {}),
+                      documentState: {
+                        ...((project?.project_data?.documentState as any) ||
+                          {}),
+                        // Optional hint for card overlay usage if needed in the future
+                        ocrRunning: true,
+                      },
+                    },
+                  }));
                   // Build projectData.pages payload for template-aware OCR
                   // Fetch templates to enrich with metadata (variation, file_url)
                   let templateIndex: Record<string, any> = {};
@@ -669,12 +682,21 @@ const PDFEditorDashboard: React.FC = () => {
                       description:
                         result.error || "Capture and OCR did not complete",
                     });
+                    // Clear running state on failure
+                    setProjectPreviews((prev) => ({
+                      ...prev,
+                      [pid]: project?.project_data,
+                    }));
                     throw new Error(result.error || "OCR failed");
                   }
                   toast.success("OCR complete", {
                     description: "Results saved to project",
                   });
-                  // After OCR save, navigate to editor
+                  // Clear running indicator and navigate to editor
+                  setProjectPreviews((prev) => ({
+                    ...prev,
+                    [pid]: project?.project_data,
+                  }));
                   router.push(`/pdf-editor/${pid}`);
                 }}
               />
@@ -904,116 +926,197 @@ const PDFEditorDashboard: React.FC = () => {
         {/* Projects Grid */}
         {!isLoading && filteredProjects.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-            {filteredProjects.map((project) => (
-              <div
-                key={project.id}
-                className="group cursor-pointer"
-                onClick={() => handleOpenProject(project.id)}
-              >
-                {/* Document Preview Card */}
-                <div className="relative border border-gray-300 rounded-tl-lg rounded-tr-lg  bg-gray-100 shadow-sm hover:shadow-md transition-all duration-200 group-hover:border-blue-300">
-                  {/* Document Preview */}
-                  <div className="aspect-[8.5/11]">
-                    {project.source === "database" ? (
-                      previewsLoading[project.id] ? (
-                        <div className="w-full h-full bg-gray-100 rounded border flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                        </div>
-                      ) : projectPreviews[project.id] ? (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ProjectPreview
-                            projectData={projectPreviews[project.id]}
-                            scale={0.25}
-                          />
-                        </div>
+            {filteredProjects.map((project) => {
+              const previewData = projectPreviews[project.id];
+              const isOcrRunning = !!previewData?.documentState?.ocrRunning;
+              return (
+                <div
+                  key={project.id}
+                  className="group cursor-pointer"
+                  onClick={() => handleOpenProject(project.id)}
+                  style={{ position: "relative" }}
+                >
+                  {/* Document Preview Card */}
+                  <div className="relative border border-gray-300 rounded-tl-lg rounded-tr-lg  bg-gray-100 shadow-sm hover:shadow-md transition-all duration-200 group-hover:border-blue-300">
+                    {/* Document Preview */}
+                    <div className="aspect-[8.5/11]">
+                      {project.source === "database" ? (
+                        previewsLoading[project.id] ? (
+                          <div className="w-full h-full bg-gray-100 rounded border flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                          </div>
+                        ) : projectPreviews[project.id] ? (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ProjectPreview
+                              projectData={projectPreviews[project.id]}
+                              scale={0.25}
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-full h-full bg-gray-50 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-sm">
+                            <div className="text-center">
+                              <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                              <span className="text-xs">
+                                Loading Preview...
+                              </span>
+                            </div>
+                          </div>
+                        )
                       ) : (
-                        <div className="w-full h-full bg-gray-50 rounded border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-sm">
+                        <div className="w-full h-full bg-gray-50 rounded border flex items-center justify-center text-gray-400">
                           <div className="text-center">
-                            <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                            <span className="text-xs">Loading Preview...</span>
+                            <Lock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                            <span className="text-xs">Local File</span>
                           </div>
                         </div>
-                      )
-                    ) : (
-                      <div className="w-full h-full bg-gray-50 rounded border flex items-center justify-center text-gray-400">
-                        <div className="text-center">
-                          <Lock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-                          <span className="text-xs">Local File</span>
+                      )}
+                    </div>
+
+                    {/* Actions Menu */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenProject(project.id);
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Open
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteProject(project.id, project.name);
+                            }}
+                            className="text-red-600"
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    {/* File Type Badge */}
+                    <div className="absolute top-2 left-2">
+                      {project.source === "database" ? (
+                        <Badge
+                          variant="default"
+                          className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 border-blue-200"
+                        >
+                          <Globe className="h-2.5 w-2.5 mr-1" />
+                          Cloud
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className="text-xs px-1.5 py-0.5"
+                        >
+                          <Lock className="h-2.5 w-2.5 mr-1" />
+                          Local
+                        </Badge>
+                      )}
+                    </div>
+                    {/* Full-card OCR overlay */}
+                    {isOcrRunning && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          zIndex: 50,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          borderTopLeftRadius: 8,
+                          borderTopRightRadius: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            background: "rgba(17,24,39,0.7)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "relative",
+                            color: "#fff",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              letterSpacing: 0,
+                              marginBottom: 8,
+                            }}
+                          >
+                            Running OCR
+                          </div>
+                          <div
+                            style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: "50%",
+                              border: "2px solid rgba(255,255,255,0.35)",
+                              borderTopColor: "#ffffff",
+                              margin: "0 auto 8px",
+                              animation: "spin 0.9s linear infinite",
+                            }}
+                          />
+                          <div
+                            style={{
+                              width: 120,
+                              height: 4,
+                              borderRadius: 999,
+                              margin: "0 auto",
+                              background: "rgba(255,255,255,0.25)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: "100%",
+                                width: "40%",
+                                background: "#ffffff",
+                                transform: "translateX(-100%)",
+                                animation: "bar 1.6s ease-in-out infinite",
+                              }}
+                            />
+                          </div>
+                          <style>{`@keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} } @keyframes bar { 0% { transform: translateX(-100%);} 50% { transform: translateX(50%);} 100% { transform: translateX(120%);} }`}</style>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Actions Menu */}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-3 w-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenProject(project.id);
-                          }}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Open
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProject(project.id, project.name);
-                          }}
-                          className="text-red-600"
-                        >
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* File Type Badge */}
-                  <div className="absolute top-2 left-2">
-                    {project.source === "database" ? (
-                      <Badge
-                        variant="default"
-                        className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 border-blue-200"
-                      >
-                        <Globe className="h-2.5 w-2.5 mr-1" />
-                        Cloud
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="secondary"
-                        className="text-xs px-1.5 py-0.5"
-                      >
-                        <Lock className="h-2.5 w-2.5 mr-1" />
-                        Local
-                      </Badge>
-                    )}
+                  {/* Document Info */}
+                  <div className="p-3 border border-gray-300 rounded-bl-lg rounded-br-lg">
+                    <h3 className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                      {project.name}
+                    </h3>
+                    <div className="flex items-center mt-1 text-xs text-gray-500">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      <span>{formatDate(project.createdAt)}</span>
+                    </div>
                   </div>
                 </div>
-
-                {/* Document Info */}
-                <div className="p-3 border border-gray-300 rounded-bl-lg rounded-br-lg">
-                  <h3 className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                    {project.name}
-                  </h3>
-                  <div className="flex items-center mt-1 text-xs text-gray-500">
-                    <Calendar className="h-3 w-3 mr-1" />
-                    <span>{formatDate(project.createdAt)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

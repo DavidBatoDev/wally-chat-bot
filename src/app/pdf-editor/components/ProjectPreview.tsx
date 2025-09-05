@@ -6,7 +6,7 @@ import { isPdfFile } from "../utils/measurements";
 import { FileText } from "lucide-react";
 
 // Configure PDF.js worker
-import { pdfjs } from 'react-pdf';
+import { pdfjs } from "react-pdf";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -164,7 +164,8 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
   scale = 0.2,
 }) => {
   const { documentState, elementCollections } = projectData;
-  
+  const isOcrRunning = !!documentState?.ocrRunning;
+
   // Get first page elements only
   const firstPageTextBoxes = elementCollections.originalTextBoxes.filter(
     (tb) => tb.page === 1
@@ -175,9 +176,8 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
   const firstPageImages = elementCollections.originalImages.filter(
     (img) => img.page === 1
   );
-  const firstPageDeletions = elementCollections.originalDeletionRectangles.filter(
-    (r) => r.page === 1
-  );
+  const firstPageDeletions =
+    elementCollections.originalDeletionRectangles.filter((r) => r.page === 1);
 
   // Create sorted elements array
   const createSortedElements = () => {
@@ -250,18 +250,18 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
   };
 
   const isPdf = documentState.url && isPdfFile(documentState.url);
-  
+
   // Use standard letter size aspect ratio (8.5:11 = 0.773)
   const letterAspectRatio = 8.5 / 11;
-  
+
   // Max container dimensions for the card
   const maxWidth = 160;
   const maxHeight = 200;
-  
+
   // Calculate dimensions maintaining letter size aspect ratio
   let previewWidth: number;
   let previewHeight: number;
-  
+
   if (letterAspectRatio > maxWidth / maxHeight) {
     // Width is the limiting factor
     previewWidth = maxWidth;
@@ -271,11 +271,14 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
     previewHeight = maxHeight;
     previewWidth = maxHeight * letterAspectRatio;
   }
-  
+
   // Calculate scale based on the document's actual dimensions
   const originalWidth = documentState.pageWidth || 600;
   const originalHeight = documentState.pageHeight || 800;
-  const actualScale = Math.min(previewWidth / originalWidth, previewHeight / originalHeight);
+  const actualScale = Math.min(
+    previewWidth / originalWidth,
+    previewHeight / originalHeight
+  );
 
   return (
     <div
@@ -353,13 +356,97 @@ const ProjectPreview: React.FC<ProjectPreviewProps> = ({
           </div>
         </div>
       )}
-      
+
       {/* Render all elements in correct layering order */}
       {sortedElements.map((item, index) => (
         <React.Fragment key={`${item.type}-${item.element.id || index}`}>
           {renderElement(item)}
         </React.Fragment>
       ))}
+
+      {/* OCR Running Overlay - full card, modern visual */}
+      {isOcrRunning && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 100,
+            overflow: "hidden",
+            background: "rgba(17,24,39,0.7)",
+          }}
+        >
+          {/* Center content */}
+          <div
+            style={{
+              position: "relative",
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+              textAlign: "center",
+            }}
+          >
+            <div>
+              {/* Heading */}
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: 0,
+                  marginBottom: 8,
+                }}
+              >
+                Running OCR
+              </div>
+
+              {/* Spinner */}
+              <div
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.35)",
+                  borderTopColor: "#ffffff",
+                  margin: "0 auto 8px",
+                  animation: "spin 0.9s linear infinite",
+                }}
+              />
+
+              {/* Indeterminate progress bar (simple) */}
+              <div
+                style={{
+                  width: 120,
+                  height: 4,
+                  borderRadius: 999,
+                  margin: "0 auto",
+                  background: "rgba(255,255,255,0.25)",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: "40%",
+                    background: "#ffffff",
+                    transform: "translateX(-100%)",
+                    animation: "bar 1.6s ease-in-out infinite",
+                  }}
+                />
+              </div>
+
+              {/* Keyframes */}
+              <style>
+                {`
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                @keyframes bar { 0% { transform: translateX(-100%);} 50% { transform: translateX(50%);} 100% { transform: translateX(120%);} }
+                `}
+              </style>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -363,15 +363,14 @@ export const PageTemplateSelectionModal: React.FC<
     setDesiredDropdownOpen(false);
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     try {
-      setIsSubmitting(true);
-      await onConfirm(pages, currentSourceLanguage, currentDesiredLanguage);
+      // Close immediately to allow background OCR to run while dashboard shows indicator
       onClose();
+      // Fire-and-forget OCR flow; parent handles any navigation or errors
+      void onConfirm(pages, currentSourceLanguage, currentDesiredLanguage);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to confirm");
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
