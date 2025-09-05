@@ -6,13 +6,10 @@ import {
   Save,
   ChevronLeft,
   ChevronRight,
-  Undo2,
-  Redo2,
   RotateCcw,
   FileText,
   Settings,
   Check,
-  FolderOpen,
   RefreshCw,
   Share2,
   ArrowLeft,
@@ -26,13 +23,8 @@ interface PDFEditorHeaderProps {
   onFileUpload: () => void;
   onSaveProject: () => Promise<any>;
   hasUnsavedChanges?: boolean;
-  onProjectManagement?: () => void;
   onShareProject?: () => void;
   onExportData: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
   onLoadSampleData?: () => void;
   onRunOcrAllPages?: () => void;
   isBulkOcrRunning?: boolean;
@@ -57,13 +49,8 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
   onFileUpload,
   onSaveProject,
   hasUnsavedChanges = false,
-  onProjectManagement,
   onShareProject,
   onExportData,
-  onUndo,
-  onRedo,
-  canUndo,
-  canRedo,
   onLoadSampleData,
   onRunOcrAllPages,
   isBulkOcrRunning,
@@ -119,31 +106,7 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
             )}
           </div>
 
-          {/* Undo/Redo Buttons (left) */}
-          {hasPages && (
-            <>
-              <Button
-                onClick={onUndo}
-                variant="outline"
-                size="sm"
-                className="border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/30 transition-all duration-200 hover:scale-105 w-10 h-10 p-0"
-                disabled={!canUndo}
-                title="Undo (Ctrl+Z)"
-              >
-                <Undo2 className="w-4 h-4" />
-              </Button>
-              <Button
-                onClick={onRedo}
-                variant="outline"
-                size="sm"
-                className="border-primary/20 text-gray-900 hover:bg-primary/10 hover:border-primary/30 transition-all duration-200 hover:scale-105 w-10 h-10 p-0"
-                disabled={!canRedo}
-                title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
-              >
-                <Redo2 className="w-4 h-4" />
-              </Button>
-            </>
-          )}
+          {/* Undo/Redo moved to Status Bar */}
         </div>
 
         {/* Centered Workflow Steps */}
@@ -259,17 +222,6 @@ export const PDFEditorHeader: React.FC<PDFEditorHeaderProps> = ({
 
         {/* Right-aligned Action Buttons */}
         <div className="flex items-center space-x-3">
-          {onProjectManagement && (
-            <Button
-              onClick={onProjectManagement}
-              variant="ghost"
-              size="sm"
-              className="text-primary hover:text-primaryLight hover:bg-primary/10 transition-colors"
-              title="Project Management"
-            >
-              <FolderOpen className="w-4 h-4" />
-            </Button>
-          )}
           {permissions.shouldShowSaveButton() && (
             <Button
               id="save-project-button"

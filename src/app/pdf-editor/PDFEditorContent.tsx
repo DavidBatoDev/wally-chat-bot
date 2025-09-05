@@ -2362,11 +2362,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
     isFirstStep,
     isLastStep,
     totalSteps,
-  } = useSpotlightTour(
-    handleWorkflowStepChange,
-    handleViewChange,
-    viewState.currentWorkflowStep
-  );
+  } = useSpotlightTour(handleWorkflowStepChange, handleViewChange);
 
   // Layout tour hook (for layout workflow)
   const layoutTour = useLayoutTour(
@@ -2550,37 +2546,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           }));
         }
       }
-    },
-    viewState.currentWorkflowStep
-  );
-
-  // Auto-check tutorials on workflow step change
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (viewState.currentWorkflowStep === "translate") {
-      const completed = localStorage.getItem("tutorial-translate");
-      if (!completed && !isTourOpen && !hasCompletedTour) {
-        startTour();
-      }
-    } else if (viewState.currentWorkflowStep === "layout") {
-      const completed = localStorage.getItem("tutorial-layout");
-      if (
-        !completed &&
-        !layoutTour.isTourOpen &&
-        !layoutTour.hasCompletedTour
-      ) {
-        layoutTour.startTour();
-      }
     }
-  }, [
-    viewState.currentWorkflowStep,
-    isTourOpen,
-    hasCompletedTour,
-    startTour,
-    layoutTour.isTourOpen,
-    layoutTour.hasCompletedTour,
-    layoutTour.startTour,
-  ]);
+  );
 
   // Ensure view is always split when in layout step
   useEffect(() => {
@@ -6458,35 +6425,8 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
         onFileUpload={handleFileUploadIntercept}
         onSaveProject={saveProject}
         hasUnsavedChanges={hasUnsavedChanges}
-        onProjectManagement={() => setShowProjectModal(true)}
         onShareProject={handleEditorShare}
         onExportData={permissions.canExportProject() ? exportToPDF : () => {}}
-        onUndo={() => {
-          const now = Date.now();
-          if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
-            return;
-          }
-
-          if (history.canUndo()) {
-            history.undo();
-            setLastUndoTime(now);
-            toast.success("Undo");
-          }
-        }}
-        onRedo={() => {
-          const now = Date.now();
-          if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
-            return;
-          }
-
-          if (history.canRedo()) {
-            history.redo();
-            setLastRedoTime(now);
-            toast.success("Redo");
-          }
-        }}
-        canUndo={history.canUndo()}
-        canRedo={history.canRedo()}
         // Bulk OCR props
         onRunOcrAllPages={() => checkLanguageAndRunOcr("bulk")}
         isBulkOcrRunning={isBulkOcrRunning}
@@ -8082,6 +8022,32 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
           )
         }
         onZoomReset={() => actions.updateScaleWithoutRerender(1.0)}
+        onUndo={() => {
+          const now = Date.now();
+          if (now - lastUndoTime < UNDO_REDO_DEBOUNCE_MS) {
+            return;
+          }
+
+          if (history.canUndo()) {
+            history.undo();
+            setLastUndoTime(now);
+            toast.success("Undo");
+          }
+        }}
+        onRedo={() => {
+          const now = Date.now();
+          if (now - lastRedoTime < UNDO_REDO_DEBOUNCE_MS) {
+            return;
+          }
+
+          if (history.canRedo()) {
+            history.redo();
+            setLastRedoTime(now);
+            toast.success("Redo");
+          }
+        }}
+        canUndo={history.canUndo()}
+        canRedo={history.canRedo()}
       />
 
       {/* Confirmation Modal */}

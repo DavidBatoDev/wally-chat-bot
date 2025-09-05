@@ -1,5 +1,5 @@
 import React from "react";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { ZoomIn, ZoomOut, Undo2, Redo2 } from "lucide-react";
 import { StatusBarProps } from "../../types/pdf-editor.types";
 
 export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
@@ -11,90 +11,12 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }) => {
-  // Calculate element counts for current page
-  const getCurrentPageCounts = () => {
-    const currentPage = documentState.currentPage;
-
-    if (viewState.currentView === "split") {
-      const originalTextBoxes = elementCollections.originalTextBoxes.filter(
-        (box) => box.page === currentPage
-      ).length;
-      const originalShapes = elementCollections.originalShapes.filter(
-        (shape) => shape.page === currentPage
-      ).length;
-      const originalImages = elementCollections.originalImages.filter(
-        (image) => image.page === currentPage
-      ).length;
-      const originalDeletions =
-        elementCollections.originalDeletionRectangles.filter(
-          (rect) => rect.page === currentPage
-        ).length;
-
-      const translatedTextBoxes = elementCollections.translatedTextBoxes.filter(
-        (box) => box.page === currentPage
-      ).length;
-      const translatedShapes = elementCollections.translatedShapes.filter(
-        (shape) => shape.page === currentPage
-      ).length;
-      const translatedImages = elementCollections.translatedImages.filter(
-        (image) => image.page === currentPage
-      ).length;
-      const translatedDeletions =
-        elementCollections.translatedDeletionRectangles.filter(
-          (rect) => rect.page === currentPage
-        ).length;
-
-      return {
-        original: {
-          textBoxes: originalTextBoxes,
-          shapes: originalShapes,
-          images: originalImages,
-          deletions: originalDeletions,
-        },
-        translated: {
-          textBoxes: translatedTextBoxes,
-          shapes: translatedShapes,
-          images: translatedImages,
-          deletions: translatedDeletions,
-        },
-      };
-    } else {
-      const textBoxes =
-        viewState.currentView === "original"
-          ? elementCollections.originalTextBoxes
-          : viewState.currentView === "translated"
-          ? elementCollections.translatedTextBoxes
-          : elementCollections.finalLayoutTextboxes;
-      const shapes =
-        viewState.currentView === "original"
-          ? elementCollections.originalShapes
-          : viewState.currentView === "translated"
-          ? elementCollections.translatedShapes
-          : elementCollections.finalLayoutShapes;
-      const images =
-        viewState.currentView === "original"
-          ? elementCollections.originalImages
-          : viewState.currentView === "translated"
-          ? elementCollections.translatedImages
-          : elementCollections.finalLayoutImages;
-      const deletions =
-        viewState.currentView === "original"
-          ? elementCollections.originalDeletionRectangles
-          : viewState.currentView === "translated"
-          ? elementCollections.translatedDeletionRectangles
-          : elementCollections.finalLayoutDeletionRectangles;
-
-      return {
-        textBoxes: textBoxes.filter((box) => box.page === currentPage).length,
-        shapes: shapes.filter((shape) => shape.page === currentPage).length,
-        images: images.filter((image) => image.page === currentPage).length,
-        deletions: deletions.filter((rect) => rect.page === currentPage).length,
-      };
-    }
-  };
-
-  const counts = getCurrentPageCounts();
+  // Removed element counts display per request
 
   // Determine if we're in final layout mode
   const isFinalLayout = viewState.currentView === "final-layout";
@@ -118,35 +40,6 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
     <div className="bg-white border-t border-gray-200 px-4 py-2">
       <div className="flex items-center justify-between text-sm text-gray-600">
         <div className="flex items-center space-x-4">
-          {viewState.currentView === "split" &&
-          counts.original &&
-          counts.translated ? (
-            <>
-              <span className="flex items-center space-x-2">
-                <span className="text-primary font-medium">Original:</span>
-                <span>{counts.original.textBoxes} text</span>
-                <span>{counts.original.shapes} shapes</span>
-                <span>{counts.original.images} images</span>
-                <span>{counts.original.deletions} deletions</span>
-              </span>
-              <span className="text-gray-400">|</span>
-              <span className="flex items-center space-x-2">
-                <span className="text-green-600 font-medium">Translated:</span>
-                <span>{counts.translated.textBoxes} text</span>
-                <span>{counts.translated.shapes} shapes</span>
-                <span>{counts.translated.images} images</span>
-                <span>{counts.translated.deletions} deletions</span>
-              </span>
-            </>
-          ) : (
-            <>
-              <span>Text Boxes: {counts.textBoxes}</span>
-              <span>Shapes: {counts.shapes}</span>
-              <span>Images: {counts.images}</span>
-              <span>Deletion Areas: {counts.deletions}</span>
-            </>
-          )}
-
           {/* Current View Indicator */}
           <span className="flex items-center space-x-1">
             <span>View:</span>
@@ -163,6 +56,24 @@ export const PDFEditorStatusBar: React.FC<StatusBarProps> = ({
         </div>
 
         <div className="flex items-center space-x-4">
+          {/* Undo/Redo Buttons moved from header */}
+          <button
+            onClick={onUndo}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            title="Undo (Ctrl+Z)"
+            disabled={!canUndo}
+          >
+            <Undo2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={onRedo}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            title="Redo (Ctrl+Y or Ctrl+Shift+Z)"
+            disabled={!canRedo}
+          >
+            <Redo2 className="w-3 h-3" />
+          </button>
+
           {documentUrl && (
             <span>
               Page {currentPage} of {totalPages} (
