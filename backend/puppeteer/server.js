@@ -3105,7 +3105,7 @@ app.post(
       const ocrResult = await new Promise((resolve, reject) => {
         // Reuse handler logic by invoking the existing endpoint handler functionally is complex.
         // Instead, perform an HTTP call to this same service to avoid code duplication.
-        const serviceUrl = `http://localhost:${PORT}/capture-and-ocr`;
+        const serviceUrl = `https://wally-backend-523614903618.us-central1.run.app/capture-and-ocr`;
         axios
           .post(serviceUrl, innerReq.body, {
             headers: { "Content-Type": "application/json" },
@@ -5048,13 +5048,6 @@ async function startServer() {
   app.listen(PORT, () => {
     console.log(`\n✅ OCR Capture Service running successfully!`);
     console.log(`📍 Service URLs:`);
-    console.log(`   Main Service: http://localhost:${PORT}`);
-    console.log(`   Health Check: http://localhost:${PORT}/health`);
-    console.log(`   Status Info: http://localhost:${PORT}/status`);
-    console.log(`   Debug Info: http://localhost:${PORT}/debug`);
-    console.log(
-      `   Capture Endpoint: http://localhost:${PORT}/capture-and-ocr`
-    );
     console.log(
       `\n🔍 Monitor the service in real-time using the debug endpoints above`
     );
