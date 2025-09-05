@@ -231,17 +231,17 @@
 /* Delete icon - top left */
 .text-span-icon-delete {
   position: absolute !important;
-  top: -8px !important;
-  left: -8px !important;
-  width: 35px !important;
-  height: 35px !important;
+  top: var(--span-icon-offset, -8px) !important;
+  left: var(--span-icon-offset, -8px) !important;
+  width: var(--span-icon-size, 35px) !important;
+  height: var(--span-icon-size, 35px) !important;
   background-color: #ef4444 !important;
   color: white !important;
   border-radius: 50% !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  font-size: 35px !important;
+  font-size: var(--span-icon-font-size, 35px) !important;
   font-weight: bold !important;
   opacity: 1 !important;
   cursor: pointer !important;
@@ -253,17 +253,17 @@
 /* Edit icon - top right */
 .text-span-icon-edit {
   position: absolute !important;
-  top: -8px !important;
-  right: -8px !important;
-  width: 35px !important;
-  height: 35px !important;
+  top: var(--span-icon-offset, -8px) !important;
+  right: var(--span-icon-offset, -8px) !important;
+  width: var(--span-icon-size, 35px) !important;
+  height: var(--span-icon-size, 35px) !important;
   background-color: #3b82f6 !important;
   color: white !important;
   border-radius: 50% !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  font-size: 35px !important;
+  font-size: var(--span-icon-font-size, 35px) !important;
   font-weight: bold !important;
   opacity: 1 !important;
   cursor: pointer !important;

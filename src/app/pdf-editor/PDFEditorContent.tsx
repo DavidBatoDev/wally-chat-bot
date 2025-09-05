@@ -2569,7 +2569,9 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
   const { isZooming: isTextSpanZooming } = useTextSpanHandling({
     isAddTextBoxMode: editorState.isAddTextBoxMode,
     scale: documentState.scale,
+    currentView: viewState.currentView,
     currentPage: documentState.currentPage,
+    pageWidth: documentState.pageWidth,
     pdfBackgroundColor: documentState.pdfBackgroundColor,
     erasureSettings: erasureState.erasureSettings,
     createDeletionRectangleForSpan: (span: HTMLElement) => {
@@ -2658,6 +2660,7 @@ export const PDFEditorContent: React.FC<{ projectId?: string }> = ({
       updateTextBoxWithUndo(id, updates, false); // Don't mark as ongoing operation for text span updates
     },
     setAutoFocusTextBoxId,
+    getTranslatedTemplateScaleFactor,
   });
 
   // Zoom functionality (optimized)

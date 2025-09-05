@@ -4,7 +4,9 @@ import { TextField, DeletionRectangle } from "../../types/pdf-editor.types";
 interface UseTextSpanHandlingProps {
   isAddTextBoxMode: boolean;
   scale: number;
+  currentView: "original" | "translated" | "split" | "final-layout";
   currentPage: number;
+  pageWidth: number;
   pdfBackgroundColor: string;
   erasureSettings: {
     width: number;
@@ -28,12 +30,15 @@ interface UseTextSpanHandlingProps {
   ) => string;
   updateTextBox: (id: string, updates: any) => void;
   setAutoFocusTextBoxId: (id: string | null) => void;
+  getTranslatedTemplateScaleFactor?: (pageNumber: number) => number;
 }
 
 export const useTextSpanHandling = ({
   isAddTextBoxMode,
   scale,
+  currentView,
   currentPage,
+  pageWidth,
   pdfBackgroundColor,
   erasureSettings,
   createDeletionRectangleForSpan,
@@ -41,9 +46,58 @@ export const useTextSpanHandling = ({
   addDeletionRectangle,
   updateTextBox,
   setAutoFocusTextBoxId,
+  getTranslatedTemplateScaleFactor,
 }: UseTextSpanHandlingProps) => {
   const [isZooming, setIsZooming] = useState(false);
   const zoomTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Compute effective scale for a span, accounting for split translated template scaling
+  const computeEffectiveScaleForSpan = useCallback(
+    (
+      span: HTMLElement
+    ): {
+      effectiveScale: number;
+      targetView: "original" | "translated" | "final-layout";
+    } => {
+      let target: "original" | "translated" | "final-layout" =
+        currentView === "final-layout" ? "final-layout" : (currentView as any);
+
+      if (currentView === "split") {
+        const spanRect = span.getBoundingClientRect();
+        const pdfViewer = document.querySelector("[data-pdf-viewer]");
+        if (pdfViewer) {
+          const viewerRect = (pdfViewer as HTMLElement).getBoundingClientRect();
+          const spanCenterX = spanRect.left + spanRect.width / 2;
+          const clickX = spanCenterX - viewerRect.left;
+          const singleDocWidth = pageWidth * scale;
+          const gap = 20; // px in screen space
+          if (clickX > singleDocWidth + gap) {
+            target = "translated";
+          } else if (clickX <= singleDocWidth) {
+            target = "original";
+          } else {
+            target = "original";
+          }
+        }
+      }
+
+      let eff = scale;
+      if (currentView === "split" && target === "translated") {
+        const templateScale = getTranslatedTemplateScaleFactor
+          ? getTranslatedTemplateScaleFactor(currentPage) || 1
+          : 1;
+        eff = scale * templateScale;
+      }
+      return { effectiveScale: eff, targetView: target };
+    },
+    [
+      currentView,
+      currentPage,
+      pageWidth,
+      scale,
+      getTranslatedTemplateScaleFactor,
+    ]
+  );
 
   // Remove icons from a text span
   const removeIconsFromSpan = useCallback((span: HTMLElement) => {
@@ -69,6 +123,24 @@ export const useTextSpanHandling = ({
       // Create overlay container
       const overlay = document.createElement("div");
       overlay.className = "text-span-icons";
+
+      // Helper: set icon CSS variables based on effective scale
+      const updateIconSizing = () => {
+        const { effectiveScale } = computeEffectiveScaleForSpan(span);
+        const BASE = 28; // baseline px at 100% scale
+        const MIN = 16;
+        const MAX = 56; // allow larger for scaled-down translated templates
+        const size = Math.max(
+          MIN,
+          Math.min(MAX, BASE / Math.max(0.001, effectiveScale))
+        );
+        const offsetBase = -8;
+        const offset = offsetBase * (size / 35);
+        overlay.style.setProperty("--span-icon-size", `${size}px`);
+        overlay.style.setProperty("--span-icon-font-size", `${size}px`);
+        overlay.style.setProperty("--span-icon-offset", `${offset}px`);
+      };
+      updateIconSizing();
 
       // Create delete icon
       const deleteIcon = document.createElement("div");
@@ -106,10 +178,24 @@ export const useTextSpanHandling = ({
 
       // Add overlay to span
       span.appendChild(overlay);
+
+      // Keep sizes in sync when zoom changes
+      const resizeObserver = new ResizeObserver(() => updateIconSizing());
+      try {
+        resizeObserver.observe(document.body);
+      } catch {}
+      // Clean up observer when overlay is removed
+      const observer = new MutationObserver(() => {
+        if (!document.body.contains(overlay)) {
+          resizeObserver.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
     },
     [
       createDeletionRectangleForSpan,
       createTextFieldFromSpan,
+      computeEffectiveScaleForSpan,
       removeIconsFromSpan,
       updateTextBox,
       setAutoFocusTextBoxId,
