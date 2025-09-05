@@ -129,6 +129,8 @@ export async function runBulkOcrAndSaveToDb(params: {
   viewTypes?: Array<"original" | "translated">;
   ocrApiUrl?: string;
   projectData?: any;
+  sourceLanguage?: string;
+  desiredLanguage?: string;
 }): Promise<{ success: boolean; error?: string }> {
   const backgroundServiceUrl = process.env.NEXT_PUBLIC_OCR_CAPTURE_SERVICE_URL;
   if (!backgroundServiceUrl) {
@@ -144,6 +146,10 @@ export async function runBulkOcrAndSaveToDb(params: {
     ocrApiUrl:
       params.ocrApiUrl || "http://localhost:8000/projects/process-file",
     projectData: params.projectData,
+    // Forward translation preferences to backend
+    translateFrom: params.sourceLanguage,
+    translateTo: params.desiredLanguage,
+    desiredLanguage: params.desiredLanguage,
   };
   const res = await fetch(
     `${backgroundServiceUrl}/capture-and-ocr-to-supabase`,

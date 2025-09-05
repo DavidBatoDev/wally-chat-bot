@@ -14,7 +14,7 @@ const { createClient } = require("@supabase/supabase-js");
 // Translation service configuration
 const GOOGLE_TRANSLATE_API_KEY =
   process.env.GOOGLE_TRANSLATE_API_KEY ||
-  "AIzaSyDKNM0imbSFYjOKhpP0qj8ZMaJuyXg-EI8";
+  "AIzaSyD9Sj6b4Ums9is7ZktadDYUgllZ-qxDTTg";
 const GOOGLE_TRANSLATE_BASE_URL =
   "https://translation.googleapis.com/language/translate/v2";
 
@@ -3094,6 +3094,11 @@ app.post(
           viewTypes,
           ocrApiUrl,
           projectData,
+          // Forward translation parameters so /capture-and-ocr performs translation
+          translateTo: req.body?.translateTo || req.body?.desiredLanguage,
+          desiredLanguage: req.body?.desiredLanguage,
+          translateFrom:
+            req.body?.translateFrom || req.body?.projectData?.sourceLanguage,
         },
         headers: req.headers,
       };

@@ -578,8 +578,8 @@ const PDFEditorDashboard: React.FC = () => {
                 pageHeight={
                   project?.project_data?.documentState?.pageHeight || 800
                 }
-                sourceLanguage="English"
-                desiredLanguage="Spanish"
+                sourceLanguage="auto"
+                desiredLanguage="es"
                 onConfirm={async (pages, sourceLanguage, desiredLanguage) => {
                   // Immediately set preview to show OCR running
                   setProjectPreviews((prev) => ({
@@ -680,6 +680,8 @@ const PDFEditorDashboard: React.FC = () => {
                       .map((p) => p.pageNumber),
                     viewTypes: ["original", "translated"],
                     projectData: updatedProjectData,
+                    sourceLanguage,
+                    desiredLanguage,
                   });
                   if (!result.success) {
                     toast.error("OCR failed", {
