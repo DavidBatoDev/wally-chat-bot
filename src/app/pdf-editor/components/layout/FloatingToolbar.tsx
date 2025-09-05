@@ -69,6 +69,13 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const erasureMenuRef = useRef<HTMLDivElement>(null);
 
+  // Ensure tooltip is hidden whenever any dropdown menu opens
+  useEffect(() => {
+    if (isShapeMenuOpen || isViewMenuOpen || isErasureMenuOpen) {
+      setHoveredButton(null);
+    }
+  }, [isShapeMenuOpen, isViewMenuOpen, isErasureMenuOpen]);
+
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -202,7 +209,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               {/* Edit Mode Toggle - always visible with expand indicator */}
               <ToolbarTooltip id="edit-mode-tools" text="Toggle Edit Mode">
                 <button
-                  onClick={onEditModeToggle}
+                  onClick={() => {
+                    setHoveredButton(null);
+                    onEditModeToggle();
+                  }}
                   className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 flex items-center gap-1 text-gray-700 hover:text-primary ${
                     editorState.isEditMode ? "bg-gray-200" : ""
                   }`}
@@ -274,11 +284,14 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   <ToolbarTooltip
                     id="shapes"
                     text="Draw Shapes"
-                    disabled={!shouldEnableControls}
+                    disabled={!shouldEnableControls || isShapeMenuOpen}
                   >
                     <div className="relative" ref={shapeMenuRef}>
                       <button
-                        onClick={() => setIsShapeMenuOpen(!isShapeMenuOpen)}
+                        onClick={() => {
+                          setHoveredButton(null);
+                          setIsShapeMenuOpen(!isShapeMenuOpen);
+                        }}
                         disabled={!shouldEnableControls}
                         className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 flex items-center gap-1 ${
                           toolState.shapeDrawingMode === "rectangle" ||
@@ -315,6 +328,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                         <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-primary/20 py-1 min-w-[120px] z-50">
                           <button
                             onClick={() => {
+                              setHoveredButton(null);
                               onToolChange(
                                 "rectangle",
                                 toolState.shapeDrawingMode !== "rectangle"
@@ -332,6 +346,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                           </button>
                           <button
                             onClick={() => {
+                              setHoveredButton(null);
                               onToolChange(
                                 "circle",
                                 toolState.shapeDrawingMode !== "circle"
@@ -349,6 +364,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                           </button>
                           <button
                             onClick={() => {
+                              setHoveredButton(null);
                               onToolChange(
                                 "line",
                                 toolState.shapeDrawingMode !== "line"
@@ -381,11 +397,12 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   <ToolbarTooltip
                     id="erasure"
                     text="Erasure Tool"
-                    disabled={!shouldEnableControls}
+                    disabled={!shouldEnableControls || isErasureMenuOpen}
                   >
                     <div className="relative" ref={erasureMenuRef}>
                       <button
                         onClick={() => {
+                          setHoveredButton(null);
                           onToolChange("erasure", !erasureState.isErasureMode);
                           if (!erasureState.isErasureMode) {
                             setIsErasureMenuOpen(true);
@@ -410,6 +427,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                             }`}
                             onClick={(e) => {
                               e.stopPropagation();
+                              setHoveredButton(null);
                               setIsErasureMenuOpen(!isErasureMenuOpen);
                             }}
                           />
@@ -492,7 +510,10 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                   {onImageUpload && (
                     <ToolbarTooltip id="image" text="Add Image to Document">
                       <button
-                        onClick={onImageUpload}
+                        onClick={() => {
+                          setHoveredButton(null);
+                          onImageUpload();
+                        }}
                         className="p-2 rounded-md transition-all duration-200 hover:bg-primary/10 text-gray-700 hover:text-primary"
                       >
                         <ImageIcon className="w-5 h-5" />
@@ -514,10 +535,14 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <ToolbarTooltip
               id="view-selector"
               text={`Current View: ${getCurrentViewName()}`}
+              disabled={isViewMenuOpen}
             >
               <div className="relative" ref={viewMenuRef}>
                 <button
-                  onClick={() => setIsViewMenuOpen(!isViewMenuOpen)}
+                  onClick={() => {
+                    setHoveredButton(null);
+                    setIsViewMenuOpen(!isViewMenuOpen);
+                  }}
                   className={`p-2 rounded-md transition-all duration-200 hover:bg-primary/10 flex items-center gap-1 text-gray-700 hover:text-primary`}
                 >
                   {getCurrentViewIcon()}
@@ -530,6 +555,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     {/* Original View - Available in all workflow steps */}
                     <button
                       onClick={() => {
+                        setHoveredButton(null);
                         onViewChange("original");
                         setIsViewMenuOpen(false);
                       }}
@@ -547,6 +573,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     {currentWorkflowStep === "layout" && (
                       <button
                         onClick={() => {
+                          setHoveredButton(null);
                           onViewChange("translated");
                           setIsViewMenuOpen(false);
                         }}
@@ -566,6 +593,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                       currentWorkflowStep === "layout") && (
                       <button
                         onClick={() => {
+                          setHoveredButton(null);
                           onViewChange("split");
                           setIsViewMenuOpen(false);
                         }}
@@ -584,6 +612,7 @@ export const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
                     {currentWorkflowStep === "final-layout" && (
                       <button
                         onClick={() => {
+                          setHoveredButton(null);
                           onViewChange("final-layout");
                           setIsViewMenuOpen(false);
                         }}
