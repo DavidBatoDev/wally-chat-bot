@@ -596,6 +596,7 @@ const PDFEditorDashboard: React.FC = () => {
                     const base: any = {
                       pageNumber: p.pageNumber,
                       pageType: p.pageType || "dynamic_content",
+                      deleted: !!(p as any).deleted,
                     };
                     if (p.templateId) {
                       const t = templateIndex[p.templateId];
@@ -619,11 +620,22 @@ const PDFEditorDashboard: React.FC = () => {
                   });
 
                   // 1) Save updated pages to DB and wait
+                  const deletedPages = pages
+                    .filter((p) => (p as any).deleted)
+                    .map((p) => p.pageNumber);
+
                   const updatedProjectData = {
                     ...(project?.project_data || {}),
                     documentState: {
                       ...((project?.project_data?.documentState as any) || {}),
                       pages: pagesData,
+                      deletedPages: Array.from(
+                        new Set([
+                          ...(((project?.project_data?.documentState
+                            ?.deletedPages as any) || []) as number[]),
+                          ...deletedPages,
+                        ])
+                      ),
                     },
                     viewState: {
                       ...((project?.project_data as any)?.viewState || {}),
@@ -646,7 +658,9 @@ const PDFEditorDashboard: React.FC = () => {
                   // 2) Run capture + OCR into Supabase and wait
                   const result = await runBulkOcrAndSaveToDb({
                     projectId: pid,
-                    pageNumbers: pages.map((p) => p.pageNumber),
+                    pageNumbers: pages
+                      .filter((p) => !(p as any).deleted)
+                      .map((p) => p.pageNumber),
                     viewTypes: ["original", "translated"],
                     projectData: updatedProjectData,
                   });

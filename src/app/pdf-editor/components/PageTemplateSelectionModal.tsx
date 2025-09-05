@@ -7,6 +7,8 @@ import {
   ChevronDown,
   Eye,
   ArrowRight,
+  Trash2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +39,7 @@ interface PageInfo {
   pageNumber: number;
   pageType: PageType | null;
   templateId?: string | null;
+  deleted?: boolean;
 }
 
 interface TemplateItem {
@@ -245,6 +248,7 @@ export const PageTemplateSelectionModal: React.FC<
         pageNumber: pn,
         pageType: (match?.pageType as PageType) || null,
         templateId: match?.templateId || null,
+        deleted: (match as any)?.deleted || false,
       };
     });
     setPages(init);
@@ -335,6 +339,14 @@ export const PageTemplateSelectionModal: React.FC<
   const handlePageTypeSelect = (pageNumber: number, pageType: PageType) => {
     handleChangeType(pageNumber, pageType);
     setShowPageTypeDropdowns((prev) => ({ ...prev, [pageNumber]: false }));
+  };
+
+  const toggleDeletePage = (pageNumber: number) => {
+    setPages((prev) =>
+      prev.map((p) =>
+        p.pageNumber === pageNumber ? { ...p, deleted: !p.deleted } : p
+      )
+    );
   };
 
   // Handle source language selection
@@ -589,16 +601,44 @@ export const PageTemplateSelectionModal: React.FC<
                         <h3 className="text-lg font-semibold text-gray-900">
                           Page {page.pageNumber}
                         </h3>
-                        <Badge
-                          variant={page.pageType ? "default" : "secondary"}
-                          className="text-xs"
-                        >
-                          {page.pageType
-                            ? typeOptions.find(
-                                (opt) => opt.value === page.pageType
-                              )?.label
-                            : "No Type"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={page.pageType ? "default" : "secondary"}
+                            className="text-xs"
+                          >
+                            {page.pageType
+                              ? typeOptions.find(
+                                  (opt) => opt.value === page.pageType
+                                )?.label
+                              : "No Type"}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleDeletePage(page.pageNumber)}
+                            aria-label={
+                              page.deleted ? "Restore page" : "Delete page"
+                            }
+                            title={
+                              page.deleted ? "Restore page" : "Delete page"
+                            }
+                            className={
+                              page.deleted
+                                ? "text-green-600 border-green-300 hover:bg-green-50"
+                                : "text-red-600 border-red-300 hover:bg-red-50"
+                            }
+                          >
+                            {page.deleted ? (
+                              <span className="flex items-center gap-1">
+                                <Undo2 className="w-3 h-3" />
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <Trash2 className="w-3 h-3" />
+                              </span>
+                            )}
+                          </Button>
+                        </div>
                       </div>
                     </div>
 

@@ -3154,11 +3154,17 @@ app.post(
       };
 
       // Always add text boxes and all elements to the translatedTextBoxes array
+      // Apply server-side optimization akin to client/utils/textboxOptimizer.ts
       textBoxesByPage.forEach((viewMap, pageNumber) => {
         viewMap.forEach((textBoxes, viewType) => {
+          const optimized = optimizeTextboxesForPageNode(
+            textBoxes,
+            pageNumber,
+            viewType
+          );
           elementCollections.translatedTextBoxes = [
             ...elementCollections.translatedTextBoxes,
-            ...textBoxes,
+            ...optimized,
           ];
         });
       });
@@ -4512,6 +4518,93 @@ function measureTextNode(
       width: fontSize * 4,
       height: lineCount * lineHeight,
     };
+  }
+}
+
+// Textbox Optimizer (Node equivalent of client/utils/textboxOptimizer.ts)
+function optimizeTextboxDimensionsNode(textBox) {
+  try {
+    const optimizedDimensions = measureTextNode(
+      textBox.value || "",
+      textBox.fontSize || 16,
+      textBox.fontFamily || "Arial, sans-serif",
+      textBox.letterSpacing || 0,
+      undefined,
+      {
+        top: textBox.paddingTop || 0,
+        right: textBox.paddingRight || 0,
+        bottom: textBox.paddingBottom || 0,
+        left: textBox.paddingLeft || 0,
+      }
+    );
+
+    const bufferWidth = 20;
+    const finalWidth = (optimizedDimensions.width || 0) + bufferWidth * 2;
+    const finalHeight =
+      Math.max(optimizedDimensions.height || 0, textBox.height || 0) +
+      (textBox.paddingTop || 0) +
+      (textBox.paddingBottom || 0);
+
+    return {
+      ...textBox,
+      width: Math.max(textBox.width || 0, finalWidth),
+      height: Math.max(textBox.height || 0, finalHeight),
+      hasBeenManuallyResized: false,
+    };
+  } catch (e) {
+    return textBox;
+  }
+}
+
+function validateTextboxDimensionsNode(textBox) {
+  const width = Number(textBox.width) || 0;
+  const height = Number(textBox.height) || 0;
+  const fontSize = Number(textBox.fontSize) || 16;
+  const value = String(textBox.value || "");
+  const minWidth = fontSize * 0.5;
+  const minHeight = fontSize * 0.8;
+  const maxWidth = fontSize * 100;
+  const maxHeight = fontSize * 50;
+  const bufferWidth = 20;
+  const expectedMinWidth = value.length * fontSize * 0.6 + bufferWidth * 2;
+  const isWidthReasonable = width >= minWidth && width <= maxWidth;
+  const isHeightReasonable = height >= minHeight && height <= maxHeight;
+  const isProportional = width >= expectedMinWidth;
+  return isWidthReasonable && isHeightReasonable && isProportional;
+}
+
+function enforceMinimumDimensionsNode(textBox) {
+  const fontSize = Number(textBox.fontSize) || 16;
+  const value = String(textBox.value || "");
+  const bufferWidth = 20;
+  const minWidth = Math.max(
+    fontSize * 0.5,
+    value.length * fontSize * 0.6 + bufferWidth * 2
+  );
+  const minHeight = fontSize * 1.2;
+  return {
+    ...textBox,
+    width: Math.max(Number(textBox.width) || 0, minWidth),
+    height: Math.max(Number(textBox.height) || 0, minHeight),
+  };
+}
+
+function comprehensivelyOptimizeTextboxNode(textBox) {
+  let optimized = optimizeTextboxDimensionsNode(textBox);
+  if (!validateTextboxDimensionsNode(optimized)) {
+    optimized = enforceMinimumDimensionsNode(optimized);
+    if (!validateTextboxDimensionsNode(optimized)) {
+      return enforceMinimumDimensionsNode(textBox);
+    }
+  }
+  return optimized;
+}
+
+function optimizeTextboxesForPageNode(textBoxes, pageNumber, viewType) {
+  try {
+    return textBoxes.map((tb) => comprehensivelyOptimizeTextboxNode(tb));
+  } catch {
+    return textBoxes;
   }
 }
 
